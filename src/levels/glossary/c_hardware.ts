@@ -1,0 +1,33 @@
+import type { GlossaryEntry } from "../types";
+
+// Terms first taught in primer C, "C for hardware".
+export const glossary: GlossaryEntry[] = [
+  { term: "memory", meaning: "Where a running program keeps its values: a very long row of boxes, each holding one number.", level: "chw-memory" },
+  { term: "array", meaning: "A row of boxes of the same type under one name, for example `int level[4];`. Each box is reached by its index.", level: "chw-array" },
+  { term: "index", meaning: "The number in square brackets that picks one box of an array. It starts at 0, so an array of 4 has the indexes 0 to 3.", level: "chw-array" },
+  { term: "element", meaning: "One box of an array, such as `level[2]`.", level: "chw-array" },
+  { term: "out of range", meaning: "Using an index that the array does not have. C does not check: the program reads or overwrites whatever sits next to the array, without any warning.", level: "chw-bounds" },
+  { term: "char", meaning: "A type for one character, stored as a small number. `'A'` in single quotes is the number that stands for the letter A. On this chip a char takes a whole 16-bit box.", level: "chw-string" },
+  { term: "string", meaning: "Text in C: an array of char, one character per box, closed by an extra box that holds 0.", level: "chw-string" },
+  { term: "terminating zero", meaning: "The box holding 0 that marks the end of a string. It is not printed and not counted as a character, but it needs a box of its own.", level: "chw-string" },
+  { term: "fixed-width type", meaning: "A type whose name states its size: `int16_t`, `uint16_t`, `int32_t`, `uint32_t`. Used in embedded code because a plain `int` is 16 bits on this chip and 32 on a PC.", level: "chw-sizes" },
+  { term: "signed and unsigned", meaning: "A signed type holds negative and positive numbers. An unsigned type (the names start with u) holds no negative numbers and so reaches twice as high: `uint16_t` goes from 0 to 65535.", level: "chw-sizes" },
+  { term: "sizeof", meaning: "`sizeof(x)` gives the size of x. On this chip it counts 16-bit boxes, so `sizeof(char)` is 1 and `sizeof(float)` is 2. On a PC it counts 8-bit bytes.", level: "chw-sizes" },
+  { term: "pointer", meaning: "A variable whose value is the address of another variable. `int *p;` declares one, and `p = &x;` makes it point to x.", level: "chw-pointer" },
+  { term: "& (address of)", meaning: "`&x` is the address of x: where x lives in memory.", level: "chw-pointer" },
+  { term: "* (follow a pointer)", meaning: "`*p` is the box that the pointer p points to. Reading `*p` reads that box, and assigning to `*p` writes it.", level: "chw-pointer" },
+  { term: "struct", meaning: "A type made of several named values, its members. Each variable of that type has its own boxes for them, side by side.", level: "chw-struct" },
+  { term: "member", meaning: "One named part of a struct, reached with a dot: `left.speed`.", level: "chw-struct" },
+  { term: "-> (arrow)", meaning: "Reaches a member through a pointer to a struct. `p->speed` means: go to the struct p points to, then take its member speed.", level: "chw-arrow" },
+  { term: "bit field", meaning: "A struct member that is only a few bits wide, written `uint16_t MODE:2;`. Several bit fields share one box, which is how one register holds several settings.", level: "chw-union" },
+  { term: "union", meaning: "Like a struct, but all members lie on the same boxes: several descriptions of one piece of memory. TI's registers use it for `.all` (the whole register) and `.bit` (its named fields).", level: "chw-union" },
+  { term: "const", meaning: "A word in front of a type that promises the program will never change the variable. The compiler refuses any line that assigns to it.", level: "chw-qualifiers" },
+  { term: "volatile", meaning: "A word in front of a type that says something else (hardware or an interrupt function) may change the variable at any time, so the compiler must really read it every time.", level: "chw-qualifiers" },
+  { term: "static (local variable)", meaning: "A local variable declared with `static` keeps its box and its value between calls of its function. It is set to its starting value only once.", level: "chw-static" },
+  { term: "cast", meaning: "A type in round brackets in front of a value, such as `(float)sum`. It converts the value to that type for this one use.", level: "chw-casts" },
+  { term: "function pointer", meaning: "A variable that holds the address of a function: it stores which function to call. The chip's interrupt table is made of them.", level: "chw-fnptr" },
+  { term: "declaration", meaning: "A line that tells the compiler a name exists and what its type is, without creating the thing itself.", level: "chw-include" },
+  { term: "definition", meaning: "The thing itself: the body of a function, or the memory of a variable. A name may be declared many times but is defined once.", level: "chw-include" },
+  { term: "prototype", meaning: "The declaration of a function: its heading followed by a semicolon, with no body. It lets code call a function that is defined further down or in another file.", level: "chw-include" },
+  { term: "header file", meaning: "A file, with a name ending in .h, that holds declarations. `#include` pastes its text into your program, which is where names such as `GpioDataRegs` come from.", level: "chw-include" },
+];
