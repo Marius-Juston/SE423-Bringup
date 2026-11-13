@@ -76,6 +76,34 @@ fields (`src/sim/device/registers.json`, from the TI headers).
 - Kit parts (`src/sim/world/kits.ts`): `knob` (slider feeding an input),
   `meter` (read-out of an output), `led`, `button`. Add them with `parts`.
 
+### The robot's world: rooms, terrains and mazes
+`src/sim/world/terrain.ts` (pure, no Board) describes a world as an outer
+boundary plus obstacles: axis-aligned boxes, round posts and thin walls.
+`castRay()` and `scan()` in `plugins/lidar.ts` and the crash test in
+`plugins/robot_world.ts` (exact distance from the robot's disc to every
+wall and post) all use it. A level or test chooses the world with inputs:
+
+- `LIDAR_ROOM` 0 to 4: the five rooms (empty box, corridor, wall on the
+  right, box with a block, box with a doorway). Their walls and the order
+  of the walls never change; `tests/robot_arena.test.ts` compares their
+  ray casts bit for bit with the model before obstacles existed.
+- `WORLD_KIND` (0, the default, leaves the choice to `LIDAR_ROOM`): 1 two
+  rooms and a door, 2 slalom of posts, 3 U-shaped dead end, 4 narrow gap,
+  5 random maze.
+- `WORLD_SEED`: the maze's seed (the same seed gives the same maze on
+  every machine: the generator is `mulberry32`, never `Math.random`), or
+  the layout number of the slalom and the U.
+- `WORLD_SIZE`: maze cells per side, 3 to 8 (2 ft cells). `WORLD_LOOPS`:
+  1 takes away extra walls, so the maze has more than one way.
+
+A terrain has its own start pose and goal, used by `robot_world.ts` where
+the `ROBOT_START_*` and `ROBOT_GOAL_*` inputs are not set. Changing an
+input in mid-run changes the world at that moment. `worldOf(board)` is the
+world in use. Objects placed by hand (`setWorldObjects`, the arena's
+playground) exist only in a live run. To add a terrain, write a function
+that returns `makeWorld({...})`, give it a `KIND_` number in `terrain()`
+and an entry in `TERRAINS`, and test that its start and goal are free.
+
 ### Course library functions
 - Put C prototypes, typedefs, `#define`s and helper functions written in C
   in `prelude` (it is compiled with the library; errors there are reported

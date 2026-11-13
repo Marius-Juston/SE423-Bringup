@@ -1,18 +1,23 @@
-import { FT_PER_MM, G_CLUSTER, G_START, LIDAR_POINTS, MAX_MM, MIN_MM, ROOMS, scan, stepAngle } from "../../sim/plugins/lidar";
+import { FT_PER_MM, LIDAR_POINTS, MAX_MM, MIN_MM, pointDeg, scan, worldOf } from "../../sim/plugins/lidar";
 import type { ReactElement } from "react";
 import type { BenchView, ViewProps } from "./types";
 
-// Top view of the simulated LIDAR's world (src/sim/plugins/lidar.ts): the
-// room, the robot at the pose the test stimuli set, and the 228 rays of the
-// course's scan (G04472503) to where they hit. Read-only: it reads the
-// signal-bus inputs with board.inputs.get, never board.input, so it does not
-// mark an input as used.
+// The LIDAR scan as the program gets it: 228 distances, one per point of
+// the course's scan (G04472503), drawn against the point's index. The top
+// view of the same scan is in the robot arena (robot-arena.tsx); this is
+// the array a parser fills and a wall follower reads, for the chapter 17
+// levels that study it. It yields to the arena wherever the robot drives
+// through a world. Read-only: it reads the signal-bus inputs with
+// board.inputs.get, never board.input, so it does not mark one as used.
 const W = 400;
-const PAD = 12;
+const H = 190;
+const L = 34;
+const B = 30;
+const T = 12;
 const REACH_FT = MAX_MM * FT_PER_MM; // 13.4 ft
 const NAMED = [
-  { i: 113, name: "front" },
   { i: 28, name: "right" },
+  { i: 113, name: "front" },
   { i: 199, name: "left" },
 ];
 const f1 = (v: number) => v.toFixed(1);
@@ -21,129 +26,95 @@ interface Drawing {
   key: string;
   body: ReactElement;
 }
-// The picture only changes when a test moves the robot: keep the last one.
+// The picture only changes when the robot moves: keep the last one.
 let lastDrawing: Drawing | undefined;
 
 function LidarView({ board }: ViewProps) {
+  const world = worldOf(board);
   const inp = (name: string, fallback: number) => {
     const v = board.inputs.get(name);
     return v !== undefined && Number.isFinite(v) ? v : fallback;
   };
-  const wanted = Math.round(inp("LIDAR_ROOM", 0));
-  const roomNo = ROOMS[wanted] ? wanted : 0;
-  const room = ROOMS[roomNo];
-  const x = inp("LIDAR_X_FT", room.start[0]);
-  const y = inp("LIDAR_Y_FT", room.start[1]);
-  const theta = inp("LIDAR_THETA_RAD", room.start[2]);
+  const x = inp("LIDAR_X_FT", world.start[0]);
+  const y = inp("LIDAR_Y_FT", world.start[1]);
+  const theta = inp("LIDAR_THETA_RAD", world.start[2]);
   const offset = inp("LIDAR_OFFSET_FT", 0);
   const scans = board.output("LIDAR_SCANS");
-  const key = [roomNo, x, y, theta, offset, scans].join(",");
-  if (lastDrawing?.key !== key) lastDrawing = { key, body: draw(roomNo, x, y, theta, offset, scans) };
+  const key = [world.name, world.walls.length, x, y, theta, offset, scans].join(",");
+  if (lastDrawing?.key !== key) lastDrawing = { key, body: draw(scan({ room: 0, world, x, y, theta, offset }), scans) };
   return lastDrawing.body;
 }
 
-function draw(roomNo: number, x: number, y: number, theta: number, offset: number, scans: number | undefined): ReactElement {
-  const room = ROOMS[roomNo];
-  const sx = x + offset * Math.cos(theta);
-  const sy = y + offset * Math.sin(theta);
-  const mm = scan({ room: roomNo, x, y, theta, offset });
-
-  // Window in feet: the room, but never further than the sensor can see.
-  const xs = room.walls.flatMap((w) => [w[0], w[2]]);
-  const ys = room.walls.flatMap((w) => [w[1], w[3]]);
-  const reach = REACH_FT + 1;
-  const x0 = Math.max(Math.min(...xs, x - 1), x - reach);
-  const x1 = Math.min(Math.max(...xs, x + 1), x + reach);
-  const y0 = Math.max(Math.min(...ys, y - 1.5), y - reach);
-  const y1 = Math.min(Math.max(...ys, y + 1.5), y + reach);
-  const s = Math.min((W - 2 * PAD) / (x1 - x0), 260 / (y1 - y0));
-  const H = (y1 - y0) * s + 2 * PAD;
-  const left = (W - (x1 - x0) * s) / 2;
-  const px = (wx: number) => left + (wx - x0) * s;
-  const py = (wy: number) => PAD + (y1 - wy) * s;
-  const clampX = (v: number) => Math.max(x0 - 1, Math.min(x1 + 1, v));
-  const clampY = (v: number) => Math.max(y0 - 1, Math.min(y1 + 1, v));
-
-  let hits = "";
-  let misses = "";
-  let dots = "";
-  const tip = (i: number): [number, number, boolean] => {
-    const a = theta + stepAngle(G_START + G_CLUSTER * i);
-    const echo = mm[i] >= MIN_MM;
-    const d = echo ? mm[i] / 304.8 : mm[i] === 0 ? REACH_FT : 0;
-    return [px(sx + d * Math.cos(a)), py(sy + d * Math.sin(a)), echo];
-  };
+function draw(mm: number[], scans: number | undefined): ReactElement {
+  const top = Math.min(14, Math.max(4, Math.ceil(Math.max(...mm.map((v) => (v >= MIN_MM ? v * FT_PER_MM : 0))) / 2) * 2));
+  const px = (i: number) => L + (i / (LIDAR_POINTS - 1)) * (W - L - 8);
+  const py = (ft: number) => T + (1 - Math.min(ft, top) / top) * (H - T - B);
+  let line = "";
+  let pen = false;
+  let none = "";
   for (let i = 0; i < LIDAR_POINTS; i++) {
-    const [tx, ty, echo] = tip(i);
-    const seg = `M${f1(px(sx))},${f1(py(sy))}L${f1(tx)},${f1(ty)}`;
-    if (echo) {
-      hits += seg;
-      dots += `M${f1(tx)},${f1(ty)}h0.01`;
-    } else misses += seg;
+    if (mm[i] >= MIN_MM) {
+      line += `${pen ? "L" : "M"}${f1(px(i))},${f1(py(mm[i] * FT_PER_MM))}`;
+      pen = true;
+    } else {
+      // An error code, not a distance: a tick on the top edge (0, nothing in reach) or the bottom (6, too close).
+      none += `M${f1(px(i))},${mm[i] === 0 ? T : H - B - 5}v5`;
+      pen = false;
+    }
   }
-  const ft = (i: number) => (mm[i] >= MIN_MM ? `${(mm[i] * FT_PER_MM).toFixed(2)} ft` : mm[i] === 0 ? "no echo" : "too close");
-  const deg = (theta * 180) / Math.PI;
-  const r = Math.max(5, 0.35 * s);
+  const ft = (i: number) => (mm[i] >= MIN_MM ? `${(mm[i] * FT_PER_MM).toFixed(2)} ft` : mm[i] === 0 ? "no echo (0)" : "too close (6)");
+  const echoes = mm.filter((v) => v >= MIN_MM).length;
   return (
     <div className="lview">
       <style>{`
-        .lview svg { width: 100%; max-height: 320px; display: block; background: var(--inset); border: 1px solid var(--border); border-radius: 6px; }
-        .lview text { font-family: var(--sans); font-size: 10px; fill: var(--text); paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
-        .lview-wall { stroke: var(--text); stroke-width: 2.5; stroke-linecap: square; fill: none; }
-        .lview-hit { stroke: var(--info); stroke-width: 0.6; opacity: 0.6; fill: none; }
-        .lview-miss { stroke: var(--dim); stroke-width: 0.5; stroke-dasharray: 3 4; opacity: 0.6; fill: none; }
-        .lview-dot { stroke: var(--value); stroke-width: 2.6; stroke-linecap: round; fill: none; }
-        .lview-named { stroke: var(--accent); stroke-width: 1.8; fill: none; }
-        .lview-named.miss { stroke-dasharray: 4 3; }
-        .lview-robot { fill: var(--surface); stroke: var(--text); stroke-width: 1.5; }
-        .lview-nose { stroke: var(--text); stroke-width: 2; stroke-linecap: round; }
+        .lview svg { width: 100%; display: block; background: var(--inset); border: 1px solid var(--border); border-radius: 6px; }
+        .lview text { font-family: var(--sans); font-size: 10px; fill: var(--dim); }
+        .lview text.lbl { fill: var(--text); font-weight: 600; }
+        .lview-grid { stroke: var(--border); }
+        .lview-line { stroke: var(--info); stroke-width: 1.8; fill: none; stroke-linejoin: round; }
+        .lview-none { stroke: var(--dim); stroke-width: 1.2; fill: none; }
+        .lview-named { stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 4 3; }
         .lview-info { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--dim); }
         .lview-info b { color: var(--text); font-family: var(--mono); font-weight: 600; }
       `}</style>
-      <svg
-        viewBox={`0 0 ${W} ${f1(H)}`}
-        role="img"
-        aria-label={`Top view of the LIDAR in room ${roomNo}, ${room.name}, x to the right and y up. Robot at x ${x.toFixed(2)} feet, y ${y.toFixed(2)} feet, heading ${theta.toFixed(2)} radians (${deg.toFixed(0)} degrees, counter-clockwise from the x axis). Distance straight ahead ${ft(113)}, to the right ${ft(28)}, to the left ${ft(199)}.`}
-      >
-        <path d={misses} className="lview-miss" />
-        <path d={hits} className="lview-hit" />
-        {room.walls.map(([ax, ay, bx, by], k) => (
-          <line key={k} x1={px(clampX(ax))} y1={py(clampY(ay))} x2={px(clampX(bx))} y2={py(clampY(by))} className="lview-wall" />
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`The LIDAR scan as an array: distance in feet against the point's index, 0 on the right of the robot to 227 on its left. ${echoes} of 228 points have an echo. Point 113, straight ahead: ${ft(113)}. Point 28, to the right: ${ft(28)}. Point 199, to the left: ${ft(199)}.`}>
+        {Array.from({ length: top / 2 + 1 }, (_, n) => n * 2).map((g) => (
+          <g key={g}>
+            <line x1={L} x2={W - 8} y1={py(g)} y2={py(g)} className="lview-grid" />
+            <text x={L - 4} y={py(g) + 3} textAnchor="end">{g}</text>
+          </g>
         ))}
-        <path d={dots} className="lview-dot" />
-        {NAMED.map((n) => {
-          const [tx, ty, echo] = tip(n.i);
-          return <line key={n.i} x1={px(sx)} y1={py(sy)} x2={tx} y2={ty} className={`lview-named ${echo ? "" : "miss"}`} />;
-        })}
-        <circle cx={px(x)} cy={py(y)} r={r} className="lview-robot" />
-        <line x1={px(x)} y1={py(y)} x2={px(x) + r * Math.cos(theta)} y2={py(y) - r * Math.sin(theta)} className="lview-nose" />
-        {NAMED.map((n) => {
-          // Label a little way along the ray, kept inside the picture.
-          const a = theta + stepAngle(G_START + G_CLUSTER * n.i);
-          const lx = Math.max(22, Math.min(W - 22, px(x) + (r + 16) * Math.cos(a)));
-          const ly = Math.max(10, Math.min(H - 4, py(y) - (r + 14) * Math.sin(a) + 3));
-          return <text key={n.i} x={lx} y={ly} textAnchor="middle">{n.name}</text>;
-        })}
+        <text x={3} y={9}>ft</text>
+        {NAMED.map((n) => (
+          <g key={n.i}>
+            <line x1={px(n.i)} x2={px(n.i)} y1={T} y2={H - B} className="lview-named" />
+            <text className="lbl" x={px(n.i)} y={H - B + 11} textAnchor="middle">[{n.i}] {n.name}</text>
+          </g>
+        ))}
+        <text x={L} y={H - 5}>[0] {pointDeg(0).toFixed(0)}°</text>
+        <text x={(L + W - 8) / 2} y={H - 5} textAnchor="middle">index of the point, right to left</text>
+        <text x={W - 8} y={H - 5} textAnchor="end">[227] +{pointDeg(227).toFixed(0)}°</text>
+        {none && <path d={none} className="lview-none" />}
+        <path d={line} className="lview-line" />
       </svg>
       <p className="lview-info">
-        <span>Room {roomNo}: {room.name}</span>
-        <span>pose <b>({x.toFixed(2)}, {y.toFixed(2)}) ft, {theta.toFixed(2)} rad ({deg.toFixed(0)}°)</b></span>
         <span>front [113] <b>{ft(113)}</b></span>
         <span>right [28] <b>{ft(28)}</b></span>
         <span>left [199] <b>{ft(199)}</b></span>
         {scans !== undefined && <span>scans sent <b>{scans}</b></span>}
       </p>
-      <p className="lview-info">Thin lines: the 228 rays of one scan, point [0] on the right, [227] on the left. Dots: where a ray hits. Dashed: nothing within {REACH_FT.toFixed(1)} ft, the sensor reports 0.</p>
+      <p className="lview-info">The same scan as in the robot arena, as the 228 numbers your program gets. Ticks on the top edge: nothing within {REACH_FT.toFixed(1)} ft, the sensor sends 0. Ticks on the bottom edge: closer than 20 mm, it sends 6.</p>
     </div>
   );
 }
 
 export const view: BenchView = {
   id: "lidar-view",
-  title: "What the LIDAR sees",
+  title: "The scan as an array",
   order: 40,
   // The LIDAR model reads LIDAR_ROOM whenever it measures anything: for a
-  // scan request, a tb_lidar_* call or a pose set by a test.
-  relevant: (board) => board.inputsUsed.has("LIDAR_ROOM"),
+  // scan request, a tb_lidar_* call or a pose set by a test. Where the
+  // robot drives (the capstone's world) the arena alone shows it.
+  relevant: (board) => board.inputsUsed.has("LIDAR_ROOM") && !board.outputs.has("ROBOT_X_FT"),
   Component: LidarView,
 };

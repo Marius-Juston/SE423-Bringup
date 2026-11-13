@@ -362,6 +362,8 @@ interface Opts {
   ki?: number;
   /** Read the LIDAR through its serial port instead of tb_lidar_ft (expert level). */
   serial?: boolean;
+  /** Another 100 ms interrupt and min_ft() than LIDAR_FNS (the terrain levels look sideways too). */
+  lidarFns?: string;
 }
 
 const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : `${+v.toFixed(8)}`);
@@ -527,7 +529,7 @@ ${o.mission.replace(/^\n+|\s+$/g, "")}
 `);
   add(n >= 6, `${NAVIGATE}
 `);
-  add(n >= 7, `${(o.serial ? SERIAL_FNS : LIDAR_FNS)(94, 132)}
+  add(n >= 7, `${o.lidarFns ?? (o.serial ? SERIAL_FNS : LIDAR_FNS)(94, 132)}
 `);
   add(true, `${INIT_PWM}
 
@@ -838,6 +840,181 @@ const S_FAST = program(7, { mission: mFinal({ vmax: 3, blocked: 1.5, vpass: 2 })
 const S_SERIAL = program(7, { mission: mFinal(), globals: G_FINAL, goal: GOAL_FINAL, serial: true });
 const S_SQUARE = program(7, { mission: mSquare(2.5), globals: G_SQUARE, goal: [4, 2] });
 
+// ---------- terrains: two trips, the second one back through a changed world ----------
+
+/** Second trip: DONE waits until `ms`, then the place the robot started from becomes the goal. */
+const secondTrip = (ms: number, home: [number, number], first = 0) => `    default:
+        // DONE: stand still. At ${ms / 1000} s the second trip begins: back to the start
+        vref = 0.0;
+        turn = 0.0;
+        if (trip == 0 && numTimer0calls >= ${ms}) {
+            trip = 1;
+            xGoal = ${f(home[0])};
+            yGoal = ${f(home[1])};
+            state = ${first};
+        }
+        break;
+    }`;
+
+const G_TRIP = `uint16_t trip = 0;        // 0: the way out, 1: the way back`;
+
+// Practice: the slalom. The checkpoint's five states, with numbers that fit posts.
+const SLALOM = { start: [1, 3, 0] as [number, number, number], goal: [11, 3] as [number, number], swapMs: 12500 };
+const G_SLALOM = `${G_FINAL}
+${G_TRIP}`;
+const DONE_CASE = `    default:
+        // DONE
+        vref = 0.0;
+        turn = 0.0;
+        break;
+    }`;
+const M_SLALOM = blank(mFinal({ vpass: 1.5 }), [[DONE_CASE, secondTrip(SLALOM.swapMs, [SLALOM.start[0], SLALOM.start[1]])]]);
+
+/** The 100 ms interrupt of the terrain levels: ahead, to the right and (trap) towards the goal. */
+const SIDE_FNS = (towardsGoal: boolean) => `// Runs every 100 ms: look ahead and to the right (chapter 17)
+__interrupt void cpu_timer1_isr(void)
+{
+    // Points 94 to 132 of the scan: straight ahead, 20 degrees to each side
+    front_ft = min_ft(94, 132);
+    // Points 52 to 56: about 63 degrees to the right, the wall the robot follows
+    right_ft = min_ft(52, 56);${
+      towardsGoal
+        ? `
+    // The point that looks at the goal: point 113 is straight ahead and one
+    // point is 1.0547 degrees, so 54.3 points per radian of heading error
+    goalPoint = 113 + (int)(54.3 * eTheta);
+    if (goalPoint >= 10 && goalPoint <= 217) {
+        goal_ft = min_ft(goalPoint - 10, goalPoint + 10);
+    } else {
+        goal_ft = 0.0;   // the goal is behind the robot: the LIDAR cannot see that way
+    }`
+        : ""
+    }
+    numScans++;
+}
+
+// Smallest reading, in feet, of points first to last (chapter 17)
+float min_ft(int first, int last)
+{
+    int i;
+    float m = 19.0;   // more than the largest reading
+    for (i = first; i <= last; i++) {
+        if (tb_lidar_ft(i) < m) {
+            m = tb_lidar_ft(i);
+        }
+    }
+    return m;
+}`;
+
+/** FOLLOW: the course's right wall follower (chapter 17), as one state. */
+const followWall = (o: { v: number; ref: number; k: number; sat: number }) => `        vref = ${f(o.v)};
+        turn = ${f(o.k)} * (right_ft - ${f(o.ref)});
+        if (turn > ${f(o.sat)}) turn = ${f(o.sat)};
+        if (turn < -${f(o.sat)}) turn = -${f(o.sat)};`;
+
+// Expert: the U-shaped dead end. Bug style: follow the wall, leave when nearer than at the hit.
+const TRAP = { start: [1.5, 5, 0] as [number, number, number], goal: [8.5, 5] as [number, number], swapMs: 13000 };
+const TRAP_FOLLOW = { v: 1.5, ref: 1.1, k: 2.0, sat: 1.0 };
+const G_TRAP = `${G_STATE}
+float right_ft = 19.0;    // the wall on the right, ft (63 degrees to the right)
+float goal_ft = 0.0;      // free floor in the direction of the goal, ft
+int16_t goalPoint = 113;  // the point of the scan that looks at the goal
+float dHit = 0;           // distance to the goal when the robot met the obstacle, ft
+${G_TRIP}`;
+const mTrap = (o: { leave?: string } = {}) => `
+    switch (state) {
+    case 0:
+        // FACE: turn on the spot towards the goal
+        vref = 0.0;
+${STEER_TO_GOAL}
+        if (fabs(eTheta) < 0.05) {
+            state = 1;
+        }
+        break;
+    case 1:
+        // DRIVE: steer at the goal, slow down close to it
+        vref = 2.0 * dist;
+        if (vref > 1.5) vref = 1.5;
+${STEER_TO_GOAL}
+        if (dist < 0.05) {
+            state = 2;
+        } else if (front_ft < 1.2 && front_ft < dist) {
+            // HIT: something is in the way. Remember how far the goal was
+            dHit = dist;
+            state = 3;
+        }
+        break;
+    case 3:
+        // TURN: left on the spot until the way ahead is clear
+        vref = 0.0;
+        turn = -1.5;
+        if (front_ft > 2.0) {
+            state = 4;
+        }
+        break;
+    case 4:
+        // FOLLOW: keep the obstacle on the right (chapter 17)
+${followWall(TRAP_FOLLOW)}
+        if (front_ft < 1.2) {
+            state = 3;
+        } else if (${o.leave ?? "dist < dHit - 0.5 && goal_ft > 2.0"}) {
+            // LEAVE: nearer to the goal than at the hit, and free floor towards it
+            state = 0;
+        }
+        break;
+${secondTrip(TRAP.swapMs, [TRAP.start[0], TRAP.start[1]])}`;
+
+// Expert: the maze. Follow the right wall until the robot is in the goal cell.
+const MAZE = { size: 4, seedA: 43, seedB: 46, start: [1, 1, 0] as [number, number, number], goal: [7, 7] as [number, number], swapMs: 12000 };
+const MAZE_FOLLOW = { v: 1.2, ref: 1.1, k: 2.0, sat: 0.7 };
+const G_MAZE = `// The mission
+uint16_t state = 4;       // the robot starts in FOLLOW
+float right_ft = 19.0;    // the wall on the right, ft (63 degrees to the right)
+${G_TRIP}`;
+const mMaze = (o: { follow?: typeof MAZE_FOLLOW } = {}) => `
+    switch (state) {
+    case 3:
+        // TURN: left on the spot until the way ahead is clear
+        vref = 0.0;
+        turn = -1.0;
+        if (front_ft > 2.0) {
+            state = 4;
+        }
+        break;
+    case 4:
+        // FOLLOW: keep the wall on the right (chapter 17)
+${followWall(o.follow ?? MAZE_FOLLOW)}
+        if (dist < 0.5) {
+            // in the goal cell
+            state = 2;
+        } else if (front_ft < 1.1) {
+            state = 3;
+        }
+        break;
+${secondTrip(MAZE.swapMs, [MAZE.start[0], MAZE.start[1]], 4)}`;
+
+const S_SLALOM = program(7, { mission: M_SLALOM, globals: G_SLALOM, start: SLALOM.start, goal: SLALOM.goal });
+const S_TRAP = program(7, { mission: mTrap(), globals: G_TRAP, start: TRAP.start, goal: TRAP.goal, lidarFns: SIDE_FNS(true) });
+const S_MAZE = program(7, { mission: mMaze(), globals: G_MAZE, start: MAZE.start, goal: MAZE.goal, lidarFns: SIDE_FNS(false) });
+
+/** Stimuli of a terrain level: world A, and at swapMs world B with the old start as the goal. */
+const trips = (o: { kind: number; seeds: [number, number]; size?: number; start: [number, number, number]; goal: [number, number]; swapMs: number }): Stimulus[] => [
+  { at: 0, set: "MOTOR_RIGHT_GAIN", value: RIGHT_GAIN },
+  { at: 0, set: "WORLD_KIND", value: o.kind },
+  { at: 0, set: "WORLD_SEED", value: o.seeds[0] },
+  ...(o.size ? [{ at: 0, set: "WORLD_SIZE", value: o.size }] : []),
+  { at: 0, set: "ROBOT_START_X_FT", value: o.start[0] },
+  { at: 0, set: "ROBOT_START_Y_FT", value: o.start[1] },
+  { at: 0, set: "ROBOT_START_THETA_RAD", value: o.start[2] },
+  { at: 0, set: "ROBOT_GOAL_X_FT", value: o.goal[0] },
+  { at: 0, set: "ROBOT_GOAL_Y_FT", value: o.goal[1] },
+  { at: 0.01, set: "ROBOT_WORLD", value: 1 },
+  // The second trip: the world changes and the goal is where the robot came from.
+  { at: o.swapMs, set: "WORLD_SEED", value: o.seeds[1] },
+  { at: o.swapMs, set: "ROBOT_GOAL_X_FT", value: o.start[0] },
+  { at: o.swapMs, set: "ROBOT_GOAL_Y_FT", value: o.start[1] },
+];
+
 /** Replaces exact pieces of a program; every piece must be there. */
 function blank(source: string, pieces: [string, string][]): string {
   let out = source;
@@ -946,6 +1123,32 @@ const SQUARE_STARTER = withTodos(S_FINAL, [
   { after: "// ---- Decide: the mission ----", todo: "// TODO 3: new mission. Visit the corners in order, then turn back to the starting heading" },
 ]);
 
+const SLALOM_STARTER = withTodos(S_FINAL, [
+  { before: "float theta0 = ", todo: "// TODO 1: the hall. The robot starts at (1.0, 3.0), heading 0; the goal is (11.0, 3.0)" },
+  { after: "float passStart = 0;", todo: "// TODO 2: a global uint16_t trip = 0;" },
+  { before: "    case 4:", todo: "// TODO 4: PASS at 1.5 ft/s: at 1.0 ft/s the trips take too long" },
+  { before: "    default:", todo: "// TODO 3: DONE starts the second trip at 12.5 s: trip = 1, goal (1.0, 3.0), state = 0" },
+]);
+
+const TRAP_STARTER = withTodos(S_FINAL, [
+  { before: "float theta0 = ", todo: "// TODO 1: the robot starts at (1.5, 5.0), heading 0; the goal is (8.5, 5.0)" },
+  { after: "uint32_t numScans = 0;", todo: "// TODO 2: globals right_ft, goal_ft, goalPoint (an int16_t), dHit and trip" },
+  { before: "            // something is in the way, and it is nearer than the goal", todo: "// TODO 3: HIT. Remember dHit = dist" },
+  { before: "    case 4:", todo: "// TODO 4: FOLLOW replaces PASS. Keep the wall on the right; leave it for FACE only when\n// TODO    dist < dHit - 0.5 and goal_ft > 2.0" },
+  { before: "    default:", todo: "// TODO 5: DONE starts the second trip at 13 s: trip = 1, goal (1.5, 5.0), state = 0" },
+  { before: "// Smallest reading, in feet", todo: "// TODO 6: cpu_timer1_isr() also works out right_ft (points 52 to 56) and goal_ft" },
+]);
+
+const MAZE_STARTER = withTodos(S_FINAL, [
+  { before: "float theta0 = ", todo: "// TODO 1: the robot starts in the cell at (1.0, 1.0), heading 0; the goal cell is at (7.0, 7.0)" },
+  { after: "uint16_t state = 0;", todo: "// TODO 2: the robot starts in FOLLOW. Globals right_ft and trip" },
+  {
+    after: "// ---- Decide: the mission ----",
+    todo: "// TODO 3: new mission. FOLLOW the wall on the right, TURN left on the spot at a wall ahead,\n// TODO    DONE in the goal cell. At 12 s DONE starts the way back to (1.0, 1.0)",
+  },
+  { before: "// Smallest reading, in feet", todo: "// TODO 4: cpu_timer1_isr() also works out right_ft = min_ft(52, 56)" },
+]);
+
 // ---------- checks shared by the room levels ----------
 
 const arrived = (hint?: string): Check[] => [
@@ -953,6 +1156,19 @@ const arrived = (hint?: string): Check[] => [
   ...stopped(),
   NO_CRASH,
 ];
+
+/** Checks of a terrain level: at the goal and standing just before the swap, back and standing at the end. */
+const twoTrips = (o: { swapMs: number; there: string; back: string; hintThere: string; hintBack: string; hintLate: string; hintCrash: string; tol?: number }): Check[] => {
+  const tol = o.tol ?? 0.15;
+  return [
+    { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: o.swapMs - 10, max: tol, label: `Trip 1: at ${o.swapMs / 1000} s the robot is within ${tol} ft of ${o.there}`, hint: o.hintThere },
+    { kind: "signal", name: "LEFT_WHEEL_RADPS", at: o.swapMs - 10, equals: 0, tol: 0.05, label: "Trip 1: it stands still there", hint: o.hintLate },
+    { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: tol, label: `Trip 2: the robot ends within ${tol} ft of ${o.back}`, hint: o.hintBack },
+    { kind: "signal", name: "LEFT_WHEEL_RADPS", equals: 0, tol: 0.05, label: "Trip 2: it stands still at the end", hint: o.hintLate },
+    { kind: "signal", name: "RIGHT_WHEEL_RADPS", equals: 0, tol: 0.05, label: "Trip 2: both wheels have stopped" },
+    { kind: "signal", name: "ROBOT_CRASHED", equals: 0, label: "The robot never touched anything", hint: o.hintCrash },
+  ];
+};
 
 const ISR_BUDGET: Check = {
   kind: "isr-time",
@@ -994,7 +1210,7 @@ export const ch21: Chapter = {
       kind: "brief",
       title: "The robot is one program",
       goal: "See how the parts you built in earlier chapters fit into one loop, and what this chapter will make of them.",
-      refs: [{ course: "Lab 5" }, { course: "Lab 6" }, { course: "L11" }, { course: "L14" }],
+      refs: [{ course: "L14", slide: [31, 33], note: "a fast inner loop and a slow outer loop" }, { course: "L11", slide: 20, note: "the Lab 5 control loop" }, { course: "Lab 5" }, { course: "Lab 6" }],
       brief: `
 So far every chapter gave you one part of the robot and a test bench to try it on. On the real robot the parts run together, in one program, and each one feeds the next. This chapter builds that program. At the end the robot crosses a room on its own, around an obstacle, to a point you give it.
 
@@ -1093,7 +1309,7 @@ ${ROOM_NOTE}${MOTOR_NOTE}`,
       kind: "order",
       title: "One pass of the loop",
       goal: "Put the steps of one pass through the finished robot's 1 ms interrupt function in order.",
-      refs: [{ course: "Lab 5" }, { course: "L11" }, { course: "L15" }],
+      refs: [{ course: "L11", slide: 13, note: "one pass of the PI code" }, { course: "L15", slide: 26 }, { course: "L14", slide: 31 }, { course: "Lab 5" }],
       brief: `
 This is the 1 ms function you will have written by the end of the chapter, cut into steps and shuffled. Put the steps back in order. You do not need to understand every formula yet: each one is explained in the level that adds it.
 
@@ -1131,7 +1347,7 @@ While you sort, name the chapter each step came from. The answer is shown when y
       mode: "complete",
       title: "Motors: drive 2 ft by the clock",
       goal: "Bring up both motor PWM channels and drive the robot about 2 ft forward by timing alone.",
-      refs: [{ course: "Lab 3" }, { trm: "15" }],
+      refs: [{ course: "L6-7", slide: 77, note: "50 % duty is a stopped motor" }, { course: "Lab 3" }, { trm: "15" }],
       brief: `
 The file you see is the skeleton of the whole chapter. Read it once from top to bottom:
 
@@ -1192,7 +1408,7 @@ ${ROOM_NOTE}${MOTOR_NOTE}`,
       continues: "cap-open",
       title: "Encoders: drive exactly 3 ft",
       goal: "Read both wheel encoders every millisecond, compute speeds and distance, and stop after 3 ft of measured travel.",
-      refs: [{ course: "Lab 3" }, { trm: "17" }],
+      refs: [{ course: "L6-7", slide: [37, 36] }, { course: "Lab 3" }, { trm: "17" }],
       brief: `
 You continue in your file from the last level. Now the program gets eyes: the **encoders** of chapter 11. An encoder is a sensor on the motor shaft. The chip's eQEP counter counts its pulses: 40000 counts for one turn of a wheel (2000 per motor turn, times the 20:1 gear).
 
@@ -1257,7 +1473,7 @@ The robot still veers right. That is for the next two levels. The tests read you
       continues: "cap-dist",
       title: "PI control: hold 1 ft/s",
       goal: "Put a PI speed controller with saturation and anti-windup on each wheel, so that both wheels hold the commanded speed although the motors differ.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: [13, 14] }, { course: "Lab 5" }],
       brief: `
 Until now the mission wrote the efforts itself, and the weaker right motor turned the same effort into less speed. From this level on the mission only says how fast to go, in \`vref\` (ft/s), and a controller finds the effort each motor needs. This is the PI controller of chapter 16.
 
@@ -1339,7 +1555,7 @@ Both wheels now hold the same speed, but look at "Robot heading": about -0.4 rad
       continues: "cap-speed",
       title: "Steering: straight, then a quarter turn",
       goal: "Add the steering coupling and a heading computed from the encoders, then drive 3 ft straight and turn left by 90 degrees on the spot.",
-      refs: [{ course: "Lab 5" }, { course: "L11" }, { course: "L15" }],
+      refs: [{ course: "L11", slide: [21, 22, 23] }, { course: "L15", slide: 23, note: "heading from the difference of the wheels" }, { course: "Lab 5" }],
       brief: `
 Two things are added: a second command, \`turn\`, and the robot's first idea of which way it points.
 
@@ -1417,7 +1633,7 @@ theta = theta0 + (RightWheel - LeftWheel) * (1.235/12.0) / WHEEL_BASE;
       continues: "cap-steer",
       title: "Dead reckoning: drive to a point",
       goal: "Keep track of x and y as well as the heading, and use them to drive the robot to the point (4, 5).",
-      refs: [{ course: "L15" }, { course: "Lab 5" }, { course: "HW4" }],
+      refs: [{ course: "L15", slide: [26, 23] }, { course: "L19", slide: 8, note: "atan2 gives the direction to the goal" }, { course: "Lab 5" }, { course: "HW4" }],
       brief: `
 The robot knows its heading. Add the position and it knows where it is. Position and heading together are called the **pose**. Working the pose out from the wheels alone is called **dead reckoning**. Chapter 18 goes deeper into it; everything you need is here.
 
@@ -1499,7 +1715,7 @@ The simulated wheels never slip, so dead reckoning is almost perfect here. On th
       continues: "cap-goto",
       title: "Keep the 1 ms loop short",
       goal: "Move the slow maths of dead reckoning out of the 1 ms interrupt into the main loop, behind a flag.",
-      refs: [{ course: "Lab 1" }, { course: "L4" }, { course: "L15" }],
+      refs: [{ course: "L14", slide: 31, note: "only time-critical work in the 1 ms interrupt" }, { course: "L4", slide: 27, note: "move long work out of the timer function" }, { course: "L15", slide: 26, note: "the maths that moves" }, { course: "Lab 1" }],
       brief: `
 The robot arrives. Now look at what the last level cost. The simulator times every pass of \`cpu_timer0_isr\`. Before dead reckoning the longest pass took 2.5 microseconds (us). Now it takes **6**.
 
@@ -1566,7 +1782,7 @@ The robot still reaches (4, 5), and no pass of \`cpu_timer0_isr\` takes more tha
       continues: "cap-lean",
       title: "LIDAR: stop before the wall",
       goal: "Read the LIDAR every 100 ms from CPU timer 1 and stop the robot when something is close ahead.",
-      refs: [{ course: "L16" }, { course: "L14" }, { trm: "3.8" }],
+      refs: [{ course: "L14", slide: 33, note: "a scan every 100 ms, used by the fast loop" }, { course: "L16", slide: [31, 30], note: "which points look ahead, and no-echo readings" }, { trm: "3.8" }],
       brief: `
 The goal is now **(12, 2)**. The room ends at x = 10. Your dead reckoning has no idea that there is a wall in between, so the robot will drive into it at full speed. It needs to look. This is the **LIDAR** of chapter 17: a laser that turns and measures the distance to whatever it hits, 228 directions ("points") per scan.
 
@@ -1632,7 +1848,7 @@ The tests read your global \`front_ft\`.
       continues: "cap-wall",
       title: "Checkpoint: across the room",
       goal: "Drive the robot to a goal behind an obstacle: go around what is in the way, then carry on to the goal and stop there.",
-      refs: [{ course: "L14" }, { course: "L16" }, { course: "Lab 6" }],
+      refs: [{ course: "L14", slide: [35, 37] }, { course: "L16", slide: 31, note: "which points look ahead" }, { course: "Lab 6" }],
       brief: `
 The goal is **(9, 7.6)**. The straight line from the start runs through the 1 ft block. With the program of the last level the robot stops in front of the block and waits forever. Now it has to go around.
 
@@ -1656,7 +1872,10 @@ You are free to do it another way, for example by following the side of the obst
 
 ## The test
 Within 16 s the robot stands still within 0.15 ft of the goal and has touched nothing. Stars: arrive within 13 s, drive less than 11.5 ft on the way (the straight line is 9.8 ft), and keep the 1 ms loop short.
-${ROOM_NOTE}`,
+${ROOM_NOTE}
+
+Open the Robot arena's large view and replay the run to see where the robot turns.
+`,
       kit: "robot",
       durationMs: 16000,
       stimuli: world({ goal: GOAL_FINAL }),
@@ -1684,7 +1903,7 @@ ${ROOM_NOTE}`,
       continues: "cap-final",
       title: "Practice: from the far corner",
       goal: "Run the same program from a different start pose to a different goal, across the +-PI line.",
-      refs: [{ course: "L15" }, { course: "L14" }],
+      refs: [{ course: "L15", slide: 26 }, { course: "L19", slide: 8, note: "the direction to the goal, and its wrap" }, { course: "L14", slide: 35 }],
       brief: `
 A good program does not care where it starts. Same room, new trip: the robot now stands at **(8.8, 9)** and looks along **-x**. That is a heading of **PI** (180 degrees). The goal is **(6.5, 4.5)**, and the block is in the way again.
 
@@ -1725,7 +1944,7 @@ From a heading of PI, the goal is 63 degrees to the robot's **left**. Without th
       continues: "cap-final",
       title: "Practice: out through the door",
       goal: "Drive the robot out of a room through a doorway to a goal outside.",
-      refs: [{ course: "L14" }, { course: "L16" }],
+      refs: [{ course: "L14", slide: [35, 37] }, { course: "L16", slide: 31, note: "which points look ahead" }],
       brief: `
 A different room: the same 10 ft box without the block, but with a **doorway** in the wall x = 10, from y = 6 to y = 8.5. The robot stands at **(8.5, 2)** and looks along **+y**. That is a heading of **PI/2** (90 degrees). The goal is outside, at **(12, 7.25)**.
 
@@ -1765,7 +1984,7 @@ The doorway is 2.5 ft wide and the robot 0.7 ft. Do not cut the corner of the do
       continues: "cap-final",
       title: "Expert: in 10 seconds",
       goal: "Make the checkpoint trip to (9, 7.6) in 10 seconds or less, without touching anything.",
-      refs: [{ course: "Lab 5" }, { course: "L11" }, { course: "L14" }],
+      refs: [{ course: "L11", slide: [17, 18], note: "tuning for speed" }, { course: "L14", slide: 33, note: "one look every 100 ms: how far the robot drives between two" }, { course: "Lab 5" }],
       brief: `
 The checkpoint trip took the reference program 12 s. Do it in **10 s**: at 10.0 s the robot must stand still within 0.1 ft of **(9, 7.6)**. Same room, same start, same rules: touch nothing.
 
@@ -1811,7 +2030,7 @@ Measure before you change anything: watch \`state\` and \`numTimer0calls\` (the 
       continues: "cap-final",
       title: "Expert: the real LIDAR",
       goal: "Replace the test bench shortcut with the real sensor path: ask the LIDAR over SCIC every 100 ms and parse its reply.",
-      refs: [{ course: "L16" }, { trm: "19" }, { trm: "3.4.5" }],
+      refs: [{ course: "L16", slide: [31, 32, 30] }, { trm: "19" }, { trm: "3.4.5" }],
       brief: `
 \`tb_lidar_ft()\` does not exist on the robot. Take it out and put in what does: the serial path of chapter 17. The trip is the checkpoint's, to (9, 7.6). Have your solutions of the chapter 17 levels "Ask every 100 ms" and "The parser is a state machine" open.
 
@@ -1861,7 +2080,7 @@ There are three interrupt sources now. The 1 ms loop must not notice.
       continues: "cap-final",
       title: "Expert: a square, and home",
       goal: "Drive a 3 ft square through four corners and end where you started, within 3 inches, looking the way you started.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      refs: [{ course: "L15", slide: [26, 28] }, { course: "L19", slide: [6, 8], note: "way points" }, { course: "Lab 5" }],
       brief: `
 The classic test of a robot's dead reckoning: drive a square and see how far from the start you end.
 
@@ -1906,6 +2125,199 @@ On this floor the wheels never slip, so the square closes almost perfectly. Run 
         "`case 5: eHome = theta0 - theta;` then the two wrap lines on eHome, `vref = 0.0; turn = -2.0 * eHome;` (limited to -1 ... 1), and `if (fabs(eHome) < 0.02) { state = 2; } break;`. Let DRIVE go up to 2.5 ft/s.",
       ],
       takeaway: "Waypoints in room coordinates do not add up their errors; steps relative to the last pose do. The error that remains on a real floor is the wheels' slip, and no amount of code in this file can see it.",
+    },
+    {
+      id: "cap-p-slalom",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      continues: "cap-final",
+      title: "Practice: round the posts, there and back",
+      goal: "Drive past three posts to the far end of a hall, and back again after the posts have been moved.",
+      refs: [{ course: "L14", slide: [35, 37] }, { course: "L16", slide: 31, note: "which points look ahead" }, { course: "Lab 6" }],
+      brief: `
+A hall, 12 ft long and 6 ft wide. **Three round posts**, each 0.6 ft thick, stand on the straight line from the start, **(1, 3)**, to the goal, **(11, 3)**. The robot starts looking along +x.
+
+Your checkpoint program already knows what to do with something in the way: TURN left until it sees free floor, PASS, FACE the goal again. A post is only a smaller block. So this level is mostly numbers, plus one new rule.
+
+## Two trips
+The test runs the mission twice, so that a list of moves that fits one hall does not pass.
+
+- **Trip 1** starts at 0 s. The robot must stand still at (11, 3) by **12.5 s**.
+- **Trip 2** starts at 12.5 s. The posts have been moved, and the goal is now the place the robot came from, **(1, 3)**. It must stand still there by 28 s.
+
+Your program cannot see that the posts moved, and it does not need to. It only has to start again. Add a global \`uint16_t trip = 0;\` and, in DONE (\`default:\`), after the two lines that stop the robot:
+
+\`\`\`c
+if (trip == 0 && numTimer0calls >= 12500) {
+    trip = 1;
+    xGoal = 1.0;
+    yGoal = 3.0;
+    state = 0;
+}
+\`\`\`
+
+\`numTimer0calls\` counts milliseconds, so 12500 is 12.5 s. \`navigate()\` works out \`dist\` and \`eTheta\` for the new goal before the next pass, and FACE turns the robot round.
+
+## What to change
+1. **In the globals:** the start, \`y = 3.0\`; the goal, (11.0, 3.0); and \`trip\`.
+2. **In DONE:** the lines above.
+3. **In PASS:** at 1.0 ft/s the trips do not fit in their time. Pass at \`vref = 1.5\`.
+
+## The test
+Both arrivals on time, standing still, and no post touched. Stars: less than 24 ft driven in all (the two straight lines add up to 20 ft), and the short 1 ms loop.
+
+Watch the Robot arena: at 12.5 s the posts jump and the goal moves back to the start.
+`,
+      kit: "robot",
+      durationMs: 28000,
+      stimuli: trips({ kind: 2, seeds: [0, 1], start: SLALOM.start, goal: SLALOM.goal, swapMs: SLALOM.swapMs }),
+      starter: SLALOM_STARTER,
+      solution: S_SLALOM,
+      checks: twoTrips({
+        swapMs: SLALOM.swapMs,
+        there: "the far end, (11, 3)",
+        back: "the start, (1, 3)",
+        hintThere: "Still on the way at 12.5 s: PASS at 1.0 ft/s is too slow, use vref = 1.5 there. Standing in front of a wall: the start is (1.0, 3.0) and the goal (11.0, 3.0), both in the globals.",
+        hintBack: "Still at (11, 3): DONE never starts the second trip. In default: when trip is 0 and numTimer0calls >= 12500, set trip = 1, the goal to (1.0, 3.0) and state = 0. On the way but late: trip 1 must be over by 12.5 s, or the second trip starts late.",
+        hintLate: "Still rolling when the time is up: the trip takes too long. In PASS, drive at vref = 1.5 instead of 1.0.",
+        hintCrash: "A post is 0.6 ft thick and the robot 0.7 ft. After TURN the robot must be well past the post before it faces the goal again: PASS for 2 ft, as in the checkpoint, not less.",
+      }),
+      bonus: [{ kind: "signal", name: "ROBOT_ODOMETER_FT", max: 24, label: "Drove less than 24 ft on the two trips" }, ISR_BUDGET],
+      watch: ["trip", "state", "x", "y", "front_ft", "dist", "passStart"],
+      hints: [
+        "Change the start and the goal first and run it. Trip 1 already works, a little late. Then look at what the robot does after 12.5 s: nothing, because DONE has no rule for it.",
+        "`uint16_t trip = 0;` in the globals. In `default:`, after `turn = 0.0;`: `if (trip == 0 && numTimer0calls >= 12500) { trip = 1; xGoal = 1.0; yGoal = 3.0; state = 0; }`",
+        "`float y = 3.0;`, `float xGoal = 11.0;`, `float yGoal = 3.0;`, and in `case 4:` `vref = 1.5;` instead of 1.0. Keep `travel - passStart > 2.0`.",
+      ],
+      takeaway: "The posts moved and the program did not change: rules that read the sensor fit a world they have never seen. A list of moves fits one.",
+    },
+    {
+      id: "cap-x-trap",
+      kind: "code",
+      mode: "write",
+      tier: "expert",
+      continues: "cap-final",
+      title: "Expert: out of the dead end",
+      goal: "Reach a goal behind a U-shaped wall, where steering straight at the goal leads into a trap.",
+      refs: [{ course: "L14", slide: [37, 35], note: "the wall follower; the Bug algorithms themselves are not in the lectures" }, { course: "L18", slide: 24, note: "planning with a map, for contrast" }, { course: "Lab 6" }],
+      brief: `
+The goal is at **(8.5, 5)**, straight ahead of the start at **(1.5, 5)**. Between them stands a wall bent into a **U**, open towards the robot. The checkpoint program drives in, turns, passes, faces the goal and drives in again, for ever. That is **Bug 0** from chapter 19 ("Planning without a map").
+
+## The way out
+- **Follow the wall.** The wall follower of chapter 17 keeps a wall on the robot's right: \`vref = 1.5\`, \`turn = 2.0 * (right_ft - 1.1)\`, limited to -1.0 ... 1.0. \`right_ft\` is the smallest of points 52 to 56 of the scan, 63 degrees to the right. A wall too far away gives a positive \`turn\`, to the right, so the robot also goes round the end of a wall.
+- **Remember where you hit.** When DRIVE is blocked, store \`dHit = dist\`. Leave the wall only when the goal is nearer than that, \`dist < dHit - 0.5\`, **and** there are 2 ft of free floor towards it, \`goal_ft > 2.0\`.
+
+The 100 ms interrupt looks towards the goal. Point 113 looks straight ahead; there are 54.3 points per radian:
+
+\`\`\`c
+goalPoint = 113 + (int)(54.3 * eTheta);
+if (goalPoint >= 10 && goalPoint <= 217) {
+    goal_ft = min_ft(goalPoint - 10, goalPoint + 10);
+} else {
+    goal_ft = 0.0;   // behind the robot
+}
+\`\`\`
+
+\`(int)\` cuts a float down to a whole number. \`goalPoint\` is an \`int16_t\`.
+
+## The states
+FACE, DRIVE and DONE stay. TURN (\`turn = -1.5\` until \`front_ft > 2.0\`) leads to **FOLLOW**, which replaces PASS. FOLLOW goes to TURN when \`front_ft < 1.2\`, and to FACE when both conditions for leaving hold.
+
+## Two trips
+At **13 s** the U is turned round and changed, and the goal becomes the start, (1.5, 5). In DONE: \`if (trip == 0 && numTimer0calls >= 13000)\`, set \`trip = 1\`, the new goal and \`state = 0\`. \`trip\` is a new global, 0 at first.
+
+## The test
+Standing at the goal by 13 s, back at the start by 28 s, nothing touched. Stars: there within 12 s, less than 27 ft driven, the short 1 ms loop.
+
+In the Robot arena the checkpoint program draws the same loop in the U again and again.
+`,
+      kit: "robot",
+      durationMs: 28000,
+      stimuli: trips({ kind: 3, seeds: [0, 1], start: TRAP.start, goal: TRAP.goal, swapMs: TRAP.swapMs }),
+      starter: TRAP_STARTER,
+      solution: S_TRAP,
+      checks: twoTrips({
+        swapMs: TRAP.swapMs,
+        there: "the goal, (8.5, 5)",
+        back: "the start, (1.5, 5)",
+        hintThere: "Watch state, dist and dHit. In and out of the U for ever: the robot leaves the wall as soon as it sees free floor towards the goal, as Bug 0 does. Leave only when dist < dHit - 0.5 as well, with dHit = dist stored when DRIVE is blocked. Curving away from the wall: a wall too far away must give a positive turn, turn = 2.0 * (right_ft - 1.1). Still at (1.5, 5): the goal in the globals is not (8.5, 5.0).",
+        hintBack: "Standing at (8.5, 5): DONE must start the second trip, when trip is 0 and numTimer0calls >= 13000. Moving but not home: the U now opens the other way and its arms have moved, so turns learnt for the first trip do not fit. Only the rules that read the LIDAR work for both.",
+        hintLate: "Still moving when the time is up. Circling the U: see the first check. Nearly there: FOLLOW at vref = 1.5 and TURN at turn = -1.5, and let FACE and DRIVE take over as soon as both conditions for leaving hold.",
+        hintCrash: "The robot is 0.7 ft wide. Going round the end of a wall at 1.5 ft/s needs the limit of turn at 1.0 (an arc of 0.9 ft), and TURN must start 1.2 ft before a wall.",
+      }),
+      bonus: [
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 12000, max: 0.15, label: "At the goal within 12 s" },
+        { kind: "signal", name: "ROBOT_ODOMETER_FT", max: 27, label: "Drove less than 27 ft on the two trips" },
+        ISR_BUDGET,
+      ],
+      watch: ["trip", "state", "dist", "dHit", "front_ft", "right_ft", "goal_ft", "eTheta"],
+      hints: [
+        "Build it in two steps. First FOLLOW without ever leaving: the robot should go round and round the U at a steady distance. Then add the rule for leaving.",
+        "`case 4: vref = 1.5; turn = 2.0 * (right_ft - 1.1);` then limit turn to -1.0 ... 1.0, then `if (front_ft < 1.2) { state = 3; } else if (dist < dHit - 0.5 && goal_ft > 2.0) { state = 0; } break;`. In DRIVE, `dHit = dist;` goes next to `state = 3;`.",
+        "In cpu_timer1_isr(): `right_ft = min_ft(52, 56);` and the six lines for goal_ft from the brief. Globals: `float right_ft = 19.0; float goal_ft = 0.0; int16_t goalPoint = 113; float dHit = 0; uint16_t trip = 0;`. TURN ends at `front_ft > 2.0` with `state = 4;` and no passStart.",
+      ],
+      takeaway: "A robot that only ever asks \"where is the goal?\" walks into every dead end. Remembering one number, how far the goal was when it got stuck, is enough to know when leaving the wall is progress.",
+    },
+    {
+      id: "cap-x-maze",
+      kind: "code",
+      mode: "write",
+      tier: "expert",
+      continues: "cap-final",
+      title: "Expert: through the maze",
+      goal: "Find the way through a maze to the goal cell with one hand on the wall, and back through a second maze.",
+      refs: [{ course: "L14", slide: [35, 37, 44], note: "the state machine for maze solving and the right-wall follower" }, { course: "L18", slide: 24, note: "planning with a map, for contrast" }, { course: "Lab 6" }],
+      brief: `
+A maze of 4 by 4 cells, each 2 ft square. The robot starts in the middle of the cell at **(1, 1)**, looking along +x. The goal is the middle of the opposite corner cell, **(7, 7)**. Your program knows where the goal is, but not where the walls are.
+
+## One hand on the wall
+Put your right hand on the wall of a maze and walk, never letting go. In a **perfect maze**, one with exactly one way between any two cells, every wall hangs together with the outer wall. So your hand slides along all of them, and you pass through every cell, the goal cell too. The robot's hand is the wall follower of chapter 17.
+
+Take a few walls away and there are loops: some walls now stand free, like islands. A goal that touches only an island is never passed, and the robot circles for ever. Then it needs a map and the search of chapter 19.
+
+## The mission
+Three states. FACE and DRIVE go.
+
+- **FOLLOW** (the robot starts here): \`vref = 1.2\`, \`turn = 2.0 * (right_ft - 1.1)\`, limited to -0.7 ... 0.7. \`right_ft\` is the smallest of points 52 to 56 of the scan, 63 degrees to the right: work it out in the 100 ms interrupt. Where the wall on the right ends, \`turn\` is at its limit and the robot curves round the end in an arc of 0.6 * 1.2 / 0.7 = 1 ft, half a cell. When \`dist < 0.5\` it is in the goal cell: DONE. When \`front_ft < 1.1\`: TURN.
+- **TURN**: left on the spot, \`turn = -1.0\`, until \`front_ft > 2.0\`. Then FOLLOW.
+- **DONE**: stand still.
+
+## Two trips
+At **12 s** the walls are rebuilt as another maze, and the goal becomes the start cell, (1, 1). In DONE, when \`trip == 0\` and \`numTimer0calls >= 12000\`: set \`trip = 1\`, the new goal, and the state back to FOLLOW. \`trip\` is a new global, 0 at first.
+
+## The test
+Standing within 0.8 ft of the goal by 12 s, back in the start cell by 28 s, no wall touched. Stars: there within 11.5 s, less than 24 ft driven, the short 1 ms loop.
+
+Replay the run in the Robot arena: the trail hugs the right wall.
+`,
+      kit: "robot",
+      durationMs: 28000,
+      stimuli: trips({ kind: 5, seeds: [MAZE.seedA, MAZE.seedB], size: MAZE.size, start: MAZE.start, goal: MAZE.goal, swapMs: MAZE.swapMs }),
+      starter: MAZE_STARTER,
+      solution: S_MAZE,
+      checks: twoTrips({
+        swapMs: MAZE.swapMs,
+        there: "the middle of the goal cell, (7, 7)",
+        back: "the middle of the start cell, (1, 1)",
+        tol: 0.8,
+        hintThere: "Watch state and right_ft in a live run. Wandering through other cells: is the hand on the right wall (points 52 to 56)? Here the right-hand way is 6 cells long and the left-hand way 18. Driving past openings on the right: the arc is too wide for a 2 ft cell. Its radius is 0.6 * vref / (limit of turn): 1.2 ft/s needs a limit of 0.7. Spinning: a wall too far away must give a positive turn. In the goal cell but moving on: FOLLOW must go to DONE when dist < 0.5.",
+        hintBack: "Standing in the goal cell: DONE must start the way back, when trip is 0 and numTimer0calls >= 12000, with the goal (1.0, 1.0) and the state of FOLLOW. Blocked or lost: the second maze has its walls elsewhere, so a route learnt in the first one does not fit. Only rules that read the LIDAR work in both.",
+        hintLate: "Still moving when the time is up. The right-hand way is 6 cells on each trip, about 10 s at 1.2 ft/s. More than that: the robot follows the left wall, misses openings on its right, or does not stop in the goal cell (dist < 0.5).",
+        hintCrash: "The robot is 0.7 ft wide in a 2 ft corridor. Keep the wall at right_ft = 1.1, start TURN 1.1 ft before a wall ahead, and do not drive faster than the arc allows.",
+      }),
+      bonus: [
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 11500, max: 0.8, label: "In the goal cell within 11.5 s" },
+        { kind: "signal", name: "ROBOT_ODOMETER_FT", max: 24, label: "Drove less than 24 ft on the two trips" },
+        ISR_BUDGET,
+      ],
+      watch: ["trip", "state", "x", "y", "dist", "front_ft", "right_ft"],
+      hints: [
+        "Start with FOLLOW and TURN only and watch a live run: the robot should stay in the middle of the corridor, curve into every opening on its right and turn left where it is boxed in.",
+        "`case 4: vref = 1.2; turn = 2.0 * (right_ft - 1.1);` then limit turn to -0.7 ... 0.7, then `if (dist < 0.5) { state = 2; } else if (front_ft < 1.1) { state = 3; } break;` and `case 3: vref = 0.0; turn = -1.0; if (front_ft > 2.0) { state = 4; } break;`",
+        "Globals: `uint16_t state = 4;`, `float right_ft = 19.0;`, `uint16_t trip = 0;`, start `x = 1.0; y = 1.0;`, goal (7.0, 7.0). In cpu_timer1_isr(): `right_ft = min_ft(52, 56);`. In `default:` after stopping: `if (trip == 0 && numTimer0calls >= 12000) { trip = 1; xGoal = 1.0; yGoal = 1.0; state = 4; }`",
+      ],
+      takeaway: "Two rules, no map, any perfect maze. What the wall follower cannot do is know that a shorter way exists, or find a goal on an island: for that the robot has to remember where it has been, which is where mapping begins.",
     },
   ],
 };

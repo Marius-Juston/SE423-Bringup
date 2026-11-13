@@ -9,24 +9,45 @@
 //
 //   inputs   ROBOT_WORLD (1 = on), ROBOT_START_X_FT, ROBOT_START_Y_FT,
 //            ROBOT_START_THETA_RAD, ROBOT_GOAL_X_FT, ROBOT_GOAL_Y_FT,
-//            LIDAR_ROOM (which room, see lidar.ts),
+//            LIDAR_ROOM, WORLD_KIND, WORLD_SEED, WORLD_SIZE, WORLD_LOOPS
+//            (which room or terrain, see lidar.ts; with a terrain, its own
+//            start and goal are used where the START and GOAL inputs are
+//            not set),
 //            LEFT_WHEEL_RADPS, RIGHT_WHEEL_RADPS (forward-positive, from the motors)
 //   outputs  ROBOT_X_FT, ROBOT_Y_FT, ROBOT_THETA_RAD, ROBOT_GOAL_DIST_FT,
 //            ROBOT_ODOMETER_FT, ROBOT_CRASHED (1 after touching a wall)
 //   sets     LIDAR_X_FT, LIDAR_Y_FT, LIDAR_THETA_RAD
 //
+// The robot is a disc: it has crashed when a wall or a post is nearer to
+// its centre than its radius (exact distance to every wall and post).
+//
+// For the playground of a live run, b.plugins.get("robot-world") is a
+// RobotWorld: place() puts the robot down somewhere else and clears the
+// crash, reset() puts it back at the start. Tests never call them.
+//
 // Kinematics (lecture 15): V = (vL + vR) / 2, omega = (vR - vL) / b, with
 // b = WHEEL_BASE from the test bench and the course's feet per wheel radian.
 
 import type { SimPlugin } from "../plugin";
-import { ROOMS, castRay } from "./lidar";
+import { worldOf } from "./lidar";
 import { WHEEL_BASE } from "./plant";
+import { clearance } from "../world/terrain";
 
 /** Feet travelled per radian of wheel rotation (course code: 1.235 / 12). */
 export const FT_PER_WHEEL_RAD = 1.235 / 12;
 /** The robot is treated as a disc of this radius when it meets a wall. */
 export const ROBOT_RADIUS_FT = 0.35;
 const STEP_NS = 1_000_000;
+
+/** What the playground may do to the robot during a live run. */
+export interface RobotWorld {
+  /** Is the world switched on (ROBOT_WORLD)? */
+  readonly on: boolean;
+  /** Puts the robot down at a new pose, standing where it is put; clears the crash. */
+  place(x: number, y: number, theta: number): void;
+  /** Back to the start pose, odometer at 0, crash cleared. */
+  reset(): void;
+}
 
 export const plugin: SimPlugin = {
   name: "robot-world",
@@ -48,8 +69,9 @@ export const plugin: SimPlugin = {
       b.publish("ROBOT_THETA_RAD", +th.toFixed(4), t);
       b.publish("ROBOT_ODOMETER_FT", +odo.toFixed(4), t);
       b.publish("ROBOT_CRASHED", crashed ? 1 : 0, t);
-      const gx = b.inputs.get("ROBOT_GOAL_X_FT");
-      const gy = b.inputs.get("ROBOT_GOAL_Y_FT");
+      const goal = (b.inputs.get("WORLD_KIND") ?? 0) !== 0 ? worldOf(b).goal : undefined;
+      const gx = b.inputs.get("ROBOT_GOAL_X_FT") ?? goal?.[0];
+      const gy = b.inputs.get("ROBOT_GOAL_Y_FT") ?? goal?.[1];
       if (gx !== undefined && gy !== undefined) b.publish("ROBOT_GOAL_DIST_FT", +Math.hypot(gx - x, gy - y).toFixed(4), t);
     };
     const step = (t: number) => {
@@ -69,25 +91,48 @@ export const plugin: SimPlugin = {
         if (th > Math.PI) th -= 2 * Math.PI;
         if (th <= -Math.PI) th += 2 * Math.PI;
         odo += Math.abs(v) * dt;
-        const room = ROOMS[Math.round(b.inputs.get("LIDAR_ROOM") ?? 0)] ?? ROOMS[0];
-        for (let k = 0; k < 8 && !crashed; k++) if (castRay(room, x, y, (k * Math.PI) / 4) < ROBOT_RADIUS_FT) crashed = true;
+        if (clearance(worldOf(b), x, y) < ROBOT_RADIUS_FT) crashed = true;
       }
       out(t);
       b.at(t + STEP_NS, step);
     };
+    const toStart = () => {
+      // A terrain brings its own start; the rooms keep the middle of the 10 ft box.
+      const start = (b.inputs.get("WORLD_KIND") ?? 0) !== 0 ? worldOf(b).start : [5, 5, 0];
+      x = b.inputs.get("ROBOT_START_X_FT") ?? start[0];
+      y = b.inputs.get("ROBOT_START_Y_FT") ?? start[1];
+      th = b.inputs.get("ROBOT_START_THETA_RAD") ?? start[2];
+      odo = 0;
+      crashed = false;
+    };
     b.onInput("ROBOT_WORLD", (v, t) => {
       if (v && !on) {
         on = true;
-        x = b.inputs.get("ROBOT_START_X_FT") ?? 5;
-        y = b.inputs.get("ROBOT_START_Y_FT") ?? 5;
-        th = b.inputs.get("ROBOT_START_THETA_RAD") ?? 0;
-        odo = 0;
-        crashed = false;
+        toStart();
         last = t;
         out(t);
         b.at(t + STEP_NS, step);
       } else if (!v) on = false;
     });
+    const api: RobotWorld = {
+      get on() {
+        return on;
+      },
+      place(nx, ny, nth) {
+        if (!on || ![nx, ny, nth].every(Number.isFinite)) return;
+        x = nx;
+        y = ny;
+        th = Math.atan2(Math.sin(nth), Math.cos(nth));
+        crashed = false;
+        out(b.now);
+      },
+      reset() {
+        if (!on) return;
+        toStart();
+        out(b.now);
+      },
+    };
+    b.plugins.set("robot-world", api);
   },
   parts: {
     robot: [

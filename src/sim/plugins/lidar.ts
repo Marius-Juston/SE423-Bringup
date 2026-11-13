@@ -32,6 +32,16 @@
 // Signal-bus inputs, set by test stimuli:
 //   LIDAR_ROOM        0 box, 1 corridor, 2 wall on the right,
 //                     3 box with an obstacle, 4 box with a doorway
+//   WORLD_KIND        0 (default): the room LIDAR_ROOM names. Otherwise a
+//                     terrain of src/sim/world/terrain.ts: 1 two rooms and
+//                     a door, 2 slalom of posts, 3 U-shaped dead end,
+//                     4 narrow gap, 5 random maze
+//   WORLD_SEED        maze: the seed; slalom and U: the layout number
+//   WORLD_SIZE        maze: cells per side, 3 to 8 (2 ft cells; default 4)
+//   WORLD_LOOPS       maze: 1 takes away extra walls (more than one way)
+//                     A world is an outer boundary plus obstacles: boxes,
+//                     round posts, thin walls. worldOf(board) is the one in
+//                     use; rooms 0 to 4 are unchanged.
 //   LIDAR_X_FT, LIDAR_Y_FT, LIDAR_THETA_RAD   pose of the robot
 //   LIDAR_OFFSET_FT   how far ahead of the robot's centre the sensor sits
 //                     (default 0; the course robot has 3.5 inches)
@@ -48,6 +58,9 @@
 import type { Board } from "../board";
 import { RuntimeError } from "../cc/compile";
 import type { SimPlugin } from "../plugin";
+import { MAX_OBJECTS, boxSegs, makeWorld, terrain, tidyObject, withObstacles, type Obstacle, type Post, type Seg, type World, type WorldSpec } from "../world/terrain";
+
+export type { Obstacle, Post, Seg, World, WorldSpec };
 
 /** Angle between two steps of the scanner: 360 / 1024 degrees. */
 export const STEP_DEG = 360 / 1024;
@@ -72,34 +85,33 @@ export const FT_PER_MM = 0.00328084;
 const MM_PER_FT = 304.8;
 const SCIC = 2;
 
+/** What castRay needs of a world: straight walls and, optionally, round posts. */
 export interface Room {
   name: string;
   /** Wall segments [x1, y1, x2, y2] in feet. */
-  walls: [number, number, number, number][];
+  walls: Seg[];
+  /** Round posts (none in the rooms 0 to 4). */
+  posts?: Post[];
   /** Pose when the stimuli set none: [x, y, theta]. */
   start: [number, number, number];
 }
 
-const box = (x0: number, y0: number, x1: number, y1: number): [number, number, number, number][] => [
-  [x0, y0, x1, y0],
-  [x1, y0, x1, y1],
-  [x1, y1, x0, y1],
-  [x0, y1, x0, y0],
-];
+const box = boxSegs;
 
-export const ROOMS: Room[] = [
+/** The rooms LIDAR_ROOM chooses. Their walls, and the order of the walls, never change: levels depend on the exact scans. */
+export const ROOMS: World[] = [
   // 0: an empty 10 ft x 10 ft box.
-  { name: "empty box", walls: box(0, 0, 10, 10), start: [5, 5, 0] },
+  makeWorld({ name: "empty box", boundary: box(0, 0, 10, 10), start: [5, 5, 0] }),
   // 1: a 3 ft wide corridor along +x, closed at x = -2 and x = 30.
-  { name: "corridor", walls: box(-2, -1.5, 30, 1.5), start: [0, 0, 0] },
+  makeWorld({ name: "corridor", boundary: box(-2, -1.5, 30, 1.5), start: [0, 0, 0] }),
   // 2: one long wall 2 ft to the right of the x axis, nothing else.
-  { name: "wall on the right", walls: [[-100, -2, 100, -2]], start: [0, 0, 0] },
+  makeWorld({ name: "wall on the right", boundary: [[-100, -2, 100, -2]], start: [0, 0, 0], bounds: [-4, -2, 16, 6] }),
   // 3: the box with a 1 ft x 1 ft obstacle.
-  { name: "box with an obstacle", walls: [...box(0, 0, 10, 10), ...box(7, 6, 8, 7)], start: [5, 5, 0] },
+  makeWorld({ name: "box with an obstacle", boundary: box(0, 0, 10, 10), obstacles: [{ kind: "box", x0: 7, y0: 6, x1: 8, y1: 7 }], start: [5, 5, 0] }),
   // 4: the box with a doorway in the wall x = 10, from y = 6 to y = 8.5.
-  {
+  makeWorld({
     name: "box with a doorway",
-    walls: [
+    boundary: [
       [0, 0, 10, 0],
       [10, 0, 10, 6],
       [10, 8.5, 10, 10],
@@ -107,7 +119,8 @@ export const ROOMS: Room[] = [
       [0, 10, 0, 0],
     ],
     start: [5, 5, 0],
-  },
+    bounds: [0, 0, 13, 10],
+  }),
 ];
 
 /** Angle of a step relative to straight ahead, radians (positive to the left). */
@@ -130,6 +143,20 @@ export function castRay(room: Room, x: number, y: number, angle: number): number
     const u = ((x1 - x) * dy - (y1 - y) * dx) / den; // along the wall, 0..1
     if (t >= 0 && u >= 0 && u <= 1 && t < best) best = t;
   }
+  if (room.posts) {
+    // A post is a circle: the nearer root of |p + t d - c|^2 = r^2.
+    for (const p of room.posts) {
+      const cx = p.x - x;
+      const cy = p.y - y;
+      const along = cx * dx + cy * dy;
+      const disc = along * along - (cx * cx + cy * cy - p.r * p.r);
+      if (disc < 0) continue;
+      const root = Math.sqrt(disc);
+      // From inside a post the ray leaves through the far side.
+      const t = along - root >= 0 ? along - root : along + root;
+      if (t >= 0 && t < best) best = t;
+    }
+  }
   return best;
 }
 
@@ -148,6 +175,8 @@ export interface Pose {
   theta: number;
   /** Sensor position ahead of the robot's centre, feet. */
   offset?: number;
+  /** The world to look at instead of ROOMS[room] (a terrain, or a room with placed objects). */
+  world?: Room;
 }
 
 /**
@@ -157,7 +186,7 @@ export interface Pose {
  * the course's angle formula assigns to the point.
  */
 export function scan(p: Pose, start = G_START, end = G_END, cluster = G_CLUSTER): number[] {
-  const room = ROOMS[p.room] ?? ROOMS[0];
+  const room = p.world ?? ROOMS[p.room] ?? ROOMS[0];
   const off = p.offset ?? 0;
   const sx = p.x + off * Math.cos(p.theta);
   const sy = p.y + off * Math.sin(p.theta);
@@ -182,7 +211,7 @@ export function gReply(command: string, mm: number[]): string {
   return `${command}0\n${dataLines(mm).map((l) => `${l}\n`).join("")}\n`;
 }
 
-interface State {
+export interface LidarState {
   /** Current baud rate of the sensor (undefined: still at its power-up rate). */
   baud?: number;
   /** Characters of the command being received. */
@@ -190,13 +219,71 @@ interface State {
   /** The sensor's transmitter is busy until this time, ns. */
   busyUntil: number;
   scans: number;
+  /** Readings the program took with tb_lidar_mm / tb_lidar_ft. */
+  reads: number;
+  /** Objects placed by hand in the playground (never by a test). */
+  objects: Obstacle[];
+  /** The world the inputs describe, kept until they change. */
+  world?: World;
+  worldKey?: string;
+}
+type State = LidarState;
+
+const WORLD_INPUTS = ["LIDAR_ROOM", "WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS"];
+
+/** What the world inputs of a board say, without marking any of them as used. */
+export function worldSpec(b: Board): WorldSpec {
+  const v = (name: string) => {
+    const x = b.inputs.get(name);
+    return x !== undefined && Number.isFinite(x) ? x : undefined;
+  };
+  return { kind: Math.round(v("WORLD_KIND") ?? 0), room: Math.round(v("LIDAR_ROOM") ?? 0), seed: v("WORLD_SEED"), size: v("WORLD_SIZE"), loops: (v("WORLD_LOOPS") ?? 0) > 0 };
+}
+
+/**
+ * The world this board's robot and LIDAR are in: the room LIDAR_ROOM names
+ * or, when WORLD_KIND is not 0, a terrain of src/sim/world/terrain.ts, plus
+ * the objects placed in the playground. Built once and kept until an input
+ * or the objects change.
+ */
+export function worldOf(b: Board): World {
+  const st = b.plugins.get("lidar") as State | undefined;
+  const spec = worldSpec(b);
+  const key = `${spec.kind},${spec.room},${spec.seed},${spec.size},${spec.loops}`;
+  if (st && st.world && st.worldKey === key) return st.world;
+  const base = terrain(spec) ?? ROOMS[spec.room ?? 0] ?? ROOMS[0];
+  const world = st ? withObstacles(base, st.objects) : base;
+  if (st) {
+    st.world = world;
+    st.worldKey = key;
+  }
+  return world;
+}
+
+/** The objects placed by hand in this board's world. */
+export const worldObjects = (b: Board): Obstacle[] => (b.plugins.get("lidar") as State | undefined)?.objects ?? [];
+
+/**
+ * Replaces the objects placed by hand (at most MAX_OBJECTS, snapped to the
+ * grid). For the playground of a live run: a test never calls this, so the
+ * world of every level's test is the one its stimuli describe.
+ */
+export function setWorldObjects(b: Board, objects: Obstacle[]): void {
+  const st = b.plugins.get("lidar") as State | undefined;
+  if (!st) return;
+  st.objects = objects.slice(0, MAX_OBJECTS).map(tidyObject);
+  st.world = undefined;
+  // Tell everything that watches the room that it has changed.
+  b.setInput("LIDAR_ROOM", b.inputs.get("LIDAR_ROOM") ?? 0);
 }
 
 const poseOf = (b: Board): Pose => {
   const room = Math.round(b.input("LIDAR_ROOM", 0));
-  const start = (ROOMS[room] ?? ROOMS[0]).start;
+  const world = worldOf(b);
+  const start = world.start;
   return {
     room,
+    world,
     x: b.input("LIDAR_X_FT", start[0]),
     y: b.input("LIDAR_Y_FT", start[1]),
     theta: b.input("LIDAR_THETA_RAD", start[2]),
@@ -218,12 +305,12 @@ float tb_pose_y(void);
 float tb_pose_theta(void);
 `,
   install(b) {
-    const st: State = { cmd: "", busyUntil: 0, scans: 0 };
+    const st: State = { cmd: "", busyUntil: 0, scans: 0, reads: 0, objects: [] };
     b.plugins.set("lidar", st);
     const sensorBaud = () => st.baud ?? b.input("LIDAR_BAUD", 115200);
 
     const publishFront = (t = b.now) => b.publish("LIDAR_FRONT_FT", feet(scan(poseOf(b), FRONT_STEP - 1, FRONT_STEP - 1, 1)[0]), t);
-    for (const name of ["LIDAR_ROOM", "LIDAR_X_FT", "LIDAR_Y_FT", "LIDAR_THETA_RAD", "LIDAR_OFFSET_FT"]) b.onInput(name, (_v, t) => publishFront(t));
+    for (const name of [...WORLD_INPUTS, "LIDAR_X_FT", "LIDAR_Y_FT", "LIDAR_THETA_RAD", "LIDAR_OFFSET_FT"]) b.onInput(name, (_v, t) => publishFront(t));
 
     /** Sends text to the chip, one character after another at the sensor's baud rate. */
     const reply = (text: string, t: number) => {
@@ -293,6 +380,7 @@ float tb_pose_theta(void);
       if (index < 0 || index >= LIDAR_POINTS || index !== Math.floor(index))
         throw new RuntimeError(b.line, `The LIDAR scan has points 0 to ${LIDAR_POINTS - 1}; point ${index} does not exist. Check the loop limits.`);
       const step = G_START + G_CLUSTER * index;
+      st.reads++;
       return scan(poseOf(b), step, step, 1)[0];
     };
     c.defineNative("tb_lidar_mm", (a) => point(a[0]));

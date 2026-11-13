@@ -5,6 +5,15 @@ import { Board } from "./board";
 import { CError } from "./cc/lexer";
 import { RuntimeError } from "./cc/compile";
 import { KITS, findPart, type Kit } from "./world/kits";
+import { setWorldObjects } from "./plugins/lidar";
+import type { RobotWorld } from "./plugins/robot_world";
+import type { Obstacle } from "./world/terrain";
+
+/** An input of the signal bus set when the board powers up (the world a level puts the robot in). */
+export interface LiveSetup {
+  set: string;
+  value: number;
+}
 
 const MS = 1e6;
 
@@ -27,11 +36,16 @@ export class LiveSession {
   private gen: Generator<void, void> | null = null;
   private pressed = new Set<string>();
 
-  constructor(kitId: string, source: string) {
+  /**
+   * `setup` are inputs set at power-up, in order: the room, the start pose
+   * and the goal of the level, so a live run begins in the level's world.
+   */
+  constructor(kitId: string, source: string, private setup: LiveSetup[] = []) {
     this.board = new Board(kitId);
     this.kit = KITS[kitId];
     const b = this.board;
     for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);
+    for (const s of setup) b.setInput(s.set, s.value, 0);
     try {
       b.load(source);
       this.gen = b.run();
@@ -87,6 +101,8 @@ export class LiveSession {
         // pauseAt = now makes the program stop again after one statement.
         b.pauseAt = b.now;
         b.pause = false;
+        // Each single step is a fresh slice: the "never finishes" guard counts within one slice only.
+        b.overrun = 0;
         if (this.gen.next().done) {
           this.gen = null;
           break;
@@ -125,6 +141,70 @@ export class LiveSession {
   setKnob(id: string, value: number): void {
     const part = findPart(this.kit, id);
     if (part.kind === "knob") this.board.setInput(part.input, value);
+  }
+
+  // ---- the playground: the student moves things in the world while the program runs ----
+
+  /** Sets a signal-bus input by name (the goal, the room, a maze seed). */
+  setInput(name: string, value: number): void {
+    if (Number.isFinite(value)) this.board.setInput(name, value);
+  }
+
+  /** The robot world of capstone levels, when it is switched on. */
+  private get world(): RobotWorld | undefined {
+    const w = this.board.plugins.get("robot-world") as RobotWorld | undefined;
+    return w?.on ? w : undefined;
+  }
+
+  /**
+   * Picks the robot up and puts it down at a new pose. In the robot world
+   * that also clears a crash; on the test bench it uses the bench's
+   * TB_SET inputs; a LIDAR standing alone is moved by its pose inputs. The
+   * encoders, the LIDAR and the robot stay consistent in every case, and
+   * the program is not told: its own estimate keeps its value.
+   */
+  placeRobot(x: number, y: number, theta: number, kind: "world" | "bench" | "scan"): void {
+    if (![x, y, theta].every(Number.isFinite)) return;
+    const b = this.board;
+    if (kind === "world") this.world?.place(x, y, theta);
+    else if (kind === "bench") {
+      b.setInput("TB_SET_X_FT", x);
+      b.setInput("TB_SET_Y_FT", y);
+      b.setInput("TB_SET_THETA_RAD", theta);
+    } else {
+      b.setInput("LIDAR_X_FT", x);
+      b.setInput("LIDAR_Y_FT", y);
+      b.setInput("LIDAR_THETA_RAD", theta);
+    }
+  }
+
+  /** Replaces the objects placed by hand in the world. */
+  setObjects(objects: Obstacle[]): void {
+    setWorldObjects(this.board, objects);
+  }
+
+  /** Back to the world this run started in: its room, start pose and goal, and no placed objects. */
+  resetWorld(kind: "world" | "bench" | "scan"): void {
+    const b = this.board;
+    setWorldObjects(b, []);
+    const given = new Map(this.setup.map((s) => [s.set, s.value]));
+    for (const name of ["WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS", "LIDAR_ROOM"]) if (b.inputs.has(name) || given.has(name)) b.setInput(name, given.get(name) ?? 0);
+    // An input the level never set goes back to "not set" (the world's own goal or start then applies).
+    const restore = (name: string) => {
+      if (given.has(name)) b.setInput(name, given.get(name)!);
+      else b.inputs.delete(name);
+    };
+    restore("ROBOT_GOAL_X_FT");
+    restore("ROBOT_GOAL_Y_FT");
+    if (kind === "world") this.world?.reset();
+    else if (kind === "bench") this.placeRobot(given.get("TB_SET_X_FT") ?? 0, given.get("TB_SET_Y_FT") ?? 0, given.get("TB_SET_THETA_RAD") ?? 0, "bench");
+    else {
+      restore("LIDAR_X_FT");
+      restore("LIDAR_Y_FT");
+      restore("LIDAR_THETA_RAD");
+      // Tell the LIDAR its pose changed.
+      b.setInput("LIDAR_ROOM", b.inputs.get("LIDAR_ROOM") ?? 0);
+    }
   }
 
   isPressed(id: string): boolean {

@@ -178,6 +178,109 @@ describe("playthrough", () => {
     expect(errors).toEqual([]);
   });
 
+  // The robot arena (src/ui/views/robot-arena.tsx) on the capstone checkpoint.
+  const capFinal = CHAPTERS.flatMap((c) => c.levels.map((l) => ({ c, l }))).find((x) => x.l.id === "cap-final");
+  const arena = () => page.locator('[data-panel="view-robot-arena"]');
+  const readOut = (name: string) => arena().locator(`[data-read="${name}"] dd`).innerText();
+
+  it("replays a test run in the robot arena, large, up to the robot standing at the goal", async () => {
+    errors.length = 0;
+    if (!capFinal || capFinal.l.kind !== "code") throw new Error("no cap-final level");
+    await openWith({}, capFinal.c.id, capFinal.l.id);
+    // Before any run the arena shows the level's world: the robot at its start, 9.77 ft from the goal.
+    expect(await arena().getAttribute("data-size")).toBe("wide");
+    expect(await readOut("pose")).toContain("1.00, 2.00 ft");
+    await solve(capFinal.l);
+    await page.waitForSelector(".bench .result.ok");
+    // Large view: the briefing steps aside, the editor's toolbar and the verdict stay.
+    const large = arena().locator('[data-size-button="large"]');
+    await large.click();
+    expect(await arena().getAttribute("data-size")).toBe("large");
+    expect(await page.locator(".pane.brief").isVisible()).toBe(false);
+    expect(await page.getByRole("button", { name: /^Run tests/ }).isVisible()).toBe(true);
+    expect(await page.locator(".toolbar .chip").innerText()).toContain("All tests passed");
+    const wide = (await arena().boundingBox())!.width;
+    expect(wide).toBeGreaterThan(700);
+    // Scrub: the start of the run, a moment one of the stars looks at, and the end.
+    const slider = arena().getByRole("slider", { name: "Time in the test run" });
+    await slider.focus();
+    await page.keyboard.press("Home");
+    expect(await readOut("time")).toBe("0.00 s");
+    expect(await readOut("pose")).toContain("1.00, 2.00 ft");
+    expect(parseFloat(await readOut("goal"))).toBeCloseTo(9.77, 1);
+    await page.keyboard.press("ArrowRight");
+    expect(await readOut("time")).toBe("0.05 s");
+    await arena().locator(".arena-mark").first().click();
+    expect(await readOut("time")).toBe("13.00 s");
+    await slider.focus();
+    await page.keyboard.press("End");
+    expect(await readOut("time")).toBe("16.00 s");
+    expect(parseFloat(await readOut("goal"))).toBeLessThanOrEqual(0.15);
+    expect(await arena().locator("[data-arena-now]").innerText()).toMatch(/^Standing at the goal/);
+    expect(await arena().locator(".arena-pic svg").getAttribute("aria-label")).toMatch(/box with an obstacle.*goal is at x 9\.00, y 7\.60/);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), "horizontal overflow").toBeLessThanOrEqual(1);
+    if (shots) await page.screenshot({ path: join(shots, "arena-replay-large.png") });
+    // Escape returns to the bench, with the focus on the button that opened the large view.
+    await page.keyboard.press("Escape");
+    expect(await arena().getAttribute("data-size")).toBe("wide");
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-size-button"))).toBe("large");
+    expect(await page.locator(".pane.brief").isVisible()).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  it("lets the student move the robot in a live run, by keys, numbers and dragging, and the simulator follows", async () => {
+    errors.length = 0;
+    if (!capFinal || capFinal.l.kind !== "code") throw new Error("no cap-final level");
+    await openWith({ code: { [capFinal.l.id]: capFinal.l.solution } }, capFinal.c.id, capFinal.l.id);
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    // The live run starts in the level's world: the robot drives away from (1, 2).
+    await expect.poll(async () => parseFloat(await readOut("odometer")), { timeout: 10_000 }).toBeGreaterThan(0.3);
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    // The board's own meter shows the simulator's output ROBOT_X_FT.
+    const meter = async () => parseFloat(await page.locator('.meter:has-text("Robot x") output').innerText());
+    const pose = async () => (await readOut("pose")).split(/[,;]/).map((v) => parseFloat(v));
+    const [x0, y0] = await pose();
+    expect(await meter()).toBeCloseTo(x0, 2);
+    // Keys: two steps of a quarter foot along +x, one up, and a turn to the left.
+    const robot = arena().locator('[data-h="robot"]');
+    await robot.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowUp");
+    const [x1, y1, h1] = await pose();
+    expect(x1).toBeCloseTo(x0 + 0.5, 2);
+    expect(y1).toBeCloseTo(y0 + 0.25, 2);
+    expect(await meter()).toBeCloseTo(x0 + 0.5, 2);
+    await page.keyboard.press("l");
+    expect((await pose())[2]).toBeCloseTo(h1 + 15, 0);
+    // Numbers: the playground's field puts the robot at x = 4.
+    await arena().locator("details.arena-play").evaluate((d) => ((d as HTMLDetailsElement).open = true));
+    await arena().getByRole("group", { name: "Robot pose" }).getByLabel("x, ft").fill("4");
+    expect(await meter()).toBeCloseTo(4, 2);
+    // Dragging: 60 pixels to the right in the picture is more than a foot.
+    await robot.scrollIntoViewIfNeeded();
+    const box = (await robot.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, { steps: 4 });
+    await page.mouse.up();
+    expect(await meter()).toBeGreaterThan(5);
+    expect((await pose())[0]).toBeCloseTo(await meter(), 2);
+    // The program was not told: its own estimate is now feet away, and the arena says so.
+    expect(parseFloat(await readOut("error"))).toBeGreaterThan(1);
+    // Reset world: back at the level's start.
+    await arena().getByRole("button", { name: "Reset world" }).click();
+    expect(await meter()).toBeCloseTo(1, 2);
+    if (shots) await page.screenshot({ path: join(shots, "arena-playground.png") });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    // The tests are untouched by all of that.
+    await page.getByRole("button", { name: /^Run tests/ }).click();
+    await page.waitForSelector(".bench .result.ok");
+    expect(errors).toEqual([]);
+    await page.locator(".level-head").getByRole("button", { name: "Map", exact: true }).click();
+    await page.waitForSelector(".map-cols");
+  });
+
   it("shows the handbook and settings", async () => {
     errors.length = 0;
     await page.locator(".topnav").getByRole("button", { name: "Handbook" }).click();
@@ -347,8 +450,10 @@ describe("playthrough", () => {
     await page.fill("#hb-search", "");
     await page.locator(".hb-sections").getByRole("button", { name: "Key diagrams" }).click();
     await page.waitForSelector(".hb-grid .hb-card");
-    // The diagrams are cards, not ninety live figures in one page.
-    expect(await page.locator(".hb-content .figure").count()).toBe(0);
+    // The diagrams are cards. Each shows a small preview of its figure, but only
+    // the cards near the screen draw one: never a hundred live figures at once.
+    expect(await page.locator(".hb-content .figure:not(.hb-card-preview .figure)").count()).toBe(0);
+    expect(await page.locator(".hb-card-preview .figure").count()).toBeLessThan(40);
     const top = () => page.evaluate(() => document.querySelector(".hb-content")!.scrollTop);
     // Scrolling down in steps never jumps back up.
     await page.locator(".hb-content").hover();
@@ -360,6 +465,7 @@ describe("playthrough", () => {
       expect(t, `scroll step ${i}`).toBeGreaterThanOrEqual(prev);
       prev = t;
     }
+    expect(await page.locator(".hb-card-preview .figure").count()).toBeLessThan(40);
     expect(prev).toBeGreaterThan(0);
     // Open the last card: one figure, and using it does not move the page.
     const last = page.locator(".hb-card").last();

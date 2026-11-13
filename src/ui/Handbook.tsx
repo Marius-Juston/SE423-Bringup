@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { device, fieldsOf, hex } from "./device";
 import { KITS } from "../sim/world/kits";
 import { Figure, FIGURE_IDS, figureMeta } from "./figures";
@@ -140,6 +140,33 @@ function Glossary({ open, q, setQ }: { open: (id: string) => void; q: string; se
   );
 }
 
+/**
+ * A small, still picture of a figure for its card: the real figure, drawn
+ * at a third of its size, only while the card is near the screen (a
+ * hundred live figures at once would be slow). It cannot be operated or
+ * focused: the card's button opens the figure itself.
+ */
+function CardPreview({ id }: { id: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof IntersectionObserver === "undefined") return setNear(true);
+    const seen = new IntersectionObserver((entries) => setNear(entries.some((e) => e.isIntersecting)), { rootMargin: "400px" });
+    seen.observe(el);
+    return () => seen.disconnect();
+  }, []);
+  return (
+    <div className="hb-card-preview" ref={box} aria-hidden="true" inert>
+      {near && (
+        <div className="hb-card-preview-inner">
+          <Figure id={id} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Diagrams({ open, fig, setFig }: { open: (id: string) => void; fig: string; setFig: (id: string) => void }) {
   const all = figures();
   const [topic, setTopic] = usePref<string>("hb-topic", "");
@@ -222,12 +249,15 @@ function Diagrams({ open, fig, setFig }: { open: (id: string) => void; fig: stri
       <p className="hint-text" role="status">{shown.length === all.length ? "" : shown.length === 0 ? "No diagram matches." : `${shown.length} of ${all.length} diagrams.`}</p>
       <div className="hb-grid" ref={grid}>
         {shown.map((f) => (
-          <button key={f.id} className="hb-card" data-figure={f.id} onClick={() => setFig(f.id)}>
-            <span className="hb-card-title">{f.title}</span>
-            {f.description && <span className="hb-card-desc">{f.description}</span>}
-            <span className="hb-card-use">{f.uses[0] ? `First used in ${levelName(f.uses[0])}` : "Not used in a level yet"}</span>
-            <span className="tag">{f.uses[0] ? `Chapter ${chapterLabel(f.uses[0].chapter)} · ${f.uses[0].chapter.title}` : "More"}</span>
-          </button>
+          <div key={f.id} className="hb-card-wrap" onClick={() => setFig(f.id)}>
+            <CardPreview id={f.id} />
+            <button className="hb-card" data-figure={f.id} onClick={(e) => (e.stopPropagation(), setFig(f.id))}>
+              <span className="hb-card-title">{f.title}</span>
+              {f.description && <span className="hb-card-desc">{f.description}</span>}
+              <span className="hb-card-use">{f.uses[0] ? `First used in ${levelName(f.uses[0])}` : "Not used in a level yet"}</span>
+              <span className="tag">{f.uses[0] ? `Chapter ${chapterLabel(f.uses[0].chapter)} · ${f.uses[0].chapter.title}` : "More"}</span>
+            </button>
+          </div>
         ))}
       </div>
     </div>

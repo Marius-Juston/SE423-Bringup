@@ -119,7 +119,85 @@ file, `src/ui/views/<id>.tsx`, exporting `view: BenchView`
 - It is re-rendered every animation frame while a program runs: draw from
   current state, keep no timers of your own, and keep it light (SVG with at
   most a few hundred elements, or a `<canvas>`).
-- Read-only: a view never changes the simulation.
+- Read-only: a view never changes the simulation. The one exception is the
+  robot arena's playground (below), which acts on the running program
+  through `LiveSession` and never on a test run.
+
+### Sizes: fold, fill the column, large view
+
+Every view's panel (`Panel` in `src/ui/Panel.tsx`, used with `expand`) has
+two size buttons next to its title, besides the fold button:
+
+- **Fill the column** (`data-size-button="wide"`, a toggle, remembered per
+  panel in the UI preferences as `panel-size-<key>`): the panel spans all
+  columns of the bench and its content may be tall.
+- **Large view** (`data-size-button="large"`, not remembered): the briefing
+  and the other bench panels step aside and the panel fills everything
+  beside the editor. It is not a pop-up and not modal: the program keeps
+  running, the editor and its toolbar (Run tests, Run, Pause, Step line,
+  Next write, the state chip with the verdict) stay where they are.
+  Escape (outside the code editor) or the same button, now "Close large
+  view", returns, and the focus stays on that button. In a narrow window
+  the panel fills the Board tab and carries its own Run / Stop and Pause
+  buttons (`expand.bar`), because the toolbar is on the Code tab.
+
+The panel carries `data-size="normal" | "wide" | "large"`, and a view reads
+its size with `usePanelSize()` (`src/ui/Panel.tsx`) when it wants to use
+the room: draw taller, or put its read-outs beside the picture. A view that
+ignores it still works: its drawing scales with the panel's width. The
+panel is a size container (`container-type: inline-size`), so a view's own
+`<style>` can use `@container` queries.
+
+### The robot arena
+
+`robot-arena.tsx` is the one view of the simulated robot's world, for all
+three situations the levels have: the capstone's robot world
+(`robot_world.ts`: room or terrain, robot, trail, goal with its tolerance
+circle, LIDAR, crash mark), the test-bench robot of chapters 16 and 18
+(`plant.ts`: open floor, with the pose the program reports through
+`tb_report_pose` as a dashed ghost and its distance from the truth) and a
+LIDAR standing at a pose the level sets (chapter 17). `lidar-view.tsx`
+shows the same scan as the array of 228 distances, only where the robot
+does not drive. There is no other top view: do not add one.
+
+- Pure logic (sampling the output histories at a time, thinning the
+  trail, the scene at a moment, the sentence, the replay marks) is in
+  `robot-arena-model.ts`, without React, tested by
+  `tests/robot_arena.test.ts`. The playground's fields are in
+  `robot-arena-play.tsx`.
+- Beyond `ViewProps` it reads `ArenaContext` (`robot-arena-context.ts`),
+  which `CodeLevelView` provides: the level's stimuli, checks and watch
+  list, the test results and the live session.
+- On levels whose stimuli switch `ROBOT_WORLD` on, or whose program calls
+  `tb_report_pose`, the arena is the first panel after the tests, opens at
+  "fill the column", and before any run shows the level's world from its
+  stimuli (`ArenaPreview`).
+- **Live** (Run, Step line, Next write): drawn from the board on every
+  frame, no clock of its own. The trail is sampled on a fixed time grid
+  (at most about 360 points however long the run), the 228 rays are one
+  path, and the picture's accessible name changes at most once a second.
+  A live run starts in the level's world: `CodeLevelView` passes the
+  level's world inputs at 0 ms (`worldSetup`) to `LiveSession`.
+- **Replay** (after Run tests): a slider under the picture scrubs the
+  whole run (arrow keys step it; Play at 1x or 4x is the only animation
+  the view starts, and only when asked). Pose, trail, wheel speeds and
+  goal distance come from the output histories; the world and the goal
+  from the stimuli as they stood at that time (so a level that changes
+  the world in mid-run replays correctly); the scan is recomputed for the
+  pose with `scan()`. The marks on the slider are the `at` of the level's
+  checks and stars, with their results. Global variables have no history:
+  the program's own `x`, `y` and state are shown for the end of the run.
+- **Playground** (only while a program runs with Run, never in a test):
+  drag the robot (its handle turns it), the goal and placed objects; choose
+  another room, terrain or seeded maze; add boxes and posts (at most 20, on
+  a 0.25 ft grid, never on the robot). Everything can also be done with
+  the keyboard: the robot, the goal and every object are focusable in the
+  picture (arrow keys move, L and R turn the robot, Shift and an arrow
+  resizes an object, Delete removes it) and have number fields. It acts
+  through `LiveSession` (`placeRobot`, `setInput`, `setObjects`,
+  `resetWorld`), so encoders, LIDAR and collisions stay consistent.
+  "Reset world" returns to the level's set-up. A test run builds a new
+  board from the level's stimuli alone, so nothing done here can reach it.
 
 ## Checking your work
 

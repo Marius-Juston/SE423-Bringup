@@ -63,6 +63,30 @@ export const glossary: GlossaryEntry[] = [
     level: "cap-dist",
   },
   {
+    term: "hit point",
+    meaning:
+      "The place where a robot on its way to a goal first meets an obstacle. Bug-style planners remember it, or how far the goal was from it, to decide later whether leaving the obstacle is progress.",
+    level: "cap-x-trap",
+  },
+  {
+    term: "perfect maze",
+    meaning:
+      "A maze with exactly one way between any two cells: no loops and no closed-off parts. All its walls hang together with the outer wall, which is why following one wall leads through every cell.",
+    level: "cap-x-maze",
+  },
+  {
+    term: "right-hand rule",
+    meaning:
+      "A way through a maze without a map: keep one hand on the wall beside you and never let go. On the robot it is a wall follower. It fails when the goal lies at a free-standing wall, an island.",
+    level: "cap-x-maze",
+  },
+  {
+    term: "second trip",
+    meaning:
+      "In the terrain levels of chapter 21 the test runs the mission twice: at a fixed time the world changes and the goal becomes the place the robot started from. A program that learnt one route by heart fails the second trip.",
+    level: "cap-p-slalom",
+  },
+  {
     term: "waypoint",
     meaning: "One of several target points that a robot visits in order. Reaching one makes the next one the goal.",
     level: "cap-x-square",

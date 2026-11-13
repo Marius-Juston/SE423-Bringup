@@ -83,7 +83,7 @@ export class Board implements Rt {
   pauseAt = Infinity;
   steps = 0;
   stepLimit = 40_000_000;
-  private overrun = 0;
+  overrun = 0;
   private events: Ev[] = [];
   private seq = 0;
 

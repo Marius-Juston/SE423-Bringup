@@ -566,6 +566,34 @@ tr.target td:first-child { color: var(--bad); }
 .panel-title { font-size: var(--fs-1); font-weight: 680; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text); }
 .panel-note { font-size: var(--fs-1); font-weight: 400; color: var(--dim); }
 .panel-body { padding: 0 0.7rem 0.7rem; }
+/* A panel that can grow: "Fill the column" spans the bench's columns, "Large view" takes everything beside the editor. */
+.panel.expandable { position: relative; container-type: inline-size; }
+.panel.expandable > h3 button { padding-right: 15rem; }
+.panel-tools { position: absolute; top: 0.3rem; right: 0.4rem; display: flex; gap: 0.25rem; }
+.panel-tool { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 1.6rem; min-width: 24px; padding: 0.05em 0.5em; background: none; border: 1px solid transparent; border-radius: var(--radius); color: var(--dim); font-size: var(--fs-1); font-weight: 600; white-space: nowrap; }
+.panel-tool:hover { color: var(--text); border-color: var(--control); background: var(--surface); }
+.panel-tool[aria-pressed="true"] { color: var(--text); border-color: var(--control); }
+/* A narrow panel keeps the icons; the words stay as the buttons' names. */
+@container (max-width: 27rem) {
+  .panel-tool span { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .panel.expandable > h3 button { padding-right: 5rem; }
+}
+.panel.size-wide { column-span: all; }
+.panel-bar { display: none; }
+/* Large view: the briefing and the other panels step aside, the editor and its toolbar stay. */
+.level-body:not(.stacked):not(.tabbed):has(.panel.size-large) { grid-template-columns: minmax(20rem, 2fr) 7px minmax(0, 3fr) !important; }
+.level-body:not(.stacked):not(.tabbed):has(.panel.size-large) > .brief, .level-body:not(.stacked):not(.tabbed):has(.panel.size-large) > .brief + .splitter { display: none; }
+.level-body:not(.stacked):not(.tabbed):has(.panel.size-large) > .splitter { pointer-events: none; opacity: 0.4; }
+.bench:has(.panel.size-large) { display: flex; flex-direction: column; overflow: hidden; }
+.bench:has(.panel.size-large) > :not(.bench-panels):not(h2) { display: none; }
+.bench:has(.panel.size-large) .bench-panels { columns: auto; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.bench:has(.panel.size-large) .bench-panels > .panel:not(.size-large) { display: none; }
+.panel.size-large { flex: 1 1 auto; min-height: 0; margin-bottom: 0; display: flex; flex-direction: column; }
+.panel.size-large > .panel-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
+.panel.size-large > .panel-body > :last-child { flex: 1 1 auto; min-height: 0; }
+.panel.size-large > h3 button { cursor: default; }
+.level-body.tabbed .panel.size-large .panel-bar, .level-body.stacked .panel.size-large .panel-bar { display: block; flex: none; margin-bottom: 0.5rem; }
+.level-body.stacked .bench:has(.panel.size-large) { min-height: 92vh; }
 .panel-body > :last-child { margin-bottom: 0; }
 .panel h4.sub { font-size: var(--fs-1); text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); margin: 0.8rem 0 0.3rem; }
 .panel .lcd, .panel .watch { margin-top: 0.5rem; }
@@ -788,3 +816,11 @@ table.keys td:first-child { white-space: nowrap; }
   .setting-row { grid-template-columns: minmax(0, 1fr); gap: 0.2rem; }
   h1 { font-size: 1.4rem; }
 }
+
+/* Handbook diagram cards with a preview of the figure. */
+.hb-card-wrap { display: grid; grid-template-rows: auto 1fr; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); overflow: hidden; cursor: pointer; }
+.hb-card-wrap:hover { background: var(--surface-2); border-color: var(--control); }
+.hb-card-wrap .hb-card { border: 0; border-radius: 0; background: transparent; }
+.hb-card-preview { height: 8.5rem; overflow: hidden; background: var(--inset); border-bottom: 1px solid var(--border); pointer-events: none; user-select: none; position: relative; }
+.hb-card-preview-inner { width: 300%; transform: scale(0.3333); transform-origin: top left; padding: 0.4rem 1.2rem 0; }
+.hb-card-preview-inner .figure { margin: 0; border: 0; background: transparent; box-shadow: none; }

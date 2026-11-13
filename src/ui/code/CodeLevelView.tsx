@@ -11,6 +11,9 @@ import { Registers } from "./Registers";
 import { Panel } from "../Panel";
 import { Icon } from "../Icon";
 import { VIEWS } from "../views";
+import { ArenaContext, type ArenaInfo } from "../views/robot-arena-context";
+import { ArenaPreview } from "../views/robot-arena";
+import { worldSetup } from "../views/robot-arena-model";
 import { Guard } from "../Markdown";
 import { findLevel } from "../../levels/index";
 import { compareBests, measure, type BestNote } from "../bests";
@@ -142,12 +145,14 @@ export function CodeLevelView({
   }, [live, speed]);
 
   const running = !!live?.running;
-  const start = () => setLive(new LiveSession(level.kit, code));
+  // A live run begins in the level's world: its room, start pose and goal (the test's later stimuli are not replayed).
+  const setup = useMemo(() => worldSetup(level.stimuli), [level]);
+  const start = () => setLive(new LiveSession(level.kit, code, setup));
   const stop = () => setLive(null);
   /** Stepping works from a stopped board too: it powers up paused at the first line. */
   const session = (): LiveSession => {
     if (live?.running) return live;
-    const s = new LiveSession(level.kit, code);
+    const s = new LiveSession(level.kit, code, setup);
     s.paused = true;
     setLive(s);
     return s;
@@ -292,6 +297,34 @@ export function CodeLevelView({
   // A failed check says what was seen; its pointer to the cause waits for the second failed run.
   const pointers = fails >= 2;
   const held = !!result && !result.passed && !pointers && result.checks.some((c) => !c.pass && c.hint);
+  // The robot arena leads the bench on levels where the robot drives through a world or reports where it thinks it is.
+  const arenaLeads = useMemo(() => setup.some((x) => x.set === "ROBOT_WORLD" && x.value === 1) || /tb_report_pose\s*\(/.test(level.starter + level.solution), [setup, level]);
+  const hasWorld = setup.some((x) => x.set === "ROBOT_WORLD" && x.value === 1);
+  const allChecks = useMemo(() => [...level.checks, ...(level.bonus ?? [])], [level]);
+  const arena: ArenaInfo = { stimuli: level.stimuli ?? [], checks: allChecks, results: !live && result && !result.compileError ? [...result.checks, ...result.bonus] : undefined, watch: level.watch ?? [], session: live, redraw: bump, durationMs: level.durationMs };
+  const span: [number, number] = [Math.max(0, nowMs - windowMs), Math.max(nowMs, 1)];
+  // In the large view of a narrow window the editor's toolbar is on another tab: the panel carries the two buttons that matter.
+  const viewBar = (
+    <div className="tool-row">
+      {running ? (
+        <button className="btn small" onClick={stop} aria-label="Stop the program">Stop</button>
+      ) : (
+        <button className="btn small" onClick={start} aria-label="Run the program">Run</button>
+      )}
+      <button className="btn small" disabled={!running} onClick={() => { live!.paused = !live!.paused; bump(); }} aria-label={running && live!.paused ? "Resume the program" : "Pause the program"}>{running && live!.paused ? "Resume" : "Pause"}</button>
+      <span className={`chip state-${state.kind}`}><i aria-hidden="true" /> {state.text}</span>
+    </div>
+  );
+  const viewPanel = (v: (typeof VIEWS)[number], lead: boolean) => (
+    <Panel key={v.id} id={`view-${v.id}`} title={v.title} expand={{ sizeKey: `view-${v.id}${lead ? "-lead" : ""}`, defaultSize: lead ? "wide" : "normal", bar: viewBar }}>
+      <Guard what="This view">
+        {board && v.relevant(board, kit) ? <v.Component board={board} kit={kit} nowMs={nowMs} window={span} live={!!live} /> : <ArenaPreview />}
+      </Guard>
+    </Panel>
+  );
+  const arenaView = VIEWS.find((v) => v.id === "robot-arena");
+  // Shown first: when it leads and there is something to show (before a run, the level's world from its stimuli).
+  const arenaFirst = !!arenaView && arenaLeads && ((!!board && arenaView.relevant(board, kit)) || hasWorld);
   const replace = (text: string) => {
     setCode(text);
     setContinued(false);
@@ -380,6 +413,7 @@ export function CodeLevelView({
       <div className="pane bench" {...(tab ? { role: "tabpanel", id: "pane-board", "aria-labelledby": "tab-board", hidden: tab !== "board" } : {})}>
         <h2 className="sr-only">{sandbox ? "Board" : "Tests and board"}</h2>
         {benchTop}
+        <ArenaContext.Provider value={arena}>
         <div className="bench-panels">
           {!sandbox && (
             <Panel id="tests" title="Tests" note={result ? `${nPass} of ${result.checks.length} passed${stale ? ", before your last edit" : ""}` : undefined}>
@@ -450,6 +484,7 @@ export function CodeLevelView({
               )}
             </Panel>
           )}
+          {arenaFirst && viewPanel(arenaView!, true)}
           <Panel id="board" title={kit.name}>
             <Parts kit={kit} board={board} pressed={live ? (id) => live.isPressed(id) : undefined} onButton={live?.running ? (id, d) => live.setButton(id, d) : undefined} onKnob={live?.running ? (id, v) => live.setKnob(id, v) : undefined} focus={focus} />
             <p className="simstate" aria-live="off">
@@ -473,14 +508,7 @@ export function CodeLevelView({
               <div className="lcd" role="img" aria-label={`LCD: ${board.lcd[0]} / ${board.lcd[1]}`}>{board.lcd[0].padEnd(20)}{"\n"}{board.lcd[1].padEnd(20)}</div>
             ) : null}
           </Panel>
-          {board &&
-            VIEWS.filter((v) => v.relevant(board, kit)).map((v) => (
-              <Panel key={v.id} id={`view-${v.id}`} title={v.title}>
-                <Guard what="This view">
-                  <v.Component board={board} kit={kit} nowMs={nowMs} window={[Math.max(0, nowMs - windowMs), Math.max(nowMs, 1)]} live={!!live} />
-                </Guard>
-              </Panel>
-            ))}
+          {board && VIEWS.filter((v) => v.relevant(board, kit) && !(arenaFirst && v === arenaView)).map((v) => viewPanel(v, false))}
           {showPins && (
             <Panel id="signals" title="Pins over time">
               {board ? <Scope kit={kit} traces={board.gpio.trace} fromMs={Math.max(0, nowMs - windowMs)} toMs={Math.max(nowMs, 1)} marks={stimMarks} /> : <p className="hint-text">Run the program to see its pins.</p>}
@@ -511,6 +539,7 @@ export function CodeLevelView({
             {board ? <Registers board={board} onGoto={(line) => editor.current?.goto(line)} /> : <p className="hint-text">Run the program to see the registers it writes.</p>}
           </Panel>
         </div>
+        </ArenaContext.Provider>
       </div>
     </>
   );
