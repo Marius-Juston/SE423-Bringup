@@ -123,7 +123,7 @@ async function solve(l: Level): Promise<void> {
 }
 
 // E2E_FROM=<chapter number> plays only that chapter and the ones after it.
-const FROM = Number(process.env.E2E_FROM ?? 0);
+const FROM = Number(process.env.E2E_FROM ?? -99);
 
 describe("playthrough", () => {
   for (const c of CHAPTERS.filter((x) => x.number >= FROM)) {

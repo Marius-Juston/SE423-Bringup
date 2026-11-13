@@ -233,15 +233,23 @@ export class Compiler {
     for (const f of unit.funcs) this.compileFn(f);
   }
 
+  private externOnly = new Set<string>();
+
   private globalDecl(v: VarDecl): void {
     const existing = this.globals.get(v.name);
     if (v.isExtern && !v.init) {
-      if (!existing) this.defineGlobal(v.name, this.completeArray(v.t, v.init, v.line));
+      if (!existing) {
+        this.defineGlobal(v.name, this.completeArray(v.t, v.init, v.line));
+        this.externOnly.add(v.name);
+      }
       return;
     }
+    // "extern int x;" then "int x = 4;" is the declaration followed by the one definition.
+    const wasExtern = this.externOnly.delete(v.name);
     if (existing && existing.file === this.file && !v.isExtern) {
       // "extern int x;" followed by "int x;" is fine; two definitions with initialisers are not.
-      if (v.init) throw this.err(v.line, `The variable '${v.name}' is defined more than once.`);
+      if (v.init && !wasExtern) throw this.err(v.line, `The variable '${v.name}' is defined more than once.`);
+      if (v.init) this.inits.push(this.initCode(existing.t, v.init, () => existing.addr));
       return;
     }
     if (existing && existing.file !== this.file)
@@ -279,8 +287,12 @@ export class Compiler {
     this.curFn = f;
     this.frame = 0;
     this.scopes = [new Map()];
+    if (def.t.ret.k === "struct")
+      throw this.err(def.line, `'${def.name}' returns a whole struct. That is not available in this game (and is slow on a microcontroller): fill a struct through a pointer parameter instead.`);
     f.paramStore = def.params.map((p) => {
       if (!p.name) throw this.err(def.line, `A parameter of '${def.name}' has a type but no name.`);
+      if (p.t.k === "struct")
+        throw this.err(def.line, `Parameter '${p.name}' of '${def.name}' is a whole struct, which would be copied on every call. That is not available in this game: pass a pointer (struct ... *${p.name}) and use ->.`);
       const off = this.allocLocal(p.name, p.t, def.line);
       const st = this.storer(p.t);
       const rt = this.rt;

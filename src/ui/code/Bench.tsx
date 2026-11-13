@@ -21,7 +21,8 @@ export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: K
     return !!tr && (tr.length > 1 || tr[0].v !== 0);
   };
   const analog = kit.parts.filter(
-    (p) => (p.kind === "knob" && (focus?.has(p.input) || !!board?.inputsUsed.has(p.input))) || (p.kind === "meter" && (focus?.has(p.output) || moved(p.output))),
+    // A knob whose signal the simulated hardware itself drives (the wheels, once the motors turn) would fight it: hide it.
+    (p) => (p.kind === "knob" && !moved(p.input) && (focus?.has(p.input) || !!board?.inputsUsed.has(p.input))) || (p.kind === "meter" && (focus?.has(p.output) || moved(p.output))),
   );
   return (
     <>

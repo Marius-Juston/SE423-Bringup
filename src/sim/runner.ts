@@ -318,7 +318,7 @@ export function runProgram(spec: RunSpec): RunResult {
           break;
         }
         pass = (c.equals === undefined || Math.abs(v - c.equals) <= (c.tol ?? 1e-9)) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
-        const want = c.equals !== undefined ? `${c.equals}${c.tol ? ` (within ${c.tol})` : ""}` : `${c.min ?? "-inf"} to ${c.max ?? "inf"}`;
+        const want = c.equals !== undefined ? `${c.equals}${c.tol ? ` (within ${c.tol})` : ""}` : c.min === undefined ? `at most ${c.max}` : c.max === undefined ? `at least ${c.min}` : `${c.min} to ${c.max}`;
         detail = `${c.name} was ${+v.toPrecision(5)}${c.at !== undefined ? ` at ${fmtMs(c.at)}` : ""}${pass ? "" : `, expected ${want}`}.`;
         break;
       }

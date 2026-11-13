@@ -47,10 +47,10 @@ const fmt = (v: number | undefined, d = 2) => {
 function RobotMap({ board, nowMs }: ViewProps) {
   const o = board.outputs;
   const now = nowMs * MS;
-  const truth = trail(o.get("TB_X_FT"), o.get("TB_Y_FT"), now);
+  const truth = trail((o.get("ROBOT_X_FT") ?? o.get("TB_X_FT")), (o.get("ROBOT_Y_FT") ?? o.get("TB_Y_FT")), now);
   const est = trail(o.get("TB_EST_X_FT"), o.get("TB_EST_Y_FT"), now);
   const real = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? v : 0);
-  const pose = { x: real(at(o.get("TB_X_FT"), now)), y: real(at(o.get("TB_Y_FT"), now)), th: real(at(o.get("TB_THETA_RAD"), now)) };
+  const pose = { x: real(at((o.get("ROBOT_X_FT") ?? o.get("TB_X_FT")), now)), y: real(at((o.get("ROBOT_Y_FT") ?? o.get("TB_Y_FT")), now)), th: real(at((o.get("ROBOT_THETA_RAD") ?? o.get("TB_THETA_RAD")), now)) };
   const ex = at(o.get("TB_EST_X_FT"), now);
   const ey = at(o.get("TB_EST_Y_FT"), now);
   const eth = at(o.get("TB_EST_THETA_RAD"), now);
@@ -142,7 +142,7 @@ export const view: BenchView = {
   order: 40,
   relevant: (board) => {
     const o = board.outputs;
-    return (o.get("TB_X_FT")?.length ?? 0) > 1 || (o.get("TB_Y_FT")?.length ?? 0) > 1 || (o.get("TB_THETA_RAD")?.length ?? 0) > 1 || (o.get("TB_EST_X_FT")?.length ?? 0) > 0;
+    return ((o.get("ROBOT_X_FT") ?? o.get("TB_X_FT"))?.length ?? 0) > 1 || ((o.get("ROBOT_Y_FT") ?? o.get("TB_Y_FT"))?.length ?? 0) > 1 || ((o.get("ROBOT_THETA_RAD") ?? o.get("TB_THETA_RAD"))?.length ?? 0) > 1 || (o.get("TB_EST_X_FT")?.length ?? 0) > 0;
   },
   Component: RobotMap,
 };

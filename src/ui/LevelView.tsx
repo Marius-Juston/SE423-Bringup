@@ -102,7 +102,7 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
   const [taskPref, setTaskW] = usePref<number | null>(isCode ? "w-task-code" : reading ? "w-task-read" : "w-task", null);
   const [benchPref, setBenchW] = usePref<number | null>("w-bench", null);
   // Briefings and quick checks are for reading: the text gets the larger share.
-  const taskDefault = isCode ? 340 : reading ? Math.round(winW * 0.56) : 460;
+  const taskDefault = isCode ? clamp(Math.round(winW * 0.27), 340, 520) : reading ? Math.round(winW * 0.56) : 460;
   const taskMax = isCode ? Math.min(520, winW - 2 * SPLIT - EDITOR_MIN - BENCH_MIN) : winW - SPLIT - (reading ? 340 : 440);
   const taskW = clamp(num(taskPref, taskDefault), 240, taskMax);
   const { bench: benchW, max: benchMax } = benchWidth(winW, taskW, benchPref);

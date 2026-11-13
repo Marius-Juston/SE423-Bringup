@@ -10,12 +10,16 @@ own computer.
 
 ## Playing
 
-- **Map**: 21 chapters in four parts (Foundations, Analog and motion, Buses
-  and data, The robot). Pick a chapter tile to see its levels. Every chapter
-  has a **core path** (briefing, puzzles, complete the code, write the code,
-  debug, checkpoint) that unlocks the next chapters, optional **practice**
-  levels, and optional **expert challenges**. Settings has an "unlock every
-  chapter" switch for practising one topic.
+- **Map**: 25 chapters in six parts. **Start here** has three primers for
+  students who have never programmed or wired a circuit (A: electricity and
+  circuits, B: C from zero, C: C for hardware); anyone who knows C and Ohm's
+  law starts at chapter 0. Then Foundations, Analog and motion, Buses and
+  data, The robot, and a **Capstone** in which one program grows level by
+  level, from the student's own code, until the robot drives itself to a
+  goal. Every chapter has a **core path**, optional **practice** levels and
+  optional **expert challenges**. Nothing is locked: a chapter only says
+  which chapters to do first. Tiles carry the labs and homeworks a chapter
+  supports, and the "Working on" filter highlights the chapters for one.
 - **Briefings** embed interactive figures (a GPIO pin you can configure, the
   ADC chain from trigger to interrupt, SPI clock modes, an interrupt path
   whose gates you open and close, a PWM waveform you drag, and many more).
@@ -34,7 +38,10 @@ own computer.
   fewer lines).
 - **Hints**: up to three per level, from a nudge to nearly the answer. The
   reference solution opens after the level is passed or the last hint is
-  used.
+  used. A level passed with the solution open counts as "passed with help"
+  and earns no stars until it is passed again without it.
+- **Glossary**: every term the levels introduce, in plain words, with a link
+  to the level that teaches it (Handbook).
 - **Handbook**: every register of the chip with its fields, the pin tables
   of the course boards, the formulas, and the key diagrams.
 - **Sandbox**: a free board with nothing checked.
