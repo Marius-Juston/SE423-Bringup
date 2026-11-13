@@ -22,6 +22,9 @@ const SERVOS: [string, string][] = [
 ];
 const NOTE = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
+/** The "wheels" view, when it exists, already draws the two wheels: this one then leaves them out. */
+const WHEELS_ELSEWHERE = Object.keys(import.meta.glob("./wheels.tsx")).length > 0;
+
 const moved = (board: Board, name: string) => (board.outputs.get(name)?.length ?? 0) > 1;
 
 /** Where each wheel trace has been integrated to, so a frame only adds the new part. */
@@ -44,7 +47,7 @@ function noteName(hz: number): string {
   return `${NOTE[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
 }
 
-const CELL = 100;
+const CELL = 132;
 const H = 104;
 
 function Wheel({ label, v, angle }: { label: string; v: number; angle: number }) {
@@ -130,7 +133,7 @@ function Buzzer({ hz }: { hz: number }) {
 function ActuatorView({ board, window: [, to] }: ViewProps) {
   const t = to * 1e6;
   const cells: ReactElement[] = [];
-  if (WHEELS.some(([n]) => moved(board, n)))
+  if (!WHEELS_ELSEWHERE && WHEELS.some(([n]) => moved(board, n)))
     for (const [name, label] of WHEELS) {
       const tr = board.outputs.get(name);
       if (tr?.length) cells.push(<Wheel key={name} label={label} {...wheel(tr, t)} />);
@@ -141,7 +144,7 @@ function ActuatorView({ board, window: [, to] }: ViewProps) {
   }
   if (moved(board, "BUZZER_HZ")) cells.push(<Buzzer key="buzzer" hz={board.output("BUZZER_HZ", t) ?? 0} />);
   if (!cells.length) return <p className="hint-text">Motors, servos and the buzzer appear here once their PWM pin drives them.</p>;
-  const cols = Math.min(4, cells.length);
+  const cols = Math.min(3, cells.length);
   const rows = Math.ceil(cells.length / cols);
   return (
     <svg className="scope" viewBox={`0 0 ${cols * CELL} ${rows * H}`} style={{ maxWidth: `${cols * 9}rem`, margin: "0 auto" }} role="group" aria-label="Actuators driven by the PWM pins">
@@ -156,6 +159,6 @@ export const view: BenchView = {
   id: "actuator-view",
   title: "Motors, servos and buzzer",
   order: 45,
-  relevant: (board) => WHEELS.some(([n]) => moved(board, n)) || SERVOS.some(([n]) => board.outputs.has(n)) || moved(board, "BUZZER_HZ"),
+  relevant: (board) => (!WHEELS_ELSEWHERE && WHEELS.some(([n]) => moved(board, n))) || SERVOS.some(([n]) => board.outputs.has(n)) || moved(board, "BUZZER_HZ"),
   Component: ActuatorView,
 };

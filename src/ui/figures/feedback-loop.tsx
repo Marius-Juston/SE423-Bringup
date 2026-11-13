@@ -172,7 +172,7 @@ function FeedbackLoop() {
         <text x={226} y={100} textAnchor="middle" className="fig-label" opacity={closed ? 1 : 0.5}>encoder</text>
         <text x={226} y={111} textAnchor="middle" className="fig-label dim" opacity={closed ? 1 : 0.5}>{closed ? `measures ${fmt(s.v, 2)}` : "not used"}</text>
         <path d={closed ? "M190 102 H60 V62" : "M190 102 H60 V70"} className={fb} markerEnd={closed ? "url(#fb-arrow)" : undefined} />
-        {!closed && <text x={60} y={66} textAnchor="middle" className="fig-label dim">not connected</text>}
+        {!closed && <text x={66} y={114} className="fig-label dim">not connected</text>}
         {/* speed over time */}
         <text x={40} y={146} className="fig-label">speed <tspan className="fig-label dim">and reference (dashed), last 1.2 s, slowed down 4 times</tspan></text>
         <line x1={40} x2={412} y1={206} y2={206} className="fb-grid" />

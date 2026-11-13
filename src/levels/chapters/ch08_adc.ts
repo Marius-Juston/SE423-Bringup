@@ -220,6 +220,10 @@ volts = ADCRESULT * 3.0 / 4096.0;
 
 Going there and back does not return exactly the voltage you started with: the fraction that was dropped is gone. What comes back is the bottom of the step the voltage was in.
 
+{{figure:quantise}}
+
+Try it in the figure: move the pin voltage and watch which step it lands on and how much is lost. With 3 or 4 bits the steps are easy to see; 12 bits work the same way with steps 256 times finer than 4 bits.
+
 The photoresistor on ADCINA4 is at **1.2 V**. Work out what the ADC reports.
 `,
       fields: [
@@ -275,6 +279,10 @@ For each bit, starting with the top one:
 3. **Decide.** Yes: the bit stays 1. No: the guess was too high, the bit goes back to 0.
 
 Then the next bit down. Each step halves the range the voltage can still be in. One bit per step, so 12 bits take 12 steps.
+
+{{figure:sar-search}}
+
+Step through the 4-bit search in the figure first, and change the held voltage to see the answers change. Then do the 8-bit one below by hand.
 
 ## Your turn
 This small converter has **8 bits** and a 3.0 V reference, so the bits are worth 1.5 V, 0.75 V, 0.375 V and so on, as in the ladder puzzle. The held voltage is **1.2 V**.
@@ -1144,6 +1152,10 @@ The held voltage is **2.0 V**.
 
 For each step, the **trial voltage** is the value of all bits kept so far plus the bit being tried. If the held voltage is at least the trial voltage, the bit is kept.
 
+{{figure:sar-search}}
+
+The figure from "Be the converter" is here again: watch how the band the voltage can be in halves with every comparison.
+
 Give the trial voltage of each of the first four steps, then the four bits as one hexadecimal digit.
 `,
       fields: [
@@ -1197,6 +1209,10 @@ While the capacitor is connected to the pin it has to charge to the pin's voltag
 \`\`\`c
 acquisition window = (ACQPS + 1) * 5 ns      // 5 ns is one cycle of the 200 MHz system clock
 \`\`\`
+
+{{figure:sample-hold}}
+
+Try it in the figure: shorten the window or raise the sensor's resistance until the capacitor no longer reaches the pin voltage, and see what the converter reports then.
 
 ACQPS has 9 bits, 0 to 511. The window counts **system clock** cycles. The conversion that follows is timed by the slower **ADC clock**, the system clock divided down by \`ADCCTL2.PRESCALE\`. The course sets PRESCALE = 6, which divides by 4.
 

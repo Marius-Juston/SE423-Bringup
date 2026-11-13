@@ -14,7 +14,7 @@ const CSS = `
 
 function Quantise() {
   const [bits, setBits] = useState(4);
-  const [vin, setVin] = useState(1.2);
+  const [vin, setVin] = useState(2.0);
   const levels = 1 << bits;
   const top = levels - 1;
   const lsb = VREF / levels;

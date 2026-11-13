@@ -65,7 +65,7 @@ function PingPong() {
   if (t === 0) {
     title = "Before the first trigger";
     text = "Both buffers are empty. InitDma() put ping's address in the shadow register. Every trigger from now on copies one sample; press the button to send one.";
-    code = "DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)ping;   // in InitDma()";
+    code = "// in InitDma()\nDmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)ping;";
   } else if (isrNow) {
     title = `Trigger ${t}: a transfer starts, DMA_ISR runs`;
     const start = `The DMA takes the address waiting in the shadow register (${NAMES[dest]}) and stores sample ${t} in ${NAMES[dest]}[0]. Because a transfer has started, it interrupts the CPU. DMA_ISR writes ${NAMES[other]}'s address to the shadow register: that is for the transfer after this one, the running one is not disturbed. `;
@@ -142,6 +142,7 @@ function PingPong() {
           );
         })}
         {/* timeline */}
+        <line x1={tx(t)} x2={tx(t)} y1="141" y2="182" stroke="var(--text)" strokeWidth="1.6" />
         <text x="6" y="152" className="fig-label dim">DMA fills</text>
         <text x="6" y="172" className="fig-label dim">main reads</text>
         {[0, 1, 2, 3, 4].map((k) => (
@@ -156,13 +157,12 @@ function PingPong() {
           const w = Math.max(0, Math.min(MAIN_TIME, t - r.at)) * TW;
           return (
             <g key={i}>
-              <rect x={tx(r.at)} y="162" width={MAIN_TIME * TW} height="14" rx="2" fill="none" stroke={r.ok ? "var(--ok)" : "var(--bad)"} strokeWidth="1" />
+              <rect x={tx(r.at)} y="162" width={MAIN_TIME * TW} height="14" rx="2" fill="var(--surface)" stroke={r.ok ? "var(--ok)" : "var(--bad)"} strokeWidth="1" />
               <rect x={tx(r.at)} y="162" width={w} height="14" rx="2" fill={r.ok ? "var(--ok)" : "var(--bad)"} fillOpacity="0.3" />
               <text x={tx(r.at) + (MAIN_TIME * TW) / 2} y="172.5" textAnchor="middle" className={`fig-label ${r.ok ? "pp-ok" : "pp-bad"}`}>{NAMES[r.buf]}{r.ok ? "" : " !"}</text>
             </g>
           );
         })}
-        <line x1={tx(t)} x2={tx(t)} y1="130" y2="180" stroke="var(--text)" strokeWidth="1.4" />
         <text x={Math.min(tx(t), 380)} y="192" textAnchor="middle" className="fig-label">{t === 0 ? "start" : `after trigger ${t}`}</text>
       </svg>
       <div className="fig-step" role="status">

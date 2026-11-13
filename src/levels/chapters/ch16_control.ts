@@ -127,6 +127,10 @@ In Lab 3 you sent a control effort to a motor and the wheel turned at some speed
 - **Error** \`e = r - y\`: how far off you are. Positive means "too slow".
 - **Control effort** \`u\`: what you send to the motor. In this course it is always a number from **-10 to 10**.
 
+Try it in the figure: put a load on the wheel in open loop, then in closed loop, and follow the numbers round the loop.
+
+{{figure:feedback-loop}}
+
 ## PID
 The most common controller adds up to three terms:
 
@@ -273,6 +277,10 @@ Timer 0 already interrupts every 1 ms, and the function measures the left wheel 
 
 The last line sends \`uLeft\` to both motors, so the robot drives straight. Keep the variable names: the tests read them.
 
+Try it in the figure: move Kp and watch the steady-state error shrink without ever reaching zero. The curve is what your code will produce.
+
+{{figure:pi-tuner}}
+
 With \`Kp = 12\` and \`vref = 1.0\` you computed the result in the previous level: the wheel settles at 0.7 ft/s. Watch \`vLeft\` and \`eLeft\`.
 ${BENCH}`,
       kit: "robot",
@@ -350,6 +358,10 @@ Add the integral term. Write the whole pass yourself this time:
 6. Send it to both motors: \`tb_set_effort(uLeft, uLeft)\`.
 
 The gains are given: \`Kp = 8\`, \`Ki = 100\`. Keep the variable names.
+
+Try it in the figure: set Kp = 8 and raise Ki from 0 to see the integral part take over the effort and the error vanish.
+
+{{figure:pi-tuner}}
 
 When the wheel has settled, look at the watch list. \`eLeft\` is zero, and \`ILeft\` holds 0.048: the integral term alone supplies the 4.8 the wheel needs at 1 ft/s.
 ${BENCH}`,
@@ -519,6 +531,10 @@ The cure is to filter the derivative, or to leave the D term out. The robot's sp
 For the first 2 seconds this program asks for **3 ft/s**. The wheel cannot go faster than 2.3 ft/s, so the effort sits at 10. Then the reference drops to 1 ft/s.
 
 Run it and look at \`ILeft\` and \`vLeft\`. The wheel should slow down at 2 s. It stays at full speed for almost another second: the integral wound up to 1.5 (it only needs 0.048) and has to unwind first.
+
+Try it in the figure: choose "3 ft/s for 2 s, then 1" and switch the clamping on and off.
+
+{{figure:pi-tuner}}
 
 ## The fix: clamping
 Do not add to the integral while the effort is saturated:

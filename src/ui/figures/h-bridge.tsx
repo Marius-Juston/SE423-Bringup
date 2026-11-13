@@ -130,7 +130,7 @@ function HBridge() {
           <button className="fig-opt" aria-pressed={pwm} onClick={() => setPwm(true)}>one PWM pin, as on the robot</button>
         </div>
       </div>
-      <svg viewBox="0 0 420 190" role="img" aria-label={pwm ? `PWM drive, control effort ${u}, duty cycle ${pct(duty)}: motor ${state}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
+      <svg viewBox={pwm ? "0 0 420 190" : "30 0 300 190"} role="img" aria-label={pwm ? `PWM drive, control effort ${u}, duty cycle ${pct(duty)}: motor ${state}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
         <text x={CX} y="12" textAnchor="middle" className="fig-label">battery +</text>
         <text x={CX} y="184" textAnchor="middle" className="fig-label">ground</text>
         {line(`M${CX},${TOP} H${LX}`, P.tl)}

@@ -205,6 +205,10 @@ A second sensor is placed a quarter of a slit period away from the first. The tw
 
 Only one of the two signals changes at a time. A code with that property is a **Gray code**.
 
+Try it in the figure: turn the disc both ways and watch which channel changes first, then cover sensor B to see why one channel cannot tell the direction.
+
+{{figure:quadrature}}
+
 ## Incremental and absolute
 This encoder is **incremental**: it reports changes, and something has to add them up. The sum starts at 0 at power-on, wherever the wheel is. Switch the robot off and the position is lost.
 
@@ -262,6 +266,10 @@ Channel B is the same square wave, shifted by one slot:
 - **Count going down**: B leads A. B does now what A will do **one slot later**.
 
 Draw both. Check your drawing with this rule: in every slot exactly **one** of the two signals may differ from the slot before.
+
+Try it in the figure: step the disc forward and backward and read off which signal changes first each way.
+
+{{figure:quadrature}}
 `,
       slots: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
       rows: [
@@ -297,6 +305,10 @@ angle = count * (2*PI / (2000.0*20.0));    // radians
 - Speed is the change in position divided by the time it took. The course measures it every 1 ms: speed = (new - old) / 0.001.
 
 \`QPOSCNT\` is an unsigned 32-bit register. Counting down from 0 it continues at 0xFFFFFFFF. Store it in a **signed** 32-bit variable (\`int32_t\`) and the same bits read as -1, -2, and so on.
+
+Try it in the figure: roll the wheel and follow one number through the chain, from counts to feet.
+
+{{figure:counts-to-distance}}
 `,
       fields: [
         { id: "a", label: "Counts for one turn of the motor shaft", answer: 2000, why: "500 slits x 4 edges per slit = 2000." },
@@ -455,6 +467,10 @@ Why signed: \`QPOSCNT\` is unsigned, and one count below 0 it reads 0xFFFFFFFF. 
 ## The sign
 The two motors are mounted as mirror images of each other. When the robot drives forward, the right encoder counts **up** and the left encoder counts **down**. Lab 3 has you find this on the real robot by turning the wheels by hand. Both functions must return a **positive** angle for forward motion, so one scale factor is negative.
 
+Try it in the figure: switch to the left wheel, roll it forward, and see what the register reads and what the minus sign does.
+
+{{figure:counts-to-distance}}
+
 The course file has one more line in these functions, \`if (raw >= QEP_maxvalue/2) raw -= QEP_maxvalue;\`, with the comment "I don't think this is needed". It is not: leave it out.
 
 The tests turn the left wheel forward at 4 rad/s, the right wheel forward at 6 rad/s and the hand wheel backward at 2 rad/s, for a quarter of a second.
@@ -558,6 +574,10 @@ Speed is the derivative of position. A program cannot take a derivative, but it 
 \`\`\`c
 v = (p_current - p_old) / 0.001;    // 0.001 s between samples
 \`\`\`
+
+Try it in the figure: slow the wheel down and watch the computed speed jump between a few values, because the position only moves in whole counts.
+
+{{figure:speed-from-counts}}
 
 For it to work, \`p_old\` must still hold the previous position when the function runs again 1 ms later. So it is a **global** variable, and the last thing the function does is save the current position into it.
 
@@ -901,6 +921,10 @@ ${READ_RIGHT}
 Written as a pair, A and B have four possible states: 00, 10, 11 and 01. While the shaft turns, the pair walks through them in a fixed circle. The eQEP adds 1 for every step in one direction around the circle and subtracts 1 for every step in the other.
 
 The count goes **up** when **A leads B**: A changes first, then B follows.
+
+Try it in the figure: step the disc one quarter at a time and follow the highlighted state round the circle.
+
+{{figure:quadrature}}
 
 Start from A = 0, B = 0 with the count at 0, and order the steps for the count going up. Remember that only one signal changes per step. A jump straight from 00 to 11 can never happen on a healthy encoder; the eQEP flags it as a phase error.
 `,
@@ -1363,6 +1387,10 @@ ${QEP3.replace("EQep3Regs.QPOSMAX = 0xFFFFFFFF;   // use full range of the 32 bi
 The backward difference counts how many counts arrive in a fixed time. One count per millisecond is already 0.157 rad/s. Below that, the 1 ms difference is 0 most of the time and one count now and then: useless.
 
 For slow motion, turn the measurement around: **measure the time between counts**. (The eQEP has an edge capture unit that does this in hardware. Here you do it in the 1 ms interrupt.)
+
+Try it in the figure: set the slowest speed, then compare "difference over 1 ms" with "time between counts".
+
+{{figure:speed-from-counts}}
 
 ## What to write, every 1 ms
 Keep the count at the last change and the number of milliseconds since then.

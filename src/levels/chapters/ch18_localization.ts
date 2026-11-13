@@ -263,6 +263,10 @@ Rotate by the heading, then add the robot's position:
 
 In matrix form this is **P_world = R(theta) P_robot + T**, with the rotation matrix R(theta) = [cos -sin; sin cos] and the translation T = the robot's position. Packing R and T into one 3 x 3 matrix gives the **homogeneous transformation** of HW4.
 
+Try it in the figure: drag and turn the robot and watch the same point get new world coordinates, with the formula filled in.
+
+{{figure:frames}}
+
 ## Dead reckoning
 Nobody tells the robot its pose. It can work it out from its own wheels. For a robot with two driven wheels a distance b apart (**differential drive**):
 
@@ -329,6 +333,10 @@ Undo the two steps in the opposite order: **subtract** the robot's position, the
 This is HW4's inverse of the homogeneous transformation: the rotation part becomes its transpose (the signs of the two sines swap), and the translation becomes -R^T d.
 
 In the robot frame, positive y is to the robot's **left**. A negative y means the point is on its right.
+
+Try it in the figure: switch the point to "stays in the room" to see the inverse written out with numbers.
+
+{{figure:frames}}
 
 Your calculator must be in degree mode for these, or convert: radians = degrees x pi / 180.
 `,
@@ -487,6 +495,10 @@ Every 1 ms:
    - \`y = y + V * sin(theta) * 0.001\`
 
 \`x\`, \`y\` and \`theta\` are globals that start at 0: the robot starts at the origin, looking along the world x axis.
+
+Try it in the figure: set the two wheel speeds and see the path these three sums produce, then let one encoder read 1 % too much.
+
+{{figure:dead-reckoning}}
 
 The last line of the function reports your estimate to the bench, which compares it with the true pose.
 ${BENCH}`,
@@ -879,6 +891,10 @@ A sensor says "you are at z". It is not perfect either: its variance is r. The f
 
 Read the gain as trust. If the belief is very unsure (large variance) and the sensor is good (small r), K is close to 1: take the measurement. If the belief is already good and the sensor is poor, K is close to 0: keep the prediction. After an update the variance is always **smaller**: a measurement can only add information.
 
+Try it in the figure: go through one round step by step, then move the two variances and watch the gain and the updated curve.
+
+{{figure:kalman-1d}}
+
 ## Your turn
 The belief is: mean 2.0 ft, variance 0.5. The robot moves u = 1.0 ft, with process noise q = 0.3. Then a measurement z = 3.6 ft arrives, with r = 0.2.
 `,
@@ -916,6 +932,10 @@ Turn the two steps into two functions. The belief lives in two globals: \`kf_x\`
 - \`kf_p = (1.0 - kf_k) * kf_p\`
 
 The order inside \`kf_update\` matters: the gain is computed from the variance **before** it is reduced.
+
+The figure shows each line of the two functions next to what it does to the belief.
+
+{{figure:kalman-1d}}
 
 \`main\` runs the numbers of the previous level, so you know what to expect after round 1: mean 3.48, variance 0.16. Then it runs a second round.
 
@@ -1284,6 +1304,10 @@ v_old = v;
 \`\`\`
 
 For x and y, the thing being integrated is the speed along each axis, so average the **products**: this step's \`v * cos(theta_new)\` and the previous step's \`v_old * cos(theta)\`.
+
+Try it in the figure: pick a 100 ms time step on a tight turn and switch between the two rules.
+
+{{figure:dead-reckoning}}
 
 The course's gyro code integrates the same way: \`(gyroz + old_gyro) * .0005\` is the average of two readings times 1 ms.
 

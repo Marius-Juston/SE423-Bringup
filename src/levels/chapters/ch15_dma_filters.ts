@@ -596,6 +596,10 @@ Give every sample its own weight and you have the general **FIR** filter (finite
 
 ## One rule about sampling
 A sampled signal can only show frequencies up to **half the sampling rate**. That limit is the **Nyquist frequency**. A tone above it does not vanish: it shows up as a lower frequency that was never there. This is **aliasing**, and no filter in your code can remove it afterwards.
+
+{{figure:sampling-alias}}
+
+Try it in the figure: drag the signal frequency up across the Nyquist line and watch a slow wave appear through the same dots.
 `,
       questions: [
         {
@@ -681,6 +685,10 @@ if (iPingPong == 0) {
 \`\`\`
 
 The Technical Reference Manual recommends exactly this interrupt timing for ping-pong buffers in continuous mode.
+
+{{figure:ping-pong}}
+
+Step through the figure, one sample per press, with buffers of 8 samples instead of 1024. Watch what happens at each swap: where the next sample goes, which address waits in the shadow register, and which buffer main is given.
 `,
       questions: [
         {
@@ -733,6 +741,10 @@ The Technical Reference Manual recommends exactly this interrupt timing for ping
 
 **Aliasing.** A tone at f between fs / 2 and fs gives the same samples as a tone at **fs - f** would (for a sine, turned upside down). Example: fs = 1000 Hz and a 900 Hz tone. The samples look like a 100 Hz tone.
 
+{{figure:sampling-alias}}
+
+The figure starts on that example. Move both sliders and check the rule fs - f against what the dots show.
+
 **Coefficients.** An FIR filter of order M has M + 1 coefficients.
 
 **Gain at DC.** Feed a filter a constant input. The output settles at the input times the **sum of the coefficients**. That factor is the gain at 0 Hz, called DC.
@@ -779,6 +791,10 @@ A filter needs the last few samples, so they are kept in an array: \`xk[0]\` is 
 3. **Sum** the five values and divide by 5.
 
 Shift from the old end: copy into \`xk[4]\` first. In the other direction you would overwrite values before you have moved them.
+
+{{figure:moving-average}}
+
+Try it in the figure: drag the window along the noisy signal. The lower part shows the five stored samples, newest first, exactly as \`xk[0]\` to \`xk[4]\` hold them.
 
 ## The test signal
 A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, one period of the tone is exactly 5 samples, and the mean over one full period of a sine is zero. So a correct average shows a steady **2.0**: the tone is gone.
@@ -829,6 +845,10 @@ The moving average weighs all samples equally. A designed filter gives each one 
 \`\`\`c
 y[n] = b[0] x[n] + b[1] x[n-1] + b[2] x[n-2] + b[3] x[n-3] + b[4] x[n-4]
 \`\`\`
+
+{{figure:moving-average}}
+
+In the figure, switch the weights from "all equal" to "your own": the code is the same loop, only the numbers in \`b\` change.
 
 In MATLAB, \`fir1(order, cutoff)\` computes such weights. Lab 4 has you paste them into an array. Here the array \`b\` holds a low-pass filter of order 4, so \`NUM_B\` is 5.
 
@@ -943,6 +963,10 @@ This program does ping-pong buffering by hand, without the DMA, so that you can 
 The signal is a slow 50 Hz sine. One buffer is 5 ms, a quarter of its period, so the buffer means should come out as about +0.63, +0.63, -0.63, -0.63, and so on.
 
 They do not. Run it and compare \`mean1\` and \`mean3\` with what you expect.
+
+{{figure:ping-pong}}
+
+The figure shows the same mistake with the DMA doing the filling: choose "the buffer just started" and step to a swap to see what main gets.
 
 Think about the moment main sees the flag. The interrupt function has **already switched** \`fillPing\`. So what does \`fillPing == 1\` mean at that moment: is \`ping\` the finished buffer, or the one being written?
 `,
@@ -1187,6 +1211,10 @@ Sample 0 is taken 0.05 period after a rising edge. Count on from there and keep 
 - sample 3: 2.75, which is 0.75 ...
 
 Mark every sample that is high. Then look at the pattern you drew: what is the frequency of *that* square wave?
+
+{{figure:sampling-alias}}
+
+The figure shows the same situation for a sine: 900 Hz sampled 1000 times a second.
 `,
       slots: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"],
       rows: [

@@ -154,13 +154,19 @@ On the robot, the PWM signal drives the amplifier's **direction** input. While t
 - **100 %**: full power in the positive direction.
 - **0 %**: full power in the negative direction.
 
-So "motor off" is not a quiet pin. It is a 20 kHz square wave at exactly 50 %.
+So "motor off" is not a quiet pin. It is a 20 kHz square wave at exactly 50 %. Try it in the figure: close the switches by hand to send current through the motor either way, then hand the bridge to one PWM pin and move the control effort.
+
+{{figure:h-bridge}}
 
 ## RC servo: the pulse width is an angle
-An RC servo has its own controller inside. It expects a pulse every 20 ms (**50 Hz**) and turns its arm to the angle the **width** of that pulse stands for. On the course's servos about 4 % duty is -90 degrees, 8 % is 0 degrees and 12 % is +90 degrees. The rest of the period carries no information.
+An RC servo has its own controller inside. It expects a pulse every 20 ms (**50 Hz**) and turns its arm to the angle the **width** of that pulse stands for. On the course's servos about 4 % duty is -90 degrees, 8 % is 0 degrees and 12 % is +90 degrees. The rest of the period carries no information. Try it in the figure: drag the falling edge of the pulse and watch the arm.
+
+{{figure:servo-pulse}}
 
 ## Buzzer: the frequency is the note
-A piezo buzzer clicks on every edge. A square wave of 440 Hz sounds as the note A. Here the duty cycle stays at 50 % and you change the **period**.
+A piezo buzzer clicks on every edge. A square wave of 440 Hz sounds as the note A. Here the duty cycle stays at 50 % and you change the **period**. Try it in the figure: pick a note and see the counter's teeth get shorter as the pitch rises.
+
+{{figure:buzzer-tone}}
 `,
       questions: [
         {
@@ -348,6 +354,10 @@ void setEPWM2A(float controleffort);
 2. **Scale**: -10 is 0 % duty, 0 is 50 %, 10 is 100 %.
 3. **Write CMPA**. Use the value in \`TBPRD\` for 100 %, not a number typed twice.
 
+Try it in the figure: choose "one PWM pin" and move the control effort past 10 to see the straight line and where it saturates.
+
+{{figure:h-bridge}}
+
 \`CMPA\` is an integer and your value is a \`float\`. C converts by cutting off the fraction: 345.67 becomes 345. That is fine here.
 
 ## The test
@@ -495,6 +505,10 @@ Start from the EPWM12A set-up you know and change what a servo needs:
 - Saturate \`angle\` to -90..90.
 - -90 degrees is 4 % duty, 0 is 8 %, +90 is 12 %, on a straight line.
 
+Try it in the figure: set an angle and read the pulse width and the \`CMPA\` it needs.
+
+{{figure:servo-pulse}}
+
 \`main\` is written. It commands 0, 60, -45 and then 200 degrees, 100 ms apart. The meter "RC servo 1" shows where the arm points.
 `,
       kit: "redboard",
@@ -600,7 +614,11 @@ A note is then one number in \`TBPRD\`:
 #define A4NOTE ((uint16_t)(((50000000/2)/2)/440.00))
 \`\`\`
 
-50 MHz, divided by 2 by \`CLKDIV\`, divided by 2 because a full square wave takes two teeth, divided by the frequency. \`OFFNOTE\` is 0: with \`TBPRD = 0\` the pin toggles far above anything the buzzer or your ear can follow, which is silence.
+50 MHz, divided by 2 by \`CLKDIV\`, divided by 2 because a full square wave takes two teeth, divided by the frequency. Try it in the figure: pick a note, read its \`TBPRD\`, and count the teeth in one period of the tone.
+
+{{figure:buzzer-tone}}
+
+\`OFFNOTE\` is 0: with \`TBPRD = 0\` the pin toggles far above anything the buzzer or your ear can follow, which is silence.
 
 ## Task
 1. Fix the three \`???\` lines and the mux index.

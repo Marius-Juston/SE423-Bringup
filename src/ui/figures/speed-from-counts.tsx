@@ -12,7 +12,7 @@ const X0 = 46;
 const X1 = 412;
 const xOf = (ms: number) => X0 + (ms / T_MS) * (X1 - X0);
 const speedOf = (s: number) => 0.005 * Math.pow(200, s);
-const sig = (v: number) => (v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4));
+const sig = (v: number) => (v === 0 ? "0" : v >= 1 ? v.toFixed(2) : v >= 0.1 ? v.toFixed(3) : v.toFixed(4));
 type Method = 1 | 5 | 20 | 50 | "gap";
 
 function SpeedFromCounts() {
@@ -106,7 +106,7 @@ function SpeedFromCounts() {
           </g>
         )}
         <path d={trueV} className="sc-true" />
-        <path d={trace} className="fig-trace data sc-thin" />
+        {method !== 1 && <path d={trace} className="fig-trace data sc-thin" />}
         {sim.est.map((v, k) => (v === null ? null : <circle key={k} cx={xOf(k)} cy={yV(v)} r={1.4} className="sc-dot" />))}
         {[0, 50, 100, 150, 200].map((ms) => (
           <text key={ms} x={xOf(ms)} y={204} textAnchor={ms === 0 ? "start" : ms === 200 ? "end" : "middle"} className="fig-label dim">{ms} ms</text>

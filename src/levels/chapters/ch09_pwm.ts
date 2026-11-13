@@ -103,7 +103,9 @@ A GPIO pin has two levels: 0 V and 3.3 V. An LED on it is either fully on or off
 - The **duty cycle** is the fraction of the period the pin is high: \`duty = high time / period\`.
 - The **average voltage** is the duty cycle times the high level: 25 % of 3.3 V is 0.825 V.
 
-Picture the waveform: at 25 % it is a row of narrow pulses, at 75 % a row of wide pulses with narrow gaps. The pulses come at the same rate in both cases.
+At 25 % the waveform is a row of narrow pulses, at 75 % a row of wide pulses with narrow gaps. The pulses come at the same rate in both cases. Try it in the figure: move the duty cycle, then switch slowly and fast, and press Play to see when the LED stops blinking and starts dimming.
+
+{{figure:pwm-average}}
 
 ## Why the load sees the average
 The switching is faster than the load can follow. At 20 kHz your eye cannot see LED1 flicker, so it sees the average brightness. A motor's inductance and inertia smooth the current, so the motor feels the average voltage. 20 kHz is also above what you can hear, so the motor does not whine.
@@ -159,7 +161,9 @@ The course's set-up uses two events:
 - counter = **0**: **set** the pin (high)
 - counter = **CMPA** while counting up: **clear** the pin (low)
 
-So the pin is high from the start of each tooth until the counter gets to \`CMPA\`. A bigger \`CMPA\` means a longer high time.
+So the pin is high from the start of each tooth until the counter gets to \`CMPA\`. A bigger \`CMPA\` means a longer high time. Try it in the figure: drag the \`CMPA\` and \`TBPRD\` lines and watch the pin, the period and the duty cycle follow.
+
+{{figure:pwm-waveform}}
 
 ## Your turn
 Here \`TBPRD = 7\` and \`CMPA = 3\`. The slots are the counter values of two teeth. The two grey rows mark where the events happen. Draw the pin: click a cell to switch it between low and high.
@@ -207,7 +211,9 @@ The ePWM clock is 100 MHz (SYSCLK / 2). The time base divides it by two prescale
 
 \`TBCLK = 100 MHz / (HSPCLKDIV x CLKDIV)\`
 
-\`HSPCLKDIV\` is **/2 after reset** and the course never changes it. With \`CLKDIV = 0\` (divide by 1) the counter therefore counts at **50 MHz**: one count every **20 ns**. This is the "50 MHz clock" that Lab 3 and HW2 tell you to remember.
+\`HSPCLKDIV\` is **/2 after reset** and the course never changes it. With \`CLKDIV = 0\` (divide by 1) the counter therefore counts at **50 MHz**: one count every **20 ns**. This is the "50 MHz clock" that Lab 3 and HW2 tell you to remember. Try it in the figure: change the two dividers and see what one count lasts, then pick a frequency and read how many counts a period needs.
+
+{{figure:pwm-clock-tree}}
 
 ## Period
 The counter runs 0, 1, ... TBPRD, which is TBPRD + 1 counts. In up-count mode:
@@ -316,7 +322,9 @@ The value in a field is the action:
 - 2: **set**, the pin goes high
 - 3: toggle
 
-After reset the whole register is 0: no event does anything, so the pin never moves even if the counter runs.
+After reset the whole register is 0: no event does anything, so the pin never moves even if the counter runs. Try it in the figure: give the zero event and the compare event each of the four actions, and see what swapping set and clear does to the pin.
+
+{{figure:pwm-waveform}}
 
 Build the course's setting: **set** the pin when the counter is zero, **clear** it when the counter reaches CMPA on the way up.
 `,
@@ -744,6 +752,10 @@ __interrupt void cpu_timer0_isr(void)
 - **Down** (1): the mirror image, TBPRD down to 0. Same period.
 - **Up-down** (2): a **triangle**, 0 up to TBPRD and back down to 0. Period = **2 x TBPRD** counts. With a set on the way up and a clear on the way down, the pulse is centred in the period, which motor drives like.
 - **Freeze** (3): stopped. The reset state.
+
+Try it in the figure: switch the count to up-down and see the triangle, the doubled period and the centred pulse.
+
+{{figure:pwm-waveform}}
 
 ## Resolution
 The compare value is a whole number of counts, so a period of N counts gives N + 1 duty cycles from 0 to 100 %. A faster carrier means fewer counts per period and coarser steps. You trade frequency for resolution, because their product is fixed by the counter clock:

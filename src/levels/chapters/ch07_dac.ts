@@ -80,7 +80,9 @@ On the course boards the reference is 3.0 V, so:
 
 One step of the number moves the output by 3.0 V / 4096 = **0.73 mV**. That step is the DAC's **resolution**. More bits would mean smaller steps (and a more expensive chip).
 
-Notice that 3.0 V itself is never reached: 4096 does not fit in 12 bits.
+{{figure:dac-staircase}}
+
+Try it in the figure: drag the number, then switch to 3 or 4 bits to see the single steps. Notice that 3.0 V itself is never reached: 4096 does not fit in 12 bits.
 
 ## Inside: a resistor ladder
 The classic circuit is the **R-2R ladder**: a chain of resistors with only two values, R and 2R, and one switch per bit. Each bit switches its leg of the ladder to the reference or to ground. The ladder is built so that every bit adds **half as much** voltage as the bit above it:
@@ -195,15 +197,11 @@ Work out the four values. Give voltages in volts.
       goal: "Set the switches of an 8-bit R-2R ladder so that it outputs 1.125 V.",
       refs: [{ course: "L5" }, { trm: "12.1.2" }],
       brief: `
-Here is a small R-2R ladder DAC with **8 bits** and a 3.0 V reference. Each bit is one switch. A switch that is on adds its share to the output:
+Here is a small R-2R ladder DAC with **8 bits** and a 3.0 V reference. Each bit is one switch. A switch that is on adds its share to the output: bit 7 adds 3.0 / 2 = **1.5 V**, and every lower bit adds half of the one before.
 
-- bit 7 adds 3.0 / 2 = **1.5 V**
-- bit 6 adds 0.75 V
-- bit 5 adds 0.375 V
-- bit 4 adds 0.1875 V
-- every lower bit adds half of the one before
+{{figure:r2r-ladder}}
 
-The output is the sum of the bits that are on.
+Flip the switches in the figure: the output is the sum of the bits that are on.
 
 Set the switches so that the output is **1.125 V**.
 
@@ -665,7 +663,9 @@ The test signal goes 0.5 V, 1.0 V, 1.4 V, 1.6 V, 2.0 V. Times two, that is 1.0 V
 
 Instead the output **drops** to 0.2 V and 1.0 V on the last two values.
 
-Find out why. Look at what number the code stores for 3.2 V, and remember how many bits \`DACVALS\` keeps. Then fix \`setDACA\` so that it can be trusted with any input.
+{{figure:dac-staircase}}
+
+Find out why. In the figure, push the number past 4095 and watch the output. Then look at what number the code stores for 3.2 V, and remember how many bits \`DACVALS\` keeps. Then fix \`setDACA\` so that it can be trusted with any input.
 `,
       kit: "robot",
       durationMs: 7,
