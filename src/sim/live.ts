@@ -37,6 +37,7 @@ export class LiveSession {
       if (i >= 0) this.touched.splice(i, 1);
       this.touched.push(reg.name);
     };
+    for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);
     try {
       b.load(source);
       this.gen = b.run();
@@ -87,6 +88,12 @@ export class LiveSession {
     if (down) this.pressed.add(id);
     else this.pressed.delete(id);
     this.board.gpio.drive(part.pin, down ? 0 : null);
+  }
+
+  /** Turns a knob. */
+  setKnob(id: string, value: number): void {
+    const part = findPart(this.kit, id);
+    if (part.kind === "knob") this.board.setInput(part.input, value);
   }
 
   isPressed(id: string): boolean {

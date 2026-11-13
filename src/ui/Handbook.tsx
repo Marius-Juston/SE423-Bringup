@@ -67,7 +67,7 @@ export function Handbook() {
                     <tr><th>Part</th><th>GPIO</th><th>Port</th><th>Notes</th></tr>
                   </thead>
                   <tbody>
-                    {k.parts.map((p) => (
+                    {k.parts.filter((p): p is Extract<typeof p, { pin: number }> => "pin" in p).map((p) => (
                       <tr key={p.id}>
                         <td>{p.label}</td>
                         <td className="mono">GPIO{p.pin}</td>

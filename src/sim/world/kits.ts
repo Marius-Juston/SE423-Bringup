@@ -1,3 +1,5 @@
+import { PLUGINS } from "../plugin";
+
 // The parts wired to the chip on the course boards. Pin numbers come from
 // the course handouts (Lab 1, Lab 2, HW1) and the LABstarter project.
 
@@ -18,7 +20,33 @@ export interface Button {
   pin: number;
 }
 
-export type Part = Led | Button;
+/** A value the student can turn: feeds a named input of the signal bus. */
+export interface Knob {
+  kind: "knob";
+  id: string;
+  label: string;
+  /** Name on the signal bus, e.g. "ADCINA4". */
+  input: string;
+  min: number;
+  max: number;
+  step?: number;
+  initial: number;
+  unit: string;
+}
+
+/** A read-out of a named output of the signal bus (a voltage, a speed, an angle). */
+export interface Meter {
+  kind: "meter";
+  id: string;
+  label: string;
+  /** Name on the signal bus, e.g. "DACA". */
+  output: string;
+  unit: string;
+  /** Digits after the decimal point (default 2). */
+  digits?: number;
+}
+
+export type Part = Led | Button | Knob | Meter;
 
 export interface Kit {
   id: string;
@@ -55,6 +83,9 @@ export const KITS: Record<string, Kit> = {
     ],
   },
 };
+
+// Parts contributed by simulator plugins.
+for (const p of PLUGINS) for (const [kit, parts] of Object.entries(p.parts ?? {})) KITS[kit]?.parts.push(...parts);
 
 export function findPart(kit: Kit, id: string): Part {
   const p = kit.parts.find((x) => x.id === id);

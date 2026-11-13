@@ -90,7 +90,7 @@ export function CodeLevelView({ level, onPass }: { level: CodeLevel; onPass: () 
   const nowMs = live ? live.timeMs : (result?.endMs ?? 0);
   const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
   const windowMs = live ? Math.min(Math.max(nowMs, 1), 400) : Math.max(nowMs, 1);
-  const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : `'${s.type}'` })) : [];
+  const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : "set" in s ? `${s.set}=${s.value}` : `'${s.type}'` })) : [];
 
   return (
     <>
@@ -155,7 +155,7 @@ export function CodeLevelView({ level, onPass }: { level: CodeLevel; onPass: () 
         {tab === "board" && (
           <>
             <h3>{kit.name}</h3>
-            <Parts kit={kit} board={board} pressed={live ? (id) => live.isPressed(id) : undefined} onButton={live?.running ? (id, d) => live.setButton(id, d) : undefined} />
+            <Parts kit={kit} board={board} pressed={live ? (id) => live.isPressed(id) : undefined} onButton={live?.running ? (id, d) => live.setButton(id, d) : undefined} onKnob={live?.running ? (id, v) => live.setKnob(id, v) : undefined} />
             <p className="simstate" aria-live="off">
               {live ? (live.running ? `running · t = ${nowMs.toFixed(1)} ms${live.load < 0.9 ? ` · ${Math.round(live.load * 100)}% of requested speed` : ""}` : `stopped at ${nowMs.toFixed(3)} ms`) : result ? `test run · ${nowMs.toFixed(1)} ms` : "not running"}
               {board?.mainReturned ? " · main() has returned" : ""}

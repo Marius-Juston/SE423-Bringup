@@ -1,4 +1,4 @@
-import type { Chapter, Level } from "./types";
+import { tierOf, type Chapter, type Level } from "./types";
 
 // Every file in ./chapters that exports a Chapter is picked up automatically.
 const modules = import.meta.glob<Record<string, unknown>>("./chapters/ch*.ts", { eager: true });
@@ -47,7 +47,7 @@ export function nextLevel(id: string): Level | undefined {
 }
 
 export function chapterDone(ch: Chapter, passed: Record<string, true>): boolean {
-  return ch.levels.every((l) => l.optional || passed[l.id]);
+  return ch.levels.every((l) => tierOf(l) !== "core" || passed[l.id]);
 }
 
 export function chapterUnlocked(ch: Chapter, passed: Record<string, true>, unlockAll: boolean): boolean {

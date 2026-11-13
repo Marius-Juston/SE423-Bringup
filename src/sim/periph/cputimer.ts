@@ -3,7 +3,8 @@
 // from PRD, and reaching zero sets TIF and reloads.
 //   period = (PRD + 1) * (TDDRH:TDDR + 1) SYSCLK cycles
 
-import { SYSCLK_NS, type Board } from "../board";
+import { SYSCLK_NS } from "../consts";
+import type { Board } from "../board";
 
 interface Timer {
   n: number;
@@ -91,6 +92,7 @@ export class CpuTimers {
     const b = this.b;
     const dev = b.dev;
     this.expiries[t.n].push(at);
+    b.fireTrigger(`TINT${t.n}`, at);
     dev.set(`${t.prefix}.TCR`, 1, "TIF");
     t.count = dev.get(`${t.prefix}.PRD`);
     t.t0 = at;

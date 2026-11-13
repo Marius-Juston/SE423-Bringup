@@ -32,7 +32,7 @@ describe("level catalogue", () => {
       });
 
       if (l.kind === "code") {
-        const run = (source: string) => runProgram({ kit: l.kit, source, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks });
+        const run = (source: string) => runProgram({ kit: l.kit, source, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks, bonus: l.bonus });
         it("reference solution passes every check with no diagnostics", () => {
           const r = run(l.solution);
           expect(r.compileError, JSON.stringify(r.compileError)).toBeUndefined();
@@ -40,6 +40,8 @@ describe("level catalogue", () => {
           for (const ch of r.checks) expect(ch.pass, `${ch.label}: ${ch.detail}`).toBe(true);
           expect(r.diagnostics.map((d) => `${d.line}: ${d.msg}`)).toEqual([]);
           expect(r.passed).toBe(true);
+          // The reference solution earns every star, so each one is reachable.
+          for (const ch of r.bonus) expect(ch.pass, `bonus ${ch.label}: ${ch.detail}`).toBe(true);
         });
         it("starter code does not pass", () => {
           expect(run(l.starter).passed).toBe(false);

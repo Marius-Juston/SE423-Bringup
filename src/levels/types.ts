@@ -24,9 +24,16 @@ interface Base {
   hints?: string[];
   /** Shown after the level is passed: why the answer is the answer. */
   takeaway?: string;
-  /** Optional levels are never needed to unlock the next chapter. */
-  optional?: boolean;
+  /**
+   * "core" levels (the default) unlock the next chapter. "practice" levels
+   * repeat a skill on a new case. "expert" levels are hard, optional
+   * challenges for students who want to go to the bottom of a topic.
+   */
+  tier?: Tier;
 }
+
+export type Tier = "core" | "practice" | "expert";
+export const tierOf = (l: { tier?: Tier }): Tier => l.tier ?? "core";
 
 /** Reading level: ends with a few questions to check understanding. */
 export interface BriefLevel extends Base {
@@ -125,6 +132,12 @@ export interface CodeLevel extends Base {
   durationMs: number;
   stimuli?: Stimulus[];
   checks: Check[];
+  /**
+   * Optional extra objectives, each worth a star: tighter, faster or
+   * lower-level versions of the same task. The reference solution earns all
+   * of them.
+   */
+  bonus?: Check[];
   /** Global variables shown live next to the board. */
   watch?: string[];
   /** Registers shown in the inspector by default. */

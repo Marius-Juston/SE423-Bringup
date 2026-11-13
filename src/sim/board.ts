@@ -13,8 +13,10 @@ import { Pie } from "./periph/pie";
 import { Sci } from "./periph/sci";
 import { installLibrary, PRELUDE } from "./lib/prelude";
 
-/** SYSCLK period: 200 MHz. */
-export const SYSCLK_NS = 5;
+import { SYSCLK_NS } from "./consts";
+import { PLUGINS } from "./plugin";
+
+export { SYSCLK_NS };
 /** Nominal cost of one C statement (10 CPU cycles). */
 const STMT_NS = 50;
 const IER_ADDR = 0xf000;
@@ -40,6 +42,8 @@ export interface IsrLog {
   t: number;
   name: string;
   vector: string;
+  /** How long the function ran, ns (-1 while it is still running). */
+  dur: number;
 }
 
 export class Board implements Rt {
@@ -90,6 +94,16 @@ export class Board implements Rt {
   pie: Pie;
   sci: Sci;
 
+  // ---- signal bus between the chip and the world around it ----
+  /** Values the world feeds in, by name (e.g. "ADCINA4" in volts, "LEFT_WHEEL_RADPS"). */
+  inputs = new Map<string, number>();
+  /** Values the chip or the world produces, by name (e.g. "DACA" in volts), with history. */
+  outputs = new Map<string, { t: number; v: number }[]>();
+  private inputWatchers = new Map<string, ((v: number, t: number) => void)[]>();
+  private triggerWatchers = new Map<string, ((t: number) => void)[]>();
+  /** State owned by plugins, by plugin name. */
+  plugins = new Map<string, unknown>();
+
   constructor() {
     this.dev = new Device(this.mem);
     this.compiler = new Compiler(this, this.ctx);
@@ -128,9 +142,70 @@ export class Board implements Rt {
     this.sci = new Sci(this);
 
     // Course library: prototypes and TI sources in C, the rest native.
-    const unit = new Parser(this.pp.run(PRELUDE, "library"), this.ctx).parseUnit();
+    const source = [PRELUDE, ...PLUGINS.map((p) => p.prelude ?? "")].join("\n");
+    const unit = new Parser(this.pp.run(source, "library"), this.ctx).parseUnit();
     this.compiler.compileUnit(unit, "library");
     installLibrary(this);
+    for (const p of PLUGINS) p.install?.(this);
+  }
+
+  // ---------- signal bus ----------
+
+  /** The world sets an input value (a knob, a sensor, a shaft speed). */
+  setInput(name: string, v: number, t = this.now): void {
+    this.inputs.set(name, v);
+    this.mem.writes++;
+    for (const w of this.inputWatchers.get(name) ?? []) w(v, t);
+  }
+
+  input(name: string, fallback = 0): number {
+    return this.inputs.get(name) ?? fallback;
+  }
+
+  onInput(name: string, fn: (v: number, t: number) => void): void {
+    const l = this.inputWatchers.get(name);
+    if (l) l.push(fn);
+    else this.inputWatchers.set(name, [fn]);
+  }
+
+  /** Records an output value (only when it changes). */
+  publish(name: string, v: number, t = this.now): void {
+    let tr = this.outputs.get(name);
+    if (!tr) this.outputs.set(name, (tr = []));
+    const last = tr[tr.length - 1];
+    if (last && last.v === v) return;
+    if (last && last.t === t) last.v = v;
+    else tr.push({ t, v });
+    this.mem.writes++;
+  }
+
+  /** Latest published value, or the value at a past time. */
+  output(name: string, t?: number): number | undefined {
+    const tr = this.outputs.get(name);
+    if (!tr || !tr.length) return undefined;
+    if (t === undefined) return tr[tr.length - 1].v;
+    let v: number | undefined;
+    for (const x of tr) {
+      if (x.t > t) break;
+      v = x.v;
+    }
+    return v;
+  }
+
+  /**
+   * Hardware trigger lines between peripherals, by name: "TINT0".."TINT2"
+   * (CPU timers), "EPWM1SOCA".."EPWM12SOCB" (ePWM start-of-conversion),
+   * "ADCAINT1".. (ADC interrupts, for the DMA).
+   */
+  onTrigger(name: string, fn: (t: number) => void): void {
+    const l = this.triggerWatchers.get(name);
+    if (l) l.push(fn);
+    else this.triggerWatchers.set(name, [fn]);
+  }
+
+  fireTrigger(name: string, t = this.now): void {
+    const l = this.triggerWatchers.get(name);
+    if (l) for (const w of l) w(t);
   }
 
   // ---------- program ----------
@@ -273,12 +348,15 @@ export class Board implements Rt {
       this.irq = false;
       this.isrDepth++;
       this.mem.writes++;
-      this.isrLog.push({ t: this.now, name: fn.name, vector });
+      const entry: IsrLog = { t: this.now, name: fn.name, vector, dur: -1 };
+      this.isrLog.push(entry);
       this.now += 14 * SYSCLK_NS;
+      const began = this.now;
       try {
         this.compiler.invoke(fn, [], fn.line);
       } finally {
         this.isrDepth--;
+        entry.dur = this.now - began;
       }
       this.now += 8 * SYSCLK_NS;
       this.ier = saved.ier;

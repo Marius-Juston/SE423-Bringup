@@ -6,7 +6,7 @@ import { fieldsOf, fieldValue, hex } from "../device";
 
 const MS = 1e6;
 
-export function Parts({ kit, board, pressed, onButton }: { kit: Kit; board: Board | null; pressed?: (id: string) => boolean; onButton?: (id: string, down: boolean) => void }) {
+export function Parts({ kit, board, pressed, onButton, onKnob }: { kit: Kit; board: Board | null; pressed?: (id: string) => boolean; onButton?: (id: string, down: boolean) => void; onKnob?: (id: string, value: number) => void }) {
   const lit = (pin: number, activeLow: boolean) => {
     if (!board) return false;
     const g = board.gpio;
@@ -14,10 +14,12 @@ export function Parts({ kit, board, pressed, onButton }: { kit: Kit; board: Boar
     const lv = g.level[pin];
     return lv < 0 ? false : activeLow ? lv === 0 : lv === 1;
   };
+  const analog = kit.parts.filter((p) => p.kind === "knob" || p.kind === "meter");
   return (
+    <>
     <div className="parts" role="group" aria-label={`${kit.name}: LEDs and push buttons`}>
       {kit.parts.map((p) =>
-        p.kind === "led" ? (
+        p.kind === "knob" || p.kind === "meter" ? null : p.kind === "led" ? (
           <div key={p.id} className={`led ${p.color} ${lit(p.pin, p.activeLow) ? "on" : ""}`} role="img" aria-label={`${p.label} on GPIO${p.pin}: ${lit(p.pin, p.activeLow) ? "on" : "off"}`}>
             <i />
             <span>{p.id}</span>
@@ -41,12 +43,39 @@ export function Parts({ kit, board, pressed, onButton }: { kit: Kit; board: Boar
         ),
       )}
     </div>
+    {analog.length > 0 && (
+      <div className="analog">
+        {analog.map((p) =>
+          p.kind === "knob" ? (
+            <label key={p.id} className="knob">
+              <span>{p.label}</span>
+              <input
+                type="range"
+                min={p.min}
+                max={p.max}
+                step={p.step ?? (p.max - p.min) / 200}
+                value={board?.inputs.get(p.input) ?? p.initial}
+                disabled={!onKnob}
+                onChange={(e) => onKnob?.(p.id, +e.target.value)}
+              />
+              <output>{(board?.inputs.get(p.input) ?? p.initial).toFixed(2)} {p.unit}</output>
+            </label>
+          ) : p.kind === "meter" ? (
+            <div key={p.id} className="meter" role="img" aria-label={`${p.label}: ${board?.output(p.output)?.toFixed(p.digits ?? 2) ?? "no value"} ${p.unit}`}>
+              <span>{p.label}</span>
+              <output>{board?.output(p.output)?.toFixed(p.digits ?? 2) ?? "--"} {p.unit}</output>
+            </div>
+          ) : null,
+        )}
+      </div>
+    )}
+    </>
   );
 }
 
 /** Logic-analyser view of the kit's pins over [fromMs, toMs]. */
 export function Scope({ kit, traces, fromMs, toMs, marks }: { kit: Kit; traces: Map<number, PinChange[]>; fromMs: number; toMs: number; marks?: { tMs: number; label: string }[] }) {
-  const rows = kit.parts.filter((p) => traces.has(p.pin));
+  const rows = kit.parts.filter((p): p is Extract<typeof p, { pin: number }> => "pin" in p && traces.has(p.pin));
   if (!rows.length) return <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>No pin has changed yet.</p>;
   const W = 400;
   const left = 46;
