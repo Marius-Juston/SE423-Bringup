@@ -15,7 +15,7 @@ export interface LiveError {
 }
 
 export class LiveSession {
-  board = new Board();
+  board: Board;
   kit: Kit;
   error: LiveError | null = null;
   /** Paused by the student (stepping). */
@@ -28,6 +28,7 @@ export class LiveSession {
   private pressed = new Set<string>();
 
   constructor(kitId: string, source: string) {
+    this.board = new Board(kitId);
     this.kit = KITS[kitId];
     const b = this.board;
     for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);

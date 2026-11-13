@@ -96,7 +96,7 @@ const fmtMs = (ms: number) => `${+ms.toFixed(3)} ms`;
 export function runProgram(spec: RunSpec): RunResult {
   const kit = KITS[spec.kit];
   if (!kit) throw new Error(`unknown kit ${spec.kit}`);
-  const b = new Board();
+  const b = new Board(spec.kit);
   const end = spec.durationMs * MS;
   const res: RunResult = {
     ran: false, passed: false, checks: [], bonus: [], diagnostics: [], serial: [], console: "", lcd: ["", ""],

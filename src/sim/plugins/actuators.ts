@@ -119,6 +119,8 @@ function install(b: Board): void {
     { pin: 0, name: "LEFT_WHEEL_RADPS", sign: 1, pwm: new PwmIn(), w: 0 },
     { pin: 2, name: "RIGHT_WHEEL_RADPS", sign: -1, pwm: new PwmIn(), w: 0 },
   ];
+  // Only the robot has motors. On the other boards GPIO0 and GPIO2 are free pins.
+  if (b.kit !== "robot") motors.length = 0;
   for (const m of motors) b.publish(m.name, 0, 0);
   const alpha = 1 - Math.exp(-STEP_NS / 1e9 / MOTOR_TAU_S);
   let loop: ReturnType<Board["at"]> | null = null;
@@ -128,7 +130,9 @@ function install(b: Board): void {
     for (const m of motors) {
       const level = b.gpio.level[m.pin];
       // A pin that nothing drives gives the amplifier no command: the motor coasts to a stop.
-      const target = level < 0 ? 0 : m.sign * wheelTarget(m.pwm.duty(t, level));
+      // No two real motors are alike: MOTOR_RIGHT_GAIN (default 1) makes the right one weaker or stronger.
+      const gain = m.pin === 2 ? (b.inputs.get("MOTOR_RIGHT_GAIN") ?? 1) : 1;
+      const target = level < 0 ? 0 : m.sign * gain * wheelTarget(m.pwm.duty(t, level));
       m.w += (target - m.w) * alpha;
       if (Math.abs(target - m.w) < 1e-4) m.w = target;
       else busy = true;
@@ -166,7 +170,7 @@ function install(b: Board): void {
       return;
     }
     if (pin === 0 || pin === 2) {
-      motors[pin >> 1].pwm.edge(level, t);
+      motors[pin >> 1]?.pwm.edge(level, t);
       if (!loop) loop = b.at(t + STEP_NS, step);
       return;
     }

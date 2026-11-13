@@ -124,7 +124,11 @@ export class Board implements Rt {
   /** State owned by plugins, by plugin name. */
   plugins = new Map<string, unknown>();
 
-  constructor() {
+  /** Which course board this is ("robot", "launchpad", "redboard"): plugins use it to attach only what that board has. */
+  readonly kit: string;
+
+  constructor(kit = "robot") {
+    this.kit = kit;
     this.dev = new Device(this.mem);
     this.compiler = new Compiler(this, this.ctx);
     this.dev.declare(this.ctx, (n, t, a) => this.compiler.defineGlobal(n, t, a, "device"));
