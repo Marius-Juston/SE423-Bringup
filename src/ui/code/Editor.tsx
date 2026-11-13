@@ -9,7 +9,8 @@ import { tags as t } from "@lezer/highlight";
 
 export interface Mark {
   line: number;
-  severity: "error" | "warning" | "info";
+  /** "current" marks the line the paused program is on. */
+  severity: "error" | "warning" | "info" | "current";
 }
 
 const setMarks = StateEffect.define<Mark[]>();
@@ -22,7 +23,7 @@ const markField = StateField.define<DecorationSet>({
       const lines = new Map<number, string>();
       for (const m of e.value) {
         if (m.line < 1 || m.line > tr.state.doc.lines) continue;
-        if (lines.get(m.line) !== "error") lines.set(m.line, m.severity);
+        if (m.severity === "current" || (lines.get(m.line) !== "error" && lines.get(m.line) !== "current")) lines.set(m.line, m.severity);
       }
       deco = Decoration.set(
         [...lines.entries()].sort((a, b) => a[0] - b[0]).map(([line, sev]) => Decoration.line({ class: `cm-mark-${sev}` }).range(tr.state.doc.line(line).from)),
@@ -35,34 +36,37 @@ const markField = StateField.define<DecorationSet>({
 
 const theme = EditorView.theme(
   {
-    "&": { backgroundColor: "#0a1730", color: "#ffffff" },
-    ".cm-content": { caretColor: "#fcb316" },
-    ".cm-cursor": { borderLeftColor: "#fcb316", borderLeftWidth: "2px" },
-    ".cm-gutters": { backgroundColor: "#0e1f3a", color: "#c8c6c7", border: "none" },
-    ".cm-activeLine": { backgroundColor: "rgba(255,255,255,0.05)" },
-    ".cm-activeLineGutter": { backgroundColor: "rgba(255,255,255,0.08)" },
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "#28508f" },
-    ".cm-mark-error": { backgroundColor: "rgba(255,138,115,0.22)", boxShadow: "inset 3px 0 0 #ff8a73" },
-    ".cm-mark-warning": { backgroundColor: "rgba(252,179,22,0.14)", boxShadow: "inset 3px 0 0 #fcb316" },
-    ".cm-mark-info": { backgroundColor: "rgba(79,195,232,0.14)", boxShadow: "inset 3px 0 0 #4fc3e8" },
+    "&": { backgroundColor: "var(--inset)", color: "var(--text)" },
+    ".cm-content": { caretColor: "var(--value)" },
+    ".cm-cursor": { borderLeftColor: "var(--value)", borderLeftWidth: "2px" },
+    ".cm-gutters": { backgroundColor: "var(--bg)", color: "var(--dim)", border: "none" },
+    ".cm-activeLine": { backgroundColor: "var(--accent-soft)" },
+    ".cm-activeLineGutter": { backgroundColor: "var(--accent-soft)" },
+    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "var(--select)" },
+    ".cm-mark-error": { backgroundColor: "var(--bad-soft)", boxShadow: "inset 3px 0 0 var(--bad)" },
+    ".cm-mark-warning": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 3px 0 0 var(--value)" },
+    ".cm-mark-current": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 4px 0 0 var(--accent)" },
+    ".cm-mark-info": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 3px 0 0 var(--info)" },
     "&.cm-focused": { outline: "none" },
   },
-  { dark: true },
 );
 
 const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.modifier, t.controlKeyword], color: "#ff9a5c" },
-  { tag: [t.typeName, t.standard(t.typeName)], color: "#4fc3e8" },
-  { tag: [t.number, t.bool], color: "#fcb316" },
-  { tag: [t.string, t.character], color: "#7ad79a" },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: "#a9b6c9", fontStyle: "italic" },
-  { tag: [t.processingInstruction, t.macroName], color: "#d8a6ff" },
-  { tag: t.function(t.variableName), color: "#ffe08a" },
-  { tag: t.propertyName, color: "#cfe8ff" },
+  { tag: [t.keyword, t.modifier, t.controlKeyword], color: "var(--code-kw)" },
+  { tag: [t.typeName, t.standard(t.typeName)], color: "var(--code-type)" },
+  { tag: [t.number, t.bool], color: "var(--code-num)" },
+  { tag: [t.string, t.character], color: "var(--code-str)" },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: "var(--code-comment)", fontStyle: "italic" },
+  { tag: [t.processingInstruction, t.macroName], color: "var(--code-macro)" },
+  { tag: t.function(t.variableName), color: "var(--code-fn)" },
+  { tag: t.propertyName, color: "var(--code-prop)" },
 ]);
 
 export interface EditorHandle {
+  /** Moves the cursor to a line and focuses the editor. */
   goto(line: number): void;
+  /** Scrolls a line into view without taking focus. */
+  reveal(line: number): void;
 }
 
 export function Editor({ value, onChange, marks, handle }: { value: string; onChange: (v: string) => void; marks: Mark[]; handle?: { current: EditorHandle | null } }) {
@@ -98,6 +102,10 @@ export function Editor({ value, onChange, marks, handle }: { value: string; onCh
           const l = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)));
           v.dispatch({ selection: { anchor: l.from }, scrollIntoView: true });
           v.focus();
+        },
+        reveal(line) {
+          const l = v.state.doc.line(Math.max(1, Math.min(line, v.state.doc.lines)));
+          v.dispatch({ effects: EditorView.scrollIntoView(l.from, { y: "center" }) });
         },
       };
     return () => v.destroy();

@@ -18,8 +18,8 @@ export class LiveSession {
   board = new Board();
   kit: Kit;
   error: LiveError | null = null;
-  /** Registers the program wrote, most recent last. */
-  touched: string[] = [];
+  /** Paused by the student (stepping). */
+  paused = false;
   /** Simulated ms per real ms. */
   speed = 1;
   /** Fraction of the requested speed actually reached in the last step. */
@@ -30,13 +30,6 @@ export class LiveSession {
   constructor(kitId: string, source: string) {
     this.kit = KITS[kitId];
     const b = this.board;
-    b.mem.onWrite = (reg, _value, before) => {
-      // Library code is only interesting when it actually changed something.
-      if (b.libDepth && b.mem.peek(reg.addr, reg.words) === before) return;
-      const i = this.touched.indexOf(reg.name);
-      if (i >= 0) this.touched.splice(i, 1);
-      this.touched.push(reg.name);
-    };
     for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);
     try {
       b.load(source);
@@ -80,6 +73,43 @@ export class LiveSession {
       this.fail(e);
     }
     this.load = target > from ? Math.min(1, (b.now - from) / (target - from)) : 1;
+  }
+
+  /** Runs statements until `done` says stop (or a safety limit), then pauses. */
+  private stepWhile(more: () => boolean, limit: number): void {
+    if (!this.gen) return;
+    const b = this.board;
+    b.stepLimit = Infinity;
+    this.paused = true;
+    try {
+      for (let i = 0; i < limit; i++) {
+        // pauseAt = now makes the program stop again after one statement.
+        b.pauseAt = b.now;
+        b.pause = false;
+        if (this.gen.next().done) {
+          this.gen = null;
+          break;
+        }
+        if (!more()) break;
+      }
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** Executes up to the next line of the student's code. */
+  stepLine(): void {
+    const b = this.board;
+    const line = b.line;
+    const isr = b.isrLog.length;
+    this.stepWhile(() => b.line === line && b.isrLog.length === isr, 5000);
+  }
+
+  /** Runs until the program next writes a register (or 200 000 statements pass). */
+  stepToWrite(): void {
+    const b = this.board;
+    const n = b.writeLog.length ? b.writeLog[b.writeLog.length - 1].n : -1;
+    this.stepWhile(() => (b.writeLog.length ? b.writeLog[b.writeLog.length - 1].n : -1) === n, 200_000);
   }
 
   setButton(id: string, down: boolean): void {

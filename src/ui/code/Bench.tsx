@@ -1,8 +1,6 @@
-import { useState } from "react";
 import type { Board } from "../../sim/board";
 import type { Kit } from "../../sim/world/kits";
 import type { PinChange } from "../../sim/periph/gpio";
-import { fieldsOf, fieldValue, hex } from "../device";
 
 const MS = 1e6;
 
@@ -100,15 +98,15 @@ export function Scope({ kit, traces, fromMs, toMs, marks }: { kit: Kit; traces: 
         const t = fromMs + (span * i) / ticks;
         return (
           <g key={i}>
-            <line x1={x(t)} x2={x(t)} y1={0} y2={H - 16} stroke="rgba(255,255,255,0.1)" />
+            <line x1={x(t)} x2={x(t)} y1={0} y2={H - 16} stroke="var(--faint)" />
             <text x={x(t)} y={H - 4} textAnchor={i === 0 ? "start" : i === ticks ? "end" : "middle"}>{span >= 10 ? t.toFixed(0) : t.toFixed(2)} ms</text>
           </g>
         );
       })}
       {(marks ?? []).filter((m) => m.tMs >= fromMs && m.tMs <= toMs).map((m, i) => (
         <g key={`m${i}`}>
-          <line x1={x(m.tMs)} x2={x(m.tMs)} y1={0} y2={H - 16} stroke="#ff5f05" strokeDasharray="3 3" />
-          <text x={x(m.tMs) + 2} y={9} style={{ fill: "#ff9a5c" }}>{m.label}</text>
+          <line x1={x(m.tMs)} x2={x(m.tMs)} y1={0} y2={H - 16} stroke="var(--accent)" strokeDasharray="3 3" />
+          <text x={x(m.tMs) + 2} y={9} style={{ fill: "var(--accent)" }}>{m.label}</text>
         </g>
       ))}
       {rows.map((r, ri) => {
@@ -141,61 +139,11 @@ export function Scope({ kit, traces, fromMs, toMs, marks }: { kit: Kit; traces: 
         if (pen) d += `H${x(toMs)}`;
         return (
           <g key={r.id}>
-            <text x={2} y={ri * rowH + rowH / 2 + 3} style={{ fill: "#fff" }}>{r.id}</text>
-            <path d={d} fill="none" stroke={r.kind === "button" ? "#fcb316" : "#4fc3e8"} strokeWidth={1.5} />
+            <text x={2} y={ri * rowH + rowH / 2 + 3} style={{ fill: "var(--text)" }}>{r.id}</text>
+            <path d={d} fill="none" stroke={r.kind === "button" ? "var(--value)" : "var(--info)"} strokeWidth={1.5} />
           </g>
         );
       })}
     </svg>
-  );
-}
-
-export function Registers({ board, names }: { board: Board; names: string[] }) {
-  const [open, setOpen] = useState<string | null>(null);
-  if (!names.length) return <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>Registers your code writes will appear here.</p>;
-  return (
-    <div>
-      {[...names].reverse().map((n) => {
-        const r = board.dev.regs.get(n);
-        // IER and IFR are CPU registers, not part of the peripheral map.
-        if (!r) {
-          const v = n === "IER" ? board.ier : n === "IFR" ? board.ifr : 0;
-          return (
-            <div className="reg-row" key={n}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: "0.85rem" }}>
-                <span>{n} (CPU register)</span>
-                <span style={{ color: "var(--harvest)" }}>{hex(v, 16)}</span>
-              </div>
-            </div>
-          );
-        }
-        const v = board.mem.peek(r.addr, r.words);
-        const fields = fieldsOf(r).filter((f) => !f.reserved);
-        return (
-          <details className="reg-row" key={n} open={open === n} onToggle={(e) => (e.currentTarget.open ? setOpen(n) : open === n && setOpen(null))}>
-            <summary>
-              <span>{n}</span>
-              <span>{hex(v, r.words * 16)}</span>
-            </summary>
-            <p style={{ margin: "0.3rem 0", fontSize: "0.85rem", color: "var(--dim)" }}>
-              {r.desc} Address 0x{r.addr.toString(16).toUpperCase()}.{r.hook.protect ? " EALLOW-protected." : ""}
-            </p>
-            {fields.length > 0 && fields.length <= 40 && (
-              <table className="fields">
-                <tbody>
-                  {[...fields].reverse().filter((f) => fields.length <= 16 || fieldValue(v, f) !== 0).map((f) => (
-                    <tr key={f.name}>
-                      <td className="mono">{f.name}</td>
-                      <td className="mono">{fieldValue(v, f)}</td>
-                      <td>{f.desc}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </details>
-        );
-      })}
-    </div>
   );
 }

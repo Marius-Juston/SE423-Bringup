@@ -395,6 +395,34 @@ The SIMO row is the same for both. Only the clock moves.
       takeaway: "The two clocks are the same pulses shifted by half a cycle. That half cycle decides whether the rising edge lands where the data changes or where it holds still.",
     },
     {
+      id: "spi-clock-high",
+      kind: "timing",
+      title: "Draw the clock: resting high",
+      goal: "Draw SPICLK for the same byte, 0xA5, in the two modes whose clock rests high.",
+      refs: [{ trm: "18.3.6" }, { trm: "18.5.2" }, { course: "HW2" }],
+      brief: `
+Same byte, same SIMO line as before: **0xA5 = \`1010 0101\`**. Now \`CLKPOLARITY = 1\`: the clock **rests high**, and every bit time contains one low pulse. The first edge after rest is a **falling** edge.
+
+- **Falling edge without delay** (\`CLK_PHASE = 0\`): the data changes on the falling edge and is read on the rising edge. The falling edge sits where SIMO changes: at the **start** of each bit time.
+- **Falling edge with delay** (\`CLK_PHASE = 1\`): the data is read on the falling edge, the first edge. It sits in the **middle** of each bit time, and the clock rises again where SIMO changes.
+
+When you are done, compare the first row with the course's mode from "Draw the clock: resting low" (\`CLKPOLARITY = 0\`, \`CLK_PHASE = 1\`). Inside the byte the two clocks are identical. Both read on the rising edge. They differ only in where the clock rests. That is why some devices, the MPU-9250 among them, work in both.
+`,
+      slots: SLOTS,
+      rows: [
+        { name: "Chip select", editable: false, initial: LOW, answer: LOW },
+        { name: "SIMO (0xA5)", editable: false, initial: dataRow(BYTE), answer: dataRow(BYTE) },
+        { name: "SPICLK, CLK_PHASE = 0", editable: true, initial: LOW, answer: clockRow(1, 0) },
+        { name: "SPICLK, CLK_PHASE = 1", editable: true, initial: LOW, answer: clockRow(1, 1) },
+      ],
+      hints: [
+        "Both clocks are high in the two rest cells. In every bit time one cell is low and the other high.",
+        "Without delay the clock falls at the start of the bit time: the a cells are low. With delay it falls in the middle: the b cells are low.",
+        "CLK_PHASE = 0: rest high, a cells low, b cells high. CLK_PHASE = 1: rest high, a cells high, b cells low.",
+      ],
+      takeaway: "Four modes, one data line. Two of them read on the rising edge and two on the falling edge. A slave cares most about the reading edge.",
+    },
+    {
       id: "spi-identify",
       kind: "quiz",
       title: "Which mode is this?",
@@ -1130,35 +1158,6 @@ __interrupt void SPIB_isr(void)
     },
 
     // ---------------------------------------------------------------- practice
-    {
-      id: "spi-clock-high",
-      kind: "timing",
-      tier: "practice",
-      title: "Draw the clock: resting high",
-      goal: "Draw SPICLK for the same byte, 0xA5, in the two modes whose clock rests high.",
-      refs: [{ trm: "18.3.6" }, { trm: "18.5.2" }, { course: "HW2" }],
-      brief: `
-Same byte, same SIMO line as before: **0xA5 = \`1010 0101\`**. Now \`CLKPOLARITY = 1\`: the clock **rests high**, and every bit time contains one low pulse. The first edge after rest is a **falling** edge.
-
-- **Falling edge without delay** (\`CLK_PHASE = 0\`): the data changes on the falling edge and is read on the rising edge. The falling edge sits where SIMO changes: at the **start** of each bit time.
-- **Falling edge with delay** (\`CLK_PHASE = 1\`): the data is read on the falling edge, the first edge. It sits in the **middle** of each bit time, and the clock rises again where SIMO changes.
-
-When you are done, compare the first row with the course's mode from "Draw the clock: resting low" (\`CLKPOLARITY = 0\`, \`CLK_PHASE = 1\`). Inside the byte the two clocks are identical. Both read on the rising edge. They differ only in where the clock rests. That is why some devices, the MPU-9250 among them, work in both.
-`,
-      slots: SLOTS,
-      rows: [
-        { name: "Chip select", editable: false, initial: LOW, answer: LOW },
-        { name: "SIMO (0xA5)", editable: false, initial: dataRow(BYTE), answer: dataRow(BYTE) },
-        { name: "SPICLK, CLK_PHASE = 0", editable: true, initial: LOW, answer: clockRow(1, 0) },
-        { name: "SPICLK, CLK_PHASE = 1", editable: true, initial: LOW, answer: clockRow(1, 1) },
-      ],
-      hints: [
-        "Both clocks are high in the two rest cells. In every bit time one cell is low and the other high.",
-        "Without delay the clock falls at the start of the bit time: the a cells are low. With delay it falls in the middle: the b cells are low.",
-        "CLK_PHASE = 0: rest high, a cells low, b cells high. CLK_PHASE = 1: rest high, a cells high, b cells low.",
-      ],
-      takeaway: "Four modes, one data line. Two of them read on the rising edge and two on the falling edge. A slave cares most about the reading edge.",
-    },
     {
       id: "spi-24bit",
       kind: "code",

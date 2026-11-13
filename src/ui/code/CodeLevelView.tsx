@@ -6,7 +6,8 @@ import type { Diagnostic } from "../../sim/board";
 import { KITS } from "../../sim/world/kits";
 import { store, useSave } from "../store";
 import { Editor, type EditorHandle, type Mark } from "./Editor";
-import { Parts, Registers, Scope } from "./Bench";
+import { Parts, Scope } from "./Bench";
+import { Registers } from "./Registers";
 import { Panel } from "../Panel";
 import { VIEWS } from "../views";
 
@@ -52,7 +53,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
     const loop = (now: number) => {
       const dt = Math.min(50, now - last);
       last = now;
-      live.step(dt);
+      if (!live.paused) live.step(dt);
       setFrame((f) => f + 1);
       if (live.running) raf = requestAnimationFrame(loop);
     };
@@ -96,7 +97,15 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
     return [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, result, live?.board.diagnostics.size, live?.error]);
-  const marks: Mark[] = useMemo(() => problems.filter((p) => p.line > 0).map((p) => ({ line: p.line, severity: p.severity })), [problems]);
+  const pausedLine = live?.running && live.paused ? live.board.line : 0;
+  const marks: Mark[] = useMemo(
+    () => [...problems.filter((p) => p.line > 0).map((p) => ({ line: p.line, severity: p.severity })), ...(pausedLine ? [{ line: pausedLine, severity: "current" as const }] : [])],
+    [problems, pausedLine],
+  );
+  // Follow the program in the editor while stepping.
+  useEffect(() => {
+    if (pausedLine) editor.current?.reveal(pausedLine);
+  }, [pausedLine]);
 
   const nowMs = live ? live.timeMs : (result?.endMs ?? 0);
   const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
@@ -112,10 +121,19 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
           ) : (
             <button className="btn" onClick={start}>▶ Run</button>
           )}
+          {live?.running && (
+            <>
+              <button className="btn" aria-pressed={live.paused} onClick={() => { live.paused = !live.paused; setFrame((f) => f + 1); }}>{live.paused ? "▶ Resume" : "❙❙ Pause"}</button>
+              <button className="btn" onClick={() => { live.stepLine(); setFrame((f) => f + 1); }} title="Run one line of your code, then pause">Step line</button>
+              <button className="btn" onClick={() => { live.stepToWrite(); setFrame((f) => f + 1); }} title="Run until the next register write, then pause">Next register write</button>
+            </>
+          )}
           {!sandbox && <button className="btn primary" onClick={test}>Run tests</button>}
           <label style={{ fontSize: "0.85rem", color: "var(--dim)" }}>
             Speed{" "}
             <select value={speed} onChange={(e) => setSpeed(+e.target.value)}>
+              <option value={0.0001}>1/10 000</option>
+              <option value={0.001}>1/1000</option>
               <option value={0.01}>1/100</option>
               <option value={0.1}>1/10</option>
               <option value={1}>real time</option>
@@ -217,7 +235,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
           <Panel id="board" title={kit.name}>
             <Parts kit={kit} board={board} pressed={live ? (id) => live.isPressed(id) : undefined} onButton={live?.running ? (id, d) => live.setButton(id, d) : undefined} onKnob={live?.running ? (id, v) => live.setKnob(id, v) : undefined} focus={focus} />
             <p className="simstate" aria-live="off">
-              {live ? (live.running ? `running · t = ${nowMs.toFixed(1)} ms${live.load < 0.9 ? ` · ${Math.round(live.load * 100)}% of requested speed` : ""}` : `stopped at ${nowMs.toFixed(3)} ms`) : result ? `test run · ${nowMs.toFixed(1)} ms` : "Press Run to power the board."}
+              {live ? (live.running ? `${live.paused ? `paused at line ${live.board.line}` : "running"} · t = ${nowMs.toFixed(nowMs < 100 ? 4 : 1)} ms${live.load < 0.9 ? ` · ${Math.round(live.load * 100)}% of requested speed` : ""}` : `stopped at ${nowMs.toFixed(3)} ms`) : result ? `test run · ${nowMs.toFixed(1)} ms` : "Press Run to power the board."}
               {board?.mainReturned ? " · main() has returned" : ""}
             </p>
             {level.watch && level.watch.length > 0 && board && (
@@ -266,8 +284,8 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
               </>
             ) : null}
           </Panel>
-          <Panel id="registers" title="Registers your code wrote">
-            {board ? <Registers board={board} names={live ? live.touched : (result?.touched ?? [])} /> : <p className="hint-text">Run the program to see the registers it writes.</p>}
+          <Panel id="registers" title="Registers: what changed, and when">
+            {board ? <Registers board={board} onGoto={(line) => editor.current?.goto(line)} /> : <p className="hint-text">Run the program to see the registers it writes.</p>}
           </Panel>
         </div>
       </div>

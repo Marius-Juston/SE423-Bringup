@@ -38,6 +38,23 @@ interface Ev {
   fn: (t: number) => void;
 }
 
+/** One CPU write to a register, for the change log. */
+export interface WriteEntry {
+  /** Position in the run (counts every logged write, also ones no longer kept). */
+  n: number;
+  t: number;
+  /** Line of the student's code that caused it (0: before the program ran). */
+  line: number;
+  name: string;
+  /** Stored value before and after the write. */
+  before: number;
+  after: number;
+  /** The value the code wrote (differs from `after` for write-1-to-set style registers). */
+  written: number;
+  /** Written by course-library code called from that line. */
+  lib: boolean;
+}
+
 export interface IsrLog {
   t: number;
   name: string;
@@ -81,6 +98,9 @@ export class Board implements Rt {
   /** Function used by InitPieVectTable for every vector. */
   defaultIsr: Fn | null = null;
 
+  /** Register writes in order (the most recent 4000). */
+  writeLog: WriteEntry[] = [];
+  private writeCount = 0;
   diagnostics = new Map<string, Diagnostic>();
   mainReturned = false;
   /** Text printed with printf (the CCS console). */
@@ -115,6 +135,14 @@ export class Board implements Rt {
         `${reg.name} is a protected register: this write was ignored because it is not between EALLOW; and EDIS;.`,
         "error",
       );
+
+    this.mem.onWrite = (reg, written, before) => {
+      const after = this.mem.peek(reg.addr, reg.words);
+      // Library code is only interesting when it actually changed something.
+      if (this.libDepth && after === before) return;
+      this.writeLog.push({ n: this.writeCount++, t: this.now, line: this.line, name: reg.name, before, after, written, lib: this.libDepth > 0 });
+      if (this.writeLog.length > 4000) this.writeLog.splice(0, 1000);
+    };
 
     // IER and IFR are CPU registers; C code sees them as variables.
     this.compiler.defineGlobal("IER", UINT, IER_ADDR, "device");

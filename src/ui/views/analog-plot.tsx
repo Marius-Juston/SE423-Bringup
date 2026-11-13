@@ -1,7 +1,7 @@
 import type { BenchView, ViewProps } from "./types";
 
 const MS = 1e6;
-const COLORS = ["#fcb316", "#4fc3e8", "#7ad79a", "#ff9a5c", "#d8a6ff", "#ff8a73"];
+const COLORS = ["var(--value)", "var(--info)", "var(--ok)", "var(--accent)", "var(--code-macro)", "var(--bad)"];
 
 /** Plots every numeric value the chip or the world published (DAC volts, wheel speed, ...). */
 function AnalogPlot({ board, kit, window: [from, to] }: ViewProps) {
@@ -42,10 +42,10 @@ function AnalogPlot({ board, kit, window: [from, to] }: ViewProps) {
         return (
           <svg key={name} className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${label} from ${lo.toPrecision(3)} to ${hi.toPrecision(3)}, now ${last?.toPrecision(4)}`}>
             <text x={4} y={11} style={{ fill: COLORS[i % COLORS.length] }}>{label}</text>
-            <text x={W - 4} y={11} textAnchor="end" style={{ fill: "#fff" }}>{last?.toPrecision(4)}</text>
+            <text x={W - 4} y={11} textAnchor="end" style={{ fill: "var(--text)" }}>{last?.toPrecision(4)}</text>
             <text x={4} y={y(hi) + 12}>{hi.toPrecision(3)}</text>
             <text x={4} y={y(lo)}>{lo.toPrecision(3)}</text>
-            <line x1={44} x2={W - 6} y1={y(lo)} y2={y(lo)} stroke="rgba(255,255,255,0.12)" />
+            <line x1={44} x2={W - 6} y1={y(lo)} y2={y(lo)} stroke="var(--faint)" />
             <path d={d} fill="none" stroke={COLORS[i % COLORS.length]} strokeWidth={1.5} />
             <text x={44} y={H - 2}>{from.toFixed(span >= 10 ? 0 : 2)} ms</text>
             <text x={W - 6} y={H - 2} textAnchor="end">{to.toFixed(span >= 10 ? 0 : 2)} ms</text>

@@ -84,8 +84,6 @@ export interface RunResult {
   lcd: [string, string];
   traces: Map<number, PinChange[]>;
   isrLog: IsrLog[];
-  /** Registers the program wrote, in order of last write. */
-  touched: string[];
   endMs: number;
   board: Board;
   kit: Kit;
@@ -100,14 +98,7 @@ export function runProgram(spec: RunSpec): RunResult {
   const end = spec.durationMs * MS;
   const res: RunResult = {
     ran: false, passed: false, checks: [], bonus: [], diagnostics: [], serial: [], console: "", lcd: ["", ""],
-    traces: b.gpio.trace, isrLog: b.isrLog, touched: [], endMs: spec.durationMs, board: b, kit,
-  };
-  b.mem.onWrite = (reg, _value, before) => {
-    // Library code is only interesting when it actually changed something.
-    if (b.libDepth && b.mem.peek(reg.addr, reg.words) === before) return;
-    const i = res.touched.indexOf(reg.name);
-    if (i >= 0) res.touched.splice(i, 1);
-    res.touched.push(reg.name);
+    traces: b.gpio.trace, isrLog: b.isrLog, endMs: spec.durationMs, board: b, kit,
   };
   const finish = () => {
     res.diagnostics = [...b.diagnostics.values()].sort((x, y) => x.line - y.line);
