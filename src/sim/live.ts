@@ -16,6 +16,14 @@ export interface LiveSetup {
   value: number;
 }
 
+/** What the student changed in the world by hand, so that the next run can start in the same world. */
+export interface WorldState {
+  /** Inputs set in the playground (the terrain, the goal) and the pose the robot was last put down at. */
+  inputs: [string, number][];
+  /** Objects placed by hand. */
+  objects: Obstacle[];
+}
+
 const MS = 1e6;
 
 export interface LiveError {
@@ -43,23 +51,49 @@ export class LiveSession {
   private tourAtNs = -Infinity;
   /** The robot is being driven round the test's poses. Moving it by hand switches this off. */
   touring = false;
+  /** Changes the level's test makes to the world later in the run (a second maze, a new goal), in order. */
+  private events: PathSet[] = [];
+  private nextEvent = 0;
+  /** The student changed the world by hand: the test's later changes no longer apply. */
+  private handsOn = false;
 
   /**
    * `setup` are inputs set at power-up, in order: the room, the start pose
    * and the goal of the level, so a live run begins in the level's world.
    */
-  constructor(kitId: string, source: string, private setup: LiveSetup[] = [], script: readonly PathSet[] = []) {
+  private kept = new Map<string, number>();
+  private keptObjects: Obstacle[] = [];
+
+  /** The student's own changes to the world, to hand to the next run. Empty after "Reset world". */
+  get worldState(): WorldState {
+    return { inputs: [...this.kept], objects: this.keptObjects };
+  }
+
+  constructor(kitId: string, source: string, private setup: LiveSetup[] = [], script: readonly PathSet[] = [], restore?: WorldState) {
     this.board = new Board(kitId);
     // Minutes of running must not fill the memory: about a second of a fast PWM pin, a minute of a 1 kHz signal.
     this.board.historyLimit = 60_000;
     this.kit = KITS[kitId];
     const b = this.board;
     for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);
-    for (const s of setup) b.setInput(s.set, s.value, 0);
+    // The world is described before it is switched on: the level's, then what the student changed last time.
+    const restored = !!restore && (restore.inputs.length > 0 || restore.objects.length > 0);
+    for (const s of setup) if (s.set !== "ROBOT_WORLD") b.setInput(s.set, s.value, 0);
+    if (restored) {
+      for (const [name, v] of restore.inputs) {
+        b.setInput(name, v, 0);
+        this.kept.set(name, v);
+      }
+      this.keptObjects = restore.objects;
+      this.handsOn = true;
+    }
+    for (const s of setup) if (s.set === "ROBOT_WORLD") b.setInput(s.set, s.value, 0);
     this.path = waypoints(script);
-    this.touring = this.path.length > 1;
+    this.touring = this.path.length > 1 && !restored;
+    this.events = script.filter((e) => e.at > 0.02 && /^(WORLD_|ROBOT_GOAL_)/.test(e.set)).sort((a, b) => a.at - b.at);
     try {
       b.load(source);
+      if (this.keptObjects.length) setWorldObjects(b, this.keptObjects);
       this.gen = b.run();
     } catch (e) {
       this.fail(e);
@@ -80,6 +114,11 @@ export class LiveSession {
 
   get timeMs(): number {
     return this.board.now / MS;
+  }
+
+  /** When the test next changes the world by itself (ms), if it still will. */
+  get worldChangeMs(): number | undefined {
+    return this.handsOn ? undefined : this.events[this.nextEvent]?.at;
   }
 
   /** True when the level's test moves the robot, so there is a path to drive round. */
@@ -117,6 +156,11 @@ export class LiveSession {
       // Small slices so the budget is respected even in busy loops.
       while (b.now < target) {
         this.tour();
+        // The world changes when it does in the test, so Run and Run tests show the same thing.
+        while (this.nextEvent < this.events.length && this.events[this.nextEvent].at * MS <= b.now) {
+          const e = this.events[this.nextEvent++];
+          if (!this.handsOn) b.setInput(e.set, e.value);
+        }
         b.runUntil(this.gen, Math.min(target, b.now + 0.05 * MS));
         if (performance.now() - start > budgetMs) break;
       }
@@ -183,7 +227,10 @@ export class LiveSession {
 
   /** Sets a signal-bus input by name (the goal, the room, a maze seed). */
   setInput(name: string, value: number): void {
-    if (Number.isFinite(value)) this.board.setInput(name, value);
+    if (!Number.isFinite(value)) return;
+    this.handsOn = true;
+    this.kept.set(name, value);
+    this.board.setInput(name, value);
   }
 
   /** The robot world of capstone levels, when it is switched on. */
@@ -203,6 +250,9 @@ export class LiveSession {
     if (![x, y, theta].every(Number.isFinite)) return;
     const b = this.board;
     this.touring = false;
+    // The next run starts where the robot was last put down.
+    const names = kind === "world" ? ["ROBOT_START_X_FT", "ROBOT_START_Y_FT", "ROBOT_START_THETA_RAD"] : kind === "bench" ? ["TB_SET_X_FT", "TB_SET_Y_FT", "TB_SET_THETA_RAD"] : ["LIDAR_X_FT", "LIDAR_Y_FT", "LIDAR_THETA_RAD"];
+    [x, y, theta].forEach((v, i) => this.kept.set(names[i], v));
     if (kind === "world") this.world?.place(x, y, theta);
     else if (kind === "bench") {
       b.setInput("TB_SET_X_FT", x);
@@ -217,6 +267,8 @@ export class LiveSession {
 
   /** Replaces the objects placed by hand in the world. */
   setObjects(objects: Obstacle[]): void {
+    this.handsOn = true;
+    this.keptObjects = objects;
     setWorldObjects(this.board, objects);
   }
 
@@ -224,7 +276,14 @@ export class LiveSession {
   resetWorld(kind: "world" | "bench" | "scan"): void {
     const b = this.board;
     this.touring = false;
+    this.handsOn = true;
     setWorldObjects(b, []);
+    // The level's own start pose again (a restored run began at the student's).
+    for (const name of ["ROBOT_START_X_FT", "ROBOT_START_Y_FT", "ROBOT_START_THETA_RAD"]) {
+      const own = this.setup.find((s) => s.set === name);
+      if (own) b.inputs.set(name, own.value);
+      else b.inputs.delete(name);
+    }
     const given = new Map(this.setup.map((s) => [s.set, s.value]));
     for (const name of ["WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS", "LIDAR_ROOM"]) if (b.inputs.has(name) || given.has(name)) b.setInput(name, given.get(name) ?? 0);
     // An input the level never set goes back to "not set" (the world's own goal or start then applies).
@@ -243,6 +302,9 @@ export class LiveSession {
       // Tell the LIDAR its pose changed.
       b.setInput("LIDAR_ROOM", b.inputs.get("LIDAR_ROOM") ?? 0);
     }
+    // Nothing of the student's is carried to the next run.
+    this.kept.clear();
+    this.keptObjects = [];
   }
 
   isPressed(id: string): boolean {

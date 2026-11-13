@@ -8,6 +8,7 @@
 // TBPRD + 1 counts: tone = TBCLK / (2 x (TBPRD + 1)), a little below the
 // note (A4: 439.99 Hz for 440 Hz). These are not homework 3's numbers.
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 const TBCLK = 12.5e6;
 /** One count of the counter, in ns. */
@@ -152,7 +153,7 @@ function BuzzerTone() {
           <button className="btn small" disabled={off} onClick={() => play(tone)}>Hear it</button>
         </div>
       </div>
-      <pre><code>{`EPwm9Regs.TBCTL.bit.CLKDIV = 2;   // /4: 12.5 MHz\nEPwm9Regs.AQCTLA.bit.PRD = 3;     // toggle at TBPRD\nEPwm9Regs.AQCTLA.bit.CAU = 0;     // no compare action\n${off ? "#define OFFNOTE 0" : `#define ${name}NOTE ((uint16_t)(((50000000/4)/2)/${want.toFixed(2)}))`}\nEPwm9Regs.TBPRD = ${name}NOTE;        // ${prd}`}</code></pre>
+      <CodePre><code>{`EPwm9Regs.TBCTL.bit.CLKDIV = 2;   // /4: 12.5 MHz\nEPwm9Regs.AQCTLA.bit.PRD = 3;     // toggle at TBPRD\nEPwm9Regs.AQCTLA.bit.CAU = 0;     // no compare action\n${off ? "#define OFFNOTE 0" : `#define ${name}NOTE ((uint16_t)(((50000000/4)/2)/${want.toFixed(2)}))`}\nEPwm9Regs.TBPRD = ${name}NOTE;        // ${prd}`}</code></CodePre>
       <figcaption>The time axis is fixed at 8 ms: a higher note has a smaller TBPRD, so the counter turns back sooner and more teeth fit.</figcaption>
     </figure>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Proportional steering: the correction is a gain times the error, then
 // limited. The numbers are the wall follower of the course's final project
@@ -96,9 +97,9 @@ function MathProportional() {
       </svg>
       <div className="fig-step" role="status">
         <p>{why}</p>
-        <pre><code>{`turn = Kp_right_wal *
+        <CodePre><code>{`turn = Kp_right_wal *
   (ref_right_wall - LADARrightfront);
-//   = ${kp} * (${REF} - ${d.toFixed(1)}) = ${signed(raw)}${limited ? `\n//   limited to ${signed(turn, 1)}` : ""}`}</code></pre>
+//   = ${kp} * (${REF} - ${d.toFixed(1)}) = ${signed(raw)}${limited ? `\n//   limited to ${signed(turn, 1)}` : ""}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

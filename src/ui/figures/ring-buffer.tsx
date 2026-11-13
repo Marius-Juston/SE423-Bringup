@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // A ring buffer between one producer (the timer interrupt) and one consumer
 // (main), lecture 13. The code shown is the reference solution of the levels
@@ -191,7 +192,7 @@ if (count == 0) {   // 0 == 0: empty
       </svg>
       <div className="fig-step" role="status">
         <p>{status}</p>
-        <pre><code>{code}</code></pre>
+        <CodePre><code>{code}</code></CodePre>
       </div>
       <div className="fig-controls row">
         <button className="btn small primary" onClick={() => setR(put(r, lockFree))}>Put (interrupt)</button>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CodePre } from "../CopyButton";
 import { COULOMB, GAIN, MAX_EFFORT, TAU, stepWheel } from "../../sim/plugins/plant";
 
 // Step response of the chapter 16 wheel under P or PI control. Not a chip
@@ -197,7 +198,7 @@ function PiTuner() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{clamp ? "eLeft = vref - vLeft;\nuLeft = Kp*eLeft + Ki*(ILeft + eLeft*0.001);\nif (uLeft > 10.0) uLeft = 10.0;        // saturated:\nelse if (uLeft < -10.0) uLeft = -10.0; // ILeft kept\nelse ILeft = ILeft + eLeft*0.001;" : `eLeft = vref - vLeft;\n${ki === 0 ? "uLeft = Kp*eLeft;" : "ILeft = ILeft + eLeft*0.001;\nuLeft = Kp*eLeft + Ki*ILeft;"}\nif (uLeft > 10.0) uLeft = 10.0;\nif (uLeft < -10.0) uLeft = -10.0;`}</code></pre>
+        <CodePre><code>{clamp ? "eLeft = vref - vLeft;\nuLeft = Kp*eLeft + Ki*(ILeft + eLeft*0.001);\nif (uLeft > 10.0) uLeft = 10.0;        // saturated:\nelse if (uLeft < -10.0) uLeft = -10.0; // ILeft kept\nelse ILeft = ILeft + eLeft*0.001;" : `eLeft = vref - vLeft;\n${ki === 0 ? "uLeft = Kp*eLeft;" : "ILeft = ILeft + eLeft*0.001;\nuLeft = Kp*eLeft + Ki*ILeft;"}\nif (uLeft > 10.0) uLeft = 10.0;\nif (uLeft < -10.0) uLeft = -10.0;`}</code></CodePre>
       </div>
       <figcaption>The wheel of the test bench in the code levels, with the controller run once per millisecond. The wheel needs an effort of 0.8 to start and gains 0.25 ft/s per unit above that, with a 60 ms time constant. The effort is limited to ±10.</figcaption>
     </figure>

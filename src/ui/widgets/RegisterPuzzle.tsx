@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CodePre } from "../CopyButton";
 import type { RegisterLevel } from "../../levels/types";
 import { device, fieldValue, fieldsOf, fillGaps, hex, type BitField } from "../device";
 
@@ -108,7 +109,7 @@ export function RegisterPuzzle({ level, onPass, onMiss, solved }: { level: Regis
       {solved && level.code && (
         <div className="takeaway">
           <strong>In C:</strong>
-          <pre><code>{level.code}</code></pre>
+          <CodePre><code>{level.code}</code></CodePre>
         </div>
       )}
     </div>

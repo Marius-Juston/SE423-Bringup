@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // The one-number Kalman filter of Lectures 20-21 and HW6, drawn as bell
 // curves: predict (the belief moves and widens), update (belief times
@@ -141,13 +142,13 @@ function Kalman1d() {
       <div className="fig-step" role="status">
         <strong>{STEPS[step].title}{round > 1 ? ` (round ${round})` : ""}</strong>
         <p>{STEPS[step].text}{step === 3 ? ` Here K = ${fmt(K)}: ${trust}.` : ""}</p>
-        <pre><code>{step === 0
+        <CodePre><code>{step === 0
           ? `kf_x = ${fmt(prior.m)};   // mean, ft\nkf_p = ${fmt(prior.p)};   // variance`
           : step === 1
             ? `kf_x = kf_x + u;   // ${fmt(prior.m)} + ${fmt(U, 1)} = ${fmt(pred.m)}\nkf_p = kf_p + q;   // ${fmt(prior.p)} + ${fmt(Q, 1)} = ${fmt(pred.p)}`
             : step === 2
               ? `z = ${fmt(z)};   // what the sensor says\nr = ${fmt(r)};   // its variance`
-              : `kf_k = kf_p / (kf_p + r);\n  //  = ${fmt(pred.p)} / (${fmt(pred.p)} + ${fmt(r)}) = ${fmt(K)}\nkf_x = kf_x + kf_k * (z - kf_x);\n  //  = ${fmt(pred.m)} + ${fmt(K)} * ${z - pred.m < 0 ? `(${fmt(z - pred.m)})` : fmt(z - pred.m)} = ${fmt(post.m)}\nkf_p = (1.0 - kf_k) * kf_p;\n  //  = ${fmt(1 - K)} * ${fmt(pred.p)} = ${fmt(post.p)}`}</code></pre>
+              : `kf_k = kf_p / (kf_p + r);\n  //  = ${fmt(pred.p)} / (${fmt(pred.p)} + ${fmt(r)}) = ${fmt(K)}\nkf_x = kf_x + kf_k * (z - kf_x);\n  //  = ${fmt(pred.m)} + ${fmt(K)} * ${z - pred.m < 0 ? `(${fmt(z - pred.m)})` : fmt(z - pred.m)} = ${fmt(post.m)}\nkf_p = (1.0 - kf_k) * kf_p;\n  //  = ${fmt(1 - K)} * ${fmt(pred.p)} = ${fmt(post.p)}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

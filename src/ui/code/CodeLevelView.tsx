@@ -1,8 +1,9 @@
 import { BENCH_FRAME_MS, frameBus } from "./frame";
+import { CopyButton } from "../CopyButton";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CodeLevel } from "../../levels/types";
 import { runProgram, type RunResult } from "../../sim/runner";
-import { LiveSession } from "../../sim/live";
+import { LiveSession, type WorldState } from "../../sim/live";
 import type { Diagnostic } from "../../sim/board";
 import { KITS } from "../../sim/world/kits";
 import { store, useSave } from "../store";
@@ -112,8 +113,12 @@ export function CodeLevelView({
   const fails = save.fails[level.id] ?? 0;
 
   // Save the code a moment after the student stops typing, and at once when leaving the level.
+  // Code the student never touched is not saved: the level then still opens with its own start
+  // (a newer starter, or the code of the level it continues once that one has been written).
+  const opened = useRef(code);
   const unsaved = useRef<string | null>(null);
   useEffect(() => {
+    if (code === opened.current && store.get().code[level.id] === undefined) return;
     unsaved.current = code;
     const t = setTimeout(() => {
       store.setCode(level.id, code);
@@ -121,12 +126,18 @@ export function CodeLevelView({
     }, 400);
     return () => clearTimeout(t);
   }, [code, level.id]);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const save = () => {
       if (unsaved.current !== null) store.setCode(level.id, unsaved.current);
-    },
-    [level.id],
-  );
+      unsaved.current = null;
+    };
+    // Also when the window is closed, reloaded or hidden within that moment.
+    const off = store.beforeLeave(save);
+    return () => {
+      off();
+      save();
+    };
+  }, [level.id]);
 
   // Animation loop for the live run.
   useEffect(() => {
@@ -156,12 +167,25 @@ export function CodeLevelView({
   // the poses it puts the LIDAR robot at are used: the live run drives the robot round them.
   const setup = useMemo(() => worldSetup(level.stimuli), [level]);
   const script = useMemo(() => setStimuli(level.stimuli), [level]);
-  const start = () => setLive(new LiveSession(level.kit, code, setup, script));
-  const stop = () => setLive(null);
+  // What the student changed in the world (terrain, goal, placed objects, where the robot was put down)
+  // carries over to the next run of this level, until "Reset world".
+  const world = useRef<WorldState | undefined>(undefined);
+  useEffect(() => {
+    world.current = undefined;
+  }, [level]);
+  const fresh = () => {
+    if (live) world.current = live.worldState;
+    return new LiveSession(level.kit, code, setup, script, world.current);
+  };
+  const start = () => setLive(fresh());
+  const stop = () => {
+    if (live) world.current = live.worldState;
+    setLive(null);
+  };
   /** Stepping works from a stopped board too: it powers up paused at the first line. */
   const session = (): LiveSession => {
     if (live?.running) return live;
-    const s = new LiveSession(level.kit, code, setup, script);
+    const s = fresh();
     s.paused = true;
     setLive(s);
     return s;
@@ -175,7 +199,7 @@ export function CodeLevelView({
     bump();
   };
   const test = () => {
-    setLive(null);
+    stop();
     const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
     setResult(r);
     setTested(code);
@@ -379,6 +403,7 @@ export function CodeLevelView({
                 <option value={10}>10×</option>
               </select>
             </label>
+            <CopyButton className="btn ghost small" text={() => code} label="Copy code" what="the code in the editor" />
             <button className="btn ghost small" aria-expanded={resetting} onClick={() => setResetting(!resetting)}>
               <Icon name="reset" size={13} /> Reset code
             </button>

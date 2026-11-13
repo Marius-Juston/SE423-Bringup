@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // The three-state wall follower of chapter 17 (levels sens-fsm-quiz,
 // sens-follow, sens-chatter; lecture 14, homework 3 and 4). States,
@@ -257,7 +258,7 @@ function StateMachine() {
           <strong>Scan {m.n}.</strong> {why}
           {verdict}
         </p>
-        <pre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(" { ", " {\n        ").replace(" }", "\n    }")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></pre>
+        <CodePre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(" { ", " {\n        ").replace(" }", "\n    }")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

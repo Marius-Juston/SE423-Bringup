@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Blobs, moments and the centroid as chapter 19 (lecture 17, homework 5)
 // computes them on its 8 x 12 test images:
@@ -241,7 +242,7 @@ function BlobCentroid() {
       </svg>
       <div className="fig-step" role="status">
         <p>{status}</p>
-        <pre><code>{used ? `cx = ${used.m10} / ${used.m00}.0;   // ${f2(cx)}\n// ${KP_TURN} * (${f2(cx)} - ${CENTRE_COL.toFixed(1)}) = ${f2(turn)}\nturn = KP_TURN * (cx - CENTRE_COL);` : "if (m00 > 0) { cx = m10 / m00; ... } else { turn = 0; }"}</code></pre>
+        <CodePre><code>{used ? `cx = ${used.m10} / ${used.m00}.0;   // ${f2(cx)}\n// ${KP_TURN} * (${f2(cx)} - ${CENTRE_COL.toFixed(1)}) = ${f2(turn)}\nturn = KP_TURN * (cx - CENTRE_COL);` : "if (m00 > 0) { cx = m10 / m00; ... } else { turn = 0; }"}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div className="blobc-row">

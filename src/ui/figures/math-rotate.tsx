@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Maths you need: rotating a point, and the 2 x 2 rotation matrix as
 // shorthand for the two lines. Not a chip peripheral: no TRM section
@@ -93,9 +94,9 @@ function MathRotate() {
       </div>
       <div className="fig-step">
         {matrix ? (
-          <pre><code>{`[xn]   [${fmt(c).padStart(5)} ${fmt(-s).padStart(5)}] [${fmt(x, 1).padStart(4)}]   [${fmt(p.x).padStart(5)}]\n[yn] = [${fmt(s).padStart(5)} ${fmt(c).padStart(5)}] [${fmt(y, 1).padStart(4)}] = [${fmt(p.y).padStart(5)}]\n\nrow 1: ${fmt(c)} x ${fmt(x, 1)} + ${fmt(-s)} x ${fmt(y, 1)} = ${fmt(p.x)}\nrow 2: ${fmt(s)} x ${fmt(x, 1)} + ${fmt(c)} x ${fmt(y, 1)} = ${fmt(p.y)}`}</code></pre>
+          <CodePre><code>{`[xn]   [${fmt(c).padStart(5)} ${fmt(-s).padStart(5)}] [${fmt(x, 1).padStart(4)}]   [${fmt(p.x).padStart(5)}]\n[yn] = [${fmt(s).padStart(5)} ${fmt(c).padStart(5)}] [${fmt(y, 1).padStart(4)}] = [${fmt(p.y).padStart(5)}]\n\nrow 1: ${fmt(c)} x ${fmt(x, 1)} + ${fmt(-s)} x ${fmt(y, 1)} = ${fmt(p.x)}\nrow 2: ${fmt(s)} x ${fmt(x, 1)} + ${fmt(c)} x ${fmt(y, 1)} = ${fmt(p.y)}`}</code></CodePre>
         ) : (
-          <pre><code>{`// th = ${fmt(th, 3)} rad\nxn = x * cos(th) - y * sin(th);  // ${fmt(p.x)}\nyn = x * sin(th) + y * cos(th);  // ${fmt(p.y)}`}</code></pre>
+          <CodePre><code>{`// th = ${fmt(th, 3)} rad\nxn = x * cos(th) - y * sin(th);  // ${fmt(p.x)}\nyn = x * sin(th) + y * cos(th);  // ${fmt(p.y)}`}</code></CodePre>
         )}
       </div>
       <figcaption>A point is "x across, then y up". Turning the point turns both legs by the same angle. The matrix is the same two lines written as a table: each row is multiplied by (x, y), entry by entry, and added.</figcaption>

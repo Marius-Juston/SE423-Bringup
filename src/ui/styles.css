@@ -824,3 +824,10 @@ table.keys td:first-child { white-space: nowrap; }
 .hb-card-preview { height: 8.5rem; overflow: hidden; background: var(--inset); border-bottom: 1px solid var(--border); pointer-events: none; user-select: none; position: relative; }
 .hb-card-preview-inner { width: 300%; transform: scale(0.3333); transform-origin: top left; padding: 0.4rem 1.2rem 0; }
 .hb-card-preview-inner .figure { margin: 0; border: 0; background: transparent; box-shadow: none; }
+
+/* Code that can be copied: the button sits in the corner and shows on hover, focus or touch. */
+.code-wrap { position: relative; }
+.copy-btn { position: absolute; top: 0.3rem; right: 0.3rem; font: inherit; font-size: 0.72rem; line-height: 1.2; padding: 0.15rem 0.45rem; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.code-wrap:hover > .copy-btn, .code-wrap:focus-within > .copy-btn, .copy-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .copy-btn { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .copy-btn { transition: none; } }

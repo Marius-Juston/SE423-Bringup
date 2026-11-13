@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 import { MAX_MM, MIN_MM, encode } from "../../sim/plugins/lidar";
 
 // How the Hokuyo URG-04LX sends one distance (lecture 16, SCIP 1.x): 12 bits
@@ -159,7 +160,7 @@ function LidarEncoding() {
       <div className="fig-step" role="status">
         <strong>{s.title}</strong>
         <p>{s.text}</p>
-        <pre><code>{s.code}</code></pre>
+        <CodePre><code>{s.code}</code></CodePre>
       </div>
       <div className="fig-controls row">
         <button className="btn small" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Back</button>

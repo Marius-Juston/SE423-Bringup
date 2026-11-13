@@ -9,6 +9,17 @@ try {
   prefs = {};
 }
 const listeners = new Set<() => void>();
+// Another window of the game changed a preference (the theme, a pane width): follow it.
+if (typeof window !== "undefined")
+  window.addEventListener("storage", (e) => {
+    if (e.key !== KEY) return;
+    try {
+      prefs = JSON.parse(e.newValue ?? "{}") ?? {};
+    } catch {
+      return;
+    }
+    listeners.forEach((l) => l());
+  });
 
 function set(key: string, value: unknown): void {
   prefs = { ...prefs, [key]: value };

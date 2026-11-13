@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // One LIDAR beam: a distance d along a direction alpha becomes a point
 // (x, y) in the sensor's own frame, x = d cos(alpha) ahead and
@@ -89,9 +90,9 @@ function MathPolar() {
       </svg>
       <div className="fig-step" role="status">
         <p>{why}</p>
-        <pre><code>{`alpha = ${deg}*0.01745329;  // ${rad.toFixed(3)} rad
+        <CodePre><code>{`alpha = ${deg}*0.01745329;  // ${rad.toFixed(3)} rad
 x = d*cos(alpha);  // ${d.toFixed(1)} * ${f2(c)} = ${f2(x)}
-y = d*sin(alpha);  // ${d.toFixed(1)} * ${f2(s)} = ${f2(y)}`}</code></pre>
+y = d*sin(alpha);  // ${d.toFixed(1)} * ${f2(s)} = ${f2(y)}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

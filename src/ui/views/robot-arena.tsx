@@ -110,9 +110,9 @@ const STYLE = `
 .arena-now { margin: 0; font-size: 0.95rem; color: var(--text); border-left: 3px solid var(--info); padding: 0.15rem 0.6rem; background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; }
 .arena-now.bad { border-left-color: var(--bad); }
 .arena-read { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.25rem 0.5rem; margin: 0; font-size: 0.82rem; }
-.arena-read > div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem; align-items: baseline; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.2rem 0.5rem; }
-.arena-read dt { color: var(--dim); }
-.arena-read dd { margin: 0; font-family: var(--mono); text-align: right; color: var(--text); overflow-wrap: anywhere; }
+.arena-read > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: baseline; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.2rem 0.5rem; }
+.arena-read dt { color: var(--dim); overflow-wrap: anywhere; }
+.arena-read dd { margin: 0; font-family: var(--mono); text-align: right; color: var(--text); overflow-wrap: anywhere; max-width: 100%; }
 .arena-read > div.wide { grid-column: span 2; }
 .arena-read dd small { color: var(--dim); font-size: 0.92em; }
 .arena-opts { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: center; font-size: 0.82rem; color: var(--dim); }
@@ -220,8 +220,8 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
 
   const scene: Scene | undefined = useMemo(() => {
     if (!board || !kind) return preview;
-    // A glide takes about 0.3 s on the screen, whatever the replay speed.
-    const glide = path.length > 1 ? replayAt(path, tMs, 300 * speed) : undefined;
+    // A glide takes up to about 0.6 s on the screen, whatever the replay speed.
+    const glide = path.length > 1 ? replayAt(path, tMs, 600 * speed) : undefined;
     const input = live ? (name: string) => board.inputs.get(name) : (name: string) => glide?.get(name) ?? inputAt(sets, name, tMs) ?? (sets.some((s) => s.set === name) ? undefined : board.inputs.get(name));
     const src: SceneSource = { outputs: board.outputs, input, world: live ? worldOf(board) : worldFor(input), worldOn: kind === "world", lidar: lidarUsed };
     return sceneAt(src, kind, tMs, { trailFromMs: live ? trailFrom : 0, withLidar: scanMode !== "off" || kind === "scan" });
@@ -530,6 +530,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
         </div>
       )}
       {play && scene && <ArenaPlayground large={size === "large"} session={play} board={board!} kind={kind} scene={s} objects={objects} tool={tool} setTool={setTool} selected={selected} setSelected={setSelected} placeRobot={placeRobot} moveGoal={moveGoal} setObjects={setObjects} onReset={() => { play.resetWorld(kind); setTrailFrom(play.timeMs); estTrail.current = []; setSelected(null); changed(); }} onWorld={() => { setTrailFrom(play.timeMs); setSelected(null); changed(); }} />}
+      {play?.worldChangeMs !== undefined && <p className="arena-hint" data-arena-change>At {+(play.worldChangeMs / 1000).toFixed(1)} s the walls or the goal change, as in the tests (the level text says how). Change the world yourself in the playground and it stays as you made it.</p>}
       {play?.touring && <p className="arena-hint" data-arena-tour>The robot is driving round the poses the tests put it at, so you can watch your program react. Drag the robot to place it yourself.</p>}
       {!play && !board && <p className="arena-hint">The level's world before the program runs. Press <strong>Run</strong> to watch it live and to move the robot, the goal and the walls yourself; <strong>Run tests</strong> to check your program and replay the run.</p>}
       {!play && board && live && <p className="arena-hint">The program has stopped. Press <strong>Run</strong> again to use the playground.</p>}

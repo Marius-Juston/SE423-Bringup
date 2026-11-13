@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // From encoder counts to feet. Course numbers (Lab 3, SE423Lib.c, and
 // src/sim/plugins/eqep.ts): 500 slits x 4 edges = 2000 counts per motor turn
@@ -129,7 +130,7 @@ function CountsToDistance() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`.padEnd(34) + `// ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`.padEnd(34) + `// ${fmt(angle, 4)} rad`, "dist  = angle*(1.235/12.0);".padEnd(34) + `// ${fmt(feet, 4)} ft`].join("\n")}</code></pre>
+        <CodePre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`.padEnd(34) + `// ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`.padEnd(34) + `// ${fmt(angle, 4)} rad`, "dist  = angle*(1.235/12.0);".padEnd(34) + `// ${fmt(feet, 4)} ft`].join("\n")}</code></CodePre>
       </div>
       <figcaption>Every box is the one before it times one factor. Two lines of C do the whole chain: counts to radians of the wheel, radians to feet.</figcaption>
     </figure>

@@ -7,6 +7,7 @@
 // just begun one buffer and the OTHER one was completed one sample ago.
 // The buffers are 8 samples long here instead of 1024.
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 const SIZE = 8;
 const T_MAX = 5 * SIZE;
@@ -168,7 +169,7 @@ function PingPong() {
       <div className="fig-step" role="status">
         <strong>{title}</strong>
         <p>{text}</p>
-        {code && <pre><code>{code}</code></pre>}
+        {code && <CodePre><code>{code}</code></CodePre>}
       </div>
       <div className="fig-controls row">
         <button className="btn small" onClick={() => setT(Math.max(0, t - 1))} disabled={t === 0}>Back</button>

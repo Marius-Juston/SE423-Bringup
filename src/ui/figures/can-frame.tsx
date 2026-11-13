@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // The data frame of the CAN protocol (ISO 11898-1, which TRM 22.1.2
 // refers to): start of frame, arbitration field, control field with DLC,
@@ -90,7 +91,7 @@ function CanFrame() {
         <text x={BX + 6 * BW} y={122} textAnchor="middle" className="fig-label dim">signal rate (32 bits)</text>
       </svg>
       <div className="cf-calc">
-        <pre><code>{`dis_${sensor} = 256 * dis_raw_${sensor}[1] + dis_raw_${sensor}[0];\n// 256 * ${bytes[1]} + ${bytes[0]} = ${dist} mm`}</code></pre>
+        <CodePre><code>{`dis_${sensor} = 256 * dis_raw_${sensor}[1] + dis_raw_${sensor}[0];\n// 256 * ${bytes[1]} + ${bytes[0]} = ${dist} mm`}</code></CodePre>
         <p style={{ color: swapped === dist ? "var(--dim)" : "var(--bad)" }}>
           {swapped === dist ? `Both bytes are equal here, so swapping them would not show: ${swapped} mm.` : `✗ Bytes swapped by mistake: 256 * ${bytes[0]} + ${bytes[1]} = ${swapped} mm`}
         </p>

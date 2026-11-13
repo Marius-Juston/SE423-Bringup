@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Maths you need: atan2(dy, dx), the angle of an arrow, and its length.
 // Not a chip peripheral: no TRM section applies. This is the first step of
@@ -78,7 +79,7 @@ function MathAtan2() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{`// dy comes first\nalpha = atan2(dy, dx);           // ${zero ? "no direction" : `${fmt(ang)} rad`}\ndist  = sqrt(dx * dx + dy * dy); // ${fmt(len)} ft`}</code></pre>
+        <CodePre><code>{`// dy comes first\nalpha = atan2(dy, dx);           // ${zero ? "no direction" : `${fmt(ang)} rad`}\ndist  = sqrt(dx * dx + dy * dy); // ${fmt(len)} ft`}</code></CodePre>
       </div>
       <figcaption>sin and cos turn an angle into "across and up". atan2 goes the other way: from across (dx) and up (dy) to the angle, anywhere round the circle, between -PI and PI. The dotted red line is where the result jumps from +3.14 to -3.14.</figcaption>
     </figure>

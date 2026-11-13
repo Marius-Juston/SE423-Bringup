@@ -88,8 +88,31 @@ function commit(next: Save): void {
   listeners.forEach((l) => l());
 }
 
+// Another window of the game saved: take its progress, so that this window's next save does not undo it.
+if (typeof window !== "undefined")
+  window.addEventListener("storage", (e) => {
+    if (e.key !== KEY && e.key !== null) return;
+    state = load();
+    listeners.forEach((l) => l());
+  });
+
+/** Work that must be saved before the window goes away (code typed a moment ago). */
+const pending = new Set<() => void>();
+const flush = () => pending.forEach((f) => f());
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", flush);
+  document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && flush());
+}
+
 export const store = {
   get: () => state,
+  /** Registers a save to make when the window is hidden or closed. Returns the function that removes it. */
+  beforeLeave(f: () => void) {
+    pending.add(f);
+    return () => {
+      pending.delete(f);
+    };
+  },
   subscribe(l: () => void) {
     listeners.add(l);
     return () => listeners.delete(l);

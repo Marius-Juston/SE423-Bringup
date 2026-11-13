@@ -7,6 +7,7 @@
 // CMPA: 1250 (-90), 2500 (0), 3750 (+90); the slider runs 625 to 4375
 // (0.4 to 2.8 ms) in steps of 25 counts (16 us) to show the stops.
 import { useRef, useState } from "react";
+import { CodePre } from "../CopyButton";
 import type { PointerEvent as RPointerEvent } from "react";
 
 const COUNT_MS = 0.00064;
@@ -147,7 +148,7 @@ function ServoPulse() {
           ))}
         </div>
       </div>
-      <pre><code>{`EPwm8Regs.TBCTL.bit.CLKDIV = 5;  // /32: 640 ns a count\nEPwm8Regs.TBPRD = ${TBPRD};         // 20 ms\nEPwm8Regs.CMPA.bit.CMPA = ${cmpa};  // ${ms.toFixed(2)} ms${over ? "" : `\n// = ${CENTRE} + (${angle.toFixed(1).replace(/\.0$/, "")}) * ${PER_90}.0 / 90.0`}`}</code></pre>
+      <CodePre><code>{`EPwm8Regs.TBCTL.bit.CLKDIV = 5;  // /32: 640 ns a count\nEPwm8Regs.TBPRD = ${TBPRD};         // 20 ms\nEPwm8Regs.CMPA.bit.CMPA = ${cmpa};  // ${ms.toFixed(2)} ms${over ? "" : `\n// = ${CENTRE} + (${angle.toFixed(1).replace(/\.0$/, "")}) * ${PER_90}.0 / 90.0`}`}</code></CodePre>
       <figcaption>Top: the whole 20 ms frame, in which the pulse is only a sliver. Below: the first 3.2 ms enlarged; the falling edge can be dragged. At 50 MHz a 20 ms frame would be a million counts, too many for the 16-bit TBPRD, so the clock is divided, here by 32.</figcaption>
     </figure>
   );

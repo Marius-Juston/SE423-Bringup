@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Maths you need before the Kalman filter (Lectures 20-21, HW6): blending
 // two uncertain numbers with a weighted average, weighted by how much each
@@ -76,7 +77,7 @@ function MathWeighted() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{`K = p / (p + r);        // ${fmt(K)}: weight of z\nx = x + K * (z - x);    // ${fmt(blend)} ft\np = (1.0 - K) * p;      // ${fmt(pNew, 3)}: surer now`}</code></pre>
+        <CodePre><code>{`K = p / (p + r);        // ${fmt(K)}: weight of z\nx = x + K * (z - x);    // ${fmt(blend)} ft\np = (1.0 - K) * p;      // ${fmt(pNew, 3)}: surer now`}</code></CodePre>
       </div>
       <figcaption>Two numbers that should be the same and are not. A plain average would trust both equally. A weighted average leans towards the one with the smaller variance. That is the whole update step of a Kalman filter.</figcaption>
     </figure>

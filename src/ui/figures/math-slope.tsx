@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Maths you need for the D term (Lecture 11): a rate of change is
 // "how much it changed, divided by how long that took", computed from two
@@ -78,7 +79,7 @@ function MathSlope() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{`// DT = ${dt} s\nslope = (e - e_old) / DT;   // ${fmt(slope(k), 1)}\ne_old = e;`}</code></pre>
+        <CodePre><code>{`// DT = ${dt} s\nslope = (e - e_old) / DT;   // ${fmt(slope(k), 1)}\ne_old = e;`}</code></CodePre>
       </div>
       <figcaption>A rate of change (a derivative) is a difference divided by a time. The speed here really rises by 1 ft/s every second. The bars are the slope the code computes from each pair of neighbouring samples.</figcaption>
     </figure>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // The lost update of chapter 20 (lecture 13; levels thr-lost-update and
 // thr-race): `counter += 1` can compile to three machine steps, read, add, write, and
@@ -276,7 +277,7 @@ function LostUpdate() {
           <span>Protection</span>
           <button className="fig-opt" aria-pressed={!m.guard} onClick={() => setM(fresh(m.mode, false))}>none</button>
           <button className="fig-opt" aria-pressed={m.guard} onClick={() => setM(fresh(m.mode, true))}>{guardName}</button>
-          <pre><code>{code}</code></pre>
+          <CodePre><code>{code}</code></CodePre>
         </div>
       </div>
       <figcaption>

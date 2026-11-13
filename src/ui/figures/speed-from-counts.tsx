@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Speed from encoder counts: the backward difference of Lab 3, sampled every
 // 1 ms, and its quantisation at low speed. One count of the wheel encoder is
@@ -146,7 +147,7 @@ function SpeedFromCounts() {
         </div>
       </details>
       <div className="fig-step">
-        <pre><code>{method === "gap" ? "msSinceChange++;                 // every 1 ms\nif (count != lastCount) {       // a count arrived\n    SlowVel = (count - lastCount)*radPerCount\n              / (msSinceChange*0.001);\n    lastCount = count;\n    msSinceChange = 0;\n}" : method === 1 ? "// every 1 ms\nvel = (pos - pos_old) / 0.001;\npos_old = pos;" : `// every 1 ms, pos_${method}: the position ${method} ms ago\nvel = (pos - pos_${method}) / ${(method * 0.001).toFixed(3)};`}</code></pre>
+        <CodePre><code>{method === "gap" ? "msSinceChange++;                 // every 1 ms\nif (count != lastCount) {       // a count arrived\n    SlowVel = (count - lastCount)*radPerCount\n              / (msSinceChange*0.001);\n    lastCount = count;\n    msSinceChange = 0;\n}" : method === 1 ? "// every 1 ms\nvel = (pos - pos_old) / 0.001;\npos_old = pos;" : `// every 1 ms, pos_${method}: the position ${method} ms ago\nvel = (pos - pos_${method}) / ${(method * 0.001).toFixed(3)};`}</code></CodePre>
       </div>
       <figcaption>The counter moves in whole counts, so a difference of positions moves in whole counts too. Fast wheels do not notice. Slow wheels need a longer window, which gives an older answer, or the time between counts.</figcaption>
     </figure>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Maths you need: integration as a running sum of small steps,
 // total = total + rate * dt. Not a chip peripheral: no TRM section applies.
@@ -122,7 +123,7 @@ function MathIntegrate() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{`// runs once every DT seconds\n${w.code}   // now ${fmt(total)}`}</code></pre>
+        <CodePre><code>{`// runs once every DT seconds\n${w.code}   // now ${fmt(total)}`}</code></CodePre>
       </div>
       <figcaption>Integrating means adding up "rate x time step", step after step, in a variable that keeps its value. Positive rates raise the total, negative ones lower it, and a rate of zero leaves it where it is. The robot does this every millisecond (DT = 0.001).</figcaption>
     </figure>

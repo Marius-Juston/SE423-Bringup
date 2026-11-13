@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Maths you need: sine and cosine as "how far across and how far up".
 // Not a chip peripheral: no TRM section applies. Convention of Lecture 15
@@ -82,7 +83,7 @@ function MathSinCos() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{`// C wants radians:\n// theta = ${fmt(rad, 3)} rad (${deg} degrees)\ndx = L * cos(theta);  // ${fmt(dx)} ft across\ndy = L * sin(theta);  // ${fmt(dy)} ft up`}</code></pre>
+        <CodePre><code>{`// C wants radians:\n// theta = ${fmt(rad, 3)} rad (${deg} degrees)\ndx = L * cos(theta);  // ${fmt(dx)} ft across\ndy = L * sin(theta);  // ${fmt(dy)} ft up`}</code></CodePre>
       </div>
       <figcaption>Any arrow can be replaced by two moves: across, then up. Cosine and sine are the two shares for an arrow of length 1; multiply by the length for a longer one. Both are always between -1 and 1.</figcaption>
     </figure>

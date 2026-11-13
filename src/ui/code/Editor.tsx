@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { basicSetup } from "codemirror";
-import { EditorState, StateEffect, StateField } from "@codemirror/state";
+import { EditorState, Prec, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, EditorView, keymap, type DecorationSet } from "@codemirror/view";
 import { indentWithTab } from "@codemirror/commands";
 import { cpp } from "@codemirror/lang-cpp";
@@ -83,6 +83,8 @@ export function Editor({ value, onChange, marks, handle }: { value: string; onCh
         doc: value,
         extensions: [
           basicSetup,
+          // Ctrl+Enter and Ctrl+Shift+Enter run the tests and the program (CodeLevelView): they must not also add a line here.
+          Prec.highest(keymap.of([{ key: "Mod-Enter", run: () => true }, { key: "Shift-Mod-Enter", run: () => true }])),
           keymap.of([indentWithTab]),
           indentUnit.of("    "),
           cpp(),

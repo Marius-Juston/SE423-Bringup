@@ -6,6 +6,7 @@
 // ETSEL.SOCAEN. Same numbers as the level's code (ch08) and
 // src/sim/plugins/adc.ts + epwm.ts.
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 const CSS = `
 .adcch pre { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -134,7 +135,7 @@ function AdcChain() {
       <div className="fig-step" role="status">
         <strong>{s.title}</strong>
         <p>{s.text}</p>
-        <pre><code>{s.code}</code></pre>
+        <CodePre><code>{s.code}</code></CodePre>
       </div>
       <div className="fig-controls row">
         <button className="btn small" onClick={() => setI(i - 1)} disabled={i === 0}>Back</button>

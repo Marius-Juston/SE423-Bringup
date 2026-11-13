@@ -10,6 +10,7 @@
 // drawing shows one half of the period at a time (never all four switches
 // closed: that would be shoot-through).
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 const TBPRD = 2500;
 const CSS = `
@@ -249,7 +250,7 @@ function HBridge() {
               <button className="fig-opt" onClick={() => setU(0)}>stop (0)</button>
             </div>
           </div>
-          <pre><code>{`setEPWM1A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// -10 is 0 % duty, 0 is 50 %, +10 is 100 %,\n// on a straight line in between: here ${pct(duty)}`}</code></pre>
+          <CodePre><code>{`setEPWM1A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// -10 is 0 % duty, 0 is 50 %, +10 is 100 %,\n// on a straight line in between: here ${pct(duty)}`}</code></CodePre>
         </>
       )}
       <figcaption>

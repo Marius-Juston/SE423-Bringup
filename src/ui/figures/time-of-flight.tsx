@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Time of flight (lecture 14): d = c t / 2 with c = 3.0e8 m/s, compared with
 // the 200 MHz system clock of the F28379D (5 ns period, TRM section 3.7
@@ -94,7 +95,7 @@ function TimeOfFlight() {
             : `A counter of clock periods reads ${count}.`}{" "}
           A count of {count} fits every wall from {lo} m to {hi} m, because one clock period is 0.75 m of distance.
         </p>
-        <pre><code>{`d = c * t / 2;   // 3.0e8 * ${tNs.toFixed(tNs < 10 ? 2 : 1)}e-9 / 2 = ${d.toFixed(2)} m`}</code></pre>
+        <CodePre><code>{`d = c * t / 2;   // 3.0e8 * ${tNs.toFixed(tNs < 10 ? 2 : 1)}e-9 / 2 = ${d.toFixed(2)} m`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

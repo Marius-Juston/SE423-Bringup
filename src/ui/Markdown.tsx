@@ -1,4 +1,5 @@
 import { Component, type CSSProperties, type ReactNode } from "react";
+import { CopyButton } from "./CopyButton";
 import { Figure } from "./figures";
 
 /**
@@ -29,6 +30,7 @@ export class Guard extends Component<{ what: string; children: ReactNode }, { fa
  */
 export function CodeBlock({ code }: { code: string }) {
   return (
+    <div className="code-wrap">
     <pre className="code-block">
       <code>
         {code.split("\n").map((line, i, all) => (
@@ -39,6 +41,8 @@ export function CodeBlock({ code }: { code: string }) {
         ))}
       </code>
     </pre>
+    <CopyButton text={code} />
+    </div>
   );
 }
 

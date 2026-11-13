@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { CodePre } from "../CopyButton";
 import { FRONT_STEP, G_CLUSTER, G_START, LIDAR_POINTS, MIN_MM, ROOMS, STEP_DEG, castRay, pointDeg, reading } from "../../sim/plugins/lidar";
 
 // The scan of the Hokuyo URG-04LX as the course asks for it (lectures 14 and
@@ -133,7 +134,7 @@ function LidarFan() {
           {room ? (mm[i] >= MIN_MM ? ` In this room it hits something ${mm[i]} mm (${(mm[i] / 304.8).toFixed(2)} ft) away.` : " Nothing is within 4095 mm in this direction.") : ""}
           {i === 113 ? " No point looks exactly ahead: 113 is the closest." : ""}
         </p>
-        <pre><code>{`angle = (3*${i} + 44)*0.3515625 - 135;  // ${deg.toFixed(2)}`}</code></pre>
+        <CodePre><code>{`angle = (3*${i} + 44)*0.3515625 - 135;  // ${deg.toFixed(2)}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

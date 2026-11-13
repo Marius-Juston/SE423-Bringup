@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CodePre } from "../CopyButton";
 import { TAU, WHEEL_BASE } from "../../sim/plugins/plant";
 
 // Dead reckoning of a differential-drive robot (Lecture 15, Lab 5), with the
@@ -197,7 +198,7 @@ function DeadReckoning() {
         </div>
       </details>
       <div className="fig-step">
-        <pre><code>{`// WHEEL_BASE = ${WHEEL_BASE} ft, DT = ${dtMs / 1000} s\n// v = ${fmt(V, 3)} ft/s, omega = ${fmt(omega, 3)} rad/s\nv     = (vLeft + vRight) / 2;\nomega = (vRight - vLeft) / WHEEL_BASE;\n${rule === "rect" ? `theta = theta + omega * DT;\nx = x + v * cos(theta) * DT;\ny = y + v * sin(theta) * DT;` : `theta_new = theta + 0.5*(omega + omega_old)*DT;\nx = x + 0.5*(v*cos(theta_new) + v_old*cos(theta))*DT;\ny = y + 0.5*(v*sin(theta_new) + v_old*sin(theta))*DT;`}`}</code></pre>
+        <CodePre><code>{`// WHEEL_BASE = ${WHEEL_BASE} ft, DT = ${dtMs / 1000} s\n// v = ${fmt(V, 3)} ft/s, omega = ${fmt(omega, 3)} rad/s\nv     = (vLeft + vRight) / 2;\nomega = (vRight - vLeft) / WHEEL_BASE;\n${rule === "rect" ? `theta = theta + omega * DT;\nx = x + v * cos(theta) * DT;\ny = y + v * sin(theta) * DT;` : `theta_new = theta + 0.5*(omega + omega_old)*DT;\nx = x + 0.5*(v*cos(theta_new) + v_old*cos(theta))*DT;\ny = y + 0.5*(v*sin(theta_new) + v_old*sin(theta))*DT;`}`}</code></CodePre>
       </div>
       <figcaption>The robot adds up small steps computed from its own wheel speeds. Every step is nearly right, but the small mistakes add up: the longer the drive, the further the estimate is from the true position.</figcaption>
     </figure>

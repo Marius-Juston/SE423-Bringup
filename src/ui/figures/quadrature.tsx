@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // Quadrature encoder: two sensors a quarter of a slit period apart.
 // TRM chapter 17 (eQEP): 17.4.1 "Position Counter Input Modes" and Table 17-2
@@ -217,7 +218,7 @@ function Quadrature() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{oneChannel ? "// One channel: a counter cannot tell forward from\n// backward. The eQEP needs both QEPA and QEPB\n// for quadrature count mode (QSRC = 0)." : mode === 4 ? "// x4: every edge of A and B\nEQep1Regs.QDECCTL.bit.QSRC = 0;\n// the count so far\nint32_t raw = EQep1Regs.QPOSCNT;" : `// x${mode}: what simpler decoders do, with\n// ${mode === 2 ? "half" : "a quarter of"} the resolution. The eQEP's\n// quadrature count (QSRC = 0) is always x4.`}</code></pre>
+        <CodePre><code>{oneChannel ? "// One channel: a counter cannot tell forward from\n// backward. The eQEP needs both QEPA and QEPB\n// for quadrature count mode (QSRC = 0)." : mode === 4 ? "// x4: every edge of A and B\nEQep1Regs.QDECCTL.bit.QSRC = 0;\n// the count so far\nint32_t raw = EQep1Regs.QPOSCNT;" : `// x${mode}: what simpler decoders do, with\n// ${mode === 2 ? "half" : "a quarter of"} the resolution. The eQEP's\n// quadrature count (QSRC = 0) is always x4.`}</code></CodePre>
       </div>
       <figcaption>The same disc read with one sensor or two. With two, the order of the edges gives the direction, and counting all four edges of a slit period gives 4 x 500 = 2000 counts per motor turn. Each step of Back or Step is one edge, a quarter of a slit period.</figcaption>
     </figure>

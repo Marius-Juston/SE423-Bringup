@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CodePre } from "../CopyButton";
 
 // One cell of an occupancy grid in log-odds (lectures 24-25), with the
 // numbers of the level "Log-odds":
@@ -132,10 +133,10 @@ function LogOdds() {
       </svg>
       <div className="fig-step" role="status">
         <p>{status}</p>
-        <pre><code>{`// l: ${sum} = ${f3(l)}${limited ? " (limited)" : ""}
+        <CodePre><code>{`// l: ${sum} = ${f3(l)}${limited ? " (limited)" : ""}
 // L_0 = 0
 logodds = logodds + l_sensor - L_0;
-${clamp ? `if (logodds > ${L_LIMIT}.0f) logodds = ${L_LIMIT}.0f;\nif (logodds < -${L_LIMIT}.0f) logodds = -${L_LIMIT}.0f;\n` : ""}p = 1 - 1 / (1 + exp(logodds));  // ${fp(p)}`}</code></pre>
+${clamp ? `if (logodds > ${L_LIMIT}.0f) logodds = ${L_LIMIT}.0f;\nif (logodds < -${L_LIMIT}.0f) logodds = -${L_LIMIT}.0f;\n` : ""}p = 1 - 1 / (1 + exp(logodds));  // ${fp(p)}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>
