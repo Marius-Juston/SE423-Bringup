@@ -81,11 +81,11 @@ const setEpwm = (n: number) => `void setEPWM${n}A(float controleffort)
 
 const SERVO_A_INIT = `    EPwm8Regs.TBCTL.bit.CTRMODE = 0;     // count up
     EPwm8Regs.TBCTL.bit.FREE_SOFT = 3;   // free run
-    EPwm8Regs.TBCTL.bit.CLKDIV = 4;      // divide by 16: 3.125 MHz
+    EPwm8Regs.TBCTL.bit.CLKDIV = 5;      // divide by 32: 1.5625 MHz
     EPwm8Regs.TBCTL.bit.PHSEN = 0;
     EPwm8Regs.TBCTR = 0;
-    EPwm8Regs.TBPRD = 62500;             // 20 ms: 50 Hz
-    EPwm8Regs.CMPA.bit.CMPA = 5000;      // 8 %: 0 degrees
+    EPwm8Regs.TBPRD = 31250;             // 20 ms: 50 Hz
+    EPwm8Regs.CMPA.bit.CMPA = 2500;      // 8 %: 0 degrees
     EPwm8Regs.AQCTLA.bit.CAU = 1;        // clear at CMPA
     EPwm8Regs.AQCTLA.bit.ZRO = 2;        // set at zero
     EPwm8Regs.TBPHS.bit.TBPHS = 0;`;
@@ -98,17 +98,17 @@ const SET_SERVO_A = `void setEPWM8A_RCServo(float angle)
     if (angle < -90) {
         angle = -90;
     }
-    EPwm8Regs.CMPA.bit.CMPA = 5000 + angle * 2500.0 / 90.0;
+    EPwm8Regs.CMPA.bit.CMPA = 2500 + angle * 1250.0 / 90.0;
 }`;
 
-const NOTES = `#define C4NOTE ((uint16_t)(((50000000/2)/2)/261.63))
-#define D4NOTE ((uint16_t)(((50000000/2)/2)/293.66))
-#define E4NOTE ((uint16_t)(((50000000/2)/2)/329.63))
-#define F4NOTE ((uint16_t)(((50000000/2)/2)/349.23))
-#define G4NOTE ((uint16_t)(((50000000/2)/2)/392.00))
-#define A4NOTE ((uint16_t)(((50000000/2)/2)/440.00))
-#define B4NOTE ((uint16_t)(((50000000/2)/2)/493.88))
-#define C5NOTE ((uint16_t)(((50000000/2)/2)/523.25))
+const NOTES = `#define C4NOTE ((uint16_t)(((50000000/4)/2)/261.63))
+#define D4NOTE ((uint16_t)(((50000000/4)/2)/293.66))
+#define E4NOTE ((uint16_t)(((50000000/4)/2)/329.63))
+#define F4NOTE ((uint16_t)(((50000000/4)/2)/349.23))
+#define G4NOTE ((uint16_t)(((50000000/4)/2)/392.00))
+#define A4NOTE ((uint16_t)(((50000000/4)/2)/440.00))
+#define B4NOTE ((uint16_t)(((50000000/4)/2)/493.88))
+#define C5NOTE ((uint16_t)(((50000000/4)/2)/523.25))
 #define OFFNOTE 0`;
 
 const BUTTONS = `    // PB1 and PB2: inputs with pull-ups, they read 0 while pressed
@@ -117,12 +117,12 @@ const BUTTONS = `    // PB1 and PB2: inputs with pull-ups, they read 0 while pre
     GPIO_SetupPinMux(158, GPIO_MUX_CPU1, 0);
     GPIO_SetupPinOptions(158, GPIO_INPUT, GPIO_PULLUP);`;
 
-const PWM12 = `    // EPWM12A on LED1: 20 kHz, starts dark
+const PWM12 = `    // EPWM12A on LED1: 10 kHz, starts dark
     EPwm12Regs.TBCTL.bit.CTRMODE = 0;
     EPwm12Regs.TBCTL.bit.FREE_SOFT = 2;
     EPwm12Regs.TBCTL.bit.CLKDIV = 0;
     EPwm12Regs.TBCTR = 0;
-    EPwm12Regs.TBPRD = 2500;
+    EPwm12Regs.TBPRD = 5000;
     EPwm12Regs.CMPA.bit.CMPA = 0;
     EPwm12Regs.AQCTLA.bit.CAU = 1;
     EPwm12Regs.AQCTLA.bit.ZRO = 2;
@@ -133,7 +133,7 @@ export const actuators: Chapter = {
   number: 10,
   title: "Motors and actuators",
   blurb: "H-bridge, RC servo and buzzer.",
-  requires: ["pwm"],
+  requires: ["pwm", "interrupts"],
   course: ["L6-7", "Lab 3", "HW3", "HW4"],
   levels: [
     {
@@ -272,24 +272,25 @@ Lab 3 has you think of every motor command as a **control effort** \`u\` between
 The motor PWMs use \`TBPRD = 2500\` (20 kHz).
 
 ## Servos: a slow clock
-A servo wants a 20 ms period. At 50 MHz that is 1 000 000 counts, which does not fit in the 16-bit \`TBPRD\`. The course sets \`CLKDIV = 4\`, a divide by **16**, and then
+A servo wants a 20 ms period. At 50 MHz that is 1 000 000 counts, which does not fit in the 16-bit \`TBPRD\`. So the clock is divided with \`CLKDIV\`. Homework 4 has you choose the divider. This chapter uses \`CLKDIV = 5\`, a divide by **32**, so its counts are not the homework's. Then
 
-- \`TBPRD = 62500\` for the 20 ms period,
-- \`CMPA = 8 %\` of that for 0 degrees, **4 %** for -90 degrees and **12 %** for +90 degrees, on a straight line in between.
+- \`TBPRD\` is the number of counts in 20 ms,
+- \`CMPA\` is **8 %** of that for 0 degrees, **4 %** for -90 degrees and **12 %** for +90 degrees, on a straight line in between.
 `,
       fields: [
         { id: "duty5", label: "Duty cycle for u = 5", unit: "%", answer: 75, why: "(5 + 10) / 20 = 0.75." },
         { id: "cmpa0", label: "CMPA for u = 0 (motor stopped)", answer: 1250, why: "50 % of 2500." },
         { id: "cmpam4", label: "CMPA for u = -4", answer: 750, why: "(-4 + 10) / 20 = 0.30, and 0.30 x 2500 = 750. Below 50 %, so the motor turns in the negative direction." },
         { id: "cmpa14", label: "CMPA for u = 14", answer: 2500, why: "14 is saturated to 10 first. That is 100 %: CMPA = TBPRD." },
-        { id: "tbclk", label: "Counter clock with CLKDIV = 4", unit: "Hz", answer: 3125000, why: "50 MHz / 16 = 3.125 MHz, one count every 320 ns." },
-        { id: "servo0", label: "CMPA for a servo at 0 degrees (TBPRD = 62500)", answer: 5000, why: "8 % of 62500 = 5000 counts, a pulse of 1.6 ms." },
-        { id: "servo45", label: "CMPA for a servo at +45 degrees", answer: 6250, why: "90 degrees is 4 % of 62500 = 2500 counts, so 45 degrees is 1250 counts above the centre: 5000 + 1250." },
+        { id: "tbclk", label: "Counter clock with CLKDIV = 5", unit: "Hz", answer: 1562500, why: "50 MHz / 32 = 1.5625 MHz, one count every 640 ns." },
+        { id: "tbprd", label: "TBPRD for a 20 ms period at that clock (round number)", answer: 31250, why: "20 ms x 1 562 500 counts per second = 31 250 counts." },
+        { id: "servo0", label: "CMPA for a servo at 0 degrees", answer: 2500, why: "8 % of 31250 = 2500 counts, a pulse of 1.6 ms." },
+        { id: "servo45", label: "CMPA for a servo at +45 degrees", answer: 3125, why: "90 degrees is 4 % of 31250 = 1250 counts, so 45 degrees is 625 counts above the centre: 2500 + 625." },
       ],
       hints: [
         "Motor: duty = (u + 10) / 20, after saturating u to -10..10.",
-        "Servo: 62500 counts are 100 %. 8 % is the centre, and 90 degrees is worth 4 %.",
-        "75, 1250, 750, 2500, 3 125 000, 5000, 6250.",
+        "Servo: the counts in 20 ms are 100 %. 8 % is the centre, and 90 degrees is worth 4 %.",
+        "75, 1250, 750, 2500, 1 562 500, 31 250, 2500, 3125.",
       ],
       takeaway: "Every actuator command ends as a number of counts. Write the straight line once, in one function, and saturate before you scale.",
     },
@@ -297,38 +298,42 @@ A servo wants a 20 ms period. At 50 MHz that is 1 000 000 counts, which does not
       id: "act-toggle",
       kind: "timing",
       title: "A square wave without CMPA",
-      goal: "Draw the buzzer output when the action qualifier toggles the pin at zero.",
+      goal: "Draw the buzzer output when the action qualifier toggles the pin once per tooth of the counter.",
       refs: [{ course: "HW3" }, { trm: "15.6.2" }, { trm: "15.6.5" }],
       brief: `
-For the buzzer HW3 wants a square wave whose **frequency** changes, always at 50 % duty. \`CMPA\` is not needed for that. The action qualifier gets one action only:
+For the buzzer you want a square wave whose **frequency** changes, always at 50 % duty. \`CMPA\` is not needed for that. The action qualifier gets one action only: **toggle** the pin at one event that happens once per tooth of the counter. Toggle is action 3.
 
-- counter = 0: **toggle** the pin (\`ZRO = 3\`)
-- counter = CMPA: do nothing (\`CAU = 0\`)
+Here the event is "counter = TBPRD", the top of the tooth:
 
-Draw the result. Here \`TBPRD = 3\`, so one tooth of the counter is four counts. The grey row marks where the counter is zero. The pin starts low.
+- \`AQCTLA.PRD = 3\`: toggle
+- every other field 0: do nothing
+
+Draw the result. Here \`TBPRD = 3\`, so one tooth of the counter is four counts. The grey row marks where the counter equals \`TBPRD\`. The pin starts low, and it changes **in** the marked slot.
+
+Homework 3 asks which values of \`CAU\` and \`ZRO\` give a square wave. The idea is the same, with another event.
 `,
       slots: ["0", "1", "2", "3", "0", "1", "2", "3", "0", "1", "2", "3", "0", "1", "2", "3"],
       rows: [
         {
-          name: "counter = 0",
+          name: "counter = TBPRD",
           editable: false,
-          initial: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-          answer: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+          initial: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+          answer: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
         },
         {
           name: "EPWM9A (GPIO16)",
           editable: true,
           initial: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-          answer: [1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+          answer: [0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0],
         },
       ],
       hints: [
         "Toggle means: change to the other level, and keep it until the next toggle.",
-        "The first zero takes the pin high for a whole tooth. The second zero takes it low for a whole tooth.",
-        "High for the first four slots, low for the next four, and again.",
+        "The first marked slot takes the pin high. It stays high for four slots, until the next marked slot takes it low.",
+        "Low, low, low, then high for four slots, low for four, high for four, and low in the last slot.",
       ],
       takeaway:
-        "One period of the square wave takes two teeth of the counter. That is the second /2 in HW3's note formula: TBPRD = ((50 MHz / 2) / 2) / frequency, where the first /2 is CLKDIV = 1. By the reference manual a tooth is TBPRD + 1 counts, so each note is flat by a few thousandths of a percent, which nobody hears.",
+        "One period of the square wave takes two teeth of the counter. That is why a note's TBPRD is the counter clock divided by two and by the frequency. By the reference manual a tooth is TBPRD + 1 counts, so each note is flat by a few thousandths of a percent, which nobody hears.",
     },
     {
       id: "act-setepwm",
@@ -493,7 +498,7 @@ HW4 connects an RC servo to **GPIO14**, which is **EPWM8A** at mux index 1.
 ## init_servo()
 Start from the EPWM12A set-up you know and change what a servo needs:
 
-- A period of **20 ms**. At 50 MHz that would be a million counts, too many for the 16-bit \`TBPRD\`. Set \`CLKDIV = 4\` (divide by 16) and \`TBPRD = 62500\`.
+- A period of **20 ms**. At 50 MHz that would be a million counts, too many for the 16-bit \`TBPRD\`. Use \`CLKDIV = 5\` (divide by 32) and work out \`TBPRD\`. (The homework lets you choose the divider. Any divider that fits passes here.)
 - Start at **0 degrees**: a duty cycle of 8 %.
 - Set at zero, clear at \`CMPA\`, as before.
 - The pin mux for GPIO14, and its pull-up off.
@@ -502,7 +507,7 @@ Start from the EPWM12A set-up you know and change what a servo needs:
 - Saturate \`angle\` to -90..90.
 - -90 degrees is 4 % duty, 0 is 8 %, +90 is 12 %, on a straight line.
 
-Try it in the figure: set an angle and read the pulse width and the \`CMPA\` it needs.
+Try it in the figure: set an angle and read the pulse width in milliseconds and percent. The figure counts with the robot library's divide by 16, so its \`CMPA\` numbers are twice the ones you need here.
 
 {{figure:servo-pulse}}
 
@@ -578,16 +583,26 @@ ${SERVO_A_INIT}
 ${SET_SERVO_A}
 `,
       checks: [
-        { kind: "signal", name: "SERVO1_DEG", at: 95, equals: 0, tol: 0.1, label: "The servo starts at 0 degrees", hint: "The servo only reacts to pulses that repeat at about 50 Hz: CLKDIV = 4 and TBPRD = 62500. 0 degrees is CMPA = 5000." },
-        { kind: "signal", name: "SERVO1_DEG", at: 195, equals: 60, tol: 0.1, label: "60 degrees", hint: "90 degrees is worth 4 % of 62500 = 2500 counts." },
+        { kind: "signal", name: "SERVO1_DEG", at: 95, equals: 0, tol: 0.1, label: "The servo starts at 0 degrees", hint: "The servo only reacts to pulses that repeat at about 50 Hz: with CLKDIV = 5 the counter clock is 1.5625 MHz, and 20 ms of it go into TBPRD. 0 degrees is 8 % of TBPRD." },
+        { kind: "signal", name: "SERVO1_DEG", at: 195, equals: 60, tol: 0.1, label: "60 degrees", hint: "90 degrees is worth 4 % of TBPRD." },
         { kind: "signal", name: "SERVO1_DEG", at: 295, equals: -45, tol: 0.1, label: "-45 degrees" },
         { kind: "signal", name: "SERVO1_DEG", at: 395, equals: 90, tol: 0.1, label: "200 degrees is saturated to 90", hint: "Limit angle to -90..90 before you scale it." },
+        {
+          kind: "duty",
+          pin: 14,
+          pct: 12,
+          tolPct: 0.2,
+          from: 320,
+          to: 400,
+          label: "and the pulse itself stops at 12 %",
+          hint: "The servo's arm stops at its mechanical end, but a pulse wider than 12 % pushes against it. Saturate angle in the function.",
+        },
         { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM8A is connected to GPIO14" },
       ],
       hints: [
-        "init_servo is the EPWM12A set-up with 8 instead of 12, CLKDIV = 4, TBPRD = 62500, CMPA = 5000, and GPIO14 at mux index 1.",
-        "8 % of 62500 is 5000 counts. 4 % is 2500 counts, and that is what 90 degrees is worth.",
-        "EPwm8Regs.CMPA.bit.CMPA = 5000 + angle * 2500.0 / 90.0; after the two saturation ifs.",
+        "init_servo is the EPWM12A set-up with 8 instead of 12, CLKDIV = 5, a TBPRD worth 20 ms, a CMPA of 8 % of it, and GPIO14 at mux index 1.",
+        "20 ms at 1.5625 MHz is 31250 counts. 8 % of that is 2500 counts. 4 % is 1250 counts, and that is what 90 degrees is worth.",
+        "EPwm8Regs.CMPA.bit.CMPA = 2500 + angle * 1250.0 / 90.0; after the two saturation ifs.",
       ],
       takeaway: "Same peripheral, different numbers: a slow clock for the 20 ms period, and a compare value that only ever moves between 4 % and 12 %.",
     },
@@ -599,32 +614,30 @@ ${SET_SERVO_A}
       goal: "Complete the EPWM9A set-up for the buzzer and play a scale by changing TBPRD from a timer interrupt.",
       refs: [{ course: "HW3" }, { trm: "15.6.2" }, { trm: "15.4.3" }],
       brief: `
-HW3 drives the piezo buzzer from **EPWM9A** on **GPIO16** (mux index 5). The set-up is the one for EPWM12 with three changes, and HW3 leaves them to you as \`???\`:
+The piezo buzzer is on **EPWM9A**, **GPIO16** (mux index 5), as in homework 3. The set-up is the one for EPWM12 with three changes:
 
-- \`CLKDIV\` must divide by **2**. The note values below are computed for that clock.
-- \`AQCTLA\`: no compare action, and **toggle** at zero. That gives a square wave whose half period is one tooth of the counter.
+- \`CLKDIV\` must divide by **4**. The note values below are computed for that clock. (The homework's table is for another divider.)
+- \`AQCTLA\`: **toggle** at the period event and nothing else, as in the timing puzzle. That gives a square wave whose half period is one tooth of the counter.
 - \`CMPA\` is not used at all.
 
 A note is then one number in \`TBPRD\`:
 
 \`\`\`c
-#define A4NOTE ((uint16_t)(((50000000/2)/2)/440.00))
+#define A4NOTE ((uint16_t)(((50000000/4)/2)/440.00))
 \`\`\`
 
-50 MHz, divided by 2 by \`CLKDIV\`, divided by 2 because a full square wave takes two teeth, divided by the frequency. Try it in the figure: pick a note, read its \`TBPRD\`, and count the teeth in one period of the tone.
-
-{{figure:buzzer-tone}}
+50 MHz, divided by 4 by \`CLKDIV\`, divided by 2 because a full square wave takes two teeth, divided by the frequency.
 
 \`OFFNOTE\` is 0: with \`TBPRD = 0\` the pin toggles far above anything the buzzer or your ear can follow, which is silence.
 
 ## Task
-1. Fix the three \`???\` lines and the mux index.
+1. Fix the four \`???\` lines.
 2. In \`cpu_timer1_isr\`, which runs every **50 ms**, write the next entry of \`song\` to \`TBPRD\` and advance \`noteIndex\`. Stop advancing at the end of the array.
 
-HW3 uses 125 ms per note. 50 ms keeps this test short.
+Homework 3 plays its song at 125 ms per note. 50 ms keeps this test short.
 `,
       kit: "redboard",
-      durationMs: 500,
+      durationMs: 620,
       watch: ["noteIndex"],
       inspect: ["EPwm9Regs.TBCTL", "EPwm9Regs.TBPRD", "EPwm9Regs.AQCTLA"],
       starter: `${FREQ}
@@ -646,11 +659,11 @@ ${INIT}
     EPwm9Regs.TBCTL.bit.CTRMODE = 0;     // count up
     EPwm9Regs.TBCTL.bit.FREE_SOFT = 2;   // free run
     EPwm9Regs.TBCTL.bit.PHSEN = 0;
-    EPwm9Regs.TBCTL.bit.CLKDIV = 0;      // ??? divide by 2
+    EPwm9Regs.TBCTL.bit.CLKDIV = 0;      // ??? divide by 4
     EPwm9Regs.TBCTR = 0;
     EPwm9Regs.TBPRD = OFFNOTE;
-    EPwm9Regs.AQCTLA.bit.CAU = 0;        // ??? what to do when CMPA is reached
-    EPwm9Regs.AQCTLA.bit.ZRO = 0;        // ??? what to do when the counter is zero
+    EPwm9Regs.AQCTLA.bit.CAU = 1;        // ??? what to do when CMPA is reached
+    EPwm9Regs.AQCTLA.bit.PRD = 0;        // ??? what to do when the counter equals TBPRD
     EPwm9Regs.TBPHS.bit.TBPHS = 0;
 
     GPIO_SetupPinMux(16, GPIO_MUX_CPU1, 0);  // ??? EPWM9A
@@ -690,11 +703,11 @@ ${INIT}
     EPwm9Regs.TBCTL.bit.CTRMODE = 0;     // count up
     EPwm9Regs.TBCTL.bit.FREE_SOFT = 2;   // free run
     EPwm9Regs.TBCTL.bit.PHSEN = 0;
-    EPwm9Regs.TBCTL.bit.CLKDIV = 1;      // divide by 2
+    EPwm9Regs.TBCTL.bit.CLKDIV = 2;      // divide by 4
     EPwm9Regs.TBCTR = 0;
     EPwm9Regs.TBPRD = OFFNOTE;
     EPwm9Regs.AQCTLA.bit.CAU = 0;        // nothing when CMPA is reached
-    EPwm9Regs.AQCTLA.bit.ZRO = 3;        // toggle when the counter is zero
+    EPwm9Regs.AQCTLA.bit.PRD = 3;        // toggle when the counter equals TBPRD
     EPwm9Regs.TBPHS.bit.TBPHS = 0;
 
     GPIO_SetupPinMux(16, GPIO_MUX_CPU1, 5);  // EPWM9A
@@ -720,16 +733,16 @@ __interrupt void cpu_timer1_isr(void)
 }
 `,
       checks: [
-        { kind: "signal", name: "BUZZER_HZ", at: 95, equals: 261.63, tol: 0.5, label: "The first note is C4, 261.6 Hz", hint: "Twice the frequency: CLKDIV still divides by 1. Nothing at all: the toggle action or the pin mux is missing." },
+        { kind: "signal", name: "BUZZER_HZ", at: 95, equals: 261.63, tol: 0.5, label: "The first note is C4, 261.6 Hz", hint: "Four times the frequency: CLKDIV still divides by 1. Nothing at all: the toggle action or the pin mux is missing." },
         { kind: "signal", name: "BUZZER_HZ", at: 195, equals: 329.63, tol: 0.5, label: "The third note is E4, 329.6 Hz", hint: "Write song[noteIndex] to TBPRD and add 1 to noteIndex on every call." },
         { kind: "signal", name: "BUZZER_HZ", at: 445, equals: 523.25, tol: 0.5, label: "The eighth note is C5, 523.3 Hz" },
-        { kind: "signal", name: "BUZZER_HZ", at: 499, equals: 0, label: "The buzzer is silent after the scale" },
+        { kind: "signal", name: "BUZZER_HZ", at: 610, equals: 0, label: "The buzzer is silent after the scale" },
         { kind: "var", name: "noteIndex", equals: 9, label: "noteIndex stops at the end of the song", hint: "Only write and advance while noteIndex is less than SONG_LENGTH." },
         { kind: "duty", pin: 16, pct: 50, tolPct: 1, from: 60, to: 95, label: "The tone is a square wave with 50 % duty" },
       ],
       hints: [
-        "CLKDIV is a code: 1 means divide by 2. Toggle is action 3. GPIO16 carries EPWM9A at mux index 5.",
-        "CAU stays 0. ZRO = 3. The function needs two lines inside an if.",
+        "CLKDIV is a code for a power of two: 0 is /1, 1 is /2, 2 is /4. Toggle is action 3. GPIO16 carries EPWM9A at mux index 5.",
+        "CAU = 0 and PRD = 3. The function needs two lines inside an if.",
         "if (noteIndex < SONG_LENGTH) { EPwm9Regs.TBPRD = song[noteIndex]; noteIndex++; }",
       ],
       takeaway: "For a tone the duty cycle is fixed and the period carries the information: the mirror image of the LED and the motor.",
@@ -862,7 +875,7 @@ Lab 3 ends its PWM part with the robot on the bench stand, wheels in the air, bo
 1. **Ramp.** Keep the command in the global \`float u\`. Add **0.1** per call until it reaches 10, then subtract 0.1 per call until it reaches -10, and repeat. Limit \`u\` to -10..10. Use \`updown\` for the direction as before. (Lab 3 uses 0.005 per call. 0.1 keeps the test short.)
 2. **Stop button.** While **PB1** (GPIO157, reads 0 when pressed) is held, send a command of **0** to both motors and **do not change** \`u\`. When PB1 is released the ramp continues from where it was.
 3. **Motors.** Send the command to both motors so that both wheels drive the robot **forward** for a positive command. The right motor is mounted mirrored. Put the sign at the call.
-4. **Power light.** Set LED1's brightness to the size of the command being sent: 0 % at 0, 100 % at 10 or -10. \`fabs()\` gives the absolute value of a float. \`TBPRD\` of EPWM12 is 2500.
+4. **Power light.** Set LED1's brightness to the size of the command being sent: 0 % at 0, 100 % at 10 or -10. \`fabs()\` gives the absolute value of a float. \`TBPRD\` of EPWM12 is 5000.
 5. Acknowledge the interrupt.
 
 Also write \`setEPWM1A\` and \`setEPWM2A\`. All set-up code is written.
@@ -976,7 +989,7 @@ __interrupt void cpu_timer0_isr(void)
 
     setEPWM1A(command);
     setEPWM2A(-command);   // the right motor is mounted mirrored
-    EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 250.0;
+    EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 500.0;
 
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
@@ -1001,7 +1014,7 @@ ${INIT_MOTORS()}
       hints: [
         "Use a local float for the command that is actually sent. It is u normally and 0 while PB1 is held.",
         "Only run the ramp code when GpioDataRegs.GPEDAT.bit.GPIO157 is not 0. Clamp u to exactly 10 or -10 when it gets there.",
-        "setEPWM1A(command); setEPWM2A(-command); EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 250.0;",
+        "setEPWM1A(command); setEPWM2A(-command); EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 500.0;",
       ],
       takeaway:
         "A timer interrupt that computes a command and hands it to setEPWM functions is the skeleton of every controller you will write for the robot. Later labs replace the ramp with a control law.",
@@ -1116,7 +1129,7 @@ ${SERVO_A_INIT}
     GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);  // EPWM8A
 
     // EPWM8B on GPIO15
-    EPwm8Regs.CMPB.bit.CMPB = 5000;      // 8 %: 0 degrees
+    EPwm8Regs.CMPB.bit.CMPB = 2500;      // 8 %: 0 degrees
     EPwm8Regs.AQCTLB.bit.CBU = 1;        // clear at CMPB
     EPwm8Regs.AQCTLB.bit.ZRO = 2;        // set at zero
     EALLOW;
@@ -1135,7 +1148,7 @@ void setEPWM8B_RCServo(float angle)
     if (angle < -90) {
         angle = -90;
     }
-    EPwm8Regs.CMPB.bit.CMPB = 5000 + angle * 2500.0 / 90.0;
+    EPwm8Regs.CMPB.bit.CMPB = 2500 + angle * 1250.0 / 90.0;
 }
 
 // Called every 20 ms
@@ -1164,7 +1177,7 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "signal", name: "SERVO1_DEG", at: 595, min: 34, max: 41, label: "Servo 1 is on its way back, near 35 degrees" },
         { kind: "signal", name: "SERVO2_DEG", at: 595, min: -41, max: -34, label: "Servo 2 mirrors it, near -35 degrees" },
         { kind: "reg", reg: "EPwm8Regs.AQCTLB", field: "CBU", equals: 1, label: "Output B is cleared at CMPB" },
-        { kind: "reg", reg: "EPwm8Regs.TBPRD", equals: 62500, label: "The shared period is still 20 ms" },
+        { kind: "reg", reg: "EPwm8Regs.TBPRD", equals: 31250, label: "The shared period is still 20 ms" },
       ],
       hints: [
         "For B you write CMPB, two AQCTLB fields, the pull-up bit and the pin mux. Do not write TBPRD or TBCTL again.",
@@ -1206,8 +1219,8 @@ ${SERVO_A_INIT}
 
     // RC servo 2 on EPWM8B (GPIO15): pasted from the LED set-up
     EPwm8Regs.TBCTL.bit.CLKDIV = 0;      // divide by 1
-    EPwm8Regs.TBPRD = 2500;
-    EPwm8Regs.CMPB.bit.CMPB = 250;       // 10 %: +45 degrees
+    EPwm8Regs.TBPRD = 5000;
+    EPwm8Regs.CMPB.bit.CMPB = 500;       // 10 %: +45 degrees
     EPwm8Regs.AQCTLB.bit.CAU = 1;        // clear at the compare match
     EPwm8Regs.AQCTLB.bit.ZRO = 2;        // set at zero
 
@@ -1230,7 +1243,7 @@ ${INIT}
 ${SERVO_A_INIT}
 
     // RC servo 2 on EPWM8B (GPIO15): same time base, its own compare
-    EPwm8Regs.CMPB.bit.CMPB = 6250;      // 10 % of 62500: +45 degrees
+    EPwm8Regs.CMPB.bit.CMPB = 3125;      // 10 % of 31250: +45 degrees
     EPwm8Regs.AQCTLB.bit.CBU = 1;        // clear at CMPB
     EPwm8Regs.AQCTLB.bit.ZRO = 2;        // set at zero
 
@@ -1247,13 +1260,13 @@ ${SERVO_A_INIT}
 `,
       checks: [
         { kind: "signal", name: "SERVO1_DEG", equals: 0, tol: 0.1, label: "Servo 1 is at 0 degrees", hint: "Both outputs share TBPRD and CLKDIV. The pasted block changed them for servo 1 as well." },
-        { kind: "signal", name: "SERVO2_DEG", equals: 45, tol: 0.1, label: "Servo 2 is at +45 degrees", hint: "10 % of the shared period of 62500 counts, and the event for CMPB in AQCTLB is CBU." },
+        { kind: "signal", name: "SERVO2_DEG", equals: 45, tol: 0.1, label: "Servo 2 is at +45 degrees", hint: "10 % of the shared period of 31250 counts, and the event for CMPB in AQCTLB is CBU." },
         { kind: "no-diagnostic", code: "cmp-over-period", label: "No compare value is above the period" },
       ],
       hints: [
         "Delete what the pasted block has no business setting: the clock divider and the period belong to the whole module.",
-        "With the period back at 62500, 10 % is 6250 counts, not 250.",
-        "EPwm8Regs.CMPB.bit.CMPB = 6250; EPwm8Regs.AQCTLB.bit.CBU = 1; EPwm8Regs.AQCTLB.bit.ZRO = 2;",
+        "With the period back at 31250, 10 % is 3125 counts, not 500.",
+        "EPwm8Regs.CMPB.bit.CMPB = 3125; EPwm8Regs.AQCTLB.bit.CBU = 1; EPwm8Regs.AQCTLB.bit.ZRO = 2;",
       ],
       takeaway:
         "A and B of one module can differ in duty cycle, never in frequency. Two signals with different frequencies need two modules, which is why the buzzer has EPWM9 to itself.",
@@ -1269,10 +1282,10 @@ ${SERVO_A_INIT}
       goal: "Play a melody on the buzzer from a timer interrupt, and hand the pin back to GPIO when it ends.",
       refs: [{ course: "HW3" }, { trm: "15.6.2" }, { trm: "15.4.2" }, { trm: "8.7" }],
       brief: `
-HW3, in full, from an empty \`main\`. The note values and the song are given.
+A whole song player from an empty \`main\`, as homework 3 asks for with its own song and clock. The note values and the song are given.
 
 ## Requirements
-- The buzzer is on GPIO16, EPWM9A. The note values assume the clock divider HW3 uses.
+- The buzzer is on GPIO16, EPWM9A. The note values assume a clock divider of 4, as in the buzzer level.
 - CPU Timer 1 interrupts every **40 ms**. Its function must be called \`cpu_timer1_isr\`.
 - The first call starts \`songarray[0]\`. Every call after that starts the next note. Before the first call the buzzer is silent.
 - On the call after the last note, do what HW3 asks for at the end of the song: make GPIO16 a plain **GPIO output** again and drive it **low**, so the buzzer cannot make random noise.
@@ -1331,11 +1344,11 @@ ${INIT}
     EPwm9Regs.TBCTL.bit.CTRMODE = 0;     // count up
     EPwm9Regs.TBCTL.bit.FREE_SOFT = 2;   // free run
     EPwm9Regs.TBCTL.bit.PHSEN = 0;
-    EPwm9Regs.TBCTL.bit.CLKDIV = 1;      // divide by 2
+    EPwm9Regs.TBCTL.bit.CLKDIV = 2;      // divide by 4
     EPwm9Regs.TBCTR = 0;
     EPwm9Regs.TBPRD = OFFNOTE;
     EPwm9Regs.AQCTLA.bit.CAU = 0;        // CMPA is not used
-    EPwm9Regs.AQCTLA.bit.ZRO = 3;        // toggle at zero
+    EPwm9Regs.AQCTLA.bit.PRD = 3;        // toggle at the period event
     EPwm9Regs.TBPHS.bit.TBPHS = 0;
 
     GPIO_SetupPinMux(16, GPIO_MUX_CPU1, 5);  // EPWM9A
@@ -1367,7 +1380,7 @@ __interrupt void cpu_timer1_isr(void)
 `,
       checks: [
         { kind: "signal", name: "BUZZER_HZ", at: 30, equals: 0, label: "Silent before the first note" },
-        { kind: "signal", name: "BUZZER_HZ", at: 75, equals: 329.63, tol: 0.5, label: "Note 1 is E4, 329.6 Hz", hint: "CLKDIV = 1, ZRO = 3 (toggle), GPIO16 at mux index 5, and TBPRD = songarray[noteIndex] in the timer function." },
+        { kind: "signal", name: "BUZZER_HZ", at: 75, equals: 329.63, tol: 0.5, label: "Note 1 is E4, 329.6 Hz", hint: "The clock divider and toggle action of the buzzer level, GPIO16 at mux index 5, and TBPRD = songarray[noteIndex] in the timer function." },
         { kind: "signal", name: "BUZZER_HZ", at: 118, equals: 0, label: "Note 2 is a rest" },
         { kind: "signal", name: "BUZZER_HZ", at: 235, equals: 392.0, tol: 0.5, label: "Note 5 is G4, 392 Hz" },
         { kind: "signal", name: "BUZZER_HZ", at: 475, equals: 261.63, tol: 0.5, label: "Note 11 is C4, 261.6 Hz" },
@@ -1523,7 +1536,6 @@ ${INIT_MOTORS()}
         { kind: "var", name: "u", at: 765, equals: 0, label: "u lands exactly on 0", hint: "If u ends at a tiny value like 1e-7 or keeps flipping between 0.05 and 0, the landing test is missing." },
         { kind: "duty", pin: 0, pct: 50, tolPct: 0.1, from: 750, to: 770, label: "EPWM1A is back at exactly 50 %" },
       ],
-      bonus: [{ kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 3, label: "The interrupt function takes at most 3 us" }],
       hints: [
         "Compute error = target - u once. Its sign tells you the direction, its size whether a full step still fits.",
         "Three cases: error above 0.05, error below -0.05, and everything in between.",
@@ -1540,14 +1552,14 @@ ${INIT_MOTORS()}
       goal: "Write tone(hz), which picks the clock divider and period itself so that low notes fit in 16 bits and high notes keep their resolution.",
       refs: [{ course: "HW3" }, { trm: "15.4.3" }, { trm: "15.15.2" }, { trm: "15.4.2" }],
       brief: `
-HW3's note table works for one clock divider. With \`CLKDIV = 1\` the lowest note that fits in the 16-bit \`TBPRD\` is about 191 Hz. Write a function that plays **any** frequency.
+A note table works for one clock divider. With a divide by 4 the lowest note that fits in the 16-bit \`TBPRD\` is about 95 Hz, and the higher the divider, the coarser the pitch. Write a function that plays **any** frequency.
 
 \`\`\`c
 void tone(float hz);
 \`\`\`
 
 - \`hz\` of 0 (or less) is silence. Follow the course: \`TBPRD = 0\`.
-- Otherwise the buzzer on EPWM9A (GPIO16) must sound at \`hz\`. The output toggles when the counter is zero, so one period of the tone is two teeth of the counter.
+- Otherwise the buzzer on EPWM9A (GPIO16) must sound at \`hz\`. The output toggles once per tooth of the counter, so one period of the tone is two teeth.
 - Use the **smallest** \`CLKDIV\` for which the period fits in \`TBPRD\`. A smaller divider means more counts per period and a more accurate pitch.
 
 ## What you need
@@ -1620,7 +1632,7 @@ void init_buzzer(void)
     EPwm9Regs.TBCTL.bit.CLKDIV = 0;
     EPwm9Regs.TBCTR = 0;
     EPwm9Regs.TBPRD = 0;                 // silent
-    EPwm9Regs.AQCTLA.bit.ZRO = 3;        // toggle at zero
+    EPwm9Regs.AQCTLA.bit.PRD = 3;        // toggle at the period event
     EPwm9Regs.TBPHS.bit.TBPHS = 0;
 
     GPIO_SetupPinMux(16, GPIO_MUX_CPU1, 5);  // EPWM9A

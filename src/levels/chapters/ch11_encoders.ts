@@ -174,7 +174,7 @@ export const ch11: Chapter = {
   number: 11,
   title: "Encoders",
   blurb: "Quadrature, the eQEP counter, wheel angle and speed.",
-  requires: ["interrupts"],
+  requires: ["interrupts", "serial"],
   course: ["L6-7", "Lab 3"],
   levels: [
     {
@@ -184,12 +184,10 @@ export const ch11: Chapter = {
       goal: "Learn how an optical encoder turns rotation into two square waves, and what the eQEP does with them.",
       refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "17.1" }, { trm: "17.3.1" }],
       brief: `
-A motor command tells the wheel what to do. It does not tell you what the wheel **did**. For that the robot needs a sensor on the shaft: an **optical encoder**.
+A motor command tells the wheel what to do. It does not tell you what the wheel **did**. For that the robot has a sensor on each motor shaft: an **optical encoder**.
 
 ## How it works
-A disc with evenly spaced slits is fixed to the motor shaft. On one side of the disc is an LED, on the other a light sensor. When a slit passes, light reaches the sensor and its output goes high. Between slits the output is low. A turning shaft gives a square wave, and each period means "one slit went by".
-
-The robot's encoders have **500 slits**, so one motor turn gives 500 periods.
+A disc with evenly spaced slits is fixed to the shaft, between an LED and a light sensor. When a slit passes, light reaches the sensor and its output goes high. Between slits it is low. A turning shaft gives a square wave: one period per slit. The robot's encoders have **500 slits**.
 
 ## One channel is not enough
 With a single sensor you can count slits, but:
@@ -197,27 +195,21 @@ With a single sensor you can count slits, but:
 - a shaft that **vibrates** on the edge of a slit gives pulse after pulse. You count motion that never happened.
 
 ## Two channels: quadrature
-A second sensor is placed a quarter of a slit period away from the first. The two outputs, **A** and **B**, are the same square wave shifted by 90 degrees. This is called **quadrature**.
+A second sensor sits a quarter of a slit period away from the first. The two outputs, **A** and **B**, are the same square wave shifted by 90 degrees. This is called **quadrature**.
 
 - Turning one way, A changes first and B follows (**A leads B**). Turning the other way, B leads A. The order gives the **direction**.
-- In one slit period there are four edges: A rises, B rises, A falls, B falls. Counting every edge gives **4 counts per slit**: 4 x 500 = **2000 counts** per motor turn.
+- One slit period has four edges: A rises, B rises, A falls, B falls. Counting every edge gives **4 counts per slit**.
 - Vibration on one edge now counts +1, -1, +1, -1. The sum stays put.
 
-Only one of the two signals changes at a time. A code with that property is a **Gray code**.
-
-Try it in the figure: turn the disc both ways and watch which channel changes first, then cover sensor B to see why one channel cannot tell the direction.
+Try it in the figure: turn the disc both ways and watch which channel changes first.
 
 {{figure:quadrature}}
 
-## Incremental and absolute
-This encoder is **incremental**: it reports changes, and something has to add them up. The sum starts at 0 at power-on, wherever the wheel is. Switch the robot off and the position is lost.
-
-An **absolute** encoder has several tracks and reads a different code at every angle, so it knows its position right after power-on. Its tracks use a Gray code as well: from one position to the next exactly one bit changes. With plain binary, going from 3 (\`011\`) to 4 (\`100\`) changes three bits, and since they never change at exactly the same instant, the reader could briefly see any value.
+## Incremental
+This encoder is **incremental**: it reports changes, and something has to add them up. The sum starts at 0 at power-on, wherever the wheel is.
 
 ## The eQEP counts for you
-At full speed the edges arrive more than a hundred thousand times per second. That is too fast to handle in C, so the chip has hardware for it: the **eQEP** (enhanced quadrature encoder pulse) module. It watches A and B and keeps the count in the 32-bit register \`QPOSCNT\`. Your code just reads it.
-
-The robot has three encoders: left wheel on eQEP1, right wheel on eQEP2, and a hand wheel you turn with your fingers on eQEP3.
+At full speed the edges arrive more than a hundred thousand times per second, too fast to handle in C. The chip has hardware for it: the **eQEP** (enhanced quadrature encoder pulse) module. It watches A and B and keeps the count in the 32-bit register \`QPOSCNT\`. Your code just reads it.
 `,
       questions: [
         {
@@ -343,7 +335,7 @@ Two registers decide how the eQEP counts.
 \`QEPCTL\` (control) switches the counter on:
 - \`QPEN\` (bit 3): 1 enables the position counter. 0 holds the module in reset, and that is the value after power-on.
 - \`FREE_SOFT\` (bits 15-14): what the counter does when the debugger halts the program. 0 stops it at once; 2 lets it keep counting, so the position is still right when you press Resume.
-- \`PCRM\` (bits 13-12): when the counter is reset. The modes use an index pulse or a timer that the robot does not have, so the course leaves it at 0.
+- \`PCRM\` (bits 13-12): what resets the counter. At 0 it is the encoder's index pulse, a third signal that the robot's encoders do not have connected. The course leaves it at 0.
 - \`SWI\` (bit 7): writing 1 loads \`QPOSCNT\` from \`QPOSINIT\`.
 
 \`init_eQEPs()\` writes \`FREE_SOFT = 2\` and then \`QPEN = 1\`. Build the resulting value.
@@ -370,7 +362,7 @@ Two registers decide how the eQEP counts.
       goal: "Complete the eQEP2 set-up and the scale factor so the right wheel angle is read in radians.",
       refs: [{ course: "Lab 3" }, { trm: "17.2" }, { trm: "17.4.1" }, { trm: "17.5.1" }],
       brief: `
-Lab 3 gives you \`init_eQEPs()\` and asks for the scale factor in the read functions. Here the eQEP1 block (left wheel) is complete, and the eQEP2 block (right wheel) has five \`???\` comments. Fix those lines, using eQEP1 as the model.
+Lab 3 gives you \`init_eQEPs()\` complete. Here the eQEP1 block (left wheel) is complete, and the eQEP2 block (right wheel) has five \`???\` comments. Fix those lines, using eQEP1 as the model. Then fill in the scale factor of \`readEncRight()\`.
 
 ## What each block does
 1. **Pins.** The pull-ups are switched off (the encoder drives the lines itself) and the inputs are qualified over 6 samples to reject glitches. Then the mux hands the pins to the eQEP. The mux position is different for every pin:
@@ -462,7 +454,7 @@ Why signed: \`QPOSCNT\` is unsigned, and one count below 0 it reads 0xFFFFFFFF. 
 
 ## The numbers
 - eQEP1 is the left wheel, eQEP2 the right wheel: 2000 counts per motor turn, 20 motor turns per wheel turn.
-- eQEP3 is the hand wheel: 4000 counts per turn, no gears.
+- eQEP3 is the hand wheel, a third encoder that you turn with your fingers: 4000 counts per turn, no gears.
 
 ## The sign
 The two motors are mounted as mirror images of each other. When the robot drives forward, the right encoder counts **up** and the left encoder counts **down**. Lab 3 has you find this on the real robot by turning the wheels by hand. Both functions must return a **positive** angle for forward motion, so one scale factor is negative.
@@ -897,9 +889,6 @@ ${READ_RIGHT}
         { kind: "led", led: "LED1", at: 950, on: false, label: "LED1 is off after the robot stops" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside the interrupt function", hint: "Set UARTPrint in the interrupt function and call serial_printf in the while(1) loop." },
       ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 2, label: "cpu_timer0_isr never takes more than 2 microseconds", hint: "Two reads, a few lines of arithmetic, one LED write. No loops and no printing." },
-      ],
       watch: ["LeftDist", "RightDist", "AvgVel", "numTimer0calls"],
       hints: [
         "Start from your code of the level \"How fast, how far\" and add the average, the LED and a call counter.",
@@ -1250,7 +1239,7 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "source", mustNotMatch: "EQep", label: "The eQEP module is not used" },
       ],
       bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.4, label: "cpu_timer0_isr never takes more than 0.4 microseconds", hint: "A 16-entry table indexed by (old << 2) | new replaces every if." },
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.3, label: "cpu_timer0_isr never takes more than 0.3 microseconds: a table, no chain of ifs", hint: "A 16-entry table indexed by (old << 2) | new replaces every if." },
       ],
       watch: ["count", "state_old"],
       hints: [
@@ -1481,9 +1470,6 @@ ${QEP2}
         { kind: "var", name: "Stalled", at: 1900.5, equals: 0, label: "Stalled is still 0 at 0.002 rad/s (a count every 79 ms)", hint: "Only 200 ms without a count means stopped." },
         { kind: "var", name: "SlowVel", min: -0.000001, max: 0.000001, label: "SlowVel is 0 after the wheel has stood still for 200 ms" },
         { kind: "var", name: "Stalled", equals: 1, label: "Stalled is 1 at the end" },
-      ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 1, label: "cpu_timer0_isr never takes more than 1 microsecond" },
       ],
       watch: ["FastVel", "SlowVel", "Stalled"],
       inspect: ["EQep2Regs.QPOSCNT"],
