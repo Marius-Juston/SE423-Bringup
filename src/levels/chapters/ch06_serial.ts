@@ -19,14 +19,14 @@ const timerMain = (periodUs: number, comment: string) => `${PIE_INIT}
 
     EALLOW;
     PieVectTable.TIMER2_INT = &cpu_timer2_isr;
-    PieVectTable.SCIA_RX_INT = &RXAINT_recv_ready;
+    PieVectTable.SCIA_RX_INT = &RXAINT_recv_ready;   // given: the receive interrupt
     EDIS;
 
     InitCpuTimers();
     ConfigCpuTimer(&CpuTimer2, 200, ${periodUs});   // ${comment}
     CpuTimer2Regs.TCR.all = 0x4000;
 
-    init_serialSCIA(&SerialA, 115200);
+    init_serialSCIA(&SerialA, 115200);   // given: start SCIA at 115200 baud
 
     IER |= M_INT9;   // SCIA
     IER |= M_INT14;  // CPU Timer 2
@@ -116,7 +116,7 @@ const rxIsr = (extra: string, locals = "") => `// Runs each time a character arr
 __interrupt void RXAINT_recv_ready(void)
 {
 ${locals}    RXAdata = SciaRegs.SCIRXBUF.all;
-    /* SCI PE or FE error */
+    /* a receive error (bad parity or bad stop bit): reset the receiver */
     if (RXAdata & 0xC000) {
         SciaRegs.SCICTL1.bit.SWRESET = 0;
         SciaRegs.SCICTL1.bit.SWRESET = 1;
@@ -160,7 +160,7 @@ A character is sent as a **frame**:
 - **8 data bits**, least significant bit (bit 0) first.
 - One **stop bit**, always 1. It returns the line to the idle level.
 
-That is 10 bits on the wire for 8 bits of data. The SCI can also add a parity bit or a second stop bit; the course uses neither. The receiver times itself from the start bit and samples the middle of each bit.
+That is 10 bits on the wire for 8 bits of data. The SCI can also add a parity bit (one extra bit for catching errors) or a second stop bit. The course uses neither. The receiver times itself from the start bit and samples the middle of each bit.
 
 {{figure:uart-frame}}
 
@@ -170,7 +170,7 @@ Try it in the figure: type a character and follow each written bit to its place 
 The 8 data bits are a number. Which number stands for which character is fixed by the **ASCII** table: \`'A'\` is 0x41, for example. The next level is about that table.
 
 ## Voltage levels
-On the chip's pins a 1 is 3.3 V and a 0 is 0 V. The older **RS-232** standard (the 9-pin PC serial port) sends the same frame with other voltages: a 1 is a negative voltage (-3 V to -15 V) and a 0 a positive one (+3 V to +15 V). It is inverted and swings both ways, so connecting it straight to a pin of the chip would damage the pin: a **transceiver** chip must sit in between.
+On the chip's pins a 1 is 3.3 V and a 0 is 0 V. The older **RS-232** standard (the 9-pin PC serial port) sends the same frame with other voltages: a 1 is a negative voltage (-3 V to -15 V) and a 0 a positive one (+3 V to +15 V). It is inverted and swings both ways, so connecting it straight to a pin of the chip would damage the pin. A **transceiver**, a small chip that converts between the two sets of voltages, must sit in between.
 
 You do not need one on the LaunchPad. Its USB port carries **SCIA** (TX on GPIO42, RX on GPIO43) and appears on the PC as a COM port.
 `,
@@ -235,6 +235,8 @@ Double quotes make a **string**: an array of characters with a 0 added after the
 - \`%s\`: a string
 - \`%x\`: a 16-bit integer in hex
 
+Example: \`serial_printf(&SerialA, "%d is %c\\r\\n", 65, 65);\` prints \`65 is A\`.
+
 A wrong code does not give a compile error. It prints a wrong number.
 
 End each line with \`\\r\\n\`: carriage return (back to the first column) and line feed (down one line).
@@ -265,14 +267,14 @@ End each line with \`\\r\\n\`: carriage return (back to the first column) and li
         },
         {
           prompt: '`serial_printf(&SerialA, "%c%c", 0x32, 69);` What appears on the terminal?',
-          options: ["3269", "2E", "0x3269", "50 69"],
-          answer: 1,
+          options: ["3269", "0x3269", "50 69", "2E"],
+          answer: 3,
           why: "%c prints the character with that ASCII number: 0x32 is '2', two after '0'. 69 is 0x45, four after 'A' (0x41), so 'E'.",
         },
         {
           prompt: "`float volts = 1.6504;` What does `%.2f` print for it?",
-          options: ["1.6504", "1.65", "1.7", "2"],
-          answer: 1,
+          options: ["1.65", "1.6504", "1.7", "2"],
+          answer: 0,
           why: ".2 asks for two digits after the decimal point, rounded.",
         },
       ],
@@ -356,6 +358,8 @@ BRR is a 16-bit number split over two registers: \`SCIHBAUD\` (upper 8 bits) and
 
 Turn the formula around to get BRR = LSPCLK / (baud x 8) - 1. The result is rarely a whole number. The course library, \`init_serialSCIA\`, does this with integer arithmetic, so the fraction is dropped.
 
+Example for 9600 baud: 50 000 000 / (9600 x 8) - 1 = 650.04, so BRR = 650. Put back into the first formula: 50 000 000 / (651 x 8) = 9601 bits per second.
+
 {{figure:baud-mismatch}}
 
 Dropping the fraction makes the real baud rate slightly different from the one you asked for. Try it in the figure: see how far the receiver's clock may be off before a character is misread.
@@ -409,21 +413,25 @@ Each character is a frame of **10 bits**: start, 8 data, stop.
       goal: "Print the timer count on the terminal every 250 ms, the way the course starter does.",
       refs: [{ course: "HW1" }, { course: "Lab 1" }, { trm: "19.13.1" }],
       brief: `
-Printing is slow: one character takes 10 bit times, so a 30-character line takes about 2.6 ms at 115200 baud. The course rule is: **never print inside an interrupt function**. The starter code uses a flag instead:
+Printing is slow: a 30-character line takes about 2.6 ms at 115200 baud. The course rule is: **never print inside an interrupt function**. Use the flag of chapter 5: the interrupt function sets \`UARTPrint = 1;\`, and the \`while (1)\` loop sees the flag, prints, and sets it back to 0.
 
-- the interrupt function only sets \`UARTPrint = 1;\`
-- the \`while (1)\` loop in \`main()\` sees the flag, prints, and sets it back to 0
+Given in this program, and the same in every lab:
 
-In this program CPU Timer 2 calls \`cpu_timer2_isr\` every **50 ms**, and \`CpuTimer2.InterruptCount\` counts the calls. As in HW1, make it print **every 250 ms**:
+- \`init_serialSCIA(&SerialA, 115200);\` starts the serial port SCIA at 115200 baud. \`SerialA\` is the library's struct for that port, and \`serial_printf(&SerialA, ...)\` prints through it.
+- \`extern uint32_t numRXA;\` says that \`numRXA\` exists in another file, the course's serial library. It counts the characters received.
+- The \`SCIA_RX_INT\` vector and \`IER |= M_INT9;\` are for receiving. A later level uses them.
+- \`CpuTimer2.InterruptCount\` is a counter inside TI's struct for timer 2, free for you to use.
 
-1. Change the modulus so the flag is set on the right calls.
+CPU Timer 2 calls \`cpu_timer2_isr\` every **50 ms**. As in HW1, make the program print **every 250 ms**:
+
+1. Change the number after \`%\` so the flag is set on the right calls.
 2. Print this line, with both values (both are \`uint32_t\`):
 \`\`\`c
 Num Timer2:5 Num SerialRX: 0
 \`\`\`
 3. Clear the flag after printing.
 
-The format string for that line is \`"Num Timer2:%ld Num SerialRX: %ld\\r\\n"\`. The values are \`CpuTimer2.InterruptCount\` and \`numRXA\`, the number of characters received so far.
+The format string for that line is \`"Num Timer2:%ld Num SerialRX: %ld\\r\\n"\`. The values, in this order, are \`CpuTimer2.InterruptCount\` and \`numRXA\`.
 `,
       kit: "launchpad",
       durationMs: 1100,
@@ -488,16 +496,16 @@ __interrupt void cpu_timer2_isr(void)
           kind: "serial",
           matches: "^Num Timer2:5 Num SerialRX: 0\\r\\nNum Timer2:10 Num SerialRX: 0\\r\\n",
           label: "The first lines are: Num Timer2:5 Num SerialRX: 0, then Num Timer2:10 Num SerialRX: 0",
-          hint: "Check the text character by character, including the spaces, and end the line with \\r\\n.",
+          hint: "Check the text character by character, including the spaces, and end the line with \\r\\n. The values go after the format string, separated by commas: first CpuTimer2.InterruptCount, then numRXA. Plain `printf` writes to the console, not to the serial terminal: use `serial_printf(&SerialA, ...)`.",
         },
         {
           kind: "serial-period",
           periodMs: 250,
           label: "A line is printed every 250 ms",
-          hint: "The timer interrupt comes every 50 ms. If lines pour out without a pause, the flag is never cleared.",
+          hint: "The timer interrupt comes every 50 ms, so the flag must be set on every 5th call: `% 5`. If lines pour out without a pause, the flag is never cleared: `UARTPrint = 0;` after the print.",
         },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the 32-bit values", hint: "Both values are uint32_t: use %ld." },
-        { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
+        { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function", hint: "The serial_printf line belongs in the `if (UARTPrint == 1)` block of main, not in cpu_timer2_isr." },
       ],
       watch: ["UARTPrint", "numRXA"],
       hints: [
@@ -621,7 +629,7 @@ Receiving works by interrupt. \`init_serialSCIA\` sets SCIA up so that every cha
 In Lab 1 you add your own code to that function. It is shown below as it is in the course file:
 
 - reading \`SciaRegs.SCIRXBUF.all\` takes the character out of the receive buffer
-- the two upper bits report a receive error; otherwise the character is the lower 8 bits, kept in \`RXAdata\`
+- the two upper bits report a receive error, and the four lines under that \`if\` reset the receiver; otherwise the character is the lower 8 bits, kept in \`RXAdata\` (a global of the library)
 - \`numRXA\` counts the characters received
 - the last two lines clear the SCI's interrupt flag and acknowledge PIE group 9, so the next character can interrupt again
 
@@ -664,9 +672,9 @@ ${rxIsr(`        if (RXAdata == 'a') {
         }`)}`,
       checks: [
         { kind: "led", led: "RED", at: 3, on: false, label: "The red LED is off before anything is typed" },
-        { kind: "led", led: "RED", at: 8, on: true, label: "Typing a turns the red LED on", hint: "This LED lights when GPIO34 is low: write 1 to GPBCLEAR." },
+        { kind: "led", led: "RED", at: 8, on: true, label: "Typing a turns the red LED on", hint: "Compare with single quotes: `if (RXAdata == 'a')`. Double quotes make a string, and a bare a is a variable name. This LED lights when GPIO34 is low: write 1 to GPBCLEAR." },
         { kind: "led", led: "RED", at: 13, on: true, label: "Typing x changes nothing", hint: "Only 'a' and 'b' may change the LED. Do not toggle it." },
-        { kind: "led", led: "RED", at: 18, on: false, label: "Typing b turns the red LED off" },
+        { kind: "led", led: "RED", at: 18, on: false, label: "Typing b turns the red LED off", hint: "`else if (RXAdata == 'b')` with single quotes, then write 1 to GPBSET: off is high for this LED." },
         { kind: "led", led: "RED", at: 23, on: true, label: "Typing a again turns it back on" },
         {
           kind: "var",
@@ -710,9 +718,10 @@ E 2
 Each line ends with \`\\r\\n\`.
 
 ## Rules
-- Do not print inside \`RXAINT_recv_ready\`. Save the character in a global variable, set a flag, and print from the \`while (1)\` loop.
+- Do not print inside \`RXAINT_recv_ready\`. Save the character in a global variable of your own (\`uint16_t\`), set a flag (another global), and print from the \`while (1)\` loop, as in "Four lines a second".
 - In ASCII, \`'a'\` to \`'z'\` are 0x61 to 0x7A and \`'A'\` to \`'Z'\` are 0x41 to 0x5A: a lower-case letter is its capital plus 32.
-- \`%c\` prints a character. \`numRXA\` is a \`uint32_t\`.
+- To test for a lower-case letter: \`if (c >= 'a' && c <= 'z')\`.
+- \`%c\` prints a character. \`numRXA\` is a \`uint32_t\`, so it takes \`%ld\`.
 `,
       kit: "launchpad",
       durationMs: 30,
@@ -762,7 +771,7 @@ ${rxIsr(`        newChar = RXAdata;
           kind: "serial",
           equals: "S 1\r\nE 2\r\n4 3\r\n",
           label: "The terminal shows S 1, E 2 and 4 3, each on its own line",
-          hint: "Only 'a' to 'z' are changed. Subtracting 32 from '4' gives a control character.",
+          hint: "Compare your terminal output with the three lines. Nothing printed: is the flag set in RXAINT_recv_ready and tested in main? A number such as 83 where a letter should be: print the character with %c. A wrong character on the last line: only 'a' to 'z' are changed, by subtracting 32. Lines running together: end the format with \\r\\n.",
         },
         { kind: "var", name: "numRXA", equals: 3, label: "numRXA counted the three characters" },
         {

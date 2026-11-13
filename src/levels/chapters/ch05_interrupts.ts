@@ -1,6 +1,6 @@
 import type { Chapter } from "../types";
 
-const FREQ = `#define LAUNCHPAD_CPU_FREQUENCY 200`;
+const FREQ = `#define LAUNCHPAD_CPU_FREQUENCY 200   // clock in MHz`;
 
 const INIT = `    InitSysCtrl();
     InitGpio();`;
@@ -14,11 +14,11 @@ const LED1 = out(22, "A", "CLEAR", "LED1, off");
 const LED2 = out(94, "C", "CLEAR", "LED2, off");
 const BLUE = out(31, "A", "SET", "Blue LaunchPad LED, off (it lights when the pin is low)");
 
-const PIE_INIT = `    DINT;
-    InitPieCtrl();
-    IER = 0x0000;
-    IFR = 0x0000;
-    InitPieVectTable();`;
+const PIE_INIT = `    DINT;                   // given: interrupts off during set-up
+    InitPieCtrl();          // given: PIE enables and flags cleared
+    IER = 0x0000;           // given: CPU interrupt lines disabled
+    IFR = 0x0000;           // given: old requests wiped
+    InitPieVectTable();     // given: default vectors, PIE on`;
 
 // Timer 0 through the PIE, as in the course starter.
 const TIMER0 = (periodUs: number) => `    EALLOW;
@@ -135,8 +135,8 @@ export const ch05: Chapter = {
       id: "int-brief",
       kind: "brief",
       title: "Let the hardware call you",
-      goal: "Learn what an interrupt is and the path a request takes to reach your function.",
-      refs: [{ course: "L4" }, { trm: "3.4.1" }, { trm: "3.4.2" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
+      goal: "Learn what an interrupt is and what an interrupt function looks like, then answer three questions.",
+      refs: [{ course: "L4" }, { trm: "3.4.1" }],
       brief: `
 So far your code asked the hardware the same question over and over: "has the time passed yet?" That is **polling**, and while the CPU is asking it does nothing else.
 
@@ -154,28 +154,12 @@ __interrupt void cpu_timer0_isr(void)
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 \`\`\`
-- \`__interrupt\` marks a function that the hardware calls. Such a function is also called an interrupt service routine, **ISR**.
+- \`__interrupt\` marks a function that the hardware calls. Such a function is also called an interrupt service routine, **ISR**. The name is yours to choose. The course calls this one \`cpu_timer0_isr\`.
 - It takes no parameters and returns nothing: nobody calls it, so nobody can pass or receive a value. It shares data with the rest of the program through global variables.
 - Keep it **short**. While it runs, other interrupts wait.
+- The last line tells the chip that the function is done, so the next request may come. The next level explains it.
 
-## The path of a request
-The chip has far more interrupt sources than the CPU has interrupt lines. The **PIE** (Peripheral Interrupt Expansion) block sorts them into 12 **groups** of up to 16 **channels**. Group x feeds CPU interrupt line INTx. Timer 0 is group 1, channel 7, written **INT1.7**.
-
-A request must pass every gate in this chain:
-
-1. The peripheral raises its request. The flag bit \`PIEIFRx.y\` is set.
-2. \`PIEIERx.y\`, the enable bit of that one channel, must be 1.
-3. The group's \`PIEACK\` bit must be 0. As the request passes, the PIE sets this bit, which blocks the whole group until your function clears it. That is the last line of the function above.
-4. The request sets the CPU flag bit \`IFR.x\`.
-5. The CPU enable bit \`IER.x\` must be 1.
-6. The global mask \`INTM\` must be 0. \`EINT;\` clears it, \`DINT;\` sets it.
-7. The CPU looks up the address of your function in the **vector table** (\`PieVectTable\`) and jumps to it.
-
-One closed gate and nothing happens: no error message, the function just never runs. Most of this chapter is about finding the closed gate.
-
-{{figure:interrupt-path}}
-
-Try it in the figure: let the timer reach zero, see where the request stops, and open that gate with the line of C shown next to it.
+On the robot this is what keeps a motor controller running exactly every millisecond, whatever \`main()\` is busy with.
 `,
       questions: [
         {
@@ -185,6 +169,54 @@ Try it in the figure: let the timer reach zero, see where the request stops, and
           why: "The hardware raises a request, and the CPU pauses the running code and jumps to the function. Your code never calls it.",
         },
         {
+          prompt: "`main()` is in the middle of a long calculation when the timer interrupt happens. What happens to the calculation?",
+          options: [
+            "It is cancelled",
+            "It starts again from the beginning",
+            "It finishes first, then the interrupt function runs",
+            "It is paused, and continues where it stopped once the interrupt function returns",
+          ],
+          answer: 3,
+          why: "The CPU remembers where it was, runs the interrupt function, and goes back. main() does not notice, apart from the time that passed.",
+        },
+        {
+          prompt: "How does an interrupt function hand a result to `main()`?",
+          options: ["With `return`", "Through a parameter", "Through a global variable", "It cannot"],
+          answer: 2,
+          why: "Nobody calls the function, so there is nobody to return a value to. Both sides can read and write a global variable.",
+        },
+      ],
+      takeaway: "An interrupt function is called by the hardware, not by main(). Keep it short and share data through global variables.",
+    },
+    {
+      id: "int-gates",
+      kind: "brief",
+      title: "Six gates and a table",
+      goal: "Follow an interrupt request from the timer to your function, then answer three questions.",
+      refs: [{ course: "L4" }, { trm: "3.4.1" }, { trm: "3.4.2" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
+      brief: `
+A request does not reach your function by itself. It passes a chain of gates, and after reset every gate is closed.
+
+The chip has far more interrupt sources than the CPU has interrupt lines. The **PIE** (Peripheral Interrupt Expansion) block sorts them into 12 **groups** of up to 16 **channels**. Group x feeds CPU interrupt line INTx. Timer 0 is group 1, channel 7, written **INT1.7**.
+
+Two words first. A **flag** bit remembers that a request arrived. An **enable** bit decides whether it may pass.
+
+1. The peripheral raises its request. The PIE flag \`PIEIFRx.y\` is set (x is the group, y the channel).
+2. \`PIEIERx.y\`, the PIE enable of that one channel, must be 1.
+3. The group's \`PIEACK\` bit must be 0. As the request passes, the PIE sets this bit, which blocks the whole group until your function clears it by writing 1 to it. That is the last line of every interrupt function.
+4. The request sets the CPU flag \`IFR\` bit x.
+5. The CPU enable \`IER\` bit x must be 1.
+6. The global gate \`INTM\` must be 0. \`EINT;\` opens it for all interrupts at once, \`DINT;\` closes it.
+7. The CPU looks up the address of your function in the **vector table** (\`PieVectTable\`, a table of function pointers) and jumps to it.
+
+One closed gate and nothing happens: no error message, the function just never runs. Most of this chapter is about finding the closed gate.
+
+{{figure:interrupt-path}}
+
+Try it in the figure: press **Timer 0 reaches zero**, see where the request stops, and open that gate with the line of C shown next to it.
+`,
+      questions: [
+        {
           prompt: "Timer 0 requests an interrupt. `IER` has `M_INT1` set and `EINT;` has run, but `PieCtrlRegs.PIEIER1.bit.INTx7` is 0. What happens?",
           options: [
             "The function runs once",
@@ -193,7 +225,18 @@ Try it in the figure: let the timer reach zero, see where the request stops, and
             "The program stops with an error",
           ],
           answer: 2,
-          why: "The flag is latched, but the channel's enable bit is the next gate. It is closed, so the request never reaches the CPU.",
+          why: "The flag remembers the request, but the channel's enable bit is the next gate. It is closed, so the request never reaches the CPU.",
+        },
+        {
+          prompt: "What does `EINT;` do?",
+          options: [
+            "It runs every interrupt function once",
+            "It opens the CPU's global gate (INTM = 0), so enabled requests can get through",
+            "It enables timer 0 in the PIE",
+            "It ends an interrupt function",
+          ],
+          answer: 1,
+          why: "EINT only opens the last gate. Each interrupt still needs its own enables before it, and DINT closes the gate again.",
         },
         {
           prompt: "Why must a group 1 interrupt function end with `PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;`?",
@@ -220,7 +263,7 @@ Timer 0 has just counted down to zero. Its interrupt is fully enabled and \`cpu_
 
 Timer 0 is PIE group 1, channel 7 (**INT1.7**), so the registers involved are \`PIEIFR1\`, \`PIEIER1\`, bit 1 of \`PIEACK\`, and the INT1 bits of \`IFR\` and \`IER\`.
 
-Order the steps. Think of the signal moving from the peripheral, through the PIE, to the CPU. Only after the CPU has accepted the interrupt does it save its state and look up where to jump.
+Order the steps. Think of the signal moving from the peripheral, through the PIE, to the CPU. Only after the CPU has accepted the interrupt does it save its state (where it was in your program, so it can go back) and look up where to jump. "Latched" means remembered in a flag bit until something clears it.
 
 One step is new: on the way in, the CPU itself sets INTM. That is why an interrupt function is not interrupted by another one.
 `,
@@ -230,7 +273,7 @@ One step is new: on the way in, the CPU itself sets INTM. That is why an interru
         "PIEIER1.7 is 1 and the group 1 PIEACK bit is 0: the request passes, and the PIE sets the PIEACK bit",
         "The request is latched in the CPU flag IFR, bit INT1",
         "The IER bit INT1 is 1 and INTM is 0: the CPU accepts the interrupt",
-        "The CPU saves its state on the stack, clears the IFR and IER bits for INT1 and sets INTM",
+        "The CPU saves its state, clears the IFR and IER bits for INT1 and sets INTM",
         "The CPU fetches the address stored in PieVectTable.TIMER0_INT, and PIEIFR1.7 is cleared",
         "cpu_timer0_isr runs and ends by clearing the group 1 PIEACK bit",
       ],
@@ -258,7 +301,9 @@ The reference manual (section 3.4.4.1) lists the steps. The idea behind the orde
 - Then let the peripheral start making requests.
 - Open the global gate last, when everything else is ready.
 
-In the course starter code, \`InitPieCtrl()\` and \`InitPieVectTable()\` do the "switch the PIE on" step: the second one fills the table with default handlers and sets the \`ENPIE\` bit.
+In the course starter code, \`InitPieCtrl()\` and \`InitPieVectTable()\` do the "switch the PIE on" step: the second one fills the table with a default handler (a placeholder function that only stops the program) and switches the PIE on.
+
+\`IER |= M_INT1;\` sets one bit of \`IER\`. \`M_INT1\` is a ready-made mask for the INT1 bit, and \`|=\` leaves the other bits as they are.
 
 The starter code does the three middle steps in a slightly different order (timer first, then \`IER\`, then \`PIEIER\`). That is safe too, because nothing can reach the CPU until \`EINT;\`. What must not move: \`DINT;\` first, the vector before the enables, \`EINT;\` last.
 
@@ -287,7 +332,7 @@ Order the steps the way the manual lists them.
       goal: "Use the PIE channel table to find the group, channel, IER mask and PIEACK constant of an interrupt.",
       refs: [{ trm: "3.4.5" }, { trm: "3.4.6" }, { trm: "3.4.4" }, { course: "L4" }],
       brief: `
-Table 3-2 of the reference manual lists every PIE interrupt. Each row is a group, each column a channel. A few rows, shortened:
+Table 3-2 of the reference manual lists every PIE interrupt. Each row is a group, each column a channel. The names are peripherals, most of which you meet in later chapters (ADC, EPWM, SPI, SCI). Here you only need to find a name and read off its numbers. A few rows, shortened:
 
 - **INT1.y**: 1 ADCA1, 2 ADCB1, 3 ADCC1, 4 XINT1, 5 XINT2, 6 ADCD1, **7 TIMER0**, 8 WAKE
 - **INT3.y**: 1 EPWM1, 2 EPWM2, 3 EPWM3 and so on up to 12 EPWM12
@@ -379,13 +424,15 @@ This program is nearly the course starter code. Timer 0 is set up to request an 
 
 Four lines are missing, so the function never runs.
 
+Given, and the same in every course program: the \`#define\` (the clock in MHz), the prototype of \`cpu_timer0_isr\` above \`main\` (so \`main\` can name the function before its body appears), and the five lines from \`DINT;\` to \`InitPieVectTable();\` that you ordered in "Switching it on".
+
 1. **The vector.** Tell the PIE where to jump. The vector table is protected, so the write goes between \`EALLOW;\` and \`EDIS;\`:
 \`\`\`c
 PieVectTable.TIMER0_INT = &cpu_timer0_isr;
 \`\`\`
 2. **The CPU enable** for group 1: \`IER |= M_INT1;\`
 3. **The PIE enable** for channel 7 of group 1: \`PieCtrlRegs.PIEIER1.bit.INTx7 = 1;\`
-4. **The global enable**: \`EINT;\`
+4. **The global enable**: \`EINT;\`. The starter code follows it with \`ERTM;\`, which lets the debugger work while interrupts run. It is optional here.
 
 \`IER |= ...\` uses OR so that bits already set for other interrupts stay set.
 
@@ -468,9 +515,12 @@ __interrupt void cpu_timer0_isr(void)
 }
 `,
       checks: [
-        { kind: "isr", fn: "cpu_timer0_isr", min: 9, max: 11, label: "cpu_timer0_isr runs every 100 ms", hint: "If it ran 0 times, one of the gates is still closed: IER, PIEIER1.INTx7 or EINT." },
+        { kind: "source", mustMatch: "PieVectTable\\s*\\.\\s*TIMER0_INT\\s*=\\s*&?\\s*cpu_timer0_isr", label: "TODO 1: the vector table points to cpu_timer0_isr", hint: "Between EALLOW and EDIS: `PieVectTable.TIMER0_INT = &cpu_timer0_isr;`" },
+        { kind: "source", mustMatch: "IER\\s*\\|?=[^;]*M_INT1\\b", label: "TODO 2: CPU interrupt 1 is enabled in IER", hint: "`IER |= M_INT1;`. Timer 0 is in group 1, so the mask is M_INT1, not M_INT7." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER1", field: "INTx7", equals: 1, label: "TODO 3: timer 0 is enabled in the PIE", hint: "`PieCtrlRegs.PIEIER1.bit.INTx7 = 1;`: register PIEIER1 for group 1, field INTx7 for channel 7." },
+        { kind: "source", mustMatch: "\\bEINT\\s*;", label: "TODO 4: interrupts are enabled globally", hint: "`EINT;` on a line of its own, after the other three, before `while (1)`." },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 9, max: 11, label: "cpu_timer0_isr runs every 100 ms", hint: "If it ran 0 times, a gate is still closed: look at the TODO tests above this one. If it ran once, the PIEACK line at the end of the function is gone." },
         { kind: "blink", led: "LED1", periodMs: 200, label: "LED1 blinks with a 200 ms period" },
-        { kind: "reg", reg: "PieCtrlRegs.PIEIER1", field: "INTx7", equals: 1, label: "Timer 0 is enabled in the PIE" },
       ],
       watch: [],
       inspect: ["PieCtrlRegs.PIEIER1", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEACK", "CpuTimer0Regs.TCR"],
@@ -865,38 +915,159 @@ __interrupt void cpu_timer2_isr(void)
       takeaway: "One fast timer plus a counter gives you as many slower rhythms as you need. The acknowledge stays outside the if: it must run on every call.",
     },
     {
-      id: "int-checkpoint",
+      id: "int-swi",
       kind: "code",
-      mode: "checkpoint",
-      title: "Three functions and a flag",
-      goal: "Run two timers, post a software interrupt from one of them, and hand a job to main with a flag.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { course: "L4" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
+      mode: "complete",
+      title: "An interrupt you ask for",
+      goal: "Post a software interrupt from the timer 0 function and write the function it runs.",
+      refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
       brief: `
-This is the structure of the starter code you will use all semester, built by you.
+A timer function must stay short. Work that takes longer needs another place, where it can run soon without holding the timer up.
 
-## Timer 0, every 1 ms: \`cpu_timer0_isr\`
-- Count the call in \`numTimer0calls\`.
-- On every **50th** call, post the software interrupt:
+A peripheral asks for an interrupt by setting its PIE flag. Your code can set a PIE flag too, and the PIE cannot tell the difference. That is a **software interrupt** (SWI): one function asks for another function to run as an interrupt. Setting the flag is called **posting** the interrupt:
 \`\`\`c
 PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;
 \`\`\`
-- Acknowledge group 1.
+The course borrows a table entry that the board does not otherwise use: **INT12.9**, named \`EMIF_ERROR_INT\` in the vector table. It needs what any PIE interrupt needs:
 
-## The software interrupt: \`SWI_isr\`
-Setting a PIE flag yourself has the same effect as a peripheral setting it. The course borrows an entry it does not otherwise use, **INT12.9**, named \`EMIF_ERROR_INT\` in the vector table. It needs what any PIE interrupt needs: a vector, \`PIEIER12.bit.INTx9\`, \`M_INT12\` and \`PIEACK_GROUP12\`.
+- its vector: \`PieVectTable.EMIF_ERROR_INT = &SWI_isr;\`
+- its channel: \`PieCtrlRegs.PIEIER12.bit.INTx9 = 1;\`
+- its group: \`IER |= M_INT12;\`
+- the acknowledge at the end of the function: \`PIEACK_GROUP12\`
 
-- Count the call in \`numSWIcalls\`.
-- Toggle **LED2** (GPIO94, port C).
+## Your task
+Timer 0 already interrupts every 1 ms and counts its calls. Add the four TODOs so that every **50th** call posts the software interrupt, and \`SWI_isr\` counts its calls in \`numSWIcalls\` and toggles **LED2** (GPIO94, port C).
+`,
+      kit: "robot",
+      durationMs: 510,
+      starter: `${FREQ}
 
-Group 12 has the lowest priority of the PIE groups. That makes it the place for work that is too long for the timer function but should not wait for main.
+__interrupt void cpu_timer0_isr(void);
+__interrupt void SWI_isr(void);
 
-## Timer 1, every 25 ms: \`cpu_timer1_isr\`
-- Count the call in \`numTimer1calls\`.
-- Toggle **LED1** (GPIO22) on every call.
-- On every **4th** call, set the flag \`UARTPrint = 1;\`
+uint32_t numTimer0calls = 0;
+uint32_t numSWIcalls = 0;
 
-## The flag, in main
-In the starter code, slow work such as printing is never done inside an interrupt function. The function only raises a flag, and \`while(1)\` does the work:
+void main(void)
+{
+${INIT}
+
+${LED2}
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    // TODO 1: the vector of the software interrupt (EMIF_ERROR_INT)
+    EDIS;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 1000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    // TODO 2: enable group 12 in IER, and channel 9 of group 12 in the PIE
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+// Every 1 ms
+__interrupt void cpu_timer0_isr(void)
+{
+    numTimer0calls++;
+    if ((numTimer0calls % 50) == 0) {
+        // TODO 3: post the software interrupt
+    }
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+
+__interrupt void SWI_isr(void)
+{
+    // TODO 4: count the call in numSWIcalls, toggle LED2, acknowledge group 12
+}
+`,
+      solution: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+__interrupt void SWI_isr(void);
+
+uint32_t numTimer0calls = 0;
+uint32_t numSWIcalls = 0;
+
+void main(void)
+{
+${INIT}
+
+${LED2}
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    PieVectTable.EMIF_ERROR_INT = &SWI_isr;
+    EDIS;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 1000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    IER |= M_INT12;
+    PieCtrlRegs.PIEIER12.bit.INTx9 = 1;
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+// Every 1 ms
+__interrupt void cpu_timer0_isr(void)
+{
+    numTimer0calls++;
+    if ((numTimer0calls % 50) == 0) {
+        PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;
+    }
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+
+__interrupt void SWI_isr(void)
+{
+    numSWIcalls++;
+    GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP12;
+}
+`,
+      checks: [
+        { kind: "isr", fn: "cpu_timer0_isr", min: 505, max: 511, label: "cpu_timer0_isr still runs every 1 ms", hint: "Leave the timer 0 lines and its PIEACK_GROUP1 line as they are." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER12", field: "INTx9", equals: 1, label: "TODO 2: channel 9 of group 12 is enabled in the PIE", hint: "`PieCtrlRegs.PIEIER12.bit.INTx9 = 1;` and `IER |= M_INT12;`" },
+        { kind: "isr", fn: "SWI_isr", min: 10, max: 10, label: "SWI_isr runs on every 50th timer 0 interrupt", hint: "Never: check the post (`PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;` inside the if), the vector (EMIF_ERROR_INT) and `IER |= M_INT12;`. Calling `SWI_isr();` yourself does not count: the PIE must start it. Once only: SWI_isr must end with `PieCtrlRegs.PIEACK.all = PIEACK_GROUP12;`, group 12, not group 1." },
+        { kind: "var", name: "numSWIcalls", equals: 10, label: "numSWIcalls counts the software interrupts", hint: "`numSWIcalls++;` inside SWI_isr." },
+        { kind: "blink", led: "LED2", periodMs: 100, label: "LED2 blinks with a 100 ms period (from SWI_isr)", hint: "`GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;` inside SWI_isr." },
+      ],
+      watch: ["numTimer0calls", "numSWIcalls"],
+      inspect: ["PieCtrlRegs.PIEIER12", "PieCtrlRegs.PIEIFR12", "PieCtrlRegs.PIEACK"],
+      hints: [
+        "Every line you need is in the briefing. TODO 1 goes between EALLOW and EDIS.",
+        "TODO 3 is the posting line, `PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;`. Note the F: PIEIFR is the flag register, PIEIER the enable register.",
+        "SWI_isr: `numSWIcalls++;`, `GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;`, `PieCtrlRegs.PIEACK.all = PIEACK_GROUP12;`",
+      ],
+      takeaway: "Setting a PIE flag yourself starts an interrupt like any other. Group 12 has the lowest priority of the PIE groups, which makes it the place for work that is too long for a timer function.",
+    },
+    {
+      id: "int-flag",
+      kind: "code",
+      mode: "complete",
+      title: "Leave the slow work to main",
+      goal: "Raise a flag in an interrupt function and do the work in the while (1) loop.",
+      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { course: "L4" }],
+      brief: `
+Some work is slow. Printing one line of text takes several milliseconds. Inside an interrupt function that would hold up every other interrupt, so the starter code never does slow work there.
+
+The pattern instead: the interrupt function only decides **when**. It sets a global variable to 1. Such a variable is called a **flag**, like the flag bits of the hardware. The \`while (1)\` loop in \`main\` watches the flag and does the work:
 \`\`\`c
 if (UARTPrint == 1) {
     UARTPrint = 0;
@@ -904,6 +1075,151 @@ if (UARTPrint == 1) {
 }
 \`\`\`
 Setting the flag back to 0 matters: without it the work would repeat as fast as the loop can spin.
+
+## Your task
+Timer 1 interrupts every 25 ms and \`cpu_timer1_isr\` toggles LED1. That part is complete.
+
+1. In \`cpu_timer1_isr\`: on every **4th** call, set \`UARTPrint = 1;\`. Use the remainder test you know: \`(numTimer1calls % 4) == 0\`.
+2. In the \`while (1)\` loop: the four lines above.
+`,
+      kit: "robot",
+      durationMs: 510,
+      starter: `${FREQ}
+
+__interrupt void cpu_timer1_isr(void);
+
+uint32_t numTimer1calls = 0;
+uint16_t UARTPrint = 0;     // the flag: 1 means "main, it is time to print"
+uint32_t handled = 0;       // how many times main did the slow work
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.TIMER1_INT = &cpu_timer1_isr;
+    EDIS;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer1, LAUNCHPAD_CPU_FREQUENCY, 25000);
+    CpuTimer1Regs.TCR.all = 0x4000;
+
+    IER |= M_INT13;
+    EINT;
+    ERTM;
+
+    while (1) {
+        // TODO 2: if the flag is 1, set it back to 0 and count the work in handled
+    }
+}
+
+// Every 25 ms. Timer 1 skips the PIE, so there is no PIEACK line.
+__interrupt void cpu_timer1_isr(void)
+{
+    numTimer1calls++;
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    // TODO 1: on every 4th call, raise the flag
+}
+`,
+      solution: `${FREQ}
+
+__interrupt void cpu_timer1_isr(void);
+
+uint32_t numTimer1calls = 0;
+uint16_t UARTPrint = 0;     // the flag: 1 means "main, it is time to print"
+uint32_t handled = 0;       // how many times main did the slow work
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.TIMER1_INT = &cpu_timer1_isr;
+    EDIS;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer1, LAUNCHPAD_CPU_FREQUENCY, 25000);
+    CpuTimer1Regs.TCR.all = 0x4000;
+
+    IER |= M_INT13;
+    EINT;
+    ERTM;
+
+    while (1) {
+        if (UARTPrint == 1) {
+            UARTPrint = 0;
+            handled++;      // stands for the slow work
+        }
+    }
+}
+
+// Every 25 ms. Timer 1 skips the PIE, so there is no PIEACK line.
+__interrupt void cpu_timer1_isr(void)
+{
+    numTimer1calls++;
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    if ((numTimer1calls % 4) == 0) {
+        UARTPrint = 1;
+    }
+}
+`,
+      checks: [
+        { kind: "isr", fn: "cpu_timer1_isr", min: 20, max: 20, label: "cpu_timer1_isr runs every 25 ms" },
+        { kind: "var", name: "handled", equals: 5, label: "main did the work 5 times: once for every 4th interrupt", hint: "A huge number: the flag is never set back to 0. Zero: the flag is never set, or main never looks. 20: the flag is set on every call, not on every 4th." },
+        { kind: "var", name: "UARTPrint", equals: 0, label: "The flag is back at 0 after main used it", hint: "`UARTPrint = 0;` inside the if in main, before the work." },
+        {
+          kind: "source",
+          mustMatch: "while\\s*\\(\\s*1\\s*\\)\\s*\\{[^}]*UARTPrint\\s*==\\s*1[\\s\\S]*handled\\s*(\\+\\+|\\+=)[\\s\\S]*__interrupt void cpu_timer1_isr\\(void\\)\\s*\\{",
+          label: "The work (handled++) is done in main, not in the interrupt function",
+          hint: "The interrupt function only sets `UARTPrint = 1;`. The if with `handled++;` goes inside the braces of `while (1)`.",
+        },
+      ],
+      watch: ["numTimer1calls", "UARTPrint", "handled"],
+      hints: [
+        "TODO 1 is three lines: an if with the remainder test, and `UARTPrint = 1;` inside it.",
+        "`if ((numTimer1calls % 4) == 0) { UARTPrint = 1; }`",
+        "TODO 2: copy the four lines from the briefing into the `while (1)` loop.",
+      ],
+      takeaway: "An interrupt function decides when, main does the slow work. The flag is the message between them, and whoever reads it sets it back to 0.",
+    },
+    {
+      id: "int-checkpoint",
+      kind: "code",
+      mode: "checkpoint",
+      title: "Three functions and a flag",
+      goal: "Run two timers, post a software interrupt from one of them, and hand a job to main with a flag.",
+      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { course: "L4" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
+      brief: `
+This is the structure of the starter code you will use all semester, built by you from the last four levels: two timers, the software interrupt and the flag.
+
+## Timer 0, every 1 ms: \`cpu_timer0_isr\`
+- Count the call in \`numTimer0calls\`.
+- On every **50th** call, post the software interrupt: \`PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;\`
+- Acknowledge group 1.
+
+## The software interrupt: \`SWI_isr\`
+- Count the call in \`numSWIcalls\`.
+- Toggle **LED2** (GPIO94, port C).
+- Acknowledge group 12.
+
+## Timer 1, every 25 ms: \`cpu_timer1_isr\`
+- Count the call in \`numTimer1calls\`.
+- Toggle **LED1** (GPIO22) on every call.
+- On every **4th** call, set the flag \`UARTPrint = 1;\`
+
+## The flag, in main
+When \`UARTPrint\` is 1, set it back to 0 and add 1 to \`handled\`, which stands for the slow work.
+
+## In main, before the loop
+Three vectors (\`TIMER0_INT\`, \`TIMER1_INT\`, \`EMIF_ERROR_INT\`) between \`EALLOW;\` and \`EDIS;\`. \`InitCpuTimers();\`, then a \`ConfigCpuTimer\` line and a \`TCR.all = 0x4000;\` line per timer. The enables for each interrupt. \`EINT;\` last.
 
 Keep the names of the functions and the global variables. The tests read them.
 `,
@@ -1186,8 +1502,8 @@ The simulator does not model XINT yet, so this level is questions only.
       questions: [
         {
           prompt: "Which line enables **XINT2** in the PIE?",
-          options: ["`PieCtrlRegs.PIEIER1.bit.INTx4 = 1;`", "`PieCtrlRegs.PIEIER1.bit.INTx5 = 1;`", "`PieCtrlRegs.PIEIER2.bit.INTx1 = 1;`", "`PieCtrlRegs.PIEIER12.bit.INTx2 = 1;`"],
-          answer: 1,
+          options: ["`PieCtrlRegs.PIEIER1.bit.INTx4 = 1;`", "`PieCtrlRegs.PIEIER2.bit.INTx1 = 1;`", "`PieCtrlRegs.PIEIER12.bit.INTx2 = 1;`", "`PieCtrlRegs.PIEIER1.bit.INTx5 = 1;`"],
+          answer: 3,
           why: "XINT2 is INT1.5: group 1, channel 5.",
         },
         {
@@ -1198,14 +1514,14 @@ The simulator does not model XINT yet, so this level is questions only.
         },
         {
           prompt: "`xint1_isr` runs once and never again. What is the most likely cause?",
-          options: ["POLARITY should be 1", "The function does not clear the group 1 PIEACK bit", "IER should use M_INT4", "GPIO4 has no pull-up"],
-          answer: 1,
+          options: ["The function does not clear the group 1 PIEACK bit", "POLARITY should be 1", "IER should use M_INT4", "GPIO4 has no pull-up"],
+          answer: 0,
           why: "XINT1 goes through PIE group 1, so the function must end with PIEACK_GROUP1. M_INT1 is correct: IER uses the group number.",
         },
         {
           prompt: "You press the button once and the counter in `xint1_isr` goes up by 3. Why?",
-          options: ["The interrupt is enabled three times", "The contacts bounced: each bounce is another falling edge", "The CPU runs every interrupt function three times", "The pull-up is too strong"],
-          answer: 1,
+          options: ["The interrupt is enabled three times", "The CPU runs every interrupt function three times", "The contacts bounced: each bounce is another falling edge", "The pull-up is too strong"],
+          answer: 2,
           why: "A bouncing contact makes several edges within a few milliseconds, and each one is a request. The expert levels on debouncing show the cure.",
         },
       ],
@@ -1369,7 +1685,7 @@ While an interrupt function runs, INTM is set and no other interrupt is taken. T
 So a function that runs longer than **two** timer periods loses interrupts, and a function that runs longer than one period makes the next one late.
 
 ## The fix
-Use the flag pattern from the checkpoint. The interrupt function only decides **when**: it raises a flag. The \`while (1)\` loop in \`main()\` does the slow work and can be interrupted while it does.
+Use the flag pattern of "Leave the slow work to main". The interrupt function only decides **when**: it raises a flag. The \`while (1)\` loop in \`main()\` does the slow work and can be interrupted while it does.
 
 The sensor must still be read once every 10 ms. Do not change \`read_slow_sensor()\`.
 `,

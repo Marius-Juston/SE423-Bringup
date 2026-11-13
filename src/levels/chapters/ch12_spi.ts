@@ -35,10 +35,10 @@ const PINS = `    // GPIO66 is the chip select of the MPU-9250: high means "not 
     GPIO_SetupPinMux(64, GPIO_MUX_CPU1, 15);  // GPIO64 is SPISOMIB
     GPIO_SetupPinMux(65, GPIO_MUX_CPU1, 15);  // GPIO65 is SPICLKB
     EALLOW;
-    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;       // pull-ups on, as TI recommends for SPI pins
+    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;       // given: pull-ups on (0 = on), TI's advice for SPI
     GpioCtrlRegs.GPCPUD.bit.GPIO64 = 0;
     GpioCtrlRegs.GPCPUD.bit.GPIO65 = 0;
-    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;     // asynchronous inputs, recommended for SPI
+    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;     // given: 3 = pin goes to the SPI unfiltered
     GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3;
     GpioCtrlRegs.GPCQSEL1.bit.GPIO65 = 3;
     EDIS;`;
@@ -62,9 +62,9 @@ const spib = (o: SpibOpts = {}) => `    SpibRegs.SPICCR.bit.SPISWRESET = 0;     
     SpibRegs.SPICCR.bit.SPICHAR = ${o.char ?? "0xF"};        // bits per word, minus 1
     SpibRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
     SpibRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;
+    SpibRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
     SpibRegs.SPIBRR.bit.SPI_BIT_RATE = ${o.brr ?? (o.loopback ? 99 : 49)};    // ${rateNote(o.brr ?? (o.loopback ? 99 : 49))}
-    SpibRegs.SPISTS.all = 0x0000;
+    SpibRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
 ${o.loopback ? "    SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip\n" : ""}${
   o.fifo === false
     ? ""
@@ -72,10 +72,10 @@ ${o.loopback ? "    SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO 
     SpibRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
     SpibRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
     SpibRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
+    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
     SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
+    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
+    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
     SpibRegs.SPIFFRX.bit.RXFFIENA = 1;        // interrupt when RXFFST >= RXFFIL
     SpibRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
 `
@@ -132,28 +132,28 @@ export const ch12: Chapter = {
       goal: "Learn what the clock line is for and how two chips swap a byte, then answer three questions.",
       refs: [{ course: "L10" }, { trm: "18.1" }, { trm: "18.3.1" }],
       brief: `
-A UART has no clock wire: both ends agree on a baud rate and each measures time by itself (**asynchronous**). **SPI** (Serial Peripheral Interface) is **synchronous**: one extra wire, the **clock**, tells the receiver when to look at the data wire. The robot's gyro and accelerometer chip, the MPU-9250, speaks SPI.
+A UART has no clock wire: both ends agree on a baud rate and each measures time by itself (**asynchronous**). **SPI** (Serial Peripheral Interface) is **synchronous**: one extra wire, the **clock**, tells the receiver when to look at the data wire. The robot's motion sensor, the MPU-9250, speaks SPI. It holds a **gyro** (how fast the robot turns) and an **accelerometer** (how hard it speeds up or slows down).
 
 ## What the clock line is for
-A data wire only carries a level: \`1 1 1\` is just a wire that stays high. Every clock cycle means "one bit, now". The receiver never measures time. It waits for a clock edge and reads the data wire at that moment.
+A data wire only carries a level: \`1 1 1\` is just a wire that stays high. So the clock wire goes up and down once per bit. An **edge** is the moment a wire changes level: a **rising edge** goes from low to high, a **falling edge** from high to low. The receiver waits for a clock edge and reads the data wire at that moment.
 
 ## Master and slave
-The **master** makes the clock and decides when a transfer happens. The **slave** only follows. The F28379D is the master, the sensors are slaves.
+The **master** makes the clock and decides when a transfer happens. The **slave** follows. The F28379D is the master, the sensors are slaves.
 
 ## Four wires
 - **SPICLK**: the clock, from the master.
 - **SPISIMO** ("slave in, master out", also called MOSI): data from the master to the slave.
 - **SPISOMI** ("slave out, master in", also called MISO): data from the slave to the master.
-- **Chip select** (CS or SS, active low): the master pulls it low to tell one slave "this transfer is for you". A slave whose chip select is high ignores the clock and lets go of SPISOMI.
+- **Chip select** (CS or SS, active low): the master pulls it low to tell one slave "this transfer is for you". A slave whose chip select is high ignores the clock and lets go of SPISOMI: it stops driving the wire, like a pin set as an input.
 
 ## A swap, one bit per clock
-Each chip holds its word in a **shift register**: a row of bits that all move one place to the left on a clock edge. The top bit leaves on the data wire, so a word travels **most significant bit first** (a UART sends bit 0 first). At the same moment the other chip's bit enters at the bottom. After 8 clock cycles the two registers have swapped contents. Sending in both directions at once is called **full duplex**.
+A **word** is the group of bits sent as one unit: 8 or 16 bits here. Each chip holds its word in a **shift register**: a row of bits that all move one place to the left on a clock edge. The top bit leaves on the data wire, so a word travels **most significant bit first**: bit 7 of a byte, then bit 6. At the same moment the other chip's bit enters at the bottom. After 8 clock cycles the two registers have swapped contents. Sending in both directions at once is called **full duplex**.
 
-Press "one clock" eight times in the figure and follow a bit round the ring.
+Step through the eight clocks in the figure and follow one bit round the ring.
 
 {{figure:spi-shift}}
 
-The consequence for every program: **every word you send is also a word you receive**. To read from a sensor you must send something, often zeros, to make the clock run. And when you only want to send, a word still arrives and must be taken out of the receiver.
+So **every word you send is also a word you receive**. To read from a sensor you must send something, often zeros, to make the clock run. When you only want to send, a word still arrives and must be read out.
 `,
       questions: [
         {
@@ -189,10 +189,10 @@ The consequence for every program: **every word you send is also a word you rece
       goal: "Wire the F28379D to the two SPI devices on the robot board.",
       refs: [{ course: "L10" }, { course: "HW3" }, { trm: "18.2.1" }],
       brief: `
-The robot has two SPI slaves on the same port, **SPIB**:
+A **bus** is a set of wires shared by several devices. The F28379D has three SPI modules, SPIA, SPIB and SPIC. The robot has two slaves on the bus of **SPIB**:
 
 - the **MPU-9250** (gyro and accelerometer)
-- the **DAN28027**, a small second microcontroller that drives extra PWM outputs
+- the **DAN28027**, a small second microcontroller that gives the robot extra outputs and inputs
 
 On the F28379D, SPIB uses GPIO63 (SPISIMOB), GPIO64 (SPISOMIB) and GPIO65 (SPICLKB).
 
@@ -202,7 +202,7 @@ Rules for the wiring:
 - An output must go to an input. SIMO is the master's output, so it goes to each slave's data **input**. SOMI is the master's input, so it comes from each slave's data **output**.
 - **Each slave needs its own chip select.** The course uses two plain GPIO outputs: GPIO66 for the MPU-9250 and GPIO29 for the DAN28027.
 
-Both slaves' outputs are wired to the same SOMI line. That only works because a slave that is not selected lets go of the line. If both chip selects were low at once, both would drive SOMI and the master would read garbage.
+Both slaves' outputs are wired to the same SOMI line. That only works because a slave that is not selected lets go of the line. With both chip selects low at once, both would drive SOMI and the master would read nonsense.
 
 Try it in the figure: pull one chip select low, then both, then neither.
 
@@ -255,7 +255,7 @@ Place the eight wires.
       goal: "Finish the SPIB set-up, send three words in loopback and read back the three that arrive.",
       refs: [{ course: "HW3" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
       brief: `
-Time to send something. This is the course's SPIB set-up with a few values left for you. The order is the same in every SPI program:
+This is the course's SPIB set-up with four values left for you. Every other line is **given**: it is the same in every course program, and its comment says what it does. The order never changes:
 
 1. Switch the pins to the SPI (\`GPIO_SetupPinMux(..., 15)\`). Already done.
 2. **Hold the SPI in reset**: \`SPISWRESET = 0\`. The manual says to change the configuration only while this bit is 0.
@@ -265,7 +265,7 @@ Time to send something. This is the course's SPIB set-up with a few values left 
 
 ## Two numbers
 - \`SPICHAR\` is the number of bits per word **minus 1**. It is 4 bits wide, so a word has at most 16 bits.
-- **bit rate = LSPCLK / (SPIBRR + 1)**, for SPIBRR from 3 to 127. LSPCLK, the low-speed peripheral clock, is 50 MHz in the course projects. This level runs at **500 kHz**.
+- **bit rate = LSPCLK / (SPIBRR + 1)**, for SPIBRR from 3 to 127. LSPCLK, the low-speed peripheral clock, is 50 MHz in the course projects. Example: for 1 MHz, 50 MHz / 1 MHz = 50, so SPIBRR = 50 - 1 = 49. This level runs at **500 kHz**.
 
 ## The FIFOs
 A **FIFO** ("first in, first out") is a queue of 16 words. With the FIFOs enabled:
@@ -285,7 +285,7 @@ Try it in the figure: write three words, clock them out, then read them back in 
 Fill in TODO 1 to 4 in the set-up. Then:
 
 - TODO 5: send the three words \`0x00A5\`, \`0x1234\` and \`0xBEEF\`
-- TODO 6: wait until three words have arrived. The course does it with an empty loop: \`while (SpibRegs.SPIFFRX.bit.RXFFST != 3);\`
+- TODO 6: wait until three words have arrived: \`while (SpibRegs.SPIFFRX.bit.RXFFST != 3);\` The semicolon right after the bracket is an empty loop body: the line does nothing but test again until \`RXFFST\` is 3. Read too early and you get old data.
 - TODO 7: read them into \`rx1\`, \`rx2\` and \`rx3\`, in the order they were sent
 `,
       kit: "robot",
@@ -307,18 +307,18 @@ ${PINS}
     SpibRegs.SPICCR.bit.SPICHAR = 0;          // TODO 2: 16 bits per word
     SpibRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
     SpibRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;
+    SpibRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
     SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 0;     // TODO 3: 500 kHz from the 50 MHz LSPCLK
-    SpibRegs.SPISTS.all = 0x0000;
+    SpibRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
     SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip
 
     SpibRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
     SpibRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
     SpibRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
+    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
     SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
+    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
+    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
     SpibRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
 
     SpibRegs.SPICCR.bit.SPISWRESET = 0;       // TODO 4: set-up done, release the SPI
@@ -353,18 +353,18 @@ ${PINS}
     SpibRegs.SPICCR.bit.SPICHAR = 0xF;        // 16 bits per word
     SpibRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
     SpibRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;
+    SpibRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
     SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 99;    // 50 MHz / (99 + 1) = 500 kHz
-    SpibRegs.SPISTS.all = 0x0000;
+    SpibRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
     SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip
 
     SpibRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
     SpibRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
     SpibRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
+    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
     SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
+    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
+    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
     SpibRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
 
     SpibRegs.SPICCR.bit.SPISWRESET = 1;       // set-up done, release the SPI
@@ -451,7 +451,7 @@ To read a diagram: find the rest level, then see where the data line changes. It
 Both devices on the robot read on the **rising** edge with a clock that rests **low**: \`CLKPOLARITY = 0\`, \`CLK_PHASE = 1\`. HW3 calls it "Mode 01": polarity 0, phase 1.
 
 ## Datasheets count differently
-Datasheets use bits called CPOL and CPHA and number the modes 0 to 3. CPOL is CLKPOLARITY. But **CPHA is the opposite of CLK_PHASE**: CPHA = 0 means "read on the first edge", which this chip calls CLK_PHASE = 1. So the course's "Mode 01" is datasheet mode 0 (CPOL 0, CPHA 0), and datasheet mode 3 (CPOL 1, CPHA 1) is \`CLKPOLARITY = 1\`, \`CLK_PHASE = 0\`. When in doubt, ignore the names and compare the two facts.
+A **datasheet** is the manufacturer's document that describes a chip. Datasheets use bits called CPOL and CPHA and number the modes 0 to 3. CPOL is CLKPOLARITY. But **CPHA is the opposite of CLK_PHASE**: CPHA = 0 means "read on the first edge", which this chip calls CLK_PHASE = 1. So the course's "Mode 01" is datasheet mode 0 (CPOL 0, CPHA 0), and datasheet mode 3 (CPOL 1, CPHA 1) is \`CLKPOLARITY = 1\`, \`CLK_PHASE = 0\`. When in doubt, ignore the names and compare the two facts.
 `,
       questions: [
         {
@@ -532,10 +532,10 @@ The SIMO row is the same for both. Only the clock moves.
       id: "spi-identify",
       kind: "quiz",
       title: "Which mode is this?",
-      goal: "Work out the clock mode and the two bytes of an oscilloscope picture, as HW2 asks.",
+      goal: "Work out the clock mode and the two bytes of a logic-analyser picture, as HW2 asks.",
       refs: [{ course: "HW2" }, { trm: "18.3.6" }, { trm: "18.3.4" }],
       brief: `
-HW2 gives you a logic-analyser picture of an SPI transfer and asks for the bytes and the clock mode. Here is one byte of such a picture. \`--\` is high, \`__\` is low, and each bit time is four characters wide (two cells).
+A **logic analyser** is an instrument that records the highs and lows of several wires over time. HW2 gives you its picture of an SPI transfer and asks for the bytes and the clock mode. Here is one byte of such a picture, with the names most instruments use: SS is the chip select, SCK is SPICLK, MOSI is SIMO and MISO is SOMI. \`--\` is high, \`__\` is low, and each bit time is four characters wide (two cells).
 
 \`\`\`c
 bit   : ${HEADER}
@@ -625,7 +625,7 @@ Try it in the figure: set RXFFIL to 3, write three words and clock them out one 
 \`cpu_timer0_isr\`:
 
 1. chip select low: \`GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;\`
-2. set \`SpibRegs.SPIFFRX.bit.RXFFIL\` so the interrupt comes when the whole answer is there
+2. set \`SpibRegs.SPIFFRX.bit.RXFFIL\` so the interrupt comes when the whole answer is there (the set-up leaves it at 16, which three words never reach)
 3. send \`0x2C5E\`, \`0x9A01\` and \`0x0F3D\` (no special meaning: easy to recognise on an oscilloscope)
 4. acknowledge group 1: \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;\`
 
@@ -634,7 +634,7 @@ Try it in the figure: set RXFFIL to 3, write three words and clock them out one 
 1. read the words into \`spivalue1\`, \`spivalue2\` and \`spivalue3\`
 2. chip select high: \`GpioDataRegs.GPCSET.bit.GPIO66 = 1;\`
 3. count the transfer in \`numTransfers\`
-4. \`SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;\` and \`SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;\` to clear the overflow and interrupt flags
+4. \`SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;\` and \`SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;\` to clear the overflow flag (set when a word arrives while the FIFO is full) and the interrupt flag. Without the second line the interrupt comes only once
 5. acknowledge group 6: \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP6;\`
 
 The SPI is in loopback here, so the words that come back are the ones sent. The variables are \`int16_t\`: \`0x9A01\` shows as a negative number.
@@ -728,13 +728,13 @@ __interrupt void SPIB_isr(void)
 }
 `,
       checks: [
-        { kind: "isr", fn: "SPIB_isr", min: 5, max: 5, label: "SPIB_isr runs once per transfer (5 times in 6 ms)", hint: "It runs when RXFFST >= RXFFIL. If it never runs, RXFFIL is larger than the number of words sent. If it runs too often, RXFFIL is too small, the flag is not cleared or not every word is read." },
+        { kind: "isr", fn: "SPIB_isr", min: 5, max: 5, label: "SPIB_isr runs once per transfer (5 times in 6 ms)", hint: "It runs when RXFFST >= RXFFIL. Ran 0 times: RXFFIL is larger than the number of words sent (the set-up leaves it at 16), so set it to 3 in the timer function. Ran once: RXFFINTCLR = 1 or the PIEACK line for group 6 is missing at the end of SPIB_isr. Ran too often: RXFFIL is too small, or not every word is read before the flag is cleared." },
         { kind: "var", name: "spivalue1", equals: 0x2c5e, label: "spivalue1 is 0x2C5E (11358)" },
         { kind: "var", name: "spivalue2", equals: 0x9a01 - 65536, label: "spivalue2 is 0x9A01 (-26111 as an int16_t)" },
         { kind: "var", name: "spivalue3", equals: 0x0f3d, label: "spivalue3 is 0x0F3D (3901)" },
         { kind: "var", name: "numTransfers", equals: 5, label: "numTransfers counts 5 transfers" },
         { kind: "pin", pin: 66, at: 3.055, level: 0, label: "The chip select is low while the words are on the wire", hint: "Clear GPIO66 in the timer interrupt, before writing SPITXBUF." },
-        { kind: "pin", pin: 66, at: 3.5, level: 1, label: "The chip select is high again between transfers", hint: "Set GPIO66 in SPIB_isr." },
+        { kind: "pin", pin: 66, at: 3.5, level: 1, label: "The chip select is high again between transfers", hint: "Set GPIO66 in SPIB_isr. If SPIB_isr does not run on every transfer, fix that first: see the first check." },
         { kind: "signal", name: "SPIB_WORDS", equals: 15, label: "Three words are sent per millisecond" },
         { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 2, label: "The timer interrupt returns within 2 us: it does not wait for the transfer", hint: "No loop that waits for RXFFST in the timer function. The words arrive later, and SPIB_isr collects them." },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
@@ -916,7 +916,7 @@ The set-up in \`main()\` is complete: SPIB (16-bit words, 1 MHz, loopback), time
 
 **\`SPIB_isr\`**: read the two words into \`word1\` and \`word2\`, raise the chip select. If \`word2\` is the inverse of \`word1\`, add one to \`good\`, otherwise to \`bad\`: \`word2 == (uint16_t)~word1\`. (On this chip an \`int\` has 16 bits and the cast changes nothing. On a 32-bit computer it is needed, so the course writes it.) Every **250th** transfer, toggle LED1 and set \`UARTPrint = 1\`. Clear the two FIFO flags and acknowledge group 6.
 
-**\`while (1)\` loop**: when \`UARTPrint\` is 1, print this line and clear the flag (both counters are \`uint32_t\`):
+**\`while (1)\` loop**: when \`UARTPrint\` is 1, print this line with \`serial_printf(&SerialA, ...)\` and clear the flag (both counters are \`uint32_t\`, so the format code is \`%ld\`):
 
 \`\`\`c
 good:250 bad:0
@@ -1041,7 +1041,7 @@ __interrupt void SPIB_isr(void)
         { kind: "serial-period", periodMs: 250, label: "A line is printed every 250 ms" },
         { kind: "blink", led: "LED1", periodMs: 500, label: "LED1 changes every 250 ms" },
         { kind: "var", name: "bad", equals: 0, label: "No transfer failed" },
-        { kind: "isr", fn: "SPIB_isr", min: 1095, max: 1100, label: "SPIB_isr runs once per millisecond" },
+        { kind: "isr", fn: "SPIB_isr", min: 1095, max: 1100, label: "SPIB_isr runs once per millisecond", hint: "Ran 0 times or a few times too few: set RXFFIL = 2 in the timer function (the set-up leaves it at 16, so the first interrupt waits for 16 words). Ran once: clear RXFFINT with RXFFINTCLR = 1 at the end of SPIB_isr. Ran twice as often: read both words before clearing the flag." },
         { kind: "pin", pin: 66, at: 500.5, level: 1, label: "The chip select is high between transfers" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the 32-bit counters", hint: "good and bad are uint32_t: use %ld." },

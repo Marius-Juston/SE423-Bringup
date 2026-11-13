@@ -285,9 +285,15 @@ Two things are missing:
 GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
 GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
 \`\`\`
-2. In the loop, read the pin of the button again and again. Asking over and over like this is called **polling**. Turn LED1 on while the button is pressed and off while it is released.
-
-A pressed button reads **0**.
+2. In the loop, read the pin of the button again and again. Asking over and over like this is called **polling**. Turn LED1 on while the button is pressed and off while it is released:
+\`\`\`c
+if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
+    // pressed: LED1 on
+} else {
+    // released: LED1 off
+}
+\`\`\`
+A pressed button reads **0**. Mind the two equals signs: \`==\` compares, a single \`=\` would try to store a value.
 
 Press **Run** and click PB1 on the board to try it.
 `,
@@ -332,12 +338,13 @@ ${inp(157)}
       ],
       checks: [
         { kind: "led", led: "LED1", at: 2, on: false, label: "LED1 is off before the button is pressed", hint: "A released button reads 1, but only if the pull-up is enabled." },
-        { kind: "led", led: "LED1", at: 4.5, on: true, label: "LED1 is on while PB1 is pressed", hint: "Pressed reads 0. The read must be inside the while loop." },
+        { kind: "led", led: "LED1", at: 4.5, on: true, label: "LED1 is on while PB1 is pressed", hint: "Pressed reads 0, and the test is `== 0` with two equals signs. The if must be inside the braces of the while loop, so the pin is read again on every pass." },
         { kind: "led", led: "LED1", at: 7.5, on: false, label: "LED1 goes off when PB1 is released", hint: "The else branch must drive the LED low with GPACLEAR." },
         { kind: "led", led: "LED1", at: 10.5, on: true, label: "LED1 is on again on the second press" },
         { kind: "led", led: "LED1", at: 13.5, on: false, label: "LED1 is off again after the second release" },
-        { kind: "reg", reg: "GpioCtrlRegs.GPEPUD", field: "GPIO157", equals: 0, label: "The pull-up of GPIO157 is enabled" },
-        { kind: "no-dat-write", label: "GPxDAT is only read, never written" },
+        { kind: "reg", reg: "GpioCtrlRegs.GPEPUD", field: "GPIO157", equals: 0, label: "The pull-up of GPIO157 is enabled", hint: "TODO 1: `GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);`. The last argument switches the pull-up on." },
+        { kind: "reg", reg: "GpioCtrlRegs.GPEDIR", field: "GPIO157", equals: 0, label: "GPIO157 is an input", hint: "The button pin must be set up with GPIO_INPUT. As an output it would fight the button instead of reading it." },
+        { kind: "no-dat-write", label: "GPxDAT is only read, never written", hint: "A line such as `GpioDataRegs.GPEDAT.bit.GPIO157 = 0` writes to the data register. To compare, use `==`. To change the LED, use GPASET and GPACLEAR." },
       ],
       inspect: ["GpioDataRegs.GPEDAT", "GpioCtrlRegs.GPEPUD"],
       hints: [
@@ -498,7 +505,7 @@ ${inp(158)}
       goal: "Write the Lab 2 function that packs the four push buttons into one number.",
       refs: [{ course: "Lab 2" }, { course: "HW1" }, { trm: "8.9" }],
       brief: `
-Lab 2 asks for a function \`int16_t ReadSwitches(void)\` that does one job: read the buttons. It returns one number whose lowest four bits show the four push buttons:
+Lab 2 asks for a function \`int16_t ReadSwitches(void)\` that does one job: read the buttons. The \`(void)\` says it takes no arguments. It returns one number whose lowest four bits show the four push buttons:
 
 - bit 0 (\`0x1\`): push button 1, GPIO157
 - bit 1 (\`0x2\`): push button 2, GPIO158
@@ -507,7 +514,7 @@ Lab 2 asks for a function \`int16_t ReadSwitches(void)\` that does one job: read
 
 A bit is **1 when its button is pressed**. With buttons 1 and 3 held down the function returns \`0x5\`.
 
-The recipe from the lab: start a local variable at 0. Use four \`if\` statements. In each, if the button is pressed, OR that button's bit into the variable with \`|\`. Return the variable.
+The recipe from the lab: start a local variable at 0. Use four \`if\` statements. In each, if the button is pressed, OR that button's bit into the variable: \`value = value | 0x1;\` for push button 1. Return the variable.
 
 Two things to keep in mind:
 
@@ -574,8 +581,8 @@ ${inp(160)}
       ],
       checks: [
         { kind: "var", name: "switches", at: 3, equals: 0, label: "Nothing pressed: 0", hint: "A released button reads 1. That must leave its bit at 0." },
-        { kind: "var", name: "switches", at: 7, equals: 1, label: "PB1 pressed: 0x1" },
-        { kind: "var", name: "switches", at: 12, equals: 5, label: "PB1 and PB3 pressed: 0x5", hint: "Each button must OR in its own bit: 0x1, 0x2, 0x4, 0x8." },
+        { kind: "var", name: "switches", at: 7, equals: 1, label: "PB1 pressed: 0x1", hint: "`if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) { value = value | 0x1; }`. Pressed reads 0. Keep the `return value;` at the end of the function." },
+        { kind: "var", name: "switches", at: 12, equals: 5, label: "PB1 and PB3 pressed: 0x5", hint: "Each button must OR in its own bit: 0x1, 0x2, 0x4, 0x8. `value = 0x4;` would throw away button 1: write `value = value | 0x4;`." },
         { kind: "var", name: "switches", at: 17, equals: 13, label: "PB1, PB3 and PB4 pressed: 0xD", hint: "Push button 4 is GPIO160, in port F: read it from GPFDAT." },
         { kind: "var", name: "switches", at: 22, equals: 12, label: "PB3 and PB4 pressed: 0xC" },
         { kind: "var", name: "switches", at: 27, equals: 14, label: "PB2, PB3 and PB4 pressed: 0xE" },
@@ -605,22 +612,45 @@ This is the first demonstration of Lab 2: the LEDs show the state of the push bu
 
 Any combination of buttons can be held at once. An LED must go dark again when its button is released.
 
-You write everything: the set-up of four outputs and four inputs, and the loop.
+The editor opens with your \`ReadSwitches()\` and the button set-up from the last level. Add three things:
 
-Lab 2 splits the work into two functions, and that is a good plan here too: \`ReadSwitches()\` from the last level, and \`void SetLEDsOnOff(int16_t LEDvalue)\`, which tests each bit of its argument with \`&\` and turns the matching LED on or off.
+1. In \`main\`, set up the four LED pins as outputs.
+2. Write \`void SetLEDsOnOff(int16_t LEDvalue)\`, the second function Lab 2 asks for. It tests each bit of its argument with \`&\` and turns the matching LED on or off. For LED1:
+\`\`\`c
+if ((LEDvalue & 0x1) == 0x1) {
+    GpioDataRegs.GPASET.bit.GPIO22 = 1;
+} else {
+    GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+}
+\`\`\`
+\`LEDvalue & 0x1\` keeps only bit 0, so it is \`0x1\` when bit 0 is set and 0 when it is not.
+3. In the loop, pass the buttons to the LEDs: \`SetLEDsOnOff(ReadSwitches());\`. Put \`SetLEDsOnOff\` above \`main\`, so the compiler knows it before it is called.
 
 Rules: change the LEDs only through \`GPxSET\` and \`GPxCLEAR\`. \`GPxDAT\` is for reading the buttons.
 `,
       kit: "robot",
       durationMs: 21,
-      starter: `void main(void)
+      continues: "in-readswitches",
+      starter: `int16_t switches = 0;
+
+${READ_SWITCHES}
+
+// TODO 2: write void SetLEDsOnOff(int16_t LEDvalue) here
+
+void main(void)
 {
 ${INIT}
 
-    // Set up LED1 to LED4 as outputs and push buttons 1 to 4 as inputs
+    // TODO 1: set up LED1 to LED4 (GPIO22, 94, 95, 97) as outputs
+
+${inp(157)}
+${inp(158)}
+${inp(159)}
+${inp(160)}
 
     while (1) {
-        // Show the buttons on the LEDs
+        switches = ReadSwitches();
+        // TODO 3: show the buttons on the LEDs
     }
 }
 `,
@@ -682,14 +712,14 @@ ${inp(160)}
       checks: [
         { kind: "steady", led: "LED1", from: 1, to: 2.5, on: false, label: "Nothing pressed: LED1 stays off", hint: "A flickering LED means a button pin is floating. Enable its pull-up." },
         { kind: "steady", led: "LED4", from: 1, to: 2.5, on: false, label: "Nothing pressed: LED4 stays off", hint: "Push button 4 needs its pull-up too, and it is read from GPFDAT." },
-        { kind: "led", led: "LED1", at: 4.5, on: true, label: "PB1 pressed: LED1 is on" },
+        { kind: "led", led: "LED1", at: 4.5, on: true, label: "PB1 pressed: LED1 is on", hint: "Three things must all be there: GPIO22 set up as an output, SetLEDsOnOff setting it when bit 0 (0x1) is 1, and the loop calling SetLEDsOnOff." },
         { kind: "led", led: "LED2", at: 4.5, on: false, label: "PB1 pressed: LED2 is still off" },
-        { kind: "led", led: "LED3", at: 7.5, on: true, label: "PB1 and PB3 pressed: LED3 is on" },
+        { kind: "led", led: "LED3", at: 7.5, on: true, label: "PB1 and PB3 pressed: LED3 is on", hint: "LED3 is GPIO95 (port C) and belongs to bit 2: the mask is 0x4, not 0x3." },
         { kind: "led", led: "LED1", at: 7.5, on: true, label: "PB1 and PB3 pressed: LED1 is still on" },
         { kind: "led", led: "LED4", at: 10.5, on: true, label: "PB4 pressed as well: LED4 is on", hint: "GPIO160 is in port F (GPFDAT). GPIO97 is in port D (GPDSET, GPDCLEAR)." },
         { kind: "led", led: "LED1", at: 13.5, on: false, label: "PB1 released: LED1 goes off", hint: "Each LED needs a CLEAR write for the released case." },
         { kind: "led", led: "LED3", at: 13.5, on: true, label: "PB1 released: LED3 stays on" },
-        { kind: "led", led: "LED2", at: 16.5, on: true, label: "PB2 pressed: LED2 is on" },
+        { kind: "led", led: "LED2", at: 16.5, on: true, label: "PB2 pressed: LED2 is on", hint: "LED2 is GPIO94 (port C) and belongs to bit 1: the mask is 0x2." },
         { kind: "led", led: "LED2", at: 19.5, on: false, label: "All released: LED2 is off" },
         { kind: "led", led: "LED3", at: 19.5, on: false, label: "All released: LED3 is off" },
         { kind: "led", led: "LED4", at: 19.5, on: false, label: "All released: LED4 is off" },
@@ -705,9 +735,9 @@ ${inp(160)}
         },
       ],
       hints: [
-        "Set-up: four times the output pair of calls (22, 94, 95, 97), four times the input pair with GPIO_PULLUP (157 to 160).",
-        "Ports: GPIO22 is A, GPIO94 and GPIO95 are C, GPIO97 is D. Buttons 1 to 3 are read from GPEDAT, button 4 from GPFDAT.",
-        "In the loop: `SetLEDsOnOff(ReadSwitches());`. In SetLEDsOnOff, for each LED: `if ((LEDvalue & 0x1) == 0x1) { SET } else { CLEAR }`.",
+        "Set-up: four times the output pair of calls, `GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);` and `GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);`, for 22, 94, 95 and 97.",
+        "SetLEDsOnOff has four if / else blocks like the one in the briefing. Masks: 0x1, 0x2, 0x4, 0x8. Ports: GPIO22 is A, GPIO94 and GPIO95 are C, GPIO97 is D.",
+        "In the loop: `SetLEDsOnOff(switches);` after the ReadSwitches line, or `SetLEDsOnOff(ReadSwitches());`. The last block: `if ((LEDvalue & 0x8) == 0x8) { GpioDataRegs.GPDSET.bit.GPIO97 = 1; } else { GpioDataRegs.GPDCLEAR.bit.GPIO97 = 1; }`.",
       ],
       takeaway: "Read all inputs into one value, then act on that value. In Lab 2 the same two functions are called from a timer interrupt instead of a busy loop.",
     },
@@ -727,6 +757,8 @@ if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
 }
 \`\`\`
 Run the starter and watch \`presses\`.
+
+\`presses++;\` adds 1 to \`presses\`.
 
 A press is not a level. It is a **change** of level: the pin read 1 on the last pass and reads 0 on this one. That change is called a **falling edge**. To see it, the program must remember what the pin read on the pass before.
 
@@ -829,7 +861,7 @@ Three tools do the work: \`~\` turns "pressed reads 0" into "pressed is 1", \`>>
 Two warnings:
 
 - The other pins of port E and port F float. Their bits are noise. Your mask must throw every one of them away.
-- \`.all\` is 32 bits wide and an \`int\` on this chip is 16. Shift first, in 32 bits, then store the small result.
+- \`.all\` is 32 bits wide and an \`int\` on this chip is 16. Keep the read in a 32-bit variable (\`Uint32\` is TI's older name for \`uint32_t\`), shift there, then store the small result.
 `,
       kit: "robot",
       durationMs: 14,

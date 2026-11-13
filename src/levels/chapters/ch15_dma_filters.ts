@@ -25,9 +25,11 @@ const x = (s: Sig, n: number) => (n < 0 ? 0 : tbSampleAt(s, n));
 /** y[n] = sum b[k] x[n-k] */
 const fir = (b: number[], s: Sig, n: number) => b.reduce((acc, bk, k) => acc + bk * x(s, n - k), 0);
 const mean = (s: Sig, from: number, count: number) => Array.from({ length: count }, (_, i) => x(s, from + i)).reduce((a, v) => a + v, 0) / count;
-const near = (v: number, tol: number) => ({ min: v - tol, max: v + tol });
+/** A range around v, rounded so that a failed check shows readable limits. */
+const near = (v: number, tol: number) => ({ min: +(v - tol).toPrecision(6), max: +(v + tol).toPrecision(6) });
 
 // Level signals
+const SIG_SWING: Sig = { fs: 10000, f1: 200, a1: 0.5, dc: 2.0 };
 const SIG_AVG: Sig = { fs: 10000, f1: 2000, a1: 0.5, dc: 2.0 };
 const SIG_FIR: Sig = { fs: 10000, f1: 300, a1: 1.0, f2: 4000, a2: 0.5, dc: 0.5 };
 const SIG_BUGS: Sig = { fs: 10000, f1: 2000, a1: 0.8, dc: 1.2 };
@@ -101,6 +103,53 @@ ${TIMER0}
 }`;
 
 // ---- level sources ----
+
+const collect = (body: string) => `${FREQ}
+
+#define N 50                 // samples per buffer
+
+__interrupt void cpu_timer0_isr(void);
+
+uint16_t count = 0;          // how many samples are in buf so far
+uint16_t bufferFull = 0;     // flag for main: buf holds N fresh samples
+float buf[N];                // the signal as the chip has it: a list of numbers
+float biggest = 0;           // largest sample of the last full buffer
+float smallest = 0;          // smallest sample of the last full buffer
+uint16_t numBuffers = 0;
+
+void main(void)
+{
+    int i;
+
+${INIT}
+
+${PIE_INIT}
+
+${TIMER0}
+
+    while (1) {
+        if (bufferFull == 1) {
+            bufferFull = 0;
+            // Given: look through the list for its largest and smallest number
+            biggest = buf[0];
+            smallest = buf[0];
+            for (i = 1; i < N; i++) {
+                if (buf[i] > biggest) { biggest = buf[i]; }
+                if (buf[i] < smallest) { smallest = buf[i]; }
+            }
+            numBuffers++;
+        }
+    }
+}
+
+// Every 0.1 ms: one sample
+__interrupt void cpu_timer0_isr(void)
+{
+${body}
+
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`;
 
 const avg5 = (body: string) => `${FREQ}
 
@@ -558,39 +607,185 @@ export const ch15: Chapter = {
   course: ["L8-9", "Lab 4", "HW3"],
   levels: [
     {
+      id: "dmaf-signal",
+      kind: "code",
+      mode: "complete",
+      title: "A signal is a list",
+      goal: "Take a sample every 0.1 ms and collect 50 of them in an array.",
+      refs: [{ course: "L8-9" }, { course: "Lab 4" }],
+      brief: `
+A sensor turns something physical (sound, light, distance) into a voltage that changes with time. That changing voltage is a **signal**. This chapter is about what a program can do with one.
+
+## From a voltage to a number
+The chip cannot store a curve. It can measure the voltage at one instant and keep the result as a number. The peripheral that measures is the **ADC** (analog-to-digital converter): 0 V gives 0, 3.0 V gives 4095. One measurement is a **sample**.
+
+## Sampling
+Taking samples at a steady pace is **sampling**. The pace has two names, and each is 1 divided by the other:
+
+- the **sampling period** T: the time between two samples. The course uses 0.1 ms.
+- the **sampling rate** fs: samples per second, in Hz. 1 / 0.0001 s = 10 000 Hz.
+
+What the voltage did between two samples, the chip never knows.
+
+The figure opens on a harder case that a later level explains. First set **Signal** to 100 Hz and **Sampling** to 2000 Hz. The curve is the voltage. The dots are the samples: all the chip has.
+
+{{figure:sampling-alias}}
+
+## A list of numbers
+After sampling, a signal is an array of numbers, oldest first: \`buf[0]\`, \`buf[1]\`, \`buf[2]\` ... An array that collects samples is called a **buffer**. N samples cover N x T: 50 samples x 0.1 ms = 5 ms of signal.
+
+## Your part
+Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms: that is the sampling rate. \`tb_sample()\` returns the newest sample as a \`float\`, in volts. Everything that starts with \`tb_\` belongs to this game's **test bench**, which stands in for the sensor and the ADC. The ADC has its own chapter.
+
+- TODO 1: store the sample in \`buf[count]\`, then add 1 to \`count\`.
+- TODO 2: when \`count\` reaches \`N\` the buffer is full: set \`count\` back to 0 and set \`bufferFull = 1\`.
+
+\`main()\` is given. When the flag is set it looks through the 50 numbers for the largest and the smallest. The test signal swings smoothly between 1.5 V and 2.5 V, 200 times a second.
+`,
+      kit: "robot",
+      durationMs: 22,
+      stimuli: signal(SIG_SWING),
+      starter: collect(`    // TODO 1: store tb_sample() in the next free place of buf, then count it
+
+    // TODO 2: when buf holds N samples, start again at place 0 and set bufferFull`),
+      solution: collect(`    buf[count] = tb_sample();
+    count++;
+
+    if (count == N) {
+        count = 0;
+        bufferFull = 1;
+    }`),
+      checks: [
+        {
+          kind: "var", name: "numBuffers", min: 4, max: 4, label: "Four buffers of 50 samples are filled in 22 ms",
+          hint: "0 means bufferFull is never set: count must go up by 1 on every call, and be compared with N. 1 means count is not set back to 0 when the buffer is full. Far more than 4 means the flag is set on every call, not only when count reaches N.",
+        },
+        { kind: "var", name: "numBuffers", at: 20.2, equals: 4, label: "The fourth buffer is full after exactly 200 samples (20 ms)", hint: "A buffer of N samples is full when count == N: by then the places 0 to N - 1 are written. Testing count > N writes one place past the end of the array." },
+        { kind: "var", name: "count", max: 49, label: "count stays inside the buffer (0 to 49)", hint: "buf has the places 0 to N - 1. Set count back to 0 when it reaches N." },
+        {
+          kind: "var", name: "biggest", ...near(Math.max(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING, i))), 0.005), label: "The largest sample in a buffer is about 2.5 V",
+          hint: "The buffer must hold 50 different samples, one per call: buf[count] = tb_sample();",
+        },
+        {
+          kind: "var", name: "smallest", ...near(Math.min(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING, i))), 0.005), label: "The smallest sample in a buffer is about 1.5 V",
+          hint: "0 means some places of buf were never written. Store each sample in buf[count], not always in buf[0], and add 1 to count after storing, not before.",
+        },
+      ],
+      watch: ["count", "biggest", "smallest", "numBuffers"],
+      hints: [
+        "`count` is the number of samples already stored, so `buf[count]` is the next free place.",
+        "`buf[count] = tb_sample();` then `count++;`. After that, test `if (count == N)`.",
+        "`buf[count] = tb_sample(); count++; if (count == N) { count = 0; bufferFull = 1; }`",
+      ],
+      takeaway: "To a program a signal is an array, filled at a steady pace. This way cost one interrupt per sample, and main had to finish before the next samples overwrote the buffer. The DMA and a second buffer fix both.",
+    },
+    {
+      id: "dmaf-sine",
+      kind: "calc",
+      title: "A wave has a frequency",
+      goal: "Describe a sine wave with three numbers, and count how many samples fall into one period.",
+      refs: [{ course: "L8-9" }],
+      brief: `
+The smoothest signal there is goes up and down like a swing: a **sine wave**. A whistle, the hum of a motor and the voltage of a wall socket are sine waves. In this chapter a sine wave is also called a **tone**.
+
+Set the figure to a Signal of 100 Hz and a Sampling of 2000 Hz again (its opening case is for the next level).
+
+{{figure:sampling-alias}}
+
+Three numbers describe a sine wave:
+
+- **Frequency** f: how many full swings it makes per second, in Hz. One swing is a **period**, and it lasts 1 / f. A 100 Hz tone has a period of 1 / 100 s = 10 ms.
+- **Amplitude**: how far it goes away from its middle, up and down alike.
+- **Offset**: where the middle is. The offset is the part of the signal that does not change. Engineers call it **DC**.
+
+Example: offset 2.0 V and amplitude 0.5 V. The wave swings between 2.0 - 0.5 = 1.5 V and 2.0 + 0.5 = 2.5 V. That was the signal of the previous level.
+
+## Samples per period
+How well do the samples show a tone? Count how many fall into one period:
+
+**samples per period = fs / f**
+
+Example: fs = 2000 Hz and f = 100 Hz give 20 samples per period. In the figure that is 20 dots per swing, and the shape is easy to see. Now raise the signal to 500 Hz: 4 dots per swing, and the shape is nearly lost.
+
+A slow tone gets many samples per period, a fast one few. The next level asks how few are enough.
+`,
+      fields: [
+        { id: "per", label: "Period of a 50 Hz tone", unit: "ms", answer: 20, why: "1 / 50 s = 0.02 s = 20 ms." },
+        { id: "freq", label: "Frequency of a tone whose period is 0.5 ms", unit: "Hz", answer: 2000, why: "1 / 0.0005 s = 2000 Hz. Period and frequency are each 1 divided by the other." },
+        { id: "top", label: "Highest value of a wave with offset 1.2 and amplitude 0.8", answer: 2, tolPct: 0.1, why: "Offset plus amplitude: 1.2 + 0.8 = 2.0." },
+        { id: "bottom", label: "Lowest value of the same wave", answer: 0.4, tolPct: 0.1, why: "Offset minus amplitude: 1.2 - 0.8 = 0.4." },
+        { id: "spp", label: "Samples in one period of a 2 kHz tone, sampled at 10 kHz", answer: 5, why: "fs / f = 10 000 / 2000 = 5. You will meet this tone again in the moving average." },
+        { id: "spp50", label: "Samples in one period of a 50 Hz tone, sampled at 10 kHz", answer: 200, why: "10 000 / 50 = 200. One period lasts 20 ms, and a sample is taken every 0.1 ms." },
+      ],
+      hints: [
+        "Period = 1 / frequency, and frequency = 1 / period. Work in seconds, then convert to ms.",
+        "The wave reaches offset + amplitude at the top and offset - amplitude at the bottom.",
+        "Samples per period = sampling rate / tone frequency: 10 000 / 2000 and 10 000 / 50.",
+      ],
+      takeaway: "A sine wave is three numbers: frequency, amplitude and offset. At a sampling rate fs, one period of a tone at f holds fs / f samples.",
+    },
+    {
+      id: "dmaf-numbers",
+      kind: "calc",
+      title: "Nyquist and aliases",
+      goal: "Find out how few samples per period are enough, and what the samples show when there are fewer.",
+      refs: [{ course: "L8-9" }, { course: "HW3" }, { trm: "5.4" }],
+      brief: `
+How few samples per period are enough? Try it. In the figure, leave Sampling at 1000 Hz, pull Signal down to 100 Hz and then raise it slowly.
+
+{{figure:sampling-alias}}
+
+- Up to 500 Hz the dots still go up and down as often as the curve. 500 Hz is 2 samples per period.
+- Above 500 Hz there are fewer than 2 samples per period. The dots now trace a **slower** wave that is not in the signal at all.
+
+**Nyquist.** With a sampling rate fs, the highest frequency the samples can show is **fs / 2**, the **Nyquist frequency**. Turned around: sample more than twice as fast as the highest frequency in the signal.
+
+**Aliasing.** A tone at f between fs / 2 and fs gives the same samples as a tone at **fs - f** would (turned upside down). The false tone is an **alias**. Example: fs = 1000 Hz and a 900 Hz tone. The samples look like a 100 Hz tone: 1000 - 900.
+
+Nothing in your code can tell an alias from a real tone afterwards. The samples are the same numbers.
+
+**Buffer time.** A buffer of N samples taken every T seconds covers N x T seconds.
+`,
+      fields: [
+        { id: "a", label: "Time to fill a buffer of 1024 samples taken every 0.1 ms", unit: "ms", answer: 102.4, tolPct: 0.1, why: "1024 x 0.1 ms = 102.4 ms. That is also how often the DMA interrupts the CPU." },
+        { id: "b", label: "Nyquist frequency when sampling every 0.1 ms", unit: "Hz", answer: 5000, why: "The sampling rate is 1 / 0.1 ms = 10 000 Hz. Half of it is 5000 Hz." },
+        { id: "c", label: "A 7 kHz tone sampled at 10 kHz appears at", unit: "Hz", answer: 3000, why: "7 kHz is above the Nyquist frequency of 5 kHz. It aliases to fs - f = 10 000 - 7000 = 3000 Hz." },
+        { id: "d", label: "Samples per period of a tone exactly at the Nyquist frequency", answer: 2, why: "fs / f with f = fs / 2 is 2: one sample on the way up, one on the way down. Fewer than that and the swing is missed." },
+        { id: "e", label: "A signal holds tones up to 3 kHz. The sampling rate must be above", unit: "Hz", answer: 6000, why: "More than twice the highest frequency: 2 x 3000 Hz. The course samples at 10 000 Hz, so tones up to 5000 Hz are safe." },
+        { id: "f", label: "A 9900 Hz tone sampled at 10 kHz appears at", unit: "Hz", answer: 100, why: "fs - f = 10 000 - 9900 = 100 Hz. A very fast tone looks like a very slow one: the same thing as a spinning wheel that seems to turn slowly in a film." },
+      ],
+      hints: [
+        "Convert 0.1 ms to a rate first: 1 / 0.0001 s = 10 000 samples per second. The Nyquist frequency is half of that.",
+        "For an alias, subtract the tone's frequency from the sampling rate.",
+        "102.4, 5000, 3000, 2, 6000, 100.",
+      ],
+      takeaway: "fs / 2 is the limit. Anything above it must be removed by a circuit in front of the ADC (a resistor and a capacitor, as in the electricity primer), because after sampling it cannot be told from a real low tone.",
+    },
+    {
       id: "dmaf-brief",
       kind: "brief",
       title: "Samples by the thousand",
-      goal: "Learn how 1024 samples reach a buffer without the CPU touching one of them, and what a filter does with them.",
+      goal: "Learn how 1024 samples reach a buffer without the CPU touching one of them.",
       refs: [{ course: "L8-9" }, { trm: "5.1" }, { trm: "5.2" }, { trm: "5.4" }],
       brief: `
-A microphone signal has to be sampled about 10 000 times a second. You know one way: an interrupt function runs for every sample and stores it. That is 10 000 interrupts a second, each with its entry, its exit and its acknowledge, just to copy one number.
+In "A signal is a list" an interrupt function ran for every sample and stored it. A microphone sampled 10 000 times a second would cost 10 000 interrupts a second, each with its entry, its exit and its acknowledge, just to copy one number.
 
 ## The DMA
-**DMA** means direct memory access. The DMA is a peripheral that copies a word from one address to another when a **trigger** arrives, with no CPU instruction involved. It has 6 channels, each with its own source, destination, trigger and interrupt. It does nothing by itself: every copy needs a trigger from a peripheral.
+**DMA** means direct memory access. The DMA is a peripheral that copies a word from one address to another when a **trigger** arrives: a signal from another peripheral. No CPU instruction is involved. It has 6 channels, each with its own source, destination, trigger and interrupt. It does nothing by itself: every copy needs a trigger.
 
 ## The sampling chain
-Lecture 8 builds this chain:
+On the robot three peripherals pass the work along (Lecture 8):
 
-1. An **ePWM** module is used as a precise timer. Every 0.1 ms it sends a start-of-conversion pulse.
-2. The **ADC** (analog-to-digital converter) turns the pin voltage into a number, stores it in its result register \`ADCRESULT0\` and raises its interrupt signal.
+1. An **ePWM** module sets the pace. It is a timer peripheral with its own chapter later. Here it only sends a pulse every 0.1 ms that tells the ADC "measure now" (a start of conversion).
+2. The **ADC** turns the pin voltage into a number, stores it in its result register \`ADCRESULT0\` and raises its interrupt signal.
 3. That signal triggers the **DMA** channel, which copies \`ADCRESULT0\` into the next free place of a buffer.
 
 After 1024 samples the buffer is full. Only then is the CPU interrupted: once every 1024 x 0.1 ms = **102.4 ms**.
 
 ## Ping and pong
-The samples keep coming while the CPU works on a full buffer. So there are two buffers, **ping** and **pong**. The DMA fills one while main processes the other, and then they swap.
+The samples keep coming while main works on a full buffer. With one buffer, as in the first level, main has to finish before new samples overwrite it. So there are two buffers, **ping** and **pong**. The DMA fills one while main processes the other, and then they swap. The next level steps through a swap.
 
-## What main does with a buffer
-- A **Fourier transform** (the course uses TI's FFT library on 1024 samples) shows which frequencies are in the signal.
-- A **filter** changes the signal sample by sample. The simplest is the moving average: the output is the mean of the last few samples.
-
-## One rule about sampling
-A sampled signal can only show frequencies up to **half the sampling rate**, the **Nyquist frequency**. A tone above it does not vanish: it shows up as a lower frequency that was never there. This is **aliasing**, and no filter in your code can remove it afterwards.
-
-{{figure:sampling-alias}}
-
-Drag the signal frequency up across the Nyquist line and watch a slow wave appear through the same dots.
+What main does with a full buffer, the FFT and filters, comes after the DMA levels.
 `,
       questions: [
         {
@@ -606,10 +801,15 @@ Drag the signal frequency up across the Nyquist line and watch a slow wave appea
           why: "The DMA is event based. It has no timer of its own: here the ePWM sets the pace, the ADC converts, and the ADC's signal triggers the copy.",
         },
         {
-          prompt: "A signal is sampled 10 000 times a second. Which of these tones do the samples show at the wrong frequency?",
-          options: ["440 Hz", "2500 Hz", "4900 Hz", "7000 Hz"],
-          answer: 3,
-          why: "The Nyquist frequency is half of 10 000 Hz: 5000 Hz. Only 7000 Hz is above it, so it appears as a lower tone that is not really there.",
+          prompt: "What is the ePWM module's job in this chain?",
+          options: [
+            "It converts the voltage to a number",
+            "It sets the pace: every 0.1 ms it sends the pulse that starts one conversion",
+            "It copies the result into the buffer",
+            "It interrupts the CPU for every sample",
+          ],
+          answer: 1,
+          why: "The ePWM is used as a clock. The ADC converts, the DMA copies, and the CPU is interrupted only when a buffer is full.",
         },
       ],
       takeaway: "ePWM sets the time, the ADC converts, the DMA copies. The CPU only sees full buffers, and it works on one buffer while the other fills.",
@@ -693,20 +893,20 @@ Step through the figure, one sample per press, with buffers of 8 samples instead
       goal: "Finish the course's DMA channel 1 setup and swap the two buffers in the DMA interrupt function.",
       refs: [{ course: "L8-9" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.3" }, { trm: "3.4.5" }],
       brief: `
-Now the copying is done by the DMA. The interrupt function no longer runs for every sample, only once per buffer.
+Now the DMA does the copying. The interrupt function runs once per buffer, not once per sample.
 
 ## What stands in for the ADC
 The robot's chain is EPWM7, ADCB, DMA. Here the game's **test bench** replaces the first two. Everything starting with \`tb_\` belongs to it and stands in for hardware you are not practising right now:
 
-- \`tb_stream(&adcResult);\` makes the test bench put a fresh 12-bit reading into the variable \`adcResult\` every 0.1 ms. \`adcResult\` plays the part of \`AdcbResultRegs.ADCRESULT0\`.
+- \`tb_stream(&adcResult);\` makes the test bench put a fresh ADC reading (a count from 0 to 4095) into the variable \`adcResult\` every 0.1 ms. \`adcResult\` plays the part of \`AdcbResultRegs.ADCRESULT0\`.
 - CPU timer 0 gives the trigger every 0.1 ms. In the DMA's source table it is number 68 (TINT0). The course selects 6 (ADCBINT1).
 
-Everything else is the course's \`InitDma()\` from the FFT starter project.
+Everything else is the course's \`InitDma()\` from the FFT starter project. It is **given**: its comments say what each line sets, and you change four places only. One trigger makes the DMA copy one **burst**, here a single word. \`Uint32\` is TI's older name for \`uint32_t\`.
 
 ## What to write
 In \`InitDma()\`:
 
-- \`DmaRegs.CH1.TRANSFER_SIZE\`: a transfer is N samples. Size registers hold **one less** than the count.
+- \`DmaRegs.CH1.TRANSFER_SIZE\`: a transfer is N samples. Size registers hold **one less** than the count: a value of 2 means 3.
 - \`DmaRegs.CH1.DST_TRANSFER_STEP\`: how far the destination address moves after each sample. The source step is 0 because the source is always the same register. The destination must walk through the buffer.
 
 In \`DMA_ISR()\`: the two lines that write the address of the **other** buffer to \`DmaRegs.CH1.DST_ADDR_SHADOW\`. DMA registers are protected, so each write goes between \`EALLOW;\` and \`EDIS;\`. The address of an array is its name, cast to the register's type:
@@ -718,11 +918,9 @@ EDIS;
 \`\`\`
 
 ## When the interrupt comes
-\`MODE.all = 0x8901\` has CHINTMODE = 0: the interrupt comes at the **start** of each transfer. When the DMA has just started on \`ping\`, the buffer that is complete is \`pong\`, and the address you write is used for the transfer after this one.
+\`MODE.all = 0x8901\` has CHINTMODE = 0: the interrupt comes at the **start** of each transfer, as in the last level. When the DMA has just started on \`ping\`, the complete buffer is \`pong\`, and the address you write is used for the transfer after this one. (The course's starter file flags the buffer just *started*. This level follows the reference manual and flags the complete one.)
 
-The course's starter file raises the flag of the buffer that has just been *started*, so main reads old data with a few new samples at the front. This level follows the reference manual: the flag names the buffer that is complete.
-
-The signal is a slow 50 Hz sine. main computes the mean of each finished buffer in ADC counts: about 2900 for the first two buffers (the positive half of the sine), about 1200 for the next two.
+The signal is a slow 50 Hz sine around 1.5 V. main computes the mean of each finished buffer in ADC counts: about 2900 for the first two buffers (the upper half of the sine), about 1200 for the next two.
 `,
       kit: "robot",
       durationMs: 22,
@@ -749,13 +947,13 @@ The signal is a slow 50 Hz sine. main computes the mean of each finished buffer 
         { kind: "isr", fn: "DMA_ISR", min: 5, max: 5, label: "DMA_ISR runs once per buffer (5 times in 22 ms)", hint: "Hundreds of calls mean TRANSFER_SIZE is still 0: every sample is its own transfer." },
         {
           kind: "var", name: "pingMean", at: 6, ...near(SLOW_HI, 80), label: "After 6 ms: the mean of the first buffer (ping) is about 2900",
-          hint: "With TRANSFER_SIZE and the step right, ping holds samples 0 to 49 when the second transfer starts.",
+          hint: "With TRANSFER_SIZE and the step right, ping holds samples 0 to 49 when the second transfer starts. A value below 100 means only one place of ping was ever written: the destination step is still 0.",
         },
         {
           kind: "var", name: "pongMean", at: 11, ...near(SLOW_HI, 80), label: "After 11 ms: the mean of the second buffer (pong) is about 2900",
-          hint: "If pongMean stays 0 the DMA never wrote to pong: the shadow address must change in DMA_ISR.",
+          hint: "If pongMean stays 0 the DMA never wrote to pong: the shadow address must change in DMA_ISR. A small value such as 40 means pong got only a sample or two: check the step, and that the two branches do not write the same address.",
         },
-        { kind: "var", name: "pingMean", at: 16, ...near(SLOW_LO, 80), label: "After 16 ms: the mean of the third buffer (ping again) is about 1200" },
+        { kind: "var", name: "pingMean", at: 16, ...near(SLOW_LO, 80), label: "After 16 ms: the mean of the third buffer (ping again) is about 1200", hint: "Still about 2900: ping was not filled a second time. In the branch that says the DMA has just started on pong, the address to write is ping's." },
         { kind: "var", name: "pongMean", at: 21, ...near(SLOW_LO, 80), label: "After 21 ms: the mean of the fourth buffer (pong again) is about 1200" },
         { kind: "no-diagnostic", code: "eallow", label: "Every DMA register write is between EALLOW and EDIS" },
       ],
@@ -775,9 +973,11 @@ The signal is a slow 50 Hz sine. main computes the mean of each finished buffer 
       goal: "Read the output of the course's 1024-point FFT: which bin stands for which frequency.",
       refs: [{ course: "L8-9" }],
       brief: `
-A filter works on one sample at a time. The **FFT** (fast Fourier transform) works on a whole buffer and answers a different question: **which frequencies are in these samples, and how strong is each?**
+Real signals are several tones added together: a motor's hum plus a whistle plus a voice. Added sines make a bumpy curve, and looking at the samples you cannot tell which tones are in it.
 
-The course's FFT starter project runs these two calls on every full ping or pong buffer:
+The **FFT** (fast Fourier transform) can. It takes a whole buffer and answers: **which frequencies are in these samples, and how strong is each?**
+
+The course's FFT starter project runs these two calls of TI's library on every full ping or pong buffer (given code: \`hnd_rfft\` is a handle the starter sets up, \`pwrSpec\` an array of floats):
 
 \`\`\`c
 RFFT_f32(hnd_rfft);        // the transform: 1024 samples in
@@ -787,8 +987,8 @@ RFFT_f32_mag(hnd_rfft);    // strengths out: pwrSpec[0] to pwrSpec[512]
 Read the output like this, with N samples taken at the rate fs:
 
 - \`pwrSpec[k]\` is the strength of the part of the signal that fits **k whole periods** into the buffer. Each k is called a **bin**.
-- The buffer lasts N / fs seconds, so bin k stands for the frequency **k x fs / N**. The step from one bin to the next, fs / N, is the **resolution**.
-- Bin 0 is the average of the samples (0 Hz, called DC). The last bin, N / 2, is the Nyquist frequency. There is nothing above it to show.
+- The buffer lasts N / fs seconds, so bin k stands for the frequency **k x fs / N**. The step from one bin to the next, fs / N, is the **resolution**. Example: bin 10 is 10 x 10 000 / 1024 = 97.66 Hz.
+- Bin 0 is the average of the samples: the offset, 0 Hz, DC. The last bin, N / 2, is the Nyquist frequency. There is nothing above it to show.
 - A pure tone gives one tall bin, with small neighbours if it does not fit a whole number of periods into the buffer.
 
 To find the loudest tone, the starter looks for the largest \`pwrSpec[k]\` and prints its frequency:
@@ -797,7 +997,7 @@ To find the loudest tone, the starter looks for the largest \`pwrSpec[k]\` and p
 maxpwrindex * 10000.0 / 1024.0     // bin number x fs / N, in Hz
 \`\`\`
 
-It starts the search at bin 5, so that the DC part and slow drift do not win.
+It starts the search at bin 5, so that the offset and very slow changes do not win.
 
 In the course fs = 10 000 Hz and N = 1024.
 `,
@@ -824,17 +1024,25 @@ In the course fs = 10 000 Hz and N = 1024.
       goal: "Complete an interrupt function that outputs the mean of the last 5 samples.",
       refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
-Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms. Each call takes one sample and must compute
+Real samples are never clean. Wires pick up **noise**: small random errors that push each sample a little up or down.
+
+**Averaging smooths.** Replace each sample by the mean of itself and the few before it. Errors that go up and down cancel, and what the samples have in common stays. Code that makes a new signal out of the samples is a **filter**. This one is the **moving average**.
+
+{{figure:moving-average}}
+
+Drag the window along the noisy signal. The lower part shows the five stored samples, newest first.
+
+## In symbols
+Samples are numbered: x[n] is the newest, x[n-1] the one before it, x[n-4] four steps back. Each time a sample arrives, compute
 
 \`\`\`c
 yk = (x[n] + x[n-1] + x[n-2] + x[n-3] + x[n-4]) / 5
 \`\`\`
 
-## Where the samples come from
-\`tb_sample()\` returns the next sample of a test signal. Like everything starting with \`tb_\`, it belongs to this game's test bench, not to the chip. On the robot the line would read the ADC result instead. \`tb_output(yk)\` shows your result to the tests.
+Example: the last five samples are 2, 4, 3, 5, 1. Their sum is 15, so yk is 3.
 
 ## The history array
-A filter needs the last few samples, so they are kept in an array: \`xk[0]\` is the newest, \`xk[4]\` the oldest. For every new sample:
+Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms. \`tb_sample()\` returns the new sample, and \`tb_output(yk)\` shows your result to the tests. The last five samples are kept in an array: \`xk[0]\` is the newest, \`xk[4]\` the oldest. For every new sample:
 
 1. **Shift**: every stored sample moves one place towards the old end. \`xk[3]\` goes to \`xk[4]\`, \`xk[2]\` to \`xk[3]\`, and so on. The oldest value drops out.
 2. **Store** the new sample in \`xk[0]\`.
@@ -842,12 +1050,8 @@ A filter needs the last few samples, so they are kept in an array: \`xk[0]\` is 
 
 Shift from the old end: copy into \`xk[4]\` first. In the other direction you would overwrite values before you have moved them.
 
-{{figure:moving-average}}
-
-Try it in the figure: drag the window along the noisy signal. The lower part shows the five stored samples, newest first, exactly as \`xk[0]\` to \`xk[4]\` hold them.
-
 ## The test signal
-A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, one period of the tone is exactly 5 samples, and the mean over one full period of a sine is zero. So a correct average shows a steady **2.0**: the tone is gone. After 7 ms the test lowers the constant to 1.0, and your output must follow.
+An offset of 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling one period of the tone is exactly 5 samples, and a sine is as much above its middle as below it, so its mean over one full period is zero. A correct average shows a steady **2.0**: the tone is gone. After 7 ms the test lowers the offset to 1.0, and your output must follow.
 `,
       kit: "robot",
       durationMs: 12,
@@ -870,7 +1074,7 @@ A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, on
     yk = sum / 5.0;`),
       checks: [
         { kind: "var", name: "numSamples", min: 100, label: "A sample is taken every 0.1 ms" },
-        { kind: "signal", name: "TB_OUT", at: 3.05, ...near(2.0, 0.005), label: "The output is 2.0 after 3 ms", hint: "If it swings between 1.5 and 2.5 you are passing the samples through. If it is 0, yk is never set." },
+        { kind: "signal", name: "TB_OUT", at: 3.05, ...near(2.0, 0.005), label: "The output is 2.0 after 3 ms", hint: "Swinging between 1.5 and 2.5: the samples are passed through unaveraged. A steady 0: yk is never set, or you wrote 1/5, which is a whole-number division and gives 0 (write 5.0). A steady value other than 2.0, such as 2.5: the sum has too many or too few terms. Small and changing: the history is not shifted." },
         { kind: "signal", name: "TB_OUT", at: 6.33, ...near(2.0, 0.005), label: "The output is still 2.0 after 6 ms", hint: "The sum must contain 5 different samples. Check the direction of your shift loop." },
         { kind: "signal", name: "TB_OUT", at: 11.9, ...near(1.0, 0.005), label: "The output follows the signal down to 1.0", hint: "The output must be computed from the samples, not written as a constant." },
       ],
@@ -881,104 +1085,6 @@ A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, on
         "`for (i = 4; i > 0; i--) { xk[i] = xk[i-1]; }` before the new sample, then `for (i = 0; i < 5; i++) { sum = sum + xk[i]; }` and `yk = sum / 5.0;`",
       ],
       takeaway: "A moving average over exactly one period of a tone removes that tone completely. Averaging is a low-pass filter: slow changes pass, fast ones cancel.",
-    },
-    {
-      id: "dmaf-fir",
-      kind: "code",
-      mode: "write",
-      title: "Any coefficients you like",
-      goal: "Write one step of a general FIR filter: y = b[0] x[n] + b[1] x[n-1] + ... with the coefficients from an array.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
-      brief: `
-The moving average weighs all samples equally. A designed filter gives each one its own weight. This is the general **FIR** filter (finite impulse response). The weights \`b\` are its **coefficients**, and a filter of **order** M uses the newest sample and the M before it, so it has M + 1 coefficients:
-
-\`\`\`c
-y[n] = b[0] x[n] + b[1] x[n-1] + b[2] x[n-2] + b[3] x[n-3] + b[4] x[n-4]
-\`\`\`
-
-{{figure:moving-average}}
-
-In the figure, switch the weights from "all equal" to "your own": the code is the same loop, only the numbers in \`b\` change.
-
-In MATLAB, \`fir1(order, cutoff)\` computes such weights. Lab 4 has you paste them into an array. Here the array \`b\` holds a low-pass filter of order 4, so \`NUM_B\` is 5.
-
-Write the body of \`fir_step\`. It is called once per sample with the newest sample \`x\` and returns the filtered value. Use the array \`xk\` for the history, with \`xk[0]\` the newest sample, as in the previous level.
-
-- Shift the history, oldest first.
-- Store \`x\` in \`xk[0]\`.
-- Add up \`b[i] * xk[i]\` for all \`NUM_B\` coefficients.
-
-Write the loops with \`NUM_B\`, not with the number 5. Then a filter of order 21 is only a longer array.
-
-The test signal is a 300 Hz tone, a 4 kHz tone and an offset. The tests compare your output at two moments with the exact values of the formula above.
-`,
-      kit: "robot",
-      durationMs: 6,
-      stimuli: signal(SIG_FIR),
-      starter: firWrite(`    // TODO: shift xk, store x, return the weighted sum
-    return 0;`),
-      solution: firWrite(`    int i;
-    float y = 0;
-
-    for (i = NUM_B - 1; i > 0; i--) {
-        xk[i] = xk[i-1];
-    }
-    xk[0] = x;
-
-    for (i = 0; i < NUM_B; i++) {
-        y = y + b[i] * xk[i];
-    }
-    return y;`),
-      checks: [
-        { kind: "var", name: "y3", ...near(fir(B4, SIG_FIR, 2), 0.0005), label: "The third output is right (the history still holds zeros)", hint: "For the third sample: y = b[0] x[2] + b[1] x[1] + b[2] x[0]. The newest sample belongs to b[0]." },
-        { kind: "var", name: "y40", ...near(fir(B4, SIG_FIR, 39), 0.0005), label: "The 40th output is right", hint: "Each coefficient must meet its own sample: b[i] with xk[i]. Shift before you store the new sample." },
-        { kind: "var", name: "numSamples", min: 50, label: "A sample is processed every 0.1 ms" },
-      ],
-      watch: ["yk", "numSamples"],
-      hints: [
-        "It is the moving average again, with `b[i] * xk[i]` in the sum and no division at the end.",
-        "The shift loop runs from `NUM_B - 1` down to 1. The sum loop runs from 0 to `NUM_B - 1`.",
-        "`for (i = NUM_B - 1; i > 0; i--) { xk[i] = xk[i-1]; }` then `xk[0] = x;` then `for (i = 0; i < NUM_B; i++) { y = y + b[i] * xk[i]; }` and `return y;`",
-      ],
-      takeaway: "Every FIR filter is this loop. Low-pass, high-pass or band-pass differ only in the numbers in b. Symmetric coefficients, like these, delay all frequencies by the same time: the filter has linear phase.",
-    },
-    {
-      id: "dmaf-numbers",
-      kind: "calc",
-      title: "Buffers, Nyquist and aliases",
-      goal: "Work out the numbers behind a sampled signal and a simple filter.",
-      refs: [{ course: "L8-9" }, { course: "HW3" }, { trm: "5.4" }],
-      brief: `
-**Buffer time.** A buffer of N samples taken every T seconds covers N x T seconds.
-
-**Nyquist.** With a sampling rate fs, the highest frequency the samples can show is fs / 2. Turned around: sample at least twice as fast as the highest frequency in the signal.
-
-**Aliasing.** A tone at f between fs / 2 and fs gives the same samples as a tone at **fs - f** would (for a sine, turned upside down). Example: fs = 1000 Hz and a 900 Hz tone. The samples look like a 100 Hz tone.
-
-{{figure:sampling-alias}}
-
-The figure starts on that example. Move both sliders and check the rule fs - f against what the dots show.
-
-**Coefficients.** An FIR filter of order M has M + 1 coefficients.
-
-**Gain at DC.** Feed a filter a constant input. The output settles at the input times the **sum of the coefficients**. That factor is the gain at 0 Hz, called DC.
-
-**DMA sizes.** The DMA's size registers hold **one less** than the count: a value of 2 means 3.
-`,
-      fields: [
-        { id: "a", label: "Time to fill a buffer of 1024 samples taken every 0.1 ms", unit: "ms", answer: 102.4, tolPct: 0.1, why: "1024 x 0.1 ms = 102.4 ms. That is also how often the DMA interrupts the CPU." },
-        { id: "b", label: "Nyquist frequency when sampling every 0.1 ms", unit: "Hz", answer: 5000, why: "The sampling rate is 1 / 0.1 ms = 10 000 Hz. Half of it is 5000 Hz." },
-        { id: "c", label: "A 7 kHz tone sampled at 10 kHz appears at", unit: "Hz", answer: 3000, why: "7 kHz is above the Nyquist frequency of 5 kHz. It aliases to fs - f = 10 000 - 7000 = 3000 Hz." },
-        { id: "d", label: "Number of coefficients of an FIR filter of order 21", answer: 22, why: "Order M has M + 1 coefficients, b0 to bM. `fir1(21, 0.2)` returns 22 numbers." },
-        { id: "e", label: "DC gain of the 5-point moving average (each coefficient is 1/5)", answer: 1, why: "5 x 1/5 = 1. A constant input comes out unchanged, which is what you want from an average." },
-        { id: "f", label: "TRANSFER_SIZE for a transfer of 1024 one-word bursts", answer: 1023, why: "The register holds the count minus one. The course writes `DmaRegs.CH1.TRANSFER_SIZE = RFFT_SIZE-1;` with RFFT_SIZE = 1024." },
-      ],
-      hints: [
-        "Convert 0.1 ms to a rate first: 1 / 0.0001 s = 10 000 samples per second.",
-        "For the alias, subtract the tone's frequency from the sampling rate.",
-        "102.4, 5000, 3000, 22, 1, 1023.",
-      ],
-      takeaway: "fs / 2 is the limit. Anything above it must be removed by an analog filter before the ADC, because after sampling it is indistinguishable from a real low tone.",
     },
     {
       id: "dmaf-avg-bugs",
@@ -1034,6 +1140,68 @@ The tests also read \`xk[4]\` after the 22nd sample to see whether it really is 
       takeaway: "Shift from the old end so nothing is overwritten before it has been moved, and make sure a float takes part in every division that should give a fraction.",
     },
     {
+      id: "dmaf-fir",
+      kind: "code",
+      mode: "write",
+      title: "Any coefficients you like",
+      goal: "Write one step of a general FIR filter: y = b[0] x[n] + b[1] x[n-1] + ... with the coefficients from an array.",
+      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
+      brief: `
+The moving average multiplies every sample by the same weight, 1/5. A designed filter gives each sample its own weight. This is the general **FIR** filter (the letters stand for finite impulse response). The weights \`b\` are its **coefficients**. A filter of **order** M uses the newest sample and the M before it, so it has M + 1 coefficients:
+
+\`\`\`c
+y[n] = b[0] x[n] + b[1] x[n-1] + b[2] x[n-2] + b[3] x[n-3] + b[4] x[n-4]
+\`\`\`
+
+Example with two weights, b = {0.75, 0.25}, newest sample 4 and the one before 8: y = 0.75 x 4 + 0.25 x 8 = 5.
+
+{{figure:moving-average}}
+
+In the figure, switch the weights from "all equal" to "your own": the code is the same loop, only the numbers in \`b\` change.
+
+A **low-pass** filter lets slow changes (low frequencies) through and removes fast ones. You do not work out its weights by hand: in MATLAB, the maths program the course uses, \`fir1(order, cutoff)\` computes them, and Lab 4 has you paste them into an array. Here the array \`b\` holds a low-pass filter of order 4, so \`NUM_B\` is 5.
+
+Write the body of \`fir_step\`. It is called once per sample with the newest sample \`x\` and returns the filtered value. Use the array \`xk\` for the history, with \`xk[0]\` the newest sample, as in the previous level.
+
+- Shift the history, oldest first.
+- Store \`x\` in \`xk[0]\`.
+- Add up \`b[i] * xk[i]\` for all \`NUM_B\` coefficients.
+
+Write the loops with \`NUM_B\`, not with the number 5. Then a filter of order 21 is only a longer array.
+
+The test signal is a 300 Hz tone, a 4 kHz tone and an offset. The tests compare your output at two moments with the exact values of the formula above.
+`,
+      kit: "robot",
+      durationMs: 6,
+      stimuli: signal(SIG_FIR),
+      starter: firWrite(`    // TODO: shift xk, store x, return the weighted sum
+    return 0;`),
+      solution: firWrite(`    int i;
+    float y = 0;
+
+    for (i = NUM_B - 1; i > 0; i--) {
+        xk[i] = xk[i-1];
+    }
+    xk[0] = x;
+
+    for (i = 0; i < NUM_B; i++) {
+        y = y + b[i] * xk[i];
+    }
+    return y;`),
+      checks: [
+        { kind: "var", name: "y3", ...near(fir(B4, SIG_FIR, 2), 0.0005), label: "The third output is right (the history still holds zeros)", hint: "For the third sample: y = b[0] x[2] + b[1] x[1] + b[2] x[0]. The newest sample belongs to b[0]. A value 5 times too small: do not divide at the end, the weights already add up to 1." },
+        { kind: "var", name: "y40", ...near(fir(B4, SIG_FIR, 39), 0.0005), label: "The 40th output is right", hint: "Each coefficient must meet its own sample: b[i] with xk[i]. Shift before you store the new sample. A value that grows from call to call: start the sum at 0 on every call." },
+        { kind: "var", name: "numSamples", min: 50, label: "A sample is processed every 0.1 ms" },
+      ],
+      watch: ["yk", "numSamples"],
+      hints: [
+        "It is the moving average again, with `b[i] * xk[i]` in the sum and no division at the end.",
+        "The shift loop runs from `NUM_B - 1` down to 1. The sum loop runs from 0 to `NUM_B - 1`.",
+        "`for (i = NUM_B - 1; i > 0; i--) { xk[i] = xk[i-1]; }` then `xk[0] = x;` then `for (i = 0; i < NUM_B; i++) { y = y + b[i] * xk[i]; }` and `return y;`",
+      ],
+      takeaway: "Every FIR filter is this loop. Low-pass, high-pass or band-pass differ only in the numbers in b. Symmetric coefficients, like these, delay all frequencies by the same time (the course calls this linear phase).",
+    },
+    {
       id: "dmaf-checkpoint",
       kind: "code",
       mode: "checkpoint",
@@ -1043,14 +1211,14 @@ The tests also read \`xk[4]\` after the 22nd sample to see whether it really is 
       brief: `
 A sensor signal contains either a slow tone (200 Hz) or a fast one (3 kHz), both with amplitude 1. Your program must tell them apart: **LED1 on while the slow tone is there**, off otherwise. A low-pass filter does the telling. The slow tone passes it almost unchanged, the fast one is cut down to almost nothing.
 
-The array \`b\` holds a low-pass filter of order 21 with its cutoff at 1 kHz, the kind of filter \`fir1(21, 0.2)\` designs. Its 22 coefficients add up to 1.
+The array \`b\` holds a low-pass filter of order 21 with its **cutoff** at 1 kHz: tones well below 1 kHz pass, tones well above are removed. It is the kind of filter \`fir1(21, 0.2)\` designs. Its 22 coefficients add up to 1, so a constant input comes out unchanged.
 
 ## Timer 0, every 0.1 ms: \`cpu_timer0_isr\`
-Set up timer 0 for a period of 100 microseconds with its interrupt, as in the interrupts chapter. In the function:
+Set up timer 0 for a period of 100 microseconds with its interrupt. These are the lines that stood in \`main()\` of every code level of this chapter: vector, \`InitCpuTimers\`, \`ConfigCpuTimer\`, \`TCR\`, \`IER\`, \`PIEIER1\`, \`EINT\`. In the function:
 
 1. Shift the history \`xk\` and store \`tb_sample()\` in \`xk[0]\`.
 2. Compute \`yk\`, the sum of \`b[i] * xk[i]\` over all \`NUM_B\` coefficients.
-3. Track the largest size of \`yk\` in \`peak\`. \`fabs(yk)\` gives the size without the sign.
+3. Track the largest size of \`yk\` in \`peak\`: if \`fabs(yk)\` is larger than \`peak\`, it becomes the new \`peak\`. \`fabs(x)\` is x without its sign, so \`fabs(-0.8)\` is 0.8. The largest size a tone reaches is its amplitude.
 4. Count the samples in \`count\`. After \`WINDOW\` = 100 samples: copy \`peak\` to \`amplitude\`, set \`peak\` and \`count\` back to 0, and set the flag \`newResult = 1\`.
 5. Acknowledge group 1.
 
@@ -1107,14 +1275,14 @@ Keep the names of the function and the global variables. The tests read them.
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;`,
       ),
       checks: [
-        { kind: "isr", fn: "cpu_timer0_isr", min: 990, max: 1000, label: "cpu_timer0_isr runs every 0.1 ms", hint: "ConfigCpuTimer takes the period in microseconds: 100. Then the vector, TCR, IER, PIEIER1.INTx7 and EINT." },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 990, max: 1000, label: "cpu_timer0_isr runs every 0.1 ms", hint: "Ran 0 times: a line of the timer set-up is missing. Compare with main() of \"Five-point moving average\": vector (between EALLOW and EDIS), InitCpuTimers, ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 100), TCR.all = 0x4000, IER |= M_INT1, PIEIER1.bit.INTx7 = 1, EINT. Ran once: the PIEACK line is missing. Too few times: the period is in microseconds, 100." },
         {
           kind: "var", name: "amplitude", at: 45, min: 0.95, max: 1.02, label: "The 200 Hz tone passes: amplitude is about 1 after 45 ms",
-          hint: "A value near 0 means yk is not the weighted sum, or peak is never updated. A value that keeps growing means peak is not set back to 0 after each window.",
+          hint: "A value near 0 means yk is not the weighted sum, or peak is never updated. A value far above 1 means yk is not set to 0 before the sum is added up on each call.",
         },
         {
           kind: "var", name: "amplitude", at: 95, max: 0.02, label: "The 3 kHz tone is removed: amplitude is below 0.02 after 95 ms",
-          hint: "If it is still near 1, the filter is not applied: check that each b[i] multiplies its own xk[i], and that the history is shifted on every sample.",
+          hint: "If it is still near 1: either peak is not set back to 0 at the end of each window, so it keeps the slow tone's value, or the filter is not applied. Check that each b[i] multiplies its own xk[i] and that the history is shifted on every sample.",
         },
         { kind: "led", led: "LED1", at: 45, on: true, label: "LED1 is on while the slow tone plays" },
         { kind: "led", led: "LED1", at: 95, on: false, label: "LED1 is off while the fast tone plays" },
@@ -1287,7 +1455,7 @@ Keep the coefficients \`b\` in mind: they are constants, and no line of the prog
 
 C does not check array bounds. An order M filter uses the samples x[n] to x[n-M]: count them. Then count the elements of the history array.
 
-Writing one element past the end of an array does not fail. It changes whatever variable the linker happened to place next. Here that neighbour is easy to find. On the real chip it can be anything, and the program may even seem to work until you add a variable somewhere else.
+Writing one element past the end of an array does not fail. It changes whatever variable happens to be stored next in memory. Here that neighbour is easy to find. On the real chip it can be anything, and the program may even seem to work until you add a variable somewhere else.
 `,
       kit: "robot",
       durationMs: 6,

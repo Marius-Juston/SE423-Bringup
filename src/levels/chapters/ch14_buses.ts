@@ -240,8 +240,8 @@ const CAN_PINS_INIT = `    //GPIO17 - CANRXB
     InitPieVectTable();`;
 
 const CAN_START = `    // Start CAN module operations
-    CanbRegs.CAN_CTL.bit.Init = 0;
-    CanbRegs.CAN_CTL.bit.CCE = 0;`;
+    CanbRegs.CAN_CTL.bit.Init = 0;     // 0 = take part in the bus traffic
+    CanbRegs.CAN_CTL.bit.CCE = 0;      // 0 = lock the bit-rate settings`;
 
 const msgObject = (n: number, id: string) => `    CANsetupMessageObject(CANB_BASE, RX_MSG_OBJ_ID_${n}, ${id}, CAN_MSG_FRAME_EXT,
                           CAN_MSG_OBJ_TYPE_RX, 0, CAN_MSG_OBJ_RX_INT_ENABLE,
@@ -253,7 +253,7 @@ const canReceive = (o: { pie: string; object: string; decode: string; ack: strin
 __interrupt void can_isr(void);
 
 volatile uint32_t rxMsgCount_1 = 0;
-extern uint16_t rxMsgData[8];
+extern uint16_t rxMsgData[8];    // defined in F28379dCAN.c: one received byte per element
 uint32_t dis_raw_1[2];
 uint32_t dis_1 = 0;              // distance in mm
 uint32_t measure_status_1 = 0;
@@ -815,13 +815,13 @@ export const ch14: Chapter = {
       goal: "See why a shared bus saves pins and how I2C and CAN compare with UART and SPI, then answer three questions.",
       refs: [{ course: "L10" }, { trm: "20.1" }, { trm: "22.1" }],
       brief: `
-A UART joins two devices. SPI joins one master to several slaves, but every slave needs its own chip-select wire, and a robot with many sensors runs out of pins. A **bus** is a set of wires that all devices share: every device hears everything, and the protocol decides who may talk and who is meant.
+A UART joins two devices. A robot has many sensors, and a pair of pins for each would use up the chip. A **bus** is a set of wires that all devices share: every device hears everything, and the **protocol** (the agreed rules) decides who may talk and who is meant. On most buses one device, the **master**, starts every transfer, and the others, the **slaves**, only answer.
 
 This chapter covers **I2C**, for chips on the same board, and **CAN**, for boxes joined by a cable.
 
 ## Four ways to send bits
 - **UART**: 2 wires, 2 devices. No clock wire: both ends agree on the baud rate (**asynchronous**).
-- **SPI**: clock, data out and data in, plus **one chip-select wire per slave**. The master makes the clock (**synchronous**).
+- **SPI** (the SPI chapter): a clock wire, data out and data in, plus **one chip-select wire per slave**, which the master pulls low to pick that slave. The master makes the clock, which tells the receiver when to read each bit (**synchronous**).
 - **I2C**: 2 wires for **all** devices: **SDA** (data) and **SCL** (clock). The master makes the clock. The slave is chosen by a **7-bit address** sent as the first byte. 100 kbit/s, or 400 kbit/s in fast mode.
 - **CAN**: 2 wires (CANH and CANL) for all devices, carrying one signal as a voltage **difference**, which resists electrical noise. No clock wire, no master and no device addresses: each message carries an **identifier** that says what it contains. Up to 1 Mbit/s.
 
@@ -832,7 +832,7 @@ Compare them in the figure: add a device and count the wires.
 {{figure:bus-compare}}
 
 ## What makes sharing possible
-If one device drove a shared wire to 3.3 V while another drove it to 0 V, that would be a short circuit. I2C and CAN avoid this in the same way: a device can only pull the bus to **0**. To send a 1 it lets go, and a resistor returns the bus to 1. A 0 from anyone wins.
+If one device drove a shared wire to 3.3 V while another drove it to 0 V, that would be a short circuit. I2C and CAN avoid this in the same way: a device can only pull the bus to **0**. To send a 1 it lets go, and a pull-up resistor returns the bus to 1. A 0 from anyone wins. An output built this way is called **open-drain**.
 
 Try it in the figure: let two devices pull the same line low, then release one of them.
 
@@ -941,10 +941,12 @@ One write to the mode register \`I2CMDR\` starts a whole transfer. The I2C modul
 - **TRX** (bit 9): 1 = transmit (R/W bit 0), 0 = receive (R/W bit 1)
 - **IRS** (bit 5): 1 = module out of reset. It must stay 1.
 
+Bit n is worth 2^n, so a mode word is a sum. Example: bits 10 and 5 alone are 0x0400 + 0x0020 = 0x0420.
+
 ## What is already written
 \`init_I2CB()\` switches GPIO40 and GPIO41 to the I2C module, turns on their **internal pull-ups** (this board has no external pull-up resistors) and sets SCL to 100 kHz.
 
-\`read_temperature()\` already waits for the bytes. The course has no I2C starter code, so this follows the reference manual and the lecture's register names:
+\`read_temperature()\` already waits for the bytes with loops of the form \`while (flag == 0) {}\`: an empty body, repeated until the flag changes. If the transfer never starts, the program stays in such a loop for ever. (The course has no I2C starter code. This follows the reference manual.)
 
 - \`I2CSTR.bit.RRDY\` becomes 1 when a received byte is in \`I2CDRR\`. Reading \`I2CDRR\` clears it.
 - \`I2CMDR.bit.STP\` stays 1 until the STOP is on the bus.
@@ -952,7 +954,7 @@ One write to the mode register \`I2CMDR\` starts a whole transfer. The I2C modul
 ## Your task
 1. Put the sensor's **7-bit address** in \`I2CSAR\` (the module shifts it and adds the R/W bit itself) and the number of bytes to read, **2**, in \`I2CCNT\`.
 2. Write the mode word to \`I2CMDR\`: master, receiver, START, STOP, out of reset. Work out the hex value from the bit numbers.
-3. The sensor sends the **most significant byte first**. Put the two bytes together into the 16-bit \`tempRaw\`, then convert: **degrees C = tempRaw / 256**. Divide by \`256.0\`, not \`256\`, so the result keeps its fraction.
+3. The sensor sends the **most significant byte first**. Put the two bytes together into the 16-bit \`tempRaw\`. The sensor counts in steps of 1/256 of a degree, so **degrees C = tempRaw / 256**: 25 degrees arrives as 0x19 then 0x00, tempRaw = 0x1900 = 6400, and 6400 / 256 = 25. Divide by \`256.0\`, not \`256\`, so the result keeps its fraction.
 
 \`tempRaw\` is an \`int16_t\`, so temperatures below zero come out negative. The tests set the knob to 30.5 and then to -4 degrees C.
 `,
@@ -978,9 +980,13 @@ One write to the mode register \`I2CMDR\` starts a whole transfer. The I2C modul
         {
           kind: "var", name: "readings", min: 4,
           label: "read_temperature() finishes again and again",
-          hint: "If readings stays 0 the code is stuck waiting for a byte. Was a transfer started (I2CMDR), to the right address (I2CSAR), with a byte count (I2CCNT)?",
+          hint: "If readings stays 0 the code is stuck in a wait loop: no byte arrives. The next four checks say which setting is wrong. If they all pass, the START bit (bit 13, 0x2000) or the master bit (bit 10, 0x0400) is missing from the mode word.",
         },
-        { kind: "var", name: "tempC", at: 4, equals: 25, label: "tempC is 25 at the start", hint: "25 degrees arrives as 0x19, 0x00. tempRaw should be 0x1900 = 6400, and 6400 / 256 = 25." },
+        { kind: "reg", reg: "I2cbRegs.I2CSAR", equals: 0x48, label: "I2CSAR holds the 7-bit address 0x48", hint: "Write the address as it is, 0x48. The module shifts it and adds the R/W bit itself. 0x90 or 0x91 is the byte on the wire, and nobody answers to that as an address." },
+        { kind: "reg", reg: "I2cbRegs.I2CCNT", equals: 2, label: "I2CCNT asks for 2 bytes", hint: "The function waits for two bytes. With a count of 0 or 1 the second byte never comes." },
+        { kind: "reg", reg: "I2cbRegs.I2CMDR", field: "TRX", equals: 0, label: "Mode word: receiver (bit 9 is 0)", hint: "With TRX = 1 the module addresses the sensor for writing and waits for data from you. To read, leave bit 9 (0x0200) at 0." },
+        { kind: "reg", reg: "I2cbRegs.I2CMDR", field: "IRS", equals: 1, label: "Mode word: the module stays out of reset (bit 5)", hint: "A mode word without 0x0020 puts the I2C module back in reset, and nothing is sent." },
+        { kind: "var", name: "tempC", at: 4, equals: 25, label: "tempC is 25 at the start", hint: "25 degrees arrives as 0x19, 0x00. tempRaw should be 0x1900 = 6400, and 6400 / 256 = 25. A value near 0.1 means the bytes are the wrong way round: the first byte, msb, goes on top." },
         { kind: "var", name: "tempC", at: 9, equals: 30.5, label: "tempC follows the knob to 30.5", hint: "Dividing by 256 (an integer) drops the half degree. Use 256.0." },
         { kind: "var", name: "tempC", at: 14, equals: -4, label: "tempC follows the knob to -4" },
         { kind: "signal", name: "I2C_STOPS", min: 4, label: "Every read ends with a STOP on the bus", hint: "Bit 11 of I2CMDR, STP, makes the module end the transfer with a STOP." },
@@ -1008,7 +1014,7 @@ The bus has two states, built the same way as on I2C:
 - **dominant** = 0: a node drives the bus
 - **recessive** = 1: nobody drives, and resistors return the bus to rest
 
-There is no clock wire and no master. Any node may send when the bus is idle. A message is called a **frame**. It has no destination address. Instead it begins with an **identifier** that says what the message **is** ("distance from sensor 1"). Every node hears every frame and decides from the identifier whether it cares.
+A device on a CAN bus is called a **node**. There is no clock wire and no master. Any node may send when the bus is idle. A message is called a **frame**. It has no destination address. Instead it begins with an **identifier** that says what the message **is** ("distance from sensor 1"). Every node hears every frame and decides from the identifier whether it cares.
 
 A data frame, in the order it is sent:
 
@@ -1016,7 +1022,7 @@ A data frame, in the order it is sent:
 - then the identifier: 11 bits in a standard frame, 29 bits in an **extended** frame (the course's sensors use 29)
 - a control field, whose **DLC** (data length code) says how many data bytes follow
 - 0 to 8 data bytes
-- a **CRC**, a 15-bit checksum over everything before it
+- a **CRC**, a 15-bit checksum: a number the sender computes from all the bits before it. Each receiver computes it again, and a different result means the frame was damaged
 - the **ACK** slot: the sender lets go, and every node that received the frame without error pulls the bus dominant
 - the end of frame: seven recessive bits
 
@@ -1062,7 +1068,7 @@ Try it in the figure: set two identifiers and see which node gives way, and at w
 The ACK bit is pulled dominant by **every** node that received the frame correctly, not by one addressed device. A sender that sees no ACK knows that nobody heard it, and sends the frame again.
 
 ## Message objects
-The CAN module in the F28379D holds 32 **message objects** (TI's library calls them mailboxes). Each is set up with an identifier and a direction. When a frame arrives, the module compares its identifier with the receive objects, lowest object number first, and stores the frame in the first one that matches. A frame that matches none is acknowledged on the bus and then dropped. Your code is only interrupted for the messages it asked for.
+The CAN module in the F28379D holds 32 **message objects** (TI's library calls them mailboxes). Each is set up with an identifier and a direction (receive or send). When a frame arrives, the module compares its identifier with the receive objects, lowest object number first, and stores the frame in the first one that matches. A frame that matches none is acknowledged on the bus and then dropped. Your code is only interrupted for the messages it asked for.
 
 The course's distance sensors (SEN-36005) send extended frames at 1 Mbit/s. Their identifier is **0x060B01ss** for the measured distance, where **ss** is the sensor's device number. The robot's two sensors are numbers 1 and 2.
 `,
@@ -1082,7 +1088,7 @@ The course's distance sensors (SEN-36005) send extended frames at 1 Mbit/s. Thei
           prompt: "Which level is dominant on a CAN bus?",
           options: ["1, because the bus idles at 1", "0", "Whichever was sent first", "Neither, they are equal"],
           answer: 1,
-          why: "A node drives the bus for a 0 and lets go for a 1. As with I2C's open-drain lines, a 0 from any node overrides a 1 from all the others.",
+          why: "A node drives the bus for a 0 and lets go for a 1. As on I2C, a 0 from any node overrides a 1 from all the others.",
         },
         {
           prompt: "Who sends the ACK bit of a CAN frame?",
@@ -1117,29 +1123,32 @@ The course's distance sensors (SEN-36005) send extended frames at 1 Mbit/s. Thei
       goal: "Set up a message object for sensor 1's distance, enable the CAN interrupt, and decode the distance.",
       refs: [{ course: "L10" }, { trm: "22.10.3" }, { trm: "22.6" }, { trm: "22.11.9" }, { trm: "3.4.5" }],
       brief: `
-This is the CAN code of the final project starter, reduced to one sensor. The course file \`F28379dCAN.c\` supplies the functions. Use the two distance knobs next to the board.
+This is the CAN code of the final project starter, reduced to one sensor. The course file \`F28379dCAN.c\` supplies the functions whose names start with \`CAN\`, and the array \`rxMsgData\` (\`extern\` in front of a variable means "it is defined in another file"). Everything outside the three TODOs is given: read it once with this list.
 
 ## What is already written
 - GPIO17 and GPIO12 are switched to CANRXB and CANTXB (mux position 2).
 - \`InitCANB()\` resets the CAN module and empties all 32 message objects. \`setCANBitRate(200000000, 1000000)\` sets 1 Mbit/s.
 - \`can_isr\` is in the vector table as \`CANB0_INT\`, and the CAN module's own interrupt enables are set.
-- \`can_isr\` asks which message object caused the interrupt, copies its 8 data bytes into \`rxMsgData\` (one byte per array element), clears the message object's interrupt, clears the CAN module's global flag and acknowledges the PIE group.
+- \`can_isr\` asks which message object caused the interrupt, copies its 8 data bytes into \`rxMsgData\` (one byte per array element), clears the message object's interrupt, clears the CAN module's global flag and acknowledges the PIE group. \`InterruptclearACKGroup(INTERRUPT_ACK_GROUP9);\` is the library's spelling of \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP9;\`.
 - \`CanbRegs.CAN_CTL.bit.Init = 0;\` then lets the module take part in the bus traffic.
 
 ## Your task
-1. **Message object.** Call \`CANsetupMessageObject\` so that object number \`RX_MSG_OBJ_ID_1\` receives sensor 1's distance message:
+1. **Interrupt.** CANB0 is **PIE group 9, interrupt 7**. Set its \`PIEIER9\` bit, and the group's bit in \`IER\`.
+
+2. **Message object.** Call \`CANsetupMessageObject\` so that object number \`RX_MSG_OBJ_ID_1\` receives sensor 1's distance message:
 
 \`\`\`c
-CANsetupMessageObject(CANB_BASE, objectNumber, identifier, CAN_MSG_FRAME_EXT,
-                      CAN_MSG_OBJ_TYPE_RX, 0, CAN_MSG_OBJ_RX_INT_ENABLE,
-                      RX_MSG_DATA_LENGTH);
+CANsetupMessageObject(CANB_BASE,
+    objectNumber, identifier,
+    CAN_MSG_FRAME_EXT,
+    CAN_MSG_OBJ_TYPE_RX, 0,
+    CAN_MSG_OBJ_RX_INT_ENABLE,
+    RX_MSG_DATA_LENGTH);
 \`\`\`
 
 The identifier is 0x060B0101. \`CAN_MSG_FRAME_EXT\` says it has 29 bits, the 0 is "no mask", and \`CAN_MSG_OBJ_RX_INT_ENABLE\` asks for an interrupt when a frame is stored.
 
-2. **Interrupt.** CANB0 is **PIE group 9, interrupt 7**. Set its \`PIEIER9\` bit, and the group's bit in \`IER\`.
-
-3. **Decode.** The first two data bytes are the distance in millimetres, **least significant byte first**: byte 0 counts ones, byte 1 counts 256s. In \`can_isr\`, compute \`dis_1\` from \`dis_raw_1[0]\` and \`dis_raw_1[1]\`.
+3. **Decode.** The first two data bytes are the distance in millimetres, **least significant byte first**: byte 0 counts ones, byte 1 counts 256s. Example: byte 0 = 0x2C = 44 and byte 1 = 0x01 make 256 x 1 + 44 = 300 mm. In \`can_isr\`, compute \`dis_1\` from \`dis_raw_1[0]\` and \`dis_raw_1[1]\`.
 
 The figure shows the frame your code receives: bytes 0 and 1 are the distance.
 
@@ -1149,8 +1158,8 @@ The sensor sends every 100 ms. The tests turn its knob to 1234 mm and then to 30
 `,
       kit: "robot",
       starter: canReceive({
-        pie: "    // TODO 2: enable CANB0 in the PIE (group 9, interrupt 7) and group 9 in IER",
-        object: "    // TODO 1: message object RX_MSG_OBJ_ID_1 receives identifier 0x060b0101",
+        pie: "    // TODO 1: enable CANB0 in the PIE (group 9, interrupt 7) and group 9 in IER",
+        object: "    // TODO 2: message object RX_MSG_OBJ_ID_1 receives identifier 0x060b0101",
         decode: "        // TODO 3: distance in mm, low byte first\n        dis_1 = 0;",
         ack: "    // Acknowledge this interrupt located in group 9\n    InterruptclearACKGroup(INTERRUPT_ACK_GROUP9);",
       }),
@@ -1176,7 +1185,7 @@ The sensor sends every 100 ms. The tests turn its knob to 1234 mm and then to 30
           label: "can_isr runs for every frame",
           hint: "The frame is stored but no interrupt reaches the CPU: PieCtrlRegs.PIEIER9.bit.INTx7 = 1; and IER |= M_INT9;",
         },
-        { kind: "var", name: "dis_1", at: 50, equals: 500, label: "dis_1 is 500 mm at the start", hint: "500 is 0x01F4: byte 0 = 0xF4 = 244, byte 1 = 1. 256 x 1 + 244." },
+        { kind: "var", name: "dis_1", at: 50, equals: 500, label: "dis_1 is 500 mm at the start", hint: "500 is 0x01F4: byte 0 = 0xF4 = 244, byte 1 = 1. 256 x 1 + 244. If you see 62465, the two bytes are swapped. If you see 1200, that is sensor 2: the identifier must end in 01." },
         { kind: "var", name: "dis_1", at: 150, equals: 1234, label: "dis_1 follows the knob to 1234 mm" },
         { kind: "var", name: "dis_1", at: 250, equals: 300, label: "dis_1 follows the knob to 300 mm" },
         { kind: "var", name: "measure_status_1", equals: 0, label: "The ranging status is 0: valid" },
@@ -1184,8 +1193,8 @@ The sensor sends every 100 ms. The tests turn its knob to 1234 mm and then to 30
       watch: ["dis_1", "rxMsgCount_1", "measure_status_1"],
       inspect: ["CanbRegs.CAN_CTL", "CanbRegs.CAN_INT", "CanbRegs.CAN_NDAT_21", "PieCtrlRegs.PIEIER9"],
       hints: [
-        "The call in the brief is complete except for two arguments: the object number RX_MSG_OBJ_ID_1 and the identifier 0x060b0101.",
         "The interrupt enables follow the pattern of every PIE interrupt: `PieCtrlRegs.PIEIER9.bit.INTx7 = 1;` and `IER |= M_INT9;`",
+        "The call in the brief is complete except for two arguments: the object number RX_MSG_OBJ_ID_1 and the identifier 0x060b0101.",
         "The high byte counts 256s: `dis_1 = 256*dis_raw_1[1] + dis_raw_1[0];`",
       ],
       takeaway: "Three things make a CAN message arrive: a message object with the right identifier, the interrupt path (message object, CAN module, PIE, CPU), and Init = 0.",
@@ -1203,7 +1212,7 @@ Both distance sensors are in use now: message object 1 receives sensor 1 (identi
 ## Your task: can_isr
 Write the whole function. One interrupt serves both message objects, so first find out which one it is:
 
-1. \`status = CANgetInterruptCause(CANB_BASE);\` returns the number of the message object, or \`CAN_INT_INT0ID_STATUS\` for a status interrupt.
+1. \`status = CANgetInterruptCause(CANB_BASE);\` returns the number of the message object, or \`CAN_INT_INT0ID_STATUS\` for a status interrupt (the module reports a change of its own state, such as a bus error).
 2. For \`CAN_INT_INT0ID_STATUS\`: call \`CANgetStatus(CANB_BASE);\`. Reading the status clears that interrupt.
 3. For \`RX_MSG_OBJ_ID_1\`: \`CANreadMessage(CANB_BASE, RX_MSG_OBJ_ID_1, rxMsgData);\`, compute \`dis_1\` from \`rxMsgData[0]\` and \`rxMsgData[1]\`, then \`CANclearInterruptStatus(CANB_BASE, RX_MSG_OBJ_ID_1);\` and set \`newData = 1\`.
 4. The same for \`RX_MSG_OBJ_ID_2\` and \`dis_2\`.
@@ -1386,12 +1395,13 @@ The tests change both knobs while the program runs.
         },
         { kind: "serial", includes: "T 31.5 C, D 1234 mm\r\n", label: "The third line follows both knobs: T 31.5 C, D 1234 mm" },
         { kind: "serial", includes: "T -7.5 C, D 80 mm\r\n", label: "The fourth line shows a negative temperature: T -7.5 C, D 80 mm", hint: "tempRaw must be an int16_t, and the division by 256.0." },
-        { kind: "serial-period", periodMs: 100, label: "One line per frame: every 100 ms" },
+        { kind: "serial-period", periodMs: 100, label: "One line per frame: every 100 ms", hint: "A line every millisecond or two means newDistance is never set back to 0 in main()." },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside the interrupt function", hint: "Set newDistance = 1 in can_isr and print from while (1)." },
+        { kind: "isr-time", fn: "can_isr", maxUs: 50, label: "can_isr does not wait for the I2C bus (it returns within 50 us)", hint: "An I2C read takes about 300 us of waiting. Call read_temperature() from while (1) in main(), not from can_isr." },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the values", hint: "dis_1 is 32 bits wide: %ld. tempC is a float: %.1f." },
       ],
       bonus: [
-        { kind: "isr-time", fn: "can_isr", maxUs: 5, label: "can_isr takes less than 5 microseconds", hint: "Keep the I2C read and the print out of the interrupt function." },
+        { kind: "isr-time", fn: "can_isr", maxUs: 5, label: "can_isr takes less than 5 microseconds", hint: "Store dis_1, set the flag, clear and acknowledge. Nothing else." },
       ],
       watch: ["dis_1", "tempC", "newDistance"],
       inspect: ["I2cbRegs.I2CSTR", "CanbRegs.CAN_INT"],
@@ -1412,7 +1422,7 @@ The tests change both knobs while the program runs.
       goal: "Wire a temperature sensor and a clock chip to the I2C bus, with its two pull-up resistors.",
       refs: [{ course: "L10" }, { trm: "20.2" }, { trm: "20.3.1" }],
       brief: `
-An I2C pin is an **open-drain** output: inside the chip, one transistor can connect the pin to ground. There is no transistor to 3.3 V. So a device can pull a line **low**, or **let go** of it. It cannot drive it high.
+An I2C pin is an **open-drain** output: inside the chip, one transistor (an electronic switch) can connect the pin to ground. There is no transistor to 3.3 V. So a device can pull a line **low**, or **let go** of it. It cannot drive it high.
 
 Something else must bring a released line back to 1: a **pull-up resistor** from the line to 3.3 V. The bus has two lines, so it has two resistors, **one for the whole bus**, not one per device.
 
@@ -1567,6 +1577,8 @@ The I2C module divides the 200 MHz system clock twice.
 **SCL frequency = module clock / ((I2CCLKL + d) + (I2CCLKH + d))**
 
 The extra **d** is 5 when I2CPSC is greater than 1 (it is 7 for I2CPSC = 0 and 6 for I2CPSC = 1).
+
+Example: I2CPSC = 19 gives 200 / 20 = 10 MHz. With I2CCLKL = 10 and I2CCLKH = 5 one SCL period is (10 + 5) + (5 + 5) = 25 module clock periods: 10 MHz / 25 = 400 kHz.
 
 The I2C module is specified for 10 kbit/s to 400 kbit/s.
 
@@ -1916,7 +1928,7 @@ A CAN node has no clock wire to follow, so it counts time. One bit is divided in
 
 The course calls \`setCANBitRate(200000000, 1000000);\`. For 1 Mbit/s it chooses **10** time quanta per bit and works out the prescaler.
 
-A frame with a 29-bit identifier and 8 data bytes is 128 bits long (a few more when the hardware inserts stuff bits).
+A frame with a 29-bit identifier and 8 data bytes is 128 bits long (the hardware adds a few extra bits on the wire).
 `,
       fields: [
         {

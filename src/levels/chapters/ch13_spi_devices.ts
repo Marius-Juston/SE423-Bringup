@@ -12,7 +12,9 @@ const LED1 = `    // LED1 on GPIO22, off
 `;
 
 /** Pins and registers of SPIB as the course sets them: 16-bit words, 1 MHz, read on the rising edge. */
-const SPIB = `    // Chip selects, both high: GPIO66 for the MPU-9250, GPIO29 for the DAN28027
+const SPIB = `    // SPIB set-up, given: it is the one explained line by line in the SPI chapter
+    // ("Talking to yourself"). Chip selects, both high: GPIO66 for the MPU-9250,
+    // GPIO29 for the DAN28027
     GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0);
     GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL);
     GpioDataRegs.GPCSET.bit.GPIO66 = 1;
@@ -79,7 +81,7 @@ ${extra}
     IER |= M_INT6;
     EINT;`;
 
-const MPU_WRITE = `// Writes one register of the MPU-9250 and waits until it is done
+const MPU_WRITE = `// Given (you wrote it in "Choosing the range"): writes one register of the MPU-9250
 void mpu_write(uint16_t reg, uint16_t value)
 {
     uint16_t temp;
@@ -93,7 +95,7 @@ void mpu_write(uint16_t reg, uint16_t value)
 }
 `;
 
-const MPU_READ = `// Reads one register of the MPU-9250
+const MPU_READ = `// Given (you wrote it in "First contact"): reads one register of the MPU-9250
 uint16_t mpu_read(uint16_t reg)
 {
     uint16_t value;
@@ -129,9 +131,9 @@ export const ch13: Chapter = {
       goal: "Learn how the MPU-9250's registers are read and written over SPI, then answer three questions.",
       refs: [{ course: "L12" }, { course: "HW3" }, { trm: "18.3.1" }],
       brief: `
-The **MPU-9250** on the robot is an **IMU** (inertial measurement unit): a 3-axis gyroscope, which measures how fast the board turns, and a 3-axis accelerometer, which measures acceleration including gravity. The robot uses the gyro's Z axis to know how far it has turned.
+The **MPU-9250** on the robot is an **IMU** (inertial measurement unit). Its gyroscope measures how fast the board turns, in degrees per second. Its accelerometer measures acceleration in **g**: 1 g is the pull of gravity, so a board lying still reads 1 g. Each measures along three **axes**: directions at right angles, called X, Y and Z (Z points up out of the board). The robot uses the gyro's Z axis to know how far it has turned.
 
-SPI only moves bits. What they **mean** is in each device's datasheet. The MPU-9250 is a list of 8-bit **registers**, each with a 7-bit address.
+SPI only moves bits. What they **mean** is in each device's datasheet. Seen from the bus, the MPU-9250 is a list of 8-bit **registers**, each with a 7-bit address.
 
 ## One transfer
 A transfer starts when the chip select (GPIO66) goes low and ends when it goes high.
@@ -152,14 +154,12 @@ Build the words in the figure, then add words to see a burst.
 {{figure:imu-word}}
 
 ## Registers you will use
-- **0x75 WHO_AM_I**: always reads 0x71. Used to test the link.
+- **0x75 WHO_AM_I**: always reads 0x71.
 - **0x1B GYRO_CONFIG**, **0x1C ACCEL_CONFIG**: the measuring ranges. The course selects +-250 degrees per second and +-4 g.
-- **0x3B to 0x48**: the measurements, each a signed 16-bit number, **high byte first**: accelerometer X, Y, Z (0x3B to 0x40), the chip's **temperature** (0x41, 0x42), gyro X, Y, Z (0x43 to 0x48).
+- **0x3B to 0x48**: the measurements, each a signed 16-bit number (an \`int16_t\`) in two registers, **high byte first**: accelerometer X, Y, Z (0x3B to 0x40), the chip's **temperature** (0x41, 0x42), gyro X, Y, Z (0x43 to 0x48).
 
 ## From raw numbers to units
-Full scale, a raw reading of 32767, is the selected range. The course converts with \`raw * 250.0 / 32767.0\` (degrees per second) and \`raw * 4.0 / 32767.0\` (g).
-
-The chip accepts a clock of at most 1 MHz and wants a short pause between transfers. The course waits 10 us.
+The chip reports a **raw** number: a count from -32768 to 32767, not yet in any unit. The largest count, 32767, stands for the selected range (**full scale**). The course converts with \`raw * 250.0 / 32767.0\` (degrees per second) and \`raw * 4.0 / 32767.0\` (g).
 `,
       questions: [
         {
@@ -206,6 +206,11 @@ The same reasoning tells you where to start a burst that reads everything.
 
 ## Counting words
 A burst that touches N registers needs N + 1 bytes: the address byte plus N data bytes. Divide by 2 for the number of 16-bit words. If N + 1 is odd, start one register earlier or write one register more.
+
+Example: the gyro Z read above touches 0x46, 0x47 and 0x48. That is 3 registers (count both ends: 0x48 - 0x46 + 1), so 4 bytes, so 2 words.
+
+## Raw number and unit
+value = raw * range / 32767, and turned around, raw = value * 32767 / range. Example with the +-250 range: 25 degrees per second is 25 * 32767 / 250 = 3277 counts.
 `,
       fields: [
         {
@@ -253,7 +258,7 @@ A burst that touches N registers needs N + 1 bytes: the address byte plus N data
       ],
       hints: [
         "Read: 0x8000 | (address << 8). Write: (address << 8) | value.",
-        "Count the registers from 0x3E to 0x48 inclusive, add the address byte, divide by two.",
+        "Count the registers from 0x3E to 0x48 inclusive (0x48 - 0x3E = 10, plus 1), add the address byte, divide by two.",
         "Full scale, 250 degrees per second, is 32768 counts (32767 in the course's formula).",
       ],
       takeaway: "Start a 16-bit read one register before the value you want, and every 16-bit measurement arrives as one whole word.",
@@ -390,7 +395,7 @@ ${SPIB}
 }
 `,
       checks: [
-        { kind: "var", name: "whoami", equals: 0x71, label: "whoami is 0x71", hint: "0xFFFF or 0xFF means no device answered: is the chip select low while the word is sent? 0 means the read bit 0x8000 is missing." },
+        { kind: "var", name: "whoami", equals: 0x71, label: "whoami is 0x71", hint: "0xFFFF or 0xFF (255) means no device answered: pull the chip select low before the word is sent and keep it low until the word has arrived. 0 means the device did not understand a read: the read bit 0x8000 is missing, the address is not in the upper byte (reg << 8), or SPIRXBUF was read before the word arrived." },
         { kind: "var", name: "pwr", equals: 0x01, label: "pwr (register 0x6B) is 0x01" },
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
         { kind: "pin", pin: 66, at: 1.5, level: 1, label: "The chip select is high after the transfers" },
@@ -442,7 +447,8 @@ The figure shows how a raw count and a range make a value.
 `,
       kit: "robot",
       durationMs: 2,
-      starter: `uint16_t mpu_read(uint16_t reg);
+      starter: `// Given functions, written out below main(). These two lines only announce them.
+uint16_t mpu_read(uint16_t reg);
 int16_t read_accel_z(void);
 
 uint16_t cfg1b = 0;
@@ -489,7 +495,8 @@ int16_t read_accel_z(void)
     return z;
 }
 `,
-      solution: `uint16_t mpu_read(uint16_t reg);
+      solution: `// Given functions, written out below main(). These two lines only announce them.
+uint16_t mpu_read(uint16_t reg);
 int16_t read_accel_z(void);
 
 uint16_t cfg1b = 0;
@@ -545,7 +552,7 @@ int16_t read_accel_z(void)
 }
 `,
       checks: [
-        { kind: "var", name: "cfg1b", equals: 0x08, label: "Register 0x1B reads back 0x08 (+-500 degrees per second)" },
+        { kind: "var", name: "cfg1b", equals: 0x08, label: "Register 0x1B reads back 0x08 (+-500 degrees per second)", hint: "The value to write is the code in the first column of the table (0x08), not the range itself. If it reads 0, see the next check." },
         { kind: "var", name: "cfg1c", equals: 0x10, label: "Register 0x1C reads back 0x10 (+-8 g)", hint: "If it reads 0, the write did not reach the device: check the chip select and that the word is (reg << 8) | value, without 0x8000." },
         { kind: "var", name: "az_raw", equals: 4096, label: "1 g on the Z axis now reads 4096: the range is +-8 g", hint: "16384 means the accelerometer is still at +-2 g, 8192 means +-4 g." },
         { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFFST", equals: 0, label: "The receive FIFO is empty at the end", hint: "A write receives a word too. Read it out in mpu_write." },
@@ -672,8 +679,8 @@ ${MPU_WRITE}`,
       checks: [
         { kind: "isr", fn: "SPIB_isr", min: 11, max: 11, label: "SPIB_isr runs once per millisecond", hint: "It runs when RXFFST >= RXFFIL: two words sent, RXFFIL = 2, and both words read before the flag is cleared." },
         { kind: "var", name: "gyrox", at: 5.2, min: -0.01, max: 0.01, label: "gyrox is 0 while the board is still" },
-        { kind: "var", name: "gyrox_raw", equals: -11796, label: "gyrox_raw is -11796 while rolling at -90 degrees per second", hint: "Any other number comes from another register: the read must start one register before 0x43, and the reading is the second word received." },
-        { kind: "var", name: "gyrox", min: -90.05, max: -89.95, label: "gyrox is -90 degrees per second", hint: "A large positive number instead of -90 means gyrox_raw is unsigned: it must be an int16_t." },
+        { kind: "var", name: "gyrox_raw", equals: -11796, label: "gyrox_raw is -11796 while rolling at -90 degrees per second", hint: "-1 (0xFFFF) means no device answered: pull GPIO66 low before writing SPITXBUF. Any other number comes from another register: the read must start one register before 0x43 (0x8000 | 0x4200), and the reading is the second word received." },
+        { kind: "var", name: "gyrox", min: -90.05, max: -89.95, label: "gyrox is -90 degrees per second", hint: "0 means the sum was done in whole numbers and overflowed: write 250.0 and 32767.0, with the decimal point. A large positive number means gyrox_raw is unsigned: it must be an int16_t." },
         { kind: "pin", pin: 66, at: 7.5, level: 1, label: "The chip select is high between reads" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
@@ -874,21 +881,26 @@ ${MPU_WRITE}`,
       goal: "Complete the three-word exchange with the DAN28027: send it two PWM values and receive its two ADC readings.",
       refs: [{ course: "L12" }, { course: "Lab 4" }, { trm: "18.3.7" }, { trm: "18.3.3" }],
       brief: `
-The second device on SPIB is the **DAN28027**, a small TI microcontroller on the robot board. It makes two extra PWM outputs and measures two analog inputs. Its chip select is **GPIO29**. Note the port: GPIO29 is in port **A**, GPIO66 was in port C.
+The second device on SPIB is the **DAN28027**, a small TI microcontroller on the robot board. It does two jobs for the F28379D:
 
-Its protocol is not a register list. It is a fixed message of three 16-bit words, defined by the program running on it:
+- two **PWM** outputs (pulse width modulation): pins switched on and off very fast. You send a number from 0 to 3000 that sets the share of the time the pin is on: 0 is never, 3000 always, 1500 half.
+- two **ADC** readings (analog-to-digital converter): it measures the voltage on a pin and reports it as a number, 0 for 0 V up to 4095 for 3.3 V. So volts = reading * 3.3 / 4096.
+
+Its chip select is **GPIO29**. Note the port: GPIO29 is in port **A**, GPIO66 was in port C.
+
+A **protocol** is the agreed meaning of the words on a bus. The DAN28027's is not a register list but a fixed message of three 16-bit words:
 
 \`\`\`c
-master sends      DAN28027 answers
-0x00DA            (nothing useful)
-PWM value 1       ADC reading 1    (0 to 4095)
-PWM value 2       ADC reading 2    (0 to 4095)
+master sends    DAN28027 answers
+0x00DA          (nothing useful)
+PWM value 1     ADC reading 1
+PWM value 2     ADC reading 2
 \`\`\`
 
-\`0x00DA\` is a start code: it tells the DAN28027 that a new message begins. The PWM values are compare values from 0 to 3000 (1500 is half).
+\`0x00DA\` is a start code: it tells the DAN28027 that a new message begins.
 
 ## It needs time to think
-The DAN28027 is a slave built from a program, not from logic gates. After each word it runs an interrupt function that prepares the next reply. With the words back to back it would not be ready in time. So the course inserts a pause between the words of a message:
+After each word the DAN28027 runs an interrupt function that prepares the next reply. With the words back to back it would not be ready in time. So the course inserts a pause between the words of a message:
 
 \`\`\`c
 SpibRegs.SPIFFCT.bit.TXDLY = 16;   // wait 16 clock cycles between words
@@ -905,7 +917,7 @@ The timer interrupt starts the message every millisecond and \`SPIB_isr\` collec
 - TODO 4: read the three words into \`dan_first\`, \`dan_adc1\`, \`dan_adc2\`, in that order
 - TODO 5: raise the chip select
 
-The test puts 1.65 V and 1.0 V on the DAN28027's two analog inputs. Its ADC is 12 bits over 0 to 3.3 V.
+The test puts 1.65 V and 1.0 V on the DAN28027's two measuring pins.
 `,
       kit: "robot",
       durationMs: 6,
@@ -1055,11 +1067,11 @@ Put the chapter together: a burst read driven by two interrupts, scaling, an LED
 
 1. Raise the chip select and read the six words into \`readdata[]\`.
 2. Convert the two values this program needs: \`accelz\` in g (\`* 4.0 / 32767.0\`) and \`gyroz\` in degrees per second (\`* 250.0 / 32767.0\`). Write the list of what each word holds to find them.
-3. LED1 (GPIO22) is on while the board turns faster than 20 degrees per second in either direction (\`fabs(gyroz) > 20.0\`), off otherwise.
+3. LED1 (GPIO22) is on while the board turns faster than 20 degrees per second in either direction (\`fabs(gyroz) > 20.0\`: \`fabs(x)\` is x without its sign, so \`fabs(-30.0)\` is 30.0), off otherwise.
 4. Count the reads in \`numReads\`. Every 250th read set \`UARTPrint = 1\`.
 5. Clear the two FIFO flags and acknowledge group 6.
 
-**\`while (1)\` loop**: when \`UARTPrint\` is 1, print and clear the flag. One digit after the point for the rate, two for the acceleration:
+**\`while (1)\` loop**: when \`UARTPrint\` is 1, print and clear the flag. One digit after the point for the rate (\`%.1f\`), two for the acceleration (\`%.2f\`):
 
 \`\`\`c
 gz:45.0 az:1.00

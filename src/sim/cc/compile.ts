@@ -859,8 +859,31 @@ export class Compiler {
       }
       case "member":
         return this.member(e);
-      case "index":
-        return this.deref(this.binary("+", this.expr(e.a), this.expr(e.i), line), line, true);
+      case "index": {
+        const arr = this.expr(e.a);
+        let idx = this.expr(e.i);
+        // Reading or writing past the end of an array touches whatever lives next to it: the classic silent bug.
+        if (arr.t.k === "array" && arr.t.n > 0 && this.file === "user") {
+          const n = arr.t.n;
+          const name = e.a.k === "id" ? `'${e.a.name}'` : "this array";
+          const rt = this.rt;
+          const g = this.rvalue(idx).get;
+          idx = {
+            t: idx.t,
+            get: () => {
+              const v = g();
+              if (v < 0 || v >= n)
+                rt.warn(
+                  rt.line || line,
+                  "array-bounds",
+                  `Index ${v} is outside ${name}, which has ${n} element${n === 1 ? "" : "s"} (valid indexes are 0 to ${n - 1}). On the real chip this reads or overwrites a neighbouring variable without any error.`,
+                );
+              return v;
+            },
+          };
+        }
+        return this.deref(this.binary("+", arr, idx, line), line, true);
+      }
       case "call":
         return this.call(e);
       case "un":
@@ -875,6 +898,13 @@ export class Compiler {
           const b = this.cond(e.b);
           return e.op === "&&" ? { t: INT, get: () => (a() && b() ? 1 : 0) } : { t: INT, get: () => (a() || b() ? 1 : 0) };
         }
+        const REL = ["<", ">", "<=", ">="];
+        if (this.file === "user" && REL.includes(e.op) && e.a.k === "bin" && REL.includes(e.a.op))
+          this.rt.warn(
+            line,
+            "chained-compare",
+            `C does not read a ${e.a.op} b ${e.op} c as a range test: it compares a ${e.a.op} b first (giving 0 or 1) and then compares that 0 or 1 with c. Write two comparisons joined by &&.`,
+          );
         return this.binary(e.op, this.expr(e.a), this.expr(e.b), line);
       }
       case "assign":
@@ -986,6 +1016,12 @@ export class Compiler {
         const hint = closest(e.f.name, this.fns.keys());
         throw this.err(line, `There is no function called '${e.f.name}'.${hint ? ` Did you mean '${hint}'?` : ""}`);
       }
+      if (e.f.name === "abs" && this.file === "user" && e.args.length === 1 && isFloat(this.rvalue(this.expr(e.args[0])).t))
+        this.rt.warn(
+          line,
+          "abs-float",
+          "abs() works on whole numbers: it cuts the fraction off first, so abs(0.4) is 0. For a float use fabs().",
+        );
       const args = this.callArgs(f, f.t, e.args, line);
       const n = args.length;
       const types = this.argTypes(f.t, e.args);

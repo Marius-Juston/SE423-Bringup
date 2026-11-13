@@ -14,17 +14,24 @@ import type { Check, Stimulus } from "../../sim/runner";
 // with wheels 0.6 ft apart through a room of lidar.ts. Measured with these
 // programs: 0.32 ft/s per unit of effort above 0.4, 3.09 ft/s at effort 10,
 // 1.5 ft/s at effort 5; one simulated second costs about 0.1 s of wall time.
+// Every level sets MOTOR_RIGHT_GAIN to 0.88: the right motor is 12 % weaker,
+// so open loop veers right, PI makes the speeds equal and the steering
+// coupling keeps the heading through the start (0.001 rad against 0.007).
 
 // ---------- the room ----------
 
 /** Room 3 of lidar.ts: a 10 ft x 10 ft box with a 1 ft block at x 7..8, y 6..7. */
 const ROOM = 3;
+/** The right motor's speed for the same command, relative to the left one. */
+const RIGHT_GAIN = 0.88;
 /** Start pose used by the whole chapter. */
 const START: [number, number, number] = [1, 2, 0];
 
 const world = (o: { room?: number; start?: [number, number, number]; goal?: [number, number] } = {}): Stimulus[] => {
   const s = o.start ?? START;
   return [
+    // No two motors are alike: the right one gives 12 % less speed for the same duty cycle.
+    { at: 0, set: "MOTOR_RIGHT_GAIN", value: RIGHT_GAIN },
     { at: 0, set: "LIDAR_ROOM", value: o.room ?? ROOM },
     { at: 0, set: "ROBOT_START_X_FT", value: s[0] },
     { at: 0, set: "ROBOT_START_Y_FT", value: s[1] },
@@ -513,8 +520,8 @@ function withTodos(source: string, todos: { after?: string; before?: string; tod
 
 // Stage 1: open loop.
 const M_OPEN = `
-    // Open loop: effort 5 for 1.35 s, then stop
-    if (numTimer0calls <= 1350) {
+    // Open loop: effort 5 for 1.43 s, then stop
+    if (numTimer0calls <= 1430) {
         uLeft = 5.0;
         uRight = 5.0;
     } else {
@@ -538,8 +545,8 @@ const M_DIST = `
 
 // Stage 3: PI speed control.
 const M_SPEED = `
-    // 1 s at a speed the robot cannot reach, then 1 ft/s
-    if (numTimer0calls <= 1000) {
+    // 0.7 s at a speed the robot cannot reach, then 1 ft/s
+    if (numTimer0calls <= 700) {
         vref = 4.0;
     } else {
         vref = 1.0;
@@ -820,7 +827,7 @@ const DIST_STARTER = withTodos(S_OPEN, [
 
 const SPEED_STARTER = withTodos(S_DIST, [
   { after: "float travel = 0;", todo: "// TODO 1: globals vref, Kp, Ki, eLeft, eRight, ILeft, IRight, INew" },
-  { after: "// ---- Decide: the mission ----", todo: "// TODO 2: new mission. vref = 4.0 during the first second, then 1.0 (replace the lines below)" },
+  { after: "// ---- Decide: the mission ----", todo: "// TODO 2: new mission. vref = 4.0 during the first 0.7 s, then 1.0 (replace the lines below)" },
   { before: "// ---- Act:", todo: "// TODO 3: Control. One PI loop per wheel with saturation and anti-windup sets uLeft and uRight" },
 ]);
 
@@ -892,11 +899,26 @@ const ISR_BUDGET: Check = {
   fn: "cpu_timer0_isr",
   maxUs: 4,
   label: "The 1 ms loop never takes more than 4 microseconds",
-  hint: "Reading 39 LIDAR points belongs in the 100 ms interrupt. The 1 ms loop only uses the result.",
+  hint: "Going through 39 LIDAR points takes longer than everything else in the loop together. Do it in the 100 ms interrupt and let the 1 ms loop only use the result.",
 };
+
+/** Always true for a robot that drove forward: it is there so the student reads the number. */
+const veered = (label: string, at?: number): Check => ({
+  kind: "signal",
+  name: "ROBOT_THETA_RAD",
+  at,
+  min: -1.5,
+  max: 0.5,
+  label,
+  hint: "A heading this far from 0 means the robot went round in a circle instead of driving: one wheel is not driven forwards. Check that GPIO2 is given to EPWM2A and that the right motor gets setEPWM2A(-uRight).",
+});
 
 const ROOM_NOTE = `
 **The room** is a 10 ft by 10 ft box with a 1 ft block at x = 7 to 8, y = 6 to 7. The robot is a disc 0.35 ft in radius. It starts at (1, 2), looking along +x. The meters "Robot x", "Robot y" and "Robot heading" show the truth. Your program never sees them: it has only its encoders and, later, the LIDAR.
+`;
+
+const MOTOR_NOTE = `
+**The two motors are not alike.** For the same command the right motor gives 12 % less speed than the left one. That is normal: no two real motors match.
 `;
 
 export const ch21: Chapter = {
@@ -916,42 +938,44 @@ export const ch21: Chapter = {
       brief: `
 So far every chapter gave you one part of the robot and a test bench to try it on. On the real robot the parts run together, in one program, and each one feeds the next. This chapter builds that program. At the end the robot crosses a room on its own, around an obstacle, to a point you give it.
 
+Nothing here is new hardware. Every part is something you wrote in an earlier chapter, and each level tells you which chapter and which level, so you can open your old solution next to it.
+
 ## Two loops
-**Every 1 ms**, CPU timer 0 interrupts and one function does five things, always in this order:
+**Every 1 ms**, CPU timer 0 interrupts (chapter 5) and one function does five things, always in this order:
 
-1. **Measure**: read both encoder counters, turn counts into wheel angles, and the change since the last pass into wheel speeds in ft/s (chapter 11).
-2. **Estimate**: update the heading and the position from what the wheels did (chapter 18).
-3. **Decide**: a small state machine looks at the estimate and at the LIDAR and sets two numbers, the speed command \`vref\` and the turn command \`turn\` (chapter 17).
-4. **Control**: the steering error and one PI loop per wheel turn \`vref\` and \`turn\` into two control efforts, \`uLeft\` and \`uRight\`, from -10 to 10 (chapter 16).
-5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` turn the efforts into duty cycles. The H-bridge turns duty into motor voltage, and the wheels turn (chapters 9 and 10).
+1. **Measure**: read the two encoders, the sensors that count how far each wheel has turned. Turn the counts into wheel angles, and the change since the last pass into wheel speeds in feet per second (chapter 11).
+2. **Estimate**: work out which way the robot points and where it is, from what the wheels did. This is called dead reckoning, and this chapter teaches it from the start.
+3. **Decide**: a **state machine** (chapter 17: a variable that remembers what the robot is doing, and rules for when to change it) sets two numbers: the speed command \`vref\` and the turn command \`turn\`.
+4. **Control**: a PI controller per wheel (chapter 16) compares the commanded speed with the measured speed and produces a **control effort** for each motor: a number from -10 (full power backwards) through 0 (stopped) to 10 (full power forwards). They are called \`uLeft\` and \`uRight\`.
+5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` (chapter 10) turn the efforts into PWM duty cycles, the motors turn, and the wheels move.
 
-The wheels turn the encoders, and the next pass measures the result. That is the feedback loop.
+The wheels turn the encoders, and the next pass measures the result. That circle is the **feedback loop**.
 
-**Every 100 ms**, CPU timer 1 interrupts and the program looks at the LIDAR scan (chapter 17). It stores one number, the distance to the nearest thing ahead, for the Decide step to use. A scan only arrives ten times a second, so there is no reason to look more often.
+**Every 100 ms**, CPU timer 1 interrupts and the program looks at the LIDAR, the laser sensor that measures the distance to the walls around the robot (chapter 17). It stores one number, the distance to the nearest thing ahead, for the Decide step to use.
 
 ## How this chapter works
 - It is **one file**. Each level opens with your own code from the level before. If you skipped a level you get the reference version instead.
-- Each level adds one part and says exactly where it goes. The part is something you have written before. The brief names the chapter, so you can look at your old solution.
-- The **Decide** step is "the mission". It is rewritten in almost every level. Everything else stays and grows.
+- Each level adds one part and says exactly where it goes.
+- The **Decide** step is called "the mission" here. It is rewritten in almost every level. Everything else stays and grows.
 - The tests watch what the **robot does**: where it ends, whether it stopped, whether it touched a wall. Where a test needs to read one of your variables, the brief gives its name.
 
 Keep the file tidy. You will be reading it for the rest of the chapter.
 
 ## The plan
-1. Motors, open loop: drive about 2 ft.
+1. Motors: drive about 2 ft by timing alone.
 2. Encoders: drive exactly 3 ft.
 3. PI speed control: hold 1 ft/s.
 4. Steering: drive straight, then turn 90 degrees.
 5. Dead reckoning: drive to a point.
 6. LIDAR: stop in front of a wall.
 7. Checkpoint: drive to a point behind an obstacle.
-${ROOM_NOTE}`,
+${ROOM_NOTE}${MOTOR_NOTE}`,
       questions: [
         {
           prompt: "The motors are driven by one PWM signal each (chapter 10). Which duty cycle stops a motor?",
           options: ["0 %", "50 %", "100 %", "Any, as long as CMPA is 0"],
           answer: 1,
-          why: "The PWM pin switches the H-bridge between full voltage one way and full voltage the other way. At 50 % the average is zero. That is why setEPWM1A maps an effort of 0 to half of TBPRD.",
+          why: "The PWM pin switches the motor between full voltage one way and full voltage the other way. At 50 % the two cancel and the average is zero. That is why setEPWM1A turns an effort of 0 into half of TBPRD.",
         },
         {
           prompt: "The course code calls setEPWM1A(uLeft); setEPWM2A(-uRight);. Why the minus sign?",
@@ -962,7 +986,7 @@ ${ROOM_NOTE}`,
             "To make the robot turn",
           ],
           answer: 1,
-          why: "The two motors face each other. For the robot to go forward they must turn in opposite directions as seen from the motor. The sign belongs at the call, so that uRight keeps its meaning (positive is forward) everywhere else.",
+          why: "The two motors face each other. The same voltage turns one wheel forwards and the other backwards. The sign is put at the call, so that uRight keeps its meaning (positive is forward) everywhere else.",
         },
         {
           prompt: "How does the 1 ms loop get a wheel speed from an encoder (chapter 11)?",
@@ -973,24 +997,24 @@ ${ROOM_NOTE}`,
             "It measures the PWM duty cycle",
           ],
           answer: 2,
-          why: "The backward difference: v = (p_now - p_old) / 0.001. The old angle is kept in a global variable and updated at the end of every pass.",
+          why: "This is the backward difference: speed = (position now - position before) / time between. The old angle is kept in a global variable and updated at the end of every pass.",
         },
         {
-          prompt: "The PI controller of chapter 16 stops adding to its integral while the effort is at the limit. What happens without that?",
+          prompt: "The PI controller of chapter 16 stops adding to its integral while the effort is at the limit of 10. What happens without that?",
           options: [
             "Nothing: the limit already protects the motor",
-            "The integral keeps growing while the wheel cannot follow, and the wheel then overshoots for a long time",
+            "The integral keeps growing while the wheel cannot follow, and the wheel then stays too fast for a long time",
             "The proportional part becomes too small",
             "The encoder overflows",
           ],
           answer: 1,
-          why: "This is integrator windup. The effort stays at the limit until the stored-up integral has been worked off again, long after the speed has passed the command. You will see it on this robot in level 5.",
+          why: "This is called integrator windup. The effort stays at the limit until the stored-up integral has been worked off again, long after the command dropped. You will see it on this robot in the PI level.",
         },
         {
           prompt: "Why does the LIDAR get its own 100 ms interrupt instead of being read in the 1 ms loop?",
           options: [
             "The 1 ms loop is not allowed to call functions",
-            "A new scan only arrives every 100 ms, and going through it takes much longer than the rest of the control loop",
+            "A new scan only arrives every 100 ms, and going through it takes longer than the rest of the control loop",
             "The LIDAR only works when the motors are off",
             "Timer 0 cannot interrupt faster than 100 ms",
           ],
@@ -1010,15 +1034,15 @@ ${ROOM_NOTE}`,
       goal: "Put the steps of one pass through the finished robot's 1 ms interrupt function in order.",
       refs: [{ course: "Lab 5" }, { course: "L11" }, { course: "L15" }],
       brief: `
-This is the 1 ms function you will have written by the end of the chapter, cut into steps and shuffled. Put the steps back in order.
+This is the 1 ms function you will have written by the end of the chapter, cut into steps and shuffled. Put the steps back in order. You do not need to understand every formula yet: each one is explained in the level that adds it.
 
 Ask of each step: **what does it need?** A step can only run after the steps that produce its inputs.
 
-- A speed needs two angles: this pass's and the last one's.
-- The position step needs the speed, to know how far the robot moved in this millisecond.
+- A speed needs two angles: this pass's and the last one's. So the encoders are read first.
+- The position step ("dead reckoning": adding up small movements) needs the speed, to know how far the robot moved in this millisecond.
 - The decision needs to know where the robot is.
-- The controller needs the commands and the measured speeds.
-- The motors get the efforts last, and the interrupt is acknowledged at the very end, as in every timer 0 function.
+- The controller needs the commands \`vref\` and \`turn\` and the measured speeds.
+- The motors get the efforts last, and the interrupt is acknowledged at the very end, as in every timer 0 function since chapter 5.
 
 While you sort, name the chapter each step came from. The answer is shown when you are done.
 `,
@@ -1026,67 +1050,79 @@ While you sort, name the chapter each step came from. The answer is shown when y
         "Timer 0 reaches zero and cpu_timer0_isr starts",
         "Read EQep1 and EQep2: the two wheel angles in radians",
         "Wheel speeds in ft/s: (angle now - angle 1 ms ago) x (1.235/12) / 0.001, then save the angles",
-        "Dead reckoning: update theta, then x and y, from the wheel angles and speeds",
-        "The mission's state machine sets vref and turn from the pose and the LIDAR distance",
+        "Dead reckoning: update the heading theta, then x and y, from the wheel angles and speeds",
+        "The mission's state machine sets vref and turn from the position and the LIDAR distance",
         "eSteer = vRight - vLeft + turn, then the two wheel errors eLeft and eRight",
         "PI for each wheel, limited to -10 ... 10 with anti-windup: uLeft and uRight",
         "setEPWM1A(uLeft); setEPWM2A(-uRight);",
         "PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;",
       ],
       hints: [
-        "Start with the two ends: the timer starts the function, the acknowledge ends it.",
-        "Measure before you estimate, estimate before you decide, decide before you control.",
-        "Encoders (11), speeds (11), dead reckoning (18), state machine (17), steering error (16), PI (16), PWM (10), acknowledge (5).",
+        "Start with the two ends: the timer starts the function, the acknowledge (PIEACK) ends it.",
+        "In between, the order is always: measure, estimate, decide, control, act. Sort each step into one of those five.",
+        "Encoders, speeds, dead reckoning, state machine, steering error (eSteer), PI, the two setEPWM calls, PIEACK.",
       ],
-      takeaway: "Encoders and speeds are chapter 11, dead reckoning chapter 18, the state machine chapter 17, steering and PI chapter 16, the PWM calls chapter 10, PIEACK chapter 5. Nothing in the loop is new. The order is.",
+      takeaway: "Encoders and speeds are chapter 11, the state machine chapter 17, steering and PI chapter 16, the PWM calls chapter 10, PIEACK chapter 5. Only dead reckoning is new, and the order.",
     },
     {
       id: "cap-open",
       kind: "code",
       mode: "complete",
-      title: "Motors: drive 2 ft, open loop",
+      title: "Motors: drive 2 ft by the clock",
       goal: "Bring up both motor PWM channels and drive the robot about 2 ft forward by timing alone.",
       refs: [{ course: "Lab 3" }, { trm: "15" }],
       brief: `
-The file you see is the skeleton of the whole chapter: \`main\`, a 1 ms timer interrupt, and at the bottom the hardware functions. Read it once from top to bottom.
+The file you see is the skeleton of the whole chapter. Read it once from top to bottom:
 
-This level brings back the motors of **chapter 10** (Lab 3, exercise 2). The left motor is on EPWM1A (GPIO0), the right motor on EPWM2A (GPIO2), both at 20 kHz, and 50 % duty is stopped. Five things are missing:
+- \`main\` sets up the pins and a timer interrupt every 1 ms. This is the timer 0 set-up you have written since chapter 5.
+- \`cpu_timer0_isr\` is the 1 ms loop. It has two sections so far: **Decide** (the mission) and **Act** (the motors).
+- At the bottom are the hardware functions. \`init_EPWM1and2()\` and \`setEPWM1A()\` are yours from the chapter 10 level "setEPWM1A and setEPWM2A". \`init_eQEPs()\` is Lab 3's encoder set-up from the chapter 11 level "The second encoder". It is not used yet: it waits for the next level.
 
-1. In \`init_EPWM1and2()\`: the set-up of **EPWM2**. It is the same ten lines as EPWM1, which is written.
-2. In the same function: the pin mux call that gives **GPIO2** to EPWM2A (mux position 1, as for GPIO0).
-3. The body of \`setEPWM2A()\`. \`setEPWM1A()\` is written. This is your function from the chapter 10 level "setEPWM1A and setEPWM2A".
-4. In \`cpu_timer0_isr\`, under "Decide": **the mission**. Set \`uLeft\` and \`uRight\` to 5 for the first part of the run and to 0 after that. \`numTimer0calls\` counts milliseconds.
-5. Under "Act": send \`uRight\` to the right motor. The right motor is mounted mirrored.
+## The motors, again
+- The left motor is on **EPWM1A** (pin GPIO0), the right motor on **EPWM2A** (pin GPIO2).
+- The mission speaks in **control efforts**: a number from -10 to 10. \`setEPWM1A(u)\` turns it into a duty cycle: -10 is 0 %, 0 is 50 %, 10 is 100 %. **50 % is stopped.**
+- The right motor is mounted **mirrored**. The same duty cycle that drives the left wheel forwards drives the right wheel backwards.
 
-\`init_eQEPs()\` at the bottom is not used yet. It is Lab 3's encoder set-up, in the file for the next level.
+## What to add (five gaps, marked TODO 1 to 5)
+1. In \`init_EPWM1and2()\`: the set-up of **EPWM2**. It is the same ten lines as the EPWM1 block above it, with \`EPwm2Regs\`.
+2. In the same function: \`GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);\` gives pin GPIO2 to EPWM2A, as the line above it does for GPIO0.
+3. The body of \`setEPWM2A()\`. It is \`setEPWM1A()\`, which is written just above, with \`EPwm2Regs\`.
+4. In \`cpu_timer0_isr\`, under "Decide": **the mission**. Set \`uLeft\` and \`uRight\` to 5 for the first part of the run and to 0 after that. \`numTimer0calls\` counts the passes, so it is the time in milliseconds.
+5. Under "Act": send \`uRight\` to the right motor, with the sign that a mirrored motor needs.
 
 ## How long is "the first part"?
-On this robot an effort of 5 settles at about **1.5 ft/s**. The motor needs a moment to get going and a moment to stop, and the two roughly cancel. Work out the time for 2 ft.
+With an effort of 5 the left wheel settles at about 1.5 ft/s and the weaker right wheel at about 1.3 ft/s. The middle of the robot moves at the average, **1.4 ft/s**. Time is distance divided by speed. The motors need a moment to get going and a moment to stop, and the two roughly cancel.
 
-This is **open loop** control: the program sends a command and never looks at the result. The tests accept anything from 1.7 to 2.3 ft, because open loop cannot promise more. A lower battery, a carpet or a heavier robot would change the answer. On the real robot it would not even drive straight, because no two motors are the same. The simulated motors are identical, so here it does. The next levels remove the guessing.
-${ROOM_NOTE}`,
+## What you will see
+This is **open loop** control: the program sends a command and never looks at the result. Two things follow.
+
+- The distance is only roughly right. The tests accept 1.6 to 2.3 ft.
+- The robot **veers to the right**, because the right wheel is slower. Look at the meter "Robot heading" when it has stopped: a heading of 0 would be straight, and you will see about -0.4 rad (23 degrees). The tests do not fail you for that. Nothing in this program could know about it.
+
+The next levels give the program eyes and remove both problems.
+${ROOM_NOTE}${MOTOR_NOTE}`,
       kit: "robot",
       durationMs: 3000,
       stimuli: world(),
       starter: OPEN_STARTER,
       solution: S_OPEN,
       checks: [
-        { kind: "signal", name: "ROBOT_ODOMETER_FT", min: 1.7, max: 2.3, label: "The robot drove between 1.7 and 2.3 ft", hint: "Nothing moves until GPIO2 and GPIO0 carry a PWM signal and the efforts are not 0. Too far or too short: time = distance / speed." },
-        { kind: "signal", name: "ROBOT_THETA_RAD", min: -0.1, max: 0.1, label: "It drove straight (heading within 0.1 rad)", hint: "Spinning on the spot: both motors got the same sign. The right motor is mirrored and needs setEPWM2A(-uRight)." },
-        { kind: "signal", name: "ROBOT_X_FT", min: 2.5, label: "It drove forward, along +x", hint: "Backwards: both signs are flipped. The minus belongs only on the right motor." },
+        { kind: "signal", name: "ROBOT_ODOMETER_FT", min: 1.6, max: 2.3, label: "The robot drove between 1.6 and 2.3 ft", hint: "0 ft and no wheel turns: the efforts are still 0. Almost 0 ft although both wheel meters moved: the robot spun on the spot, the right motor needs setEPWM2A(-uRight). About half the distance: only one wheel is driven, check EPWM2 and the pin mux of GPIO2. Too far or too short: time = 2 ft / 1.4 ft/s." },
+        { kind: "signal", name: "ROBOT_X_FT", min: 2.4, label: "It drove forward, along +x", hint: "Backwards: both signs are flipped. The minus belongs only on the right motor. Not moved at all: see the first check." },
+        veered("Read this number: the heading is not 0. The robot veered right because its right motor is weaker"),
         ...stopped(),
         NO_CRASH,
         { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD" },
       ],
-      bonus: [{ kind: "signal", name: "ROBOT_ODOMETER_FT", min: 1.9, max: 2.1, label: "Within 0.1 ft of 2 ft, by arithmetic alone" }],
+      bonus: [{ kind: "signal", name: "ROBOT_ODOMETER_FT", min: 1.9, max: 2.1, label: "Within 0.1 ft of 2 ft, by arithmetic and a little trial and error" }],
       watch: ["numTimer0calls", "uLeft", "uRight"],
       inspect: ["EPwm1Regs.CMPA", "EPwm2Regs.CMPA"],
       hints: [
-        "Do the hardware first (1 to 3 and 5), with a fixed effort, and watch the two wheel speed meters. Then write the timing.",
-        "setEPWM2A is setEPWM1A with EPwm2Regs. The call is `setEPWM2A(-uRight);`. The mux call is `GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);`.",
-        "2 ft at 1.5 ft/s is 1.33 s: `if (numTimer0calls <= 1350) { uLeft = 5.0; uRight = 5.0; } else { uLeft = 0.0; uRight = 0.0; }`",
+        "Do the hardware first (gaps 1, 2, 3 and 5). For gap 4 write `uLeft = 5.0; uRight = 5.0;` for now and watch the two wheel speed meters: both must show a positive speed. Then add the timing.",
+        "Gap 3 is the eight lines inside setEPWM1A with EPwm2Regs instead of EPwm1Regs. Gap 5 is `setEPWM2A(-uRight);`. Gap 2 is `GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);`.",
+        "Gap 4: 2 ft at 1.4 ft/s is 1.43 s, so `if (numTimer0calls <= 1430) { uLeft = 5.0; uRight = 5.0; } else { uLeft = 0.0; uRight = 0.0; }`",
       ],
-      takeaway: "Open loop gets you roughly there on a good day. Note the two lines under \"Act\": from now on everything above them only has to produce uLeft and uRight.",
+      takeaway: "Open loop gets you roughly there, pointing roughly the right way, on a good day. Note the two lines under \"Act\": from now on everything above them only has to produce uLeft and uRight.",
     },
     {
       id: "cap-dist",
@@ -1097,27 +1133,35 @@ ${ROOM_NOTE}`,
       goal: "Read both wheel encoders every millisecond, compute speeds and distance, and stop after 3 ft of measured travel.",
       refs: [{ course: "Lab 3" }, { trm: "17" }],
       brief: `
-You continue in your file from the last level. Now the program gets eyes: the encoders of **chapter 11**.
+You continue in your file from the last level. Now the program gets eyes: the **encoders** of chapter 11. An encoder is a sensor on the motor shaft. The chip's eQEP counter counts its pulses: 40000 counts for one turn of a wheel (2000 per motor turn, times the 20:1 gear).
 
-## What to add
-1. **Two read functions** at the bottom of the file, and their prototypes at the top. They are yours from the chapter 11 level on reading the encoders ("Read all three"):
-   - \`float readEncLeft(void)\` returns the left wheel angle in radians from \`EQep1Regs.QPOSCNT\`
-   - \`float readEncRight(void)\` returns the right wheel angle from \`EQep2Regs.QPOSCNT\`
+When the program measures the result and acts on it, that is **closed loop** control.
 
-   A wheel turn is 2000 x 20 = 40000 counts. Read the counter into an \`int32_t\` first. The **left** encoder counts down when the robot drives forward, so its factor is negative.
-2. In \`main\`, after \`init_EPWM1and2();\`: call \`init_eQEPs();\`. The function is already in the file.
-3. **Globals**: \`LeftWheel\`, \`RightWheel\` (angles now), \`LeftWheel_1\`, \`RightWheel_1\` (angles 1 ms ago), \`vLeft\`, \`vRight\` (speeds in ft/s) and \`travel\` (distance driven in ft). All \`float\`, all starting at 0.
-4. A **Measure** section at the top of \`cpu_timer0_isr\`, after \`numTimer0calls++;\` and before the mission. This is your code from the chapter 11 level "How fast, how far":
-   - read both angles
-   - speed by backward difference: \`vLeft = (1.235/12.0) * (LeftWheel - LeftWheel_1) / 0.001;\` and the same for the right wheel. Chapter 11 called these LeftVel and RightVel
-   - save the angles for the next pass
-   - \`travel\` is the average of the two wheel angles times \`(1.235/12.0)\`
-5. **The mission**, replacing the timed one: drive until \`travel\` reaches 3 ft, then set both efforts to 0.
+## What to add, and where
+1. **At the bottom of the file: two read functions.** They are yours from the chapter 11 level "Read all three".
+   - \`float readEncLeft(void)\` returns the left wheel angle in radians, from the counter \`EQep1Regs.QPOSCNT\`
+   - \`float readEncRight(void)\` returns the right wheel angle, from \`EQep2Regs.QPOSCNT\`
+
+   Copy the counter into an \`int32_t\` first, then multiply by \`2*PI/(2000.0*20.0)\`: 2 PI radians per 40000 counts. The **left** encoder counts down when the robot drives forward (the motors are mirrored), so the left factor is negative.
+2. **At the top, with the other prototypes:** \`float readEncLeft(void);\` and \`float readEncRight(void);\`.
+3. **In \`main\`, after \`init_EPWM1and2();\`:** the call \`init_eQEPs();\`. The function is already at the bottom of the file.
+4. **With the other globals:** \`LeftWheel\`, \`RightWheel\` (wheel angles now, in radians), \`LeftWheel_1\`, \`RightWheel_1\` (the angles 1 ms ago), \`vLeft\`, \`vRight\` (speeds in ft/s) and \`travel\` (distance driven in ft). All \`float\`, all starting at 0.
+5. **In \`cpu_timer0_isr\`, after \`numTimer0calls++;\` and before the mission: a Measure section.** This is your code from the chapter 11 level "How fast, how far", which called the speeds LeftVel and RightVel:
+   - read both angles: \`LeftWheel = readEncLeft();\` and the same for the right
+   - speed: \`vLeft = (1.235/12.0) * (LeftWheel - LeftWheel_1) / 0.001;\` and the same for the right
+   - then save the angles for the next pass: \`LeftWheel_1 = LeftWheel;\` and the same for the right
+   - distance: \`travel = 0.5 * (LeftWheel + RightWheel) * (1.235/12.0);\`
+6. **The mission**, replacing the timed one: drive until \`travel\` reaches 3 ft, then set both efforts to 0.
+
+## The two formulas
+- **\`(1.235/12.0)\`** is the wheel radius in feet (1.235 inches). An angle in radians times the radius is the distance rolled. Example: the wheel has turned 29.15 rad, so the robot rolled 29.15 x 0.1029 = 3.0 ft.
+- **Speed** is how much the distance changed, divided by how long that took (0.001 s). Example: the angle grew by 0.0144 rad in one pass, which is 0.00148 ft, so the speed is 0.00148 / 0.001 = 1.48 ft/s.
+- **\`travel\`** is the average of the two wheels: the distance the middle of the robot moved.
 
 ## Stopping on the line
 At effort 5 the robot rolls another 0.07 ft after the effort goes to 0. The tests allow 0.05 ft. So do what you do with a car: slow down before the line. A low effort such as 1.5 gives about 0.35 ft/s, and from there the robot stops almost at once.
 
-The tests read your global \`travel\`, and they measure the real distance with the room's odometer.
+The robot still veers right. That is for the next two levels. The tests read your globals \`travel\` and \`vLeft\`, and they measure the real distance with the room's odometer.
 `,
       kit: "robot",
       durationMs: 4000,
@@ -1125,9 +1169,10 @@ The tests read your global \`travel\`, and they measure the real distance with t
       starter: DIST_STARTER,
       solution: S_DIST,
       checks: [
-        { kind: "signal", name: "ROBOT_ODOMETER_FT", equals: 3, tol: 0.05, label: "The robot drove 3 ft, within 0.05 ft", hint: "Short by half: is travel the average of the two wheels, or their sum? Too far: slow down before 3 ft. Still moving at the end: the slow part is too slow." },
-        { kind: "var", name: "travel", min: 2.95, max: 3.05, label: "Your variable travel says 3 ft too", hint: "travel = 0.5 * (LeftWheel + RightWheel) * (1.235/12.0). If it is negative, check the sign in readEncLeft." },
-        { kind: "signal", name: "ROBOT_THETA_RAD", min: -0.1, max: 0.1, label: "It drove straight" },
+        { kind: "var", name: "vLeft", at: 150, min: 0.2, max: 3.2, label: "Just after the start (0.15 s) your vLeft shows a forward speed in ft/s (between 0.2 and 3.2)", hint: "Always 0: the old angle was saved before the speed was computed, or init_eQEPs() is not called. Negative: the factor in readEncLeft must be negative. In the hundreds or thousands: check (1.235/12.0) and the division by 0.001." },
+        { kind: "signal", name: "ROBOT_ODOMETER_FT", equals: 3, tol: 0.05, label: "The robot drove 3 ft, within 0.05 ft", hint: "Stopped after 0.3 ft: travel is still in radians, multiply by (1.235/12.0). Stopped after 1.5 ft: travel is the sum of the two wheels, it must be the average (0.5 x the sum). Drove into the wall: travel never reached 3, see the check on travel. A little too far: slow down before 3 ft." },
+        { kind: "var", name: "travel", min: 2.95, max: 3.05, label: "Your variable travel says 3 ft too", hint: "travel = 0.5 * (LeftWheel + RightWheel) * (1.235/12.0). If it stays near 0 while the robot drives, the two wheel angles cancel: readEncLeft needs its negative factor." },
+        veered("Read this number: the robot still veers right. Measuring the distance does not fix the heading"),
         ...stopped(),
         NO_CRASH,
       ],
@@ -1138,11 +1183,11 @@ The tests read your global \`travel\`, and they measure the real distance with t
       watch: ["LeftWheel", "RightWheel", "vLeft", "vRight", "travel"],
       inspect: ["EQep1Regs.QPOSCNT", "EQep2Regs.QPOSCNT"],
       hints: [
-        "Add the Measure section first and watch travel while the old timed mission still runs: it should count up to about 2. Then change the mission.",
-        "`raw = EQep1Regs.QPOSCNT; return (raw*(-2*PI/(2000.0*20.0)));` for the left wheel, the same without the minus and with EQep2Regs for the right. Save the old angles after computing the speeds, not before.",
-        "`if (travel < 2.6) { uLeft = 5.0; uRight = 5.0; } else if (travel < 2.99) { uLeft = 1.5; uRight = 1.5; } else { uLeft = 0.0; uRight = 0.0; }`",
+        "Do steps 1 to 5 first and keep the old timed mission. Watch travel: it should count up to about 2 and vLeft should read about 1.5 while driving. Only then change the mission.",
+        "The left read function: `float readEncLeft(void) { int32_t raw = 0; raw = EQep1Regs.QPOSCNT; return (raw*(-2*PI/(2000.0*20.0))); }`. The right one is the same with EQep2Regs and without the minus. In the Measure section, save the old angles after computing the speeds, not before.",
+        "The mission: `if (travel < 2.6) { uLeft = 5.0; uRight = 5.0; } else if (travel < 2.99) { uLeft = 1.5; uRight = 1.5; } else { uLeft = 0.0; uRight = 0.0; }`",
       ],
-      takeaway: "The distance is now right whatever the battery does, because the program measures it. The speed is still whatever an effort of 5 happens to give. That is next.",
+      takeaway: "The distance is now right whatever the battery or the motors do, because the program measures it. The speed is still whatever an effort of 5 happens to give each motor. That is next.",
     },
     {
       id: "cap-speed",
@@ -1150,48 +1195,75 @@ The tests read your global \`travel\`, and they measure the real distance with t
       mode: "write",
       continues: "cap-dist",
       title: "PI control: hold 1 ft/s",
-      goal: "Put a PI speed controller with saturation and anti-windup on each wheel, so the mission can command a speed instead of an effort.",
+      goal: "Put a PI speed controller with saturation and anti-windup on each wheel, so that both wheels hold the commanded speed although the motors differ.",
       refs: [{ course: "L11" }, { course: "Lab 5" }],
       brief: `
-Until now the mission wrote the efforts itself. From this level on it only says how fast to go, in \`vref\` (ft/s), and a controller finds the efforts. This is the PI controller of **chapter 16**.
+Until now the mission wrote the efforts itself, and the weaker right motor turned the same effort into less speed. From this level on the mission only says how fast to go, in \`vref\` (ft/s), and a controller finds the effort each motor needs. This is the PI controller of chapter 16.
 
-## What to add
-1. **Globals**: \`vref\`, the gains \`Kp\` and \`Ki\`, the errors \`eLeft\`, \`eRight\`, the integrals \`ILeft\`, \`IRight\`, and \`INew\` for the anti-windup.
-2. A **Control** section in \`cpu_timer0_isr\`, after the mission and before the two \`setEPWM\` calls. For each wheel:
-   - the error: \`eLeft = vref - vLeft;\`
-   - PI: \`uLeft = Kp * eLeft + Ki * (integral of eLeft)\`. One pass adds \`eLeft * 0.001\` to the integral
-   - **saturation**: limit \`uLeft\` to -10 ... 10
-   - **anti-windup**: while \`uLeft\` is at a limit, do not let the integral grow further in that direction. This is your block from the chapter 16 level on windup ("The wheel that would not slow down"), once per wheel, each wheel with its own integral
-3. **The mission**, replacing the 3 ft one: \`vref = 4.0\` during the first second (\`numTimer0calls <= 1000\`), then \`vref = 1.0\`. The mission no longer touches \`uLeft\` and \`uRight\`.
+## PI in four lines
+For each wheel, on every pass:
 
-## Gains for this robot
-Each unit of effort adds about 0.32 ft/s, and the motor's time constant is 50 ms. **Kp = 5** and **Ki = 100** settle in a few tenths of a second without overshoot. Try others once it works.
+- the **error** is what is missing: \`eLeft = vref - vLeft;\`
+- the **P** part pushes in proportion to the error: \`Kp * eLeft\`
+- the **I** part adds up the error over time (the integral) and pushes in proportion to the sum: \`Ki * ILeft\`. It keeps growing until the error is zero. This is what finds the extra effort the weak motor needs
+- the effort is the sum, **saturated**: cut off at -10 and 10, because the motor driver takes no more
+
+Example: \`vref = 1.0\`, the wheel does 0.8 ft/s, \`Kp = 5\`, \`Ki = 100\` and the integral so far is 0.03. The error is 0.2. The effort is 5 x 0.2 + 100 x 0.03 = 4.0.
+
+**Anti-windup**: while the effort is cut off at a limit, the wheel cannot follow, the error stays, and the integral would grow without end ("wind up"). So while the effort is at a limit, the integral may only change in the direction that brings the effort back.
+
+## What to add, and where
+1. **With the other globals:** \`vref\`, \`Kp = 5.0\`, \`Ki = 100.0\`, the errors \`eLeft\`, \`eRight\`, the integrals \`ILeft\`, \`IRight\`, and \`INew\`. All \`float\`, the rest starting at 0.
+2. **In \`cpu_timer0_isr\`, after the mission and before the two \`setEPWM\` calls: a Control section.** For the left wheel this is your block from the chapter 16 level "The wheel that would not slow down":
+
+\`\`\`c
+eLeft = vref - vLeft;
+INew = ILeft + eLeft * 0.001;        // the integral if this pass is added
+uLeft = Kp * eLeft + Ki * INew;
+if (uLeft > 10.0) {
+    uLeft = 10.0;
+    if (eLeft < 0.0) ILeft = INew;   // only keep it if it shrinks
+} else if (uLeft < -10.0) {
+    uLeft = -10.0;
+    if (eLeft > 0.0) ILeft = INew;
+} else {
+    ILeft = INew;
+}
+\`\`\`
+
+   Then the same block for the right wheel, with every Left changed to Right. Each wheel has its own error, integral and effort.
+3. **The mission**, replacing the 3 ft one: \`vref = 4.0\` during the first 0.7 s (\`numTimer0calls <= 700\`), then \`vref = 1.0\`. The mission must no longer write \`uLeft\` and \`uRight\`: the controller does that now.
 
 ## The test
-- **First second**: 4 ft/s is asked. The robot's top speed is 3.1 ft/s, so both efforts sit at 10 and the error never goes away. This is exactly the situation that winds up an integral.
-- **Then 1 ft/s**: half a second later the wheels must be within 6 % of 1 ft/s (9.72 rad/s on the wheel speed meters), and at the end they must hold it within 1.5 %. Without anti-windup they are still flat out 0.3 s after the command dropped.
+- **First 0.7 s**: 4 ft/s is asked. The robot's top speed is 3.1 ft/s, so both efforts sit at 10 and the error never goes away. This is exactly the situation that winds up an integral.
+- **Then 1 ft/s**: half a second later the wheels must be within 6 % of 1 ft/s, which is **9.72 rad/s** on the two wheel speed meters. At the end both must hold it within 1.5 %. Without anti-windup the wheels are still flat out 0.3 s after the command dropped.
+
+Watch \`uLeft\` and \`uRight\` at the end: the right effort is larger. The integral found what the weaker motor needs, without being told.
+
+## What is still wrong
+Both wheels now hold the same speed, but look at "Robot heading": about -0.4 rad. Flat out, the right motor is simply slower and no controller can help. And equal speeds from now on do not bring back the angle that was lost. The next level deals with the heading.
 `,
       kit: "robot",
-      durationMs: 2500,
+      durationMs: 2000,
       stimuli: world(),
       starter: SPEED_STARTER,
       solution: S_SPEED,
       checks: [
-        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 900, min: 28, label: "Flat out while 4 ft/s is asked (the wheels reach 30 rad/s)", hint: "The mission must set vref = 4.0 for the first 1000 ms, and the efforts must come from the PI controller." },
-        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1500, equals: RADPS_PER_FTPS, tol: 0.6, label: "0.5 s after the command drops, the left wheel is within 6 % of 1 ft/s (9.72 rad/s)", hint: "Still far too fast: the integral wound up during the first second. While the effort is at a limit, keep the new integral only if the error pulls it back." },
-        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 2400, equals: RADPS_PER_FTPS, tol: 0.15, label: "The left wheel holds 1 ft/s within 1.5 %", hint: "A steady error that never goes away means the integral part is missing or never added to." },
-        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 2400, equals: RADPS_PER_FTPS, tol: 0.15, label: "The right wheel holds 1 ft/s within 1.5 %", hint: "Each wheel needs its own error, its own integral and its own effort." },
-        { kind: "signal", name: "ROBOT_THETA_RAD", min: -0.1, max: 0.1, label: "It drove straight" },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 600, min: 28, label: "Flat out while 4 ft/s is asked (the left wheel reaches 30 rad/s)", hint: "About 14 rad/s: the old mission still writes uLeft itself, or the mission writes uLeft after the controller did. Standing still or running backwards: the error is vref - vLeft, not the other way round. The mission sets vref = 4.0 while numTimer0calls <= 700." },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1200, equals: RADPS_PER_FTPS, tol: 0.6, label: "0.5 s after the command drops, the left wheel is within 6 % of 1 ft/s (9.72 rad/s)", hint: "Still far too fast: the integral wound up during the first 0.7 s. While uLeft is at a limit, store INew in ILeft only if the error has the opposite sign. Far too slow: is Ki * INew part of the effort?" },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1900, equals: RADPS_PER_FTPS, tol: 0.15, label: "The left wheel holds 1 ft/s within 1.5 %", hint: "A steady error that never goes away means the integral is not adding up. It must be ILeft plus eLeft * 0.001, kept from pass to pass in a global." },
+        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 1900, equals: RADPS_PER_FTPS, tol: 0.15, label: "The weaker right wheel holds 1 ft/s too, within 1.5 %", hint: "The right wheel needs its own block: eRight, IRight and uRight. A leftover Left in the copied block makes it follow the wrong wheel." },
+        veered("Read this number: both wheels are equally fast now, but the heading lost at the start is still lost"),
         NO_CRASH,
       ],
-      bonus: [{ kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1300, equals: RADPS_PER_FTPS, tol: 0.2, label: "Already at 1 ft/s (within 2 %) 0.3 s after the command drops" }],
+      bonus: [{ kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1000, equals: RADPS_PER_FTPS, tol: 0.2, label: "Already at 1 ft/s (within 2 %) 0.3 s after the command drops" }],
       watch: ["vref", "vLeft", "vRight", "uLeft", "uRight", "ILeft", "IRight"],
       hints: [
         "Write the left wheel completely and run it: the robot will circle, but the left wheel meter must show 9.72 rad/s at the end. Then copy the block and change every Left to Right.",
-        "`INew = ILeft + eLeft * 0.001; uLeft = Kp * eLeft + Ki * INew;` then limit uLeft, and store INew in ILeft only when that is allowed.",
-        "`if (uLeft > 10.0) { uLeft = 10.0; if (eLeft < 0.0) ILeft = INew; } else if (uLeft < -10.0) { uLeft = -10.0; if (eLeft > 0.0) ILeft = INew; } else { ILeft = INew; }`",
+        "The block in the brief is complete for the left wheel. It goes after the mission and before `setEPWM1A(uLeft);`. Do not forget the globals, and delete the lines of the old mission that set uLeft and uRight.",
+        "The mission is `if (numTimer0calls <= 700) { vref = 4.0; } else { vref = 1.0; }` and nothing else. The right wheel's first lines are `eRight = vref - vRight; INew = IRight + eRight * 0.001; uRight = Kp * eRight + Ki * INew;`",
       ],
-      takeaway: "The mission now speaks in ft/s and the controller translates. Friction, battery voltage and the dead zone of the motor are the integral's problem, not the mission's.",
+      takeaway: "The mission now speaks in ft/s and the controller translates, separately for each motor. Friction, battery voltage and a weak motor are the integral's problem, not the mission's.",
     },
     {
       id: "cap-steer",
@@ -1199,13 +1271,13 @@ Each unit of effort adds about 0.32 ft/s, and the motor's time constant is 50 ms
       mode: "write",
       continues: "cap-speed",
       title: "Steering: straight, then a quarter turn",
-      goal: "Add the steering coupling and a heading computed from the encoders, then drive 3 ft and turn left by 90 degrees on the spot.",
+      goal: "Add the steering coupling and a heading computed from the encoders, then drive 3 ft straight and turn left by 90 degrees on the spot.",
       refs: [{ course: "Lab 5" }, { course: "L11" }, { course: "L15" }],
       brief: `
-Two things are added: a second command, \`turn\`, and the robot's first idea of where it is pointing.
+Two things are added: a second command, \`turn\`, and the robot's first idea of which way it points.
 
-## The steering coupling (chapter 16, "Speed and steering")
-These are the three lines of the course's \`PIcontrol\` function. They replace your two error lines:
+## The steering coupling
+Two separate PI loops make the two speeds equal in the end. But while they are getting there, the stronger left motor is ahead, and the angle lost in that moment never comes back. The fix is to tell each wheel about the other. These are the three lines of the course's \`PIcontrol\` function, from the chapter 16 level "Speed and steering":
 
 \`\`\`c
 eSteer = vRight - vLeft + turn;
@@ -1213,31 +1285,37 @@ eLeft  = vref - vLeft  + Kturn * eSteer;
 eRight = vref - vRight - Kturn * eSteer;
 \`\`\`
 
-The PI blocks stay as they are. With \`turn = 0\` the coupling holds the two wheels together: the slower wheel is pushed, the faster one held back. A **positive** \`turn\` makes the left wheel faster, so the robot turns **right**. To turn left, \`turn\` is negative. With \`Kturn = 3\` the wheels settle 6/7 of \`turn\` apart.
+- \`eSteer\` is the **steering error**: how much faster the right wheel is than it should be. It is added to the left wheel's error and subtracted from the right one's, so the wheel that is behind is pushed and the one that is ahead is held back.
+- Example with \`turn = 0\`, \`vref = 1.0\`, \`Kturn = 3\`: the left wheel does 1.0 and the right 0.9 ft/s. \`eSteer\` = 0.9 - 1.0 = -0.1. \`eLeft\` = 1.0 - 1.0 + 3 x (-0.1) = -0.3: the left wheel is told to wait. \`eRight\` = 1.0 - 0.9 - 3 x (-0.1) = 0.4: the right wheel is pushed four times as hard as its own loop would.
+- \`turn\` is the **turn command**: the speed difference you want, in ft/s. A **positive** \`turn\` makes the left wheel faster, so the robot turns **right**. To turn **left**, \`turn\` is negative.
 
-On the simulated floor both motors are identical and nothing disturbs a wheel, so the tests cannot tell whether the coupling holds a straight line. On the lab floor you would see it at once.
+On this robot the coupling keeps the heading within 0.001 rad through the start. Without it the robot is off by 0.007 rad, which is 2.5 inches sideways after 30 ft of hallway. One star checks this.
 
-## The heading (chapter 18)
-The robot turns when one wheel travels further than the other:
+## The heading
+The **heading** is the angle the robot points along, in radians: 0 is along +x, and it grows when the robot turns left (counter-clockwise). The robot turns when one wheel rolls further than the other:
 
 \`\`\`c
 theta = theta0 + (RightWheel - LeftWheel) * (1.235/12.0) / WHEEL_BASE;
 \`\`\`
 
-\`WHEEL_BASE\` is the distance between the wheels, **0.6 ft**. \`theta0\` is the heading at the start (0 here). \`theta\` is in radians, positive counter-clockwise: a left turn makes it grow.
+- Why: the difference of the two wheel distances is an arc, and the distance between the wheels, \`WHEEL_BASE\` = **0.6 ft**, is its radius. Arc divided by radius is an angle in radians.
+- Example: the right wheel has rolled 2.00 ft and the left 1.70 ft. The difference is 0.30 ft, and 0.30 / 0.6 = 0.5 rad, about 29 degrees to the left.
+- \`theta0\` is the heading at the start, 0 here.
+- A quarter turn is 90 degrees = PI/2 = **1.571 rad**. The C math functions and this formula all work in radians, never in degrees.
 
-## What to add
-1. \`#define WHEEL_BASE 0.6\` at the top.
-2. **Globals**: \`turn\`, \`Kturn = 3.0\`, \`eSteer\`, \`theta0\`, \`theta\`, and \`uint16_t state = 0;\` for the mission.
-3. An **Estimate** section after Measure: the heading line above.
-4. In **Control**: the three lines above instead of the two error lines.
-5. **The mission**, a state machine as in chapter 17:
-   - **state 0**: \`vref = 1.0\`, \`turn = 0\`. When \`travel\` reaches 3 ft, go to state 1
-   - **state 1**: \`vref = 0\`, and turn left until \`theta\` is PI/2. Make \`turn\` proportional to the angle still to go, \`turn = -2.0 * (PI/2.0 - theta)\`, limited to -1 ... 1, so the robot slows as it gets there. When less than 0.02 rad is left, go to state 2
-   - **state 2**: \`vref = 0\`, \`turn = 0\`
+## What to add, and where
+1. **At the top, under the PI define:** \`#define WHEEL_BASE 0.6\`.
+2. **With the other globals:** \`float turn = 0;\`, \`float Kturn = 3.0;\`, \`float eSteer = 0;\`, \`float theta0 = 0;\`, \`float theta = 0;\` and \`uint16_t state = 0;\` for the mission.
+3. **After the Measure section: an Estimate section** with the heading line above.
+4. **In Control:** replace your two lines \`eLeft = vref - vLeft;\` and \`eRight = vref - vRight;\` by the three lines above. Both wheel errors must be computed before the first PI block. The PI blocks stay as they are.
+5. **The mission**, a state machine as in the chapter 17 level "A three-state wall follower": a \`switch (state)\` with one \`case\` per state.
+   - **state 0, straight**: \`vref = 1.0\`, \`turn = 0\`. When \`travel >= 3.0\`, set \`state = 1\`
+   - **state 1, turn left on the spot**: \`vref = 0\`. The angle still to go is \`PI/2.0 - theta\`. Make the turn command proportional to it, \`turn = -2.0 * (PI/2.0 - theta);\`, and limit it to -1 ... 1. So the robot turns fast while it is far off and slows down as it gets there. When less than 0.02 rad is left, set \`state = 2\`
+   - **state 2, done**: \`vref = 0\`, \`turn = 0\`
 
 ## The test
-At the end the robot stands at (4, 2), 3 ft from where it started, and looks along +y (heading 1.571 rad), within 0.08 rad.
+- 2 s after the start, on the straight, the heading is still within 0.05 rad of 0. Compare that with -0.4 in the last level.
+- At the end the robot stands at (4, 2), 3 ft from where it started, and looks along +y: a heading of 1.571 rad, within 0.08.
 `,
       kit: "robot",
       durationMs: 6500,
@@ -1245,23 +1323,25 @@ At the end the robot stands at (4, 2), 3 ft from where it started, and looks alo
       starter: STEER_STARTER,
       solution: S_STEER,
       checks: [
+        { kind: "signal", name: "ROBOT_THETA_RAD", at: 2000, min: -0.05, max: 0.05, label: "After 2 s, on the straight, the heading is within 0.05 rad of 0", hint: "This is measured while the robot should still be on its 3 ft straight at 1 ft/s. Spinning: the signs of the coupling are swapped, it is + Kturn * eSteer for the left wheel and - Kturn * eSteer for the right. Veering as before: the mission must set vref, not the efforts." },
         { kind: "signal", name: "ROBOT_X_FT", equals: 4, tol: 0.15, label: "The robot drove 3 ft along x before turning (x = 4)", hint: "State 0 ends when travel >= 3.0. While turning on the spot travel does not change, because the wheels move equal and opposite." },
-        { kind: "signal", name: "ROBOT_Y_FT", equals: 2, tol: 0.15, label: "It turned on the spot (y is still 2)", hint: "vref must be 0 while turning." },
-        { kind: "signal", name: "ROBOT_THETA_RAD", equals: Math.PI / 2, tol: 0.08, label: "It ends looking along +y: heading 1.571 rad, within 0.08", hint: "Turned right instead: a left turn needs a negative turn. Turned and never stopped: compare theta, not travel. Stopped short: theta uses the difference of the wheel angles in feet, divided by WHEEL_BASE." },
+        { kind: "signal", name: "ROBOT_Y_FT", equals: 2, tol: 0.15, label: "It drove straight and turned on the spot (y is still 2)", hint: "vref must be 0 while turning." },
+        { kind: "signal", name: "ROBOT_THETA_RAD", equals: Math.PI / 2, tol: 0.08, label: "It ends looking along +y: heading 1.571 rad, within 0.08", hint: "Still turning at the end (the wheels have not stopped): either the robot turns the wrong way, so the angle still to go only grows (a left turn needs a negative turn), or theta is compared with 90 instead of PI/2.0 (theta is in radians). About 2.6: the wheel difference must be divided by WHEEL_BASE. Still 0: state never became 1." },
         ...stopped(),
         NO_CRASH,
       ],
       bonus: [
-        { kind: "signal", name: "ROBOT_THETA_RAD", equals: Math.PI / 2, tol: 0.03, label: "Heading within 0.03 rad (under 2 degrees)" },
+        { kind: "signal", name: "ROBOT_THETA_RAD", at: 2000, min: -0.005, max: 0.005, label: "On the straight the heading is within 0.005 rad: the steering coupling held the wheels together", hint: "Two separate PI loops lose about 0.007 rad while the unequal motors speed up. Add Kturn * eSteer to the left error and subtract it from the right one." },
+        { kind: "signal", name: "ROBOT_THETA_RAD", equals: Math.PI / 2, tol: 0.03, label: "Final heading within 0.03 rad (under 2 degrees)" },
         { kind: "signal", name: "ROBOT_X_FT", equals: 4, tol: 0.06, label: "Stopped within 0.06 ft of x = 4 before turning" },
       ],
       watch: ["state", "travel", "theta", "vref", "turn", "vLeft", "vRight"],
       hints: [
-        "Add the coupling and the heading first and keep the old mission: watch theta stay near 0 while the robot drives straight. Then write the switch.",
-        "`switch (state) { case 0: vref = 1.0; turn = 0.0; if (travel >= 3.0) state = 1; break; case 1: ... break; default: vref = 0.0; turn = 0.0; break; }`",
-        "State 1: `vref = 0.0; turn = -2.0 * (PI/2.0 - theta); if (turn < -1.0) turn = -1.0; if (turn > 1.0) turn = 1.0; if (fabs(PI/2.0 - theta) < 0.02) state = 2;`",
+        "Do steps 1 to 4 first and, as the mission, only `vref = 1.0; turn = 0.0;`. Watch theta stay near 0 and the meter \"Robot heading\" agree with it. Then write the switch.",
+        "The frame of the mission: `switch (state) { case 0: vref = 1.0; turn = 0.0; if (travel >= 3.0) { state = 1; } break; case 1: /* the turn */ break; default: vref = 0.0; turn = 0.0; break; }`",
+        "Inside case 1: `vref = 0.0; turn = -2.0 * (PI/2.0 - theta); if (turn < -1.0) turn = -1.0; if (turn > 1.0) turn = 1.0; if (fabs(PI/2.0 - theta) < 0.02) { state = 2; }`",
       ],
-      takeaway: "The mission now has two knobs, vref and turn, and that is all any mission ever needs. A turn that slows down as the error shrinks is a proportional controller on the heading, wrapped around the PI loops.",
+      takeaway: "The mission now has two knobs, vref and turn, and that is all any mission ever needs. A turn that slows down as the remaining angle shrinks is a proportional controller on the heading, wrapped around the PI loops.",
     },
     {
       id: "cap-goto",
@@ -1269,39 +1349,55 @@ At the end the robot stands at (4, 2), 3 ft from where it started, and looks alo
       mode: "write",
       continues: "cap-steer",
       title: "Dead reckoning: drive to a point",
-      goal: "Keep track of x and y as well as the heading, and use the pose to drive the robot to the point (4, 5).",
+      goal: "Keep track of x and y as well as the heading, and use them to drive the robot to the point (4, 5).",
       refs: [{ course: "L15" }, { course: "Lab 5" }, { course: "HW4" }],
       brief: `
-The robot knows its heading. Add the position and it knows where it is. This is the dead reckoning of **chapter 18**, and the first mission that uses it.
+The robot knows its heading. Add the position and it knows where it is. Position and heading together are called the **pose**. Working the pose out from the wheels alone is called **dead reckoning**. Chapter 18 goes deeper into it; everything you need is here.
 
 ## The position
-Every millisecond the robot moves forward by its speed times 0.001 s, in the direction it is pointing. Its speed is the average of the two wheels:
+Every millisecond the robot moves forward by its speed times 0.001 s, in the direction it points. Its speed is the average of the two wheels. \`cos\` of the heading says how much of that step goes along x, \`sin\` how much along y:
 
 \`\`\`c
 x = x + 0.5 * (vLeft + vRight) * cos(theta) * 0.001;
 y = y + 0.5 * (vLeft + vRight) * sin(theta) * 0.001;
 \`\`\`
 
-These go right after the heading line. The robot starts at **(1, 2)** in the room, so \`x\` and \`y\` start at 1.0 and 2.0, not at 0.
+Example: both wheels do 1 ft/s and the heading is 0.5 rad. In one pass the robot moves 0.001 ft. Of that, cos(0.5) = 0.878 goes along x and sin(0.5) = 0.479 along y: x grows by 0.00088 ft and y by 0.00048 ft.
+
+The robot starts at **(1, 2)** in the room, so \`x\` and \`y\` start at 1.0 and 2.0, not at 0.
 
 ## Where is the goal from here?
-With the pose, two numbers say everything about the goal (\`xGoal\`, \`yGoal\`):
+Call the goal (\`xGoal\`, \`yGoal\`). Two numbers say everything about it:
 
-- how far: \`dist = sqrt(dx*dx + dy*dy)\`, with dx and dy from the robot to the goal
-- which way to turn: the **heading error** \`eTheta = atan2(dy, dx) - theta\`
+- **how far**: \`dist = sqrt(dx*dx + dy*dy)\`, with \`dx = xGoal - x\` and \`dy = yGoal - y\` (Pythagoras)
+- **which way to turn**: the **heading error** \`eTheta = atan2(dy, dx) - theta\`. \`atan2(dy, dx)\` is the direction of the goal as an angle in radians, measured like the heading. Subtract the heading and you have how far the robot must still turn: positive means the goal is to the left
 
-A heading error must be **wrapped** into -PI ... PI. Otherwise "turn left by 350 degrees" is the answer when "turn right by 10" was meant. Add or subtract 2 PI until it fits.
+Example: the robot is at (1, 2) with heading 0, the goal is (4, 5). dx = 3 and dy = 3, so dist = 4.24 ft. The direction is atan2(3, 3) = 0.785 rad (45 degrees), so eTheta = 0.785: turn left by 45 degrees.
 
-## What to add
-1. **Globals**: \`x = 1.0\`, \`y = 2.0\`, \`xGoal = 4.0\`, \`yGoal = 5.0\`, \`dist\`, \`eTheta\`.
-2. In **Estimate**: the two lines for \`x\` and \`y\`.
-3. **The mission**. Compute \`dist\` and \`eTheta\` on every pass, then:
-   - **state 0, FACE**: \`vref = 0\`. Steer at the goal: \`turn = -2.0 * eTheta\`, limited to -1 ... 1. (Minus: a goal to the left is a positive error and needs a negative turn.) When \`fabs(eTheta) < 0.05\`, go to state 1
-   - **state 1, DRIVE**: keep steering the same way, and set \`vref = 2.0 * dist\`, limited to 1.5 ft/s, so the robot slows down as it arrives. When \`dist < 0.05\`, go to state 2
+## Wrapping the error
+Angles repeat every 2 PI, so the subtraction can give a silly answer. Example: the heading is 3.0 rad and the goal's direction is -3.0 rad. The difference is -6.0: "turn right by 344 degrees". Add 2 PI and it is 0.28: "turn left by 16 degrees", the same direction the short way. So after computing \`eTheta\`, bring it into -PI ... PI:
+
+\`\`\`c
+while (eTheta > PI) eTheta = eTheta - 2.0 * PI;
+while (eTheta < -PI) eTheta = eTheta + 2.0 * PI;
+\`\`\`
+
+## Driving there
+Two proportional rules, like the turn of the last level:
+
+- **steer**: \`turn = -2.0 * eTheta\`, limited to -1 ... 1. The minus is there because a goal to the left (positive error) needs a left turn, and a left turn is a negative \`turn\`
+- **speed**: \`vref = 2.0 * dist\`, limited to 1.5 ft/s. Far away that is the full 1.5 ft/s. At 0.5 ft from the goal it is 1.0 ft/s and at 0.1 ft it is 0.2 ft/s, so the robot slows down as it arrives instead of rushing past
+
+## What to add, and where
+1. **With the other globals:** \`float x = 1.0;\`, \`float y = 2.0;\`, \`float xGoal = 4.0;\`, \`float yGoal = 5.0;\`, \`float dist = 0;\`, \`float eTheta = 0;\`.
+2. **In Estimate, after the heading line:** the two lines for \`x\` and \`y\`.
+3. **The mission**, replacing the old switch. First compute \`dist\` and \`eTheta\` (with the wrap) on every pass. Then:
+   - **state 0, FACE**: \`vref = 0\` and steer. When \`fabs(eTheta) < 0.05\`, set \`state = 1\`
+   - **state 1, DRIVE**: steer, and set the speed by the rule above. When \`dist < 0.05\`, set \`state = 2\`
    - **state 2, DONE**: \`vref = 0\`, \`turn = 0\`
 
 ## The test
-The robot must stop within 0.15 ft of (4, 5). The room measures where it really is. The tests also read your globals \`x\` and \`y\`: they must say (4, 5) too. If your estimate is wrong, the robot drives confidently to the wrong place, and the meters show you where.
+The robot must stop within 0.15 ft of (4, 5). The room measures where it really is. The tests also read your globals \`x\` and \`y\`: they must say (4, 5) too. If your estimate is wrong, the robot drives confidently to the wrong place, and comparing \`x\` and \`y\` with the meters "Robot x" and "Robot y" shows you by how much.
 
 The simulated wheels never slip, so dead reckoning is almost perfect here. On the lab floor it drifts by an inch or two per turn.
 `,
@@ -1311,9 +1407,9 @@ The simulated wheels never slip, so dead reckoning is almost perfect here. On th
       starter: GOTO_STARTER,
       solution: S_GOTO,
       checks: [
-        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.15, label: "The robot ends within 0.15 ft of (4, 5)", hint: "Compare the meters with your x and y. If they agree, the mission is wrong. If they differ, the dead reckoning is: start at (1, 2), speed in ft/s times 0.001, angle in radians." },
-        { kind: "var", name: "x", min: 3.85, max: 4.15, label: "Your x says 4", hint: "x starts at 1.0 and adds 0.5 * (vLeft + vRight) * cos(theta) * 0.001 on every pass." },
-        { kind: "var", name: "y", min: 4.85, max: 5.15, label: "Your y says 5", hint: "y starts at 2.0 and uses sin(theta)." },
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.15, label: "The robot ends within 0.15 ft of (4, 5)", hint: "Compare the meters Robot x and Robot y with your x and y. If they agree, the estimate is fine and the mission is wrong: a robot that spins without end has the sign of turn wrong (turn = -2.0 * eTheta), one that drives off sideways has atan2(dx, dy) instead of atan2(dy, dx). If your x and y say (4, 5) but the meters do not: about 2.2 ft off means x and y did not start at 1.0 and 2.0; otherwise check that cos and sin get theta as it is, in radians." },
+        { kind: "var", name: "x", min: 3.85, max: 4.15, label: "Your x says 4", hint: "About 3: x must start at 1.0, where the robot starts. Otherwise: x adds 0.5 * (vLeft + vRight) * cos(theta) * 0.001 on every pass, after theta was updated." },
+        { kind: "var", name: "y", min: 4.85, max: 5.15, label: "Your y says 5", hint: "About 3: y must start at 2.0. Otherwise: y uses sin(theta), with theta in radians." },
         ...stopped(),
         NO_CRASH,
       ],
@@ -1323,11 +1419,11 @@ The simulated wheels never slip, so dead reckoning is almost perfect here. On th
       ],
       watch: ["state", "x", "y", "theta", "dist", "eTheta", "vref", "turn"],
       hints: [
-        "Add x and y first, keep the old mission, and check them against the meters: after the 3 ft and the turn they should read (4, 2).",
-        "`dist = sqrt((xGoal - x) * (xGoal - x) + (yGoal - y) * (yGoal - y)); eTheta = atan2(yGoal - y, xGoal - x) - theta;` then `while (eTheta > PI) eTheta = eTheta - 2.0 * PI;` and the same the other way.",
-        "DRIVE: `vref = 2.0 * dist; if (vref > 1.5) vref = 1.5; turn = -2.0 * eTheta;` (limit turn to -1 ... 1) `if (dist < 0.05) state = 2;`",
+        "Do steps 1 and 2 first and keep the old mission. After the 3 ft and the turn, your x and y should read (4, 2), like the meters. Then write the new mission.",
+        "Before the switch: `dist = sqrt((xGoal - x) * (xGoal - x) + (yGoal - y) * (yGoal - y)); eTheta = atan2(yGoal - y, xGoal - x) - theta;` and the two while lines of the wrap. Steering, in both FACE and DRIVE: `turn = -2.0 * eTheta; if (turn > 1.0) turn = 1.0; if (turn < -1.0) turn = -1.0;`",
+        "`case 0: vref = 0.0;` steer, `if (fabs(eTheta) < 0.05) { state = 1; } break; case 1: vref = 2.0 * dist; if (vref > 1.5) vref = 1.5;` steer, `if (dist < 0.05) { state = 2; } break; default: vref = 0.0; turn = 0.0; break;`",
       ],
-      takeaway: "A go-to-point controller is two proportional controllers, one on the heading and one on the distance, and a wrap. The course's xy_control function is the same idea with a few more guards.",
+      takeaway: "A go-to-point controller is two proportional rules, one on the heading error and one on the distance, and a wrap. The course's xy_control function is the same idea with a few more guards.",
     },
     {
       id: "cap-wall",
@@ -1338,21 +1434,32 @@ The simulated wheels never slip, so dead reckoning is almost perfect here. On th
       goal: "Read the LIDAR every 100 ms from CPU timer 1 and stop the robot when something is close ahead.",
       refs: [{ course: "L16" }, { course: "L14" }, { trm: "3.8" }],
       brief: `
-The goal is now **(12, 2)**. The room ends at x = 10. Your dead reckoning has no idea that there is a wall in between, so the robot will drive into it at full speed. It needs to look. This is the LIDAR of **chapter 17**.
+The goal is now **(12, 2)**. The room ends at x = 10. Your dead reckoning has no idea that there is a wall in between, so the robot will drive into it at full speed. It needs to look. This is the **LIDAR** of chapter 17: a laser that turns and measures the distance to whatever it hits, 228 directions ("points") per scan.
 
 ## Which LIDAR path?
-In chapter 17 you asked the sensor for a scan over SCIC and parsed 477 characters into an array. That parser is about 80 lines that you have already written and debugged. Here the test bench function \`tb_lidar_ft(i)\` stands in for it: it returns point \`i\` of the current scan in feet, the same number your parser stores. The rest of the program cannot tell the difference. An expert level at the end puts the real serial path back.
+In chapter 17 you asked the sensor for a scan over the serial port SCIC and parsed 477 characters into an array. That parser is about 80 lines that you have already written and debugged. Here the test bench function \`tb_lidar_ft(i)\` stands in for it: it returns point \`i\` of the current scan in feet, the same number your parser stores. The rest of the program cannot tell the difference. An expert level at the end puts the real serial path back.
 
-Point **113** looks straight ahead and the points are 1.05 degrees apart. Points **94 to 132** cover 20 degrees to each side, which is enough to see anything the robot's body would touch.
+Point **113** looks straight ahead, and the points are 1.05 degrees apart. Points **94 to 132** cover 20 degrees to each side, which is enough to see anything the robot's body would touch.
 
-## What to add
-1. \`float min_ft(int first, int last)\`: the smallest of \`tb_lidar_ft(first)\` ... \`tb_lidar_ft(last)\`. This is the function of the chapter 17 level on the nearest point ("What is closest, and where").
-2. **Globals**: \`float front_ft = 19.0;\` (nothing seen yet) and \`uint32_t numScans = 0;\`.
-3. \`__interrupt void cpu_timer1_isr(void)\`: \`front_ft = min_ft(94, 132);\` and \`numScans++;\`. Timer 1 needs no PIEACK: it is wired straight to CPU interrupt 13.
-4. In \`main\`: the vector \`PieVectTable.TIMER1_INT\`, \`ConfigCpuTimer(&CpuTimer1, LAUNCHPAD_CPU_FREQUENCY, 100000);\`, start it with \`CpuTimer1Regs.TCR.all = 0x4000;\`, and \`IER |= M_INT13;\`. Timer 1 at 100 ms is how the course's robot code polls the LIDAR.
-5. Prototypes for the two new functions.
-6. Change the goal: \`xGoal = 12.0\`, \`yGoal = 2.0\`.
-7. **The mission**: one new state, **BLOCKED** (state 3): \`vref = 0\`, \`turn = 0\`. In DRIVE, go there when \`front_ft < 1.2\`. Add one more condition, \`front_ft < dist\`: if the goal is nearer than the thing ahead, the thing is behind the goal and does not matter.
+## What to add, and where
+1. **At the bottom of the file:** \`float min_ft(int first, int last)\`, which returns the smallest of \`tb_lidar_ft(first)\` ... \`tb_lidar_ft(last)\`. It is the loop of the chapter 17 level "What is closest, and where": start with \`m = 19.0\` (more than any reading) and keep every reading that is smaller.
+2. **Also at the bottom:** a second interrupt function,
+\`\`\`c
+__interrupt void cpu_timer1_isr(void)
+{
+    front_ft = min_ft(94, 132);
+    numScans++;
+}
+\`\`\`
+   It needs no PIEACK line: timer 1 is wired straight to CPU interrupt 13 and does not go through the PIE (chapter 5, "Two timers, two rhythms").
+3. **At the top:** the prototypes \`__interrupt void cpu_timer1_isr(void);\` and \`float min_ft(int first, int last);\`.
+4. **With the other globals:** \`float front_ft = 19.0;\` (nothing seen yet) and \`uint32_t numScans = 0;\`. Change the goal to \`xGoal = 12.0\`, \`yGoal = 2.0\`.
+5. **In \`main\`**, four lines, each next to its timer 0 twin:
+   - \`PieVectTable.TIMER1_INT = &cpu_timer1_isr;\` between EALLOW and EDIS
+   - \`ConfigCpuTimer(&CpuTimer1, LAUNCHPAD_CPU_FREQUENCY, 100000);\` (the period is in microseconds: 100 ms)
+   - \`CpuTimer1Regs.TCR.all = 0x4000;\` starts the timer
+   - \`IER |= M_INT13;\` before \`EINT;\`
+6. **The mission**: one new state, **BLOCKED** (\`case 3\`): \`vref = 0\`, \`turn = 0\`. In DRIVE, after the test for \`dist < 0.05\`, go there when \`front_ft < 1.2 && front_ft < dist\`. The second half means: only if the thing ahead is nearer than the goal. Something behind the goal does not matter.
 
 ## How close is 1.2 ft?
 At 1.5 ft/s the robot moves 0.15 ft between two scans and needs a little more to brake. It ends about 1 ft from the wall. The tests want it between 0.6 and 1.4 ft, stopped, and never touching.
@@ -1365,11 +1472,11 @@ The tests read your global \`front_ft\`.
       starter: WALL_STARTER,
       solution: S_WALL,
       checks: [
+        { kind: "isr", fn: "cpu_timer1_isr", min: 70, max: 90, label: "cpu_timer1_isr runs every 100 ms (about 80 times in 8 s)", hint: "0 times: one of the four lines in main is missing: the vector, ConfigCpuTimer, the start (TCR = 0x4000) or IER |= M_INT13. Thousands of times: ConfigCpuTimer takes the period in microseconds, 100000." },
+        { kind: "var", name: "front_ft", min: 0.6, max: 1.4, label: "Your front_ft ends between 0.6 and 1.4 ft", hint: "Still 19: cpu_timer1_isr does not run, see the check above. Some other large value: points 94 to 132 are the ones that look ahead; low numbers such as 28 look to the right." },
         NO_CRASH,
-        { kind: "signal", name: "ROBOT_X_FT", min: 8.4, label: "The robot drove up to the wall (x above 8.4)", hint: "Still near the start: is the goal (12, 2)? Stopped early: front_ft must come from points around 113, the ones that look ahead." },
-        { kind: "signal", name: "LIDAR_FRONT_FT", min: 0.6, max: 1.4, label: "It stands 0.6 to 1.4 ft from the wall", hint: "Too close: the robot moves between scans and while braking. Stop earlier than you want to end." },
-        { kind: "var", name: "front_ft", min: 0.6, max: 1.4, label: "Your front_ft agrees", hint: "front_ft still 19: cpu_timer1_isr never runs. It needs its vector, ConfigCpuTimer, the start (TCR) and M_INT13 in IER." },
-        { kind: "isr", fn: "cpu_timer1_isr", min: 70, max: 90, label: "cpu_timer1_isr runs every 100 ms", hint: "ConfigCpuTimer takes the period in microseconds: 100000." },
+        { kind: "signal", name: "ROBOT_X_FT", min: 8.4, label: "The robot drove up to the wall (x above 8.4)", hint: "Ended near (4, 5): the goal is still the old one, set xGoal = 12.0 and yGoal = 2.0. Never left the start: is state 3 entered at once? front_ft must start at 19.0." },
+        { kind: "signal", name: "LIDAR_FRONT_FT", min: 0.6, max: 1.4, label: "It stands 0.6 to 1.4 ft from the wall", hint: "Too close or crashed: the robot moves between scans and while braking, so stop earlier than you want to end: try 1.2 ft. Crashed with front_ft correct: DRIVE must go to state 3 when front_ft < 1.2." },
         ...stopped(),
       ],
       bonus: [
@@ -1378,9 +1485,9 @@ The tests read your global \`front_ft\`.
       ],
       watch: ["state", "front_ft", "numScans", "x", "dist", "vref"],
       hints: [
-        "Get front_ft working first: with the old goal the robot still drives to (4, 5). front_ft should start near 9 and change as the robot turns and drives.",
-        "`float min_ft(int first, int last) { int i; float m = 19.0; for (i = first; i <= last; i++) { if (tb_lidar_ft(i) < m) m = tb_lidar_ft(i); } return m; }`",
-        "In DRIVE: `if (dist < 0.05) { state = 2; } else if (front_ft < 1.2 && front_ft < dist) { state = 3; }` and `case 3: vref = 0.0; turn = 0.0; break;`",
+        "Do steps 1 to 5 first, but keep the old goal. The robot still drives to (4, 5), numScans should count up by 10 per second, and front_ft should start near 9 and change as the robot turns and drives.",
+        "`float min_ft(int first, int last) { int i; float m = 19.0; for (i = first; i <= last; i++) { if (tb_lidar_ft(i) < m) { m = tb_lidar_ft(i); } } return m; }`",
+        "In DRIVE: `if (dist < 0.05) { state = 2; } else if (front_ft < 1.2 && front_ft < dist) { state = 3; }` and, before `default:`, `case 3: vref = 0.0; turn = 0.0; break;`",
       ],
       takeaway: "Dead reckoning says where the robot is. Only a sensor says what is around it. The slow loop looks, the fast loop acts on the last look.",
     },
@@ -1396,21 +1503,22 @@ The tests read your global \`front_ft\`.
 The goal is **(9, 7.6)**. The straight line from the start runs through the 1 ft block. With the program of the last level the robot stops in front of the block and waits forever. Now it has to go around.
 
 ## A plan that works
-Two more states turn "stop" into "go around":
+Your state machine has FACE (0), DRIVE (1), DONE (2) and BLOCKED (3). Two changes turn "stop" into "go around":
 
-- **TURN** (replaces BLOCKED, state 3): turn left on the spot, \`vref = 0\`, \`turn = -1.0\`, until the way ahead is clear: \`front_ft > 2.5\`. Then remember how far the robot has driven, \`passStart = travel;\`, and go to PASS.
-- **PASS** (state 4): drive straight, \`vref = 1.0\`, \`turn = 0\`. When \`travel - passStart\` is more than **2 ft**, the obstacle is behind: go back to **FACE** (state 0), which turns to the goal again. If something comes up ahead first (\`front_ft < 1.2\`), go back to TURN.
+- **TURN** replaces BLOCKED (\`case 3\`): turn left on the spot, \`vref = 0\`, \`turn = -1.0\`, until the way ahead is clear: \`front_ft > 2.5\`. At that moment remember how far the robot has driven so far, \`passStart = travel;\`, and set \`state = 4\`.
+- **PASS** is new (\`case 4\`): drive straight, \`vref = 1.0\`, \`turn = 0\`. When \`travel - passStart > 2.0\`, the robot has driven 2 ft since the turn and the obstacle is behind it: set \`state = 0\`, FACE, which turns to the goal again. If something comes up ahead first (\`front_ft < 1.2\`), set \`state = 3\` and turn again.
 
-FACE, DRIVE and DONE stay as they are. If the way to the goal is still blocked after one pass, DRIVE sends the robot round again, so the same five states also handle bigger obstacles.
+FACE, DRIVE and DONE stay as they are. If the way to the goal is still blocked after one pass, DRIVE sends the robot round again. So the same five states also handle bigger obstacles.
 
 Why 2 ft? The block is 1 ft wide and the robot must clear it by more than its own radius, 0.35 ft.
 
-## What to change
-1. The goal: \`xGoal = 9.0\`, \`yGoal = 7.6\`.
-2. A global \`float passStart = 0;\`.
-3. The mission: state 3 becomes TURN, and a new \`case 4\` is PASS.
+Walk through it once on paper: FACE the goal, DRIVE until the block is 1.2 ft ahead, TURN left until the LIDAR sees 2.5 ft of free floor, PASS 2 ft, FACE the goal again, DRIVE, DONE.
 
-You are free to do it another way, for example by following the side of the obstacle with a side-looking part of the scan, as the wall follower of chapter 17 does. The tests only look at the result.
+## What to change, and where
+1. **In the globals:** the goal, \`xGoal = 9.0\` and \`yGoal = 7.6\`, and a new \`float passStart = 0;\`.
+2. **In the mission's switch:** rewrite \`case 3\` as TURN, and add \`case 4\`, PASS, before \`default:\`.
+
+You are free to do it another way, for example by following the side of the obstacle as the wall follower of chapter 17 does. The tests only look at the result.
 
 ## The test
 Within 16 s the robot stands still within 0.15 ft of the goal and has touched nothing. Stars: arrive within 13 s, drive less than 11.5 ft on the way (the straight line is 9.8 ft), and keep the 1 ms loop short.
@@ -1420,7 +1528,7 @@ ${ROOM_NOTE}`,
       stimuli: world({ goal: GOAL_FINAL }),
       starter: FINAL_STARTER,
       solution: S_FINAL,
-      checks: arrived("Still in front of the block: BLOCKED must become TURN. Circling: after PASS go back to FACE, not DRIVE. Stopped somewhere else: is the goal (9, 7.6)?"),
+      checks: arrived("Watch state while it runs. Stuck at 3 in front of the block: case 3 must turn (turn = -1.0) and leave when front_ft > 2.5. Turning and stopping over and over: passStart = travel must be set at the moment TURN ends, or PASS ends at once. Ended near x = 9, y = 2: the goal is still (12, 2)."),
       bonus: [
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 13000, max: 0.15, label: "At the goal within 13 s" },
         { kind: "signal", name: "ROBOT_ODOMETER_FT", max: 11.5, label: "Drove less than 11.5 ft to get there" },
@@ -1428,11 +1536,11 @@ ${ROOM_NOTE}`,
       ],
       watch: ["state", "x", "y", "theta", "front_ft", "dist", "passStart", "travel"],
       hints: [
-        "Watch state while it runs: 0, 1, then 3 at the block, 4, 0, 1 and finally 2. Where it gets stuck tells you which transition is missing.",
+        "Watch state while it runs. A good run shows 0, 1, then 3 at the block, 4, 0, 1 and finally 2. The state it gets stuck in tells you which rule is missing.",
         "`case 3: vref = 0.0; turn = -1.0; if (front_ft > 2.5) { state = 4; passStart = travel; } break;`",
-        "`case 4: vref = 1.0; turn = 0.0; if (front_ft < 1.2) { state = 3; } else if (travel - passStart > 2.0) { state = 0; } break;`",
+        "`case 4: vref = 1.0; turn = 0.0; if (front_ft < 1.2) { state = 3; } else if (travel - passStart > 2.0) { state = 0; } break;` and, in the globals, `float passStart = 0;`, `float xGoal = 9.0;`, `float yGoal = 7.6;`",
       ],
-      takeaway: "Count what is in this file: PWM and the H-bridge, two encoders, backward-difference speeds, two PI loops with anti-windup, steering, dead reckoning, a LIDAR and a state machine, in two interrupts. Every line of it came from a chapter you finished, and now it is one robot.",
+      takeaway: "Count what is in this file: PWM for two unequal motors, two encoders, backward-difference speeds, two PI loops with anti-windup, steering, dead reckoning, a LIDAR and a state machine, in two interrupts. Almost every line came from a chapter you finished, and now it is one robot.",
     },
     {
       id: "cap-p-corner",
@@ -1444,34 +1552,34 @@ ${ROOM_NOTE}`,
       goal: "Run the same program from a different start pose to a different goal, across the +-PI line.",
       refs: [{ course: "L15" }, { course: "L14" }],
       brief: `
-A good program does not care where it starts. Same room, new trip: the robot now stands at **(8.8, 9)** looking along **-x**, a heading of **PI**. The goal is **(6.5, 4.5)**, and the block is in the way again.
+A good program does not care where it starts. Same room, new trip: the robot now stands at **(8.8, 9)** and looks along **-x**. That is a heading of **PI** (180 degrees). The goal is **(6.5, 4.5)**, and the block is in the way again.
 
 ## What to change
-Only numbers:
+Only numbers, all in the globals:
 
-- the start pose: \`theta0\` (and \`theta\`), \`x\` and \`y\`
+- the start pose: \`theta0\` and \`theta\` (both PI), \`x\` and \`y\`
 - the goal: \`xGoal\` and \`yGoal\`
 
-If you used the variable \`theta0\` in your heading line, the rest follows. If you assumed that the heading starts at 0 anywhere else, this level finds it.
+Your heading line is \`theta = theta0 + ...\`, so the heading follows from \`theta0\`. If you assumed anywhere else that the heading starts at 0, this level finds it.
 
 ## What it tests
-From a heading of PI, the goal is 63 degrees to the robot's **left**. The unwrapped heading error says "turn right by 297 degrees". The robot still arrives that way, three seconds late. With the wrap from the dead reckoning level it takes the short way, and that is what the star for 10 s needs.
+From a heading of PI, the goal is 63 degrees to the robot's **left**. Without the wrap of the heading error, the subtraction says "turn right by 297 degrees". The robot still arrives that way, three seconds late. With the wrap from the dead reckoning level it takes the short way, and that is what the star for 10 s needs.
 `,
       kit: "robot",
       durationMs: 13000,
       stimuli: world(CORNER),
       starter: CORNER_STARTER,
       solution: S_CORNER,
-      checks: arrived("Drove off in a strange direction: the program still believes it starts at (1, 2) with heading 0. Set theta0, x and y."),
+      checks: arrived("Drove off in a strange direction: the program still believes it starts at (1, 2) with heading 0. Set theta0 and theta to PI, x to 8.8 and y to 9.0, and the goal to (6.5, 4.5)."),
       bonus: [
-        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 10000, max: 0.15, label: "At the goal within 10 s", hint: "Did the robot turn the long way round at the start? Wrap the heading error to -PI ... PI." },
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 10000, max: 0.15, label: "At the goal within 10 s", hint: "Did the robot turn the long way round at the start? Wrap the heading error into -PI ... PI with the two while lines." },
         { kind: "signal", name: "ROBOT_ODOMETER_FT", max: 6.6, label: "Drove less than 6.6 ft (the straight line is 5.1 ft)" },
       ],
       watch: ["state", "x", "y", "theta", "eTheta", "front_ft", "dist"],
       hints: [
-        "Four globals describe the trip: where the robot is and where it is going. Nothing in the interrupt functions changes.",
+        "Six globals describe the trip: where the robot is, which way it points, and where it is going. Nothing in the interrupt functions changes.",
         "`float theta0 = PI;` and `float theta = PI;`, `float x = 8.8;`, `float y = 9.0;`",
-        "`float xGoal = 6.5;` and `float yGoal = 4.5;`. If it turns the long way round, look at the two while loops that wrap eTheta.",
+        "`float xGoal = 6.5;` and `float yGoal = 4.5;`. If it turns the long way round, check the two lines `while (eTheta > PI) eTheta = eTheta - 2.0 * PI;` and `while (eTheta < -PI) eTheta = eTheta + 2.0 * PI;`",
       ],
       takeaway: "Start pose and goal are data. If changing them means changing code, the code was written for one room.",
     },
@@ -1485,15 +1593,15 @@ From a heading of PI, the goal is 63 degrees to the robot's **left**. The unwrap
       goal: "Drive the robot out of a room through a doorway to a goal outside.",
       refs: [{ course: "L14" }, { course: "L16" }],
       brief: `
-A different room: the same 10 ft box without the block, but with a **doorway** in the wall x = 10, from y = 6 to y = 8.5. The robot stands at **(8.5, 2)** looking along **+y**, a heading of **PI/2**. The goal is outside, at **(12, 7.25)**.
+A different room: the same 10 ft box without the block, but with a **doorway** in the wall x = 10, from y = 6 to y = 8.5. The robot stands at **(8.5, 2)** and looks along **+y**. That is a heading of **PI/2** (90 degrees). The goal is outside, at **(12, 7.25)**.
 
 The straight line to the goal runs into the wall beside the door. The robot has to find the opening.
 
 ## What to change
-The start pose (\`theta0\`, \`theta\`, \`x\`, \`y\`) and the goal (\`xGoal\`, \`yGoal\`). If your state machine from the checkpoint is sound, that is all.
+Only numbers, all in the globals: the start pose (\`theta0\` and \`theta\` both \`PI/2.0\`, \`x\`, \`y\`) and the goal (\`xGoal\`, \`yGoal\`). If your state machine from the checkpoint is sound, that is all.
 
 ## What to watch
-The robot is blocked by the wall, turns left until it sees 2.5 ft of free floor, passes, faces the goal and tries again. It may need two or three rounds to reach the door. Watch \`state\`. That is the same machine handling a case you did not design it for, which is the point of writing it as states and transitions instead of a fixed sequence.
+The robot is blocked by the wall, turns left until it sees 2.5 ft of free floor, passes, faces the goal and tries again. It may need two or three rounds to reach the door. Watch \`state\`. This is the same machine handling a case you did not design it for. That is the reason for writing it as states and rules instead of a fixed list of moves.
 
 The doorway is 2.5 ft wide and the robot 0.7 ft. Do not cut the corner of the door post.
 `,
@@ -1503,15 +1611,15 @@ The doorway is 2.5 ft wide and the robot 0.7 ft. Do not cut the corner of the do
       starter: DOOR_STARTER,
       solution: S_DOOR,
       checks: [
-        { kind: "signal", name: "ROBOT_X_FT", min: 10.5, label: "The robot is outside the room (x above 10.5)", hint: "Stuck in front of the wall: after PASS the machine must go back to FACE so that it tries the goal again." },
-        ...arrived("Set the start pose (8.5, 2, PI/2) and the goal (12, 7.25)."),
+        { kind: "signal", name: "ROBOT_X_FT", min: 10.5, label: "The robot is outside the room (x above 10.5)", hint: "Still near x = 1.5: the start pose and goal are the old ones. Stuck in front of the wall: after PASS the machine must go back to FACE (state 0) so that it tries the goal again." },
+        ...arrived("Set the start pose (x = 8.5, y = 2.0, theta0 and theta = PI/2.0) and the goal (12.0, 7.25)."),
       ],
       bonus: [{ kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 13000, max: 0.15, label: "Outside and at the goal within 13 s" }],
       watch: ["state", "x", "y", "theta", "front_ft", "dist"],
       hints: [
-        "Change the six numbers first and run it. Then watch where the robot is when state changes.",
+        "Change the six numbers first and run it. Then watch where the robot is each time state changes.",
         "`float theta0 = PI/2.0;`, `float theta = PI/2.0;`, `float x = 8.5;`, `float y = 2.0;`, `float xGoal = 12.0;`, `float yGoal = 7.25;`",
-        "If it touches the door post, pass further (a longer PASS) or stop earlier (a larger blocked distance) and try again.",
+        "If it touches the door post, pass further (2.5 instead of 2.0 in PASS) or call the way blocked earlier (1.5 instead of 1.2 ft) and run it again.",
       ],
       takeaway: "The robot was never told about doors. Blocked, turn, pass, face the goal again: four rules were enough to find one.",
     },
@@ -1529,13 +1637,13 @@ The checkpoint trip took the reference program 12 s. Do it in **10 s**: at 10.0 
 
 No recipe this time. Some facts:
 
-- The robot's top speed is 3.1 ft/s. A wheel that is asked for more than it can give has nothing left for steering.
+- The left wheel's top speed is 3.1 ft/s, the weaker right wheel's 2.7 ft/s. A wheel that is asked for more than it can give has nothing left for steering.
 - The LIDAR is read every 100 ms. At 3 ft/s the robot moves 0.3 ft between two looks, and it also needs room to brake. The distance at which you call the way "blocked" has to grow with the speed.
 - \`vref = 2.0 * dist\` starts to slow the robot down 0.75 ft before the goal at 1.5 ft/s, and 1.5 ft before it at 3 ft/s.
 - Time is lost wherever the robot stands still: turning on the spot, creeping the last inches.
 - The checkpoint's rules always turn left. Left is not always the short way round.
 
-Measure before you change anything: watch \`state\` and the clock, and write down how long each state takes.
+Measure before you change anything: watch \`state\` and \`numTimer0calls\` (the time in ms), and write down how long each state takes.
 `,
       kit: "robot",
       durationMs: 11000,
@@ -1543,10 +1651,10 @@ Measure before you change anything: watch \`state\` and the clock, and write dow
       starter: FAST_STARTER,
       solution: S_FAST,
       checks: [
-        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 10000, max: 0.1, label: "At 10 s the robot is within 0.1 ft of the goal" },
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 10000, max: 0.1, label: "At 10 s the robot is within 0.1 ft of the goal", hint: "Find the state that takes longest and work on that one first. The long straight parts gain most from a higher speed." },
         ...stopped(10000),
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.1, label: "It stays there" },
-        NO_CRASH,
+        { ...NO_CRASH, hint: "A faster robot needs more room to stop. Raise the distance at which the way counts as blocked together with the speed." },
       ],
       bonus: [
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 9000, max: 0.1, label: "There in 9 s" },
@@ -1556,8 +1664,8 @@ Measure before you change anything: watch \`state\` and the clock, and write dow
       watch: ["state", "numTimer0calls", "vref", "front_ft", "dist", "travel"],
       hints: [
         "The long straight parts are where a higher speed pays. Raise the limit on vref in DRIVE and the speed in PASS.",
-        "Faster means stopping earlier: raise the blocked distance from 1.2 ft with the speed.",
-        "One set that works: DRIVE up to 3.0 ft/s, blocked below 1.5 ft, PASS at 2.0 ft/s.",
+        "Faster means stopping earlier: raise the blocked distance from 1.2 ft together with the speed, in DRIVE and in PASS.",
+        "One set that works: in DRIVE `if (vref > 3.0) vref = 3.0;`, blocked when `front_ft < 1.5` (both places), and in PASS `vref = 2.0;`.",
       ],
       takeaway: "Speed is paid for in stopping distance, and stopping distance in how early the sensor must see. Every fast robot is tuned along that chain.",
     },
@@ -1571,14 +1679,15 @@ Measure before you change anything: watch \`state\` and the clock, and write dow
       goal: "Replace the test bench shortcut with the real sensor path: ask the LIDAR over SCIC every 100 ms and parse its reply.",
       refs: [{ course: "L16" }, { trm: "19" }, { trm: "3.4.5" }],
       brief: `
-\`tb_lidar_ft()\` does not exist on the robot. Take it out and put in what does: the serial path of **chapter 17**. The trip is the checkpoint's, to (9, 7.6).
+\`tb_lidar_ft()\` does not exist on the robot. Take it out and put in what does: the serial path of chapter 17. The trip is the checkpoint's, to (9, 7.6). Have your solutions of the chapter 17 levels "Ask every 100 ms" and "The parser is a state machine" open.
 
-## What to build
-- \`init_serialSCIC(&SerialC, 115200);\` in \`main\`, the vector \`PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;\` and \`IER |= M_INT8;\`.
-- \`cpu_timer1_isr\` now only **asks**: \`serial_sendSCIC(&SerialC, G_command, G_len);\` with \`char G_command[] = "G04472503\\n";\` and \`G_len = 10\`.
-- \`__interrupt void RXCINT_recv_ready(void)\`: your parser from the chapter 17 level "The parser is a state machine". It reads \`ScicRegs.SCIRXBUF.all\` into \`RXCdata\`, counts the 12 header characters, pairs the data characters, skips single line feeds and ends on two in a row. It must clear \`ScicRegs.SCIFFRX.bit.RXFFINTCLR\` and acknowledge **PIE group 8**. \`RXCdata\` is declared by the serial library.
-- Store the distances in feet, \`float ladar_ft[228]\` (\`distance * 0.00328084\`). Readings of 0 and 6 are error codes, not distances: store \`LADAR_MAX_READING\` for them, as the course code does.
-- When a reply is complete, compute \`front_ft\` from \`ladar_ft[94]\` ... \`ladar_ft[132]\` and count the scan in \`numScans\`.
+## What to build, and where
+- **In \`main\`:** \`init_serialSCIC(&SerialC, 115200);\` after the timers, the vector \`PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;\` between EALLOW and EDIS, and \`IER |= M_INT8;\`.
+- **\`cpu_timer1_isr\`** now only **asks**: \`serial_sendSCIC(&SerialC, G_command, G_len);\` with the globals \`char G_command[] = "G04472503\\n";\` and \`uint16_t G_len = 10;\`.
+- **A new interrupt function** \`__interrupt void RXCINT_recv_ready(void)\`: your parser. It runs once per received character. It reads \`ScicRegs.SCIRXBUF.all\` into \`RXCdata\` (declared by the serial library), counts the 12 header characters, joins the data characters in pairs, skips single line feeds and ends on two in a row. Its last two lines clear \`ScicRegs.SCIFFRX.bit.RXFFINTCLR\` and acknowledge **PIE group 8**.
+- **Globals:** the parser's variables and \`float ladar_ft[228];\`. Store each distance in feet: \`distance * 0.00328084\` (the sensor sends millimetres). Readings of 0 and 6 are error codes, not distances: store \`LADAR_MAX_READING\` for them, as the course code does.
+- **When a reply is complete:** compute \`front_ft\` as the smallest of \`ladar_ft[94]\` ... \`ladar_ft[132]\` and count the scan in \`numScans\`.
+- Remove \`min_ft()\` or change it to read the array. No \`tb_lidar\` call may remain.
 
 ## What changes for the robot
 The answer now arrives about 42 ms after the question, 477 characters later, one interrupt per character. \`front_ft\` is always a little older than before. If the robot now gets too close, you know why, and what to change.
@@ -1591,11 +1700,11 @@ There are three interrupt sources now. The 1 ms loop must not notice.
       starter: SERIAL_STARTER,
       solution: S_SERIAL,
       checks: [
-        { kind: "source", mustNotMatch: "tb_lidar", label: "The program does not use tb_lidar_ft or tb_lidar_mm" },
-        { kind: "signal", name: "LIDAR_SCANS", min: 100, label: "The LIDAR answered at least 100 requests", hint: "0 scans: the command never reached the sensor. It needs init_serialSCIC at 115200 baud and the 10 characters of G04472503 with its line feed." },
-        { kind: "var", name: "numScans", min: 100, label: "Your parser completed at least 100 scans (numScans)", hint: "Requests go out but no scan completes: the receive interrupt needs its vector, and the parser must end a scan on two line feeds in a row." },
+        { kind: "source", mustNotMatch: "tb_lidar", label: "The program does not use tb_lidar_ft or tb_lidar_mm", hint: "Replace the call in min_ft() or delete the function: the distances now come from your array ladar_ft[]." },
+        { kind: "signal", name: "LIDAR_SCANS", min: 100, label: "The LIDAR answered at least 100 requests", hint: "No scans: the command never reached the sensor. It needs init_serialSCIC(&SerialC, 115200) and the 10 characters of G04472503 with its line feed, sent from cpu_timer1_isr." },
+        { kind: "var", name: "numScans", min: 100, label: "Your parser completed at least 100 scans (numScans)", hint: "Requests go out but no scan completes: the receive interrupt needs its vector (SCIC_RX_INT) and IER |= M_INT8, and the parser must end a scan on two line feeds in a row." },
         { kind: "no-diagnostic", code: "lidar", label: "The LIDAR understood every command" },
-        ...arrived("Stopped in open floor: an error code (0 or 6) was read as a distance of a few millimetres."),
+        ...arrived("Stopped or turning in open floor: an error code (0 or 6) was stored as a distance of a few millimetres. Store LADAR_MAX_READING for those."),
       ],
       bonus: [
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 13500, max: 0.15, label: "At the goal within 13.5 s" },
@@ -1605,7 +1714,7 @@ There are three interrupt sources now. The 1 ms loop must not notice.
       watch: ["state", "front_ft", "numScans", "read_ladar_state", "dis_index"],
       hints: [
         "Bring it up in the order of chapter 17: first the request (watch the meter \"LIDAR scans sent\"), then the parser (watch numScans), then front_ft.",
-        "The parser's states: 0 waits for 'G'; 1 counts to 12 and checks that character 11 is '0'; 2 pairs characters, `(first - 0x30) << 6` plus `(second - 0x30)`, and counts line feeds.",
+        "The parser's states: 0 waits for 'G'; 1 counts to 12 and checks that character 11 is '0'; 2 joins pairs, `(first - 0x30) << 6` plus `(second - 0x30)`, and counts line feeds. Two line feeds in a row: back to state 0 and compute front_ft.",
         "In the data state, on the second character of a pair: `if (distance == 0 || distance == 6) distance = LADAR_MAX_READING; if (dis_index < 228) ladar_ft[dis_index] = distance*0.00328084; dis_index += 1;`",
       ],
       takeaway: "This is the robot's real program structure: a 1 ms control interrupt, a 100 ms request, and a receive interrupt that assembles the answer one character at a time.",
@@ -1630,7 +1739,7 @@ From the start at (1, 2), visit the corners **(4, 2)**, **(4, 5)**, **(1, 5)** a
 - At the end the robot stands still within **0.25 ft** (3 inches) of the start, and its heading is within 0.1 rad of 0.
 
 ## Things that will bite
-- The goal now changes while the program runs. Arrays of corner coordinates keep that tidy.
+- The goal now changes while the program runs. Two arrays of corner coordinates keep that tidy: set \`xGoal\` and \`yGoal\` from them at the top of the mission.
 - After the fourth corner the robot points along -y. "Back to the starting heading" is a turn to a **heading**, not towards a point: the heading error is \`theta0 - theta\`, wrapped.
 - Your \`theta\` keeps growing through four left turns, to about 2 PI. The wrap of the error takes care of it, if every error is wrapped.
 - An error of 0.05 ft at each corner is 0.05 ft at the end, not 0.2: each corner is a point in the room, not a distance from the last corner. That is what dead reckoning buys you over "3 ft, turn 90 degrees, four times".
@@ -1644,10 +1753,10 @@ On this floor the wheels never slip, so the square closes almost perfectly. Run 
       starter: SQUARE_STARTER,
       solution: S_SQUARE,
       checks: [
-        { kind: "var", name: "corner", equals: 4, label: "All four corners were reached (corner is 4)", hint: "Count a corner when dist to it falls below a small radius, then make the next corner the goal." },
+        { kind: "var", name: "corner", equals: 4, label: "All four corners were reached (corner is 4)", hint: "Count a corner when dist to it falls below a small radius, then make the next corner the goal and go back to FACE." },
         { kind: "signal", name: "ROBOT_ODOMETER_FT", min: 11.6, max: 12.6, label: "The robot drove the 12 ft of the square" },
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.25, label: "It ends within 0.25 ft (3 inches) of the start" },
-        { kind: "signal", name: "ROBOT_THETA_RAD", min: -0.1, max: 0.1, label: "It looks along +x again (heading within 0.1 rad of 0)", hint: "After the last corner, turn until theta0 - theta, wrapped to -PI ... PI, is small." },
+        { kind: "signal", name: "ROBOT_THETA_RAD", min: -0.1, max: 0.1, label: "It looks along +x again (heading within 0.1 rad of 0)", hint: "After the last corner, turn on the spot until theta0 - theta, wrapped into -PI ... PI, is small." },
         ...stopped(),
         NO_CRASH,
       ],
@@ -1659,8 +1768,8 @@ On this floor the wheels never slip, so the square closes almost perfectly. Run 
       watch: ["corner", "state", "x", "y", "theta", "dist", "eTheta"],
       hints: [
         "`float wpX[4] = {4.0, 4.0, 1.0, 1.0}; float wpY[4] = {2.0, 5.0, 5.0, 2.0};` and, at the top of the mission, `if (corner < 4) { xGoal = wpX[corner]; yGoal = wpY[corner]; }`",
-        "In DRIVE, when dist is small: `corner++;` then back to FACE if `corner < 4`, else to a new state HOME.",
-        "HOME: `eTheta = theta0 - theta;` wrap it, `vref = 0.0; turn = -2.0 * eTheta;` (limited), and DONE when `fabs(eTheta) < 0.02`. Let DRIVE go up to 2.5 ft/s.",
+        "In DRIVE, when dist is small: `corner++;` then `state = 0;` (FACE) if `corner < 4`, else go to a new state HOME, for example `state = 5;`.",
+        "`case 5: eTheta = theta0 - theta;` then the two wrap lines, `vref = 0.0; turn = -2.0 * eTheta;` (limited to -1 ... 1), and `if (fabs(eTheta) < 0.02) { state = 2; } break;`. Let DRIVE go up to 2.5 ft/s.",
       ],
       takeaway: "Waypoints in room coordinates do not add up their errors; steps relative to the last pose do. The error that remains on a real floor is the wheels' slip, and no amount of code in this file can see it.",
     },

@@ -1,6 +1,7 @@
 import type { Chapter } from "../types";
 
-const LED_SETUP = `    InitSysCtrl();
+const LED_SETUP = `    // Given: start the chip and get three LED pins ready (chapter 2 explains these lines)
+    InitSysCtrl();
     InitGpio();
     // LED1 (GPIO22), LED2 (GPIO94) and LED3 (GPIO95) as outputs, all off
     GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
@@ -22,10 +23,10 @@ export const ch01: Chapter = {
       id: "reg-brief",
       kind: "brief",
       title: "A register is memory with wires attached",
-      goal: "Learn how C code reaches the hardware, then answer three questions.",
+      goal: "Learn where registers live in memory and the two ways C names their bits, then answer three questions.",
       refs: [{ course: "L2" }, { trm: "3.6.1" }, { trm: "8.9" }],
       brief: `
-A microcontroller is a CPU plus **peripherals**: hardware blocks built into the same chip, such as the pins, the timers and the serial ports. The CPU controls every peripheral by reading and writing **registers**: memory locations whose bits are wired to hardware. Writing a 1 to the right bit turns an LED on.
+A microcontroller is a **CPU** (the part that runs your program) plus **peripherals**: hardware blocks built into the same chip, such as the pins, the timers and the serial ports. The CPU controls every peripheral by reading and writing **registers**: memory locations whose bits are wired to hardware. Writing a 1 to the right bit turns an LED on.
 
 ## Base address plus offset
 Memory is a long row of 16-bit **words**, and every word has a number, its **address**. Reading or writing a register means reading or writing the memory at that register's address.
@@ -33,33 +34,20 @@ Memory is a long row of 16-bit **words**, and every word has a number, its **add
 Each peripheral's registers sit together, starting at a **base address**. A register's address is the base plus its **offset**, the distance from the base counted in words:
 
 - \`GpioDataRegs\` (the registers that drive the chip's pins) starts at \`0x7F00\`. Its registers \`GPADAT\`, \`GPASET\`, \`GPACLEAR\`, \`GPATOGGLE\` are 32 bits each (two 16-bit words), so they sit at offsets 0, 2, 4 and 6.
-- \`CpuTimer0Regs\` (a timer) starts at \`0x0C00\`: \`TIM\` at offset 0, \`PRD\` at 2, \`TCR\` at 4.
+- \`CpuTimer0Regs\` (a timer) starts at \`0x0C00\`: \`TIM\` at offset 0, \`PRD\` at 2, \`TCR\` at 4. So \`TCR\` is at \`0x0C00\` + 4 = \`0x0C04\`.
 
 {{figure:memory-map}}
 
 Try it in the figure: pick a register and read its address off the strip, then click its bits and watch the \`.all\` value and the \`.bit\` field change together.
 
-TI's header files give every register a C name, so you never type addresses.
+TI (Texas Instruments) makes the chip and supplies header files that give every register a C name, so you never type addresses.
 
 ## Two views of the same bits
 \`\`\`c
 GpioDataRegs.GPASET.all = 0x00000800;    // the whole register at once
 GpioDataRegs.GPASET.bit.GPIO11 = 1;      // one named field
 \`\`\`
-Both lines do the same thing: bit 11 is \`0x800\`. \`.all\` is the full value. \`.bit.NAME\` is one **field**: a group of one or more bits with one meaning.
-
-## Protected registers
-Registers that could break the system if written by accident (pin configuration, clock settings and a few others) are **EALLOW-protected**. A write only takes effect between \`EALLOW;\` (enable allow) and \`EDIS;\` (disable). Outside that pair the write is silently ignored: no error, nothing happens.
-
-\`\`\`c
-EALLOW;
-GpioCtrlRegs.GPADIR.bit.GPIO22 = 1;   // protected: needs EALLOW
-EDIS;
-\`\`\`
-
-{{figure:eallow-lock}}
-
-Try it in the figure: run the write first, on its own, then again after \`EALLOW;\`.
+Both lines do the same thing: bit 11 is \`0x800\`. \`.all\` is the full value. \`.bit.NAME\` is one **field**: a group of one or more bits with one meaning. This is the union of chapter C: two names for the same memory.
 `,
       questions: [
         {
@@ -75,13 +63,13 @@ Try it in the figure: run the write first, on its own, then again after \`EALLOW
           why: "Bit 4 is worth 2^4 = 16 = 0x10. Writing 4 would set bit 2.",
         },
         {
-          prompt: "A program writes to an EALLOW-protected register without `EALLOW;`. What happens on the real chip?",
-          options: ["The program stops with an error", "The compiler refuses to build it", "The write is ignored and the program carries on", "The register is set to 0"],
-          answer: 2,
-          why: "Nothing warns you, which is what makes this bug hard to see on the bench. In this game the simulator tells you.",
+          prompt: "Which of these is a peripheral?",
+          options: ["A timer built into the chip", "A variable called `count` in your program", "The `while (1)` loop of `main`", "The USB cable to your PC"],
+          answer: 0,
+          why: "A peripheral is a hardware block inside the chip that the CPU controls through registers: the pins, the timers, the serial ports.",
         },
       ],
-      takeaway: "Register address = base + offset; `.all` is the whole value and `.bit.NAME` one field; protected registers need EALLOW ... EDIS.",
+      takeaway: "Register address = base + offset. `.all` is the whole value and `.bit.NAME` is one field of it.",
     },
     {
       id: "reg-address",
@@ -90,7 +78,7 @@ Try it in the figure: run the write first, on its own, then again after \`EALLOW
       goal: "Work out where three registers live in memory.",
       refs: [{ course: "L2" }, { trm: "3.8" }, { trm: "8.9" }],
       brief: `
-Each CPU timer has the same five registers. Offsets are in 16-bit words:
+The chip has three CPU timers, and each has the same five registers. What they do comes in chapter 4. Here only their places matter. Offsets are in 16-bit words:
 
 - \`TIM\` (counter, 32 bits): offset 0
 - \`PRD\` (period, 32 bits): offset 2
@@ -105,6 +93,8 @@ Base addresses: \`CpuTimer0Regs\` = \`0x0C00\`, \`CpuTimer1Regs\` = \`0x0C08\`, 
 {{figure:memory-map}}
 
 The figure draws these registers to scale for timer 0 and port A: use it to check how the offsets come about, then do the three below by the same rule.
+
+Add in hex the way you add in decimal, but a digit only carries when it passes F (fifteen): \`0x0C08\` + 4 is \`0x0C0C\`, because 8 + 4 is twelve and twelve is the digit C.
 
 Give each address in hex.
 `,
@@ -132,7 +122,7 @@ Change the bits so that:
 - the timer **runs**: \`TSS\` (timer stop status) = 0
 - the timer **interrupt is enabled**: \`TIE\` = 1. An interrupt lets the timer call one of your functions each time it finishes counting. Chapter 5 uses it.
 
-Leave every other bit at 0. Then look at the hex value: you will recognise it from the course starter code.
+Leave every other bit at 0. Then look at the hex value: the starter code of the labs writes exactly this number.
 `,
       reg: "CpuTimer0Regs.TCR",
       initial: 0x0010,
@@ -163,7 +153,7 @@ A **pin** is one of the chip's metal contacts. The first lines of \`main\` start
 - **LED1** is on GPIO22, in port A. Turn it on by writing the right hex mask to \`GpioDataRegs.GPASET.all\`.
 - **LED2** is on GPIO94, in port C (GPIO64 to GPIO95). Turn it on with \`GpioDataRegs.GPCSET.bit.GPIO94\`.
 
-For the mask: bit 22 as hex. 22 = 20 + 2, bit 20 is \`0x00100000\`, and two bits further left multiplies by 4. Or let C do it: \`1UL << 22\`. The \`UL\` makes the 1 a 32-bit value. A plain \`1\` is a 16-bit \`int\` and cannot be shifted that far.
+For the mask you need bit 22 as a 32-bit hex number. Bits 23 to 20 are the sixth hex digit from the right, and bit 22 is worth 4 inside that digit: \`0x00400000\`. Or let C do it: \`1UL << 22\`. The \`UL\` makes the 1 a 32-bit value. A plain \`1\` is a 16-bit \`int\` and cannot be shifted that far.
 
 Light LED1 and LED2 only. LED3 (GPIO95) shares port C with LED2 and must stay off.
 `,
@@ -192,8 +182,8 @@ ${LED_SETUP}
 }
 `,
       checks: [
-        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "Bit 22 is 0x00400000." },
-        { kind: "led", led: "LED2", at: 1.5, on: true, label: "LED2 is on" },
+        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "The value written to GPASET.all must have a 1 in bit 22 and nowhere else: `1UL << 22`, which is 0x00400000. Writing the number 22 sets other bits, and a plain `1 << 22` gives 0 on this chip." },
+        { kind: "led", led: "LED2", at: 1.5, on: true, label: "LED2 is on", hint: "GPIO94 is in port C: `GpioDataRegs.GPCSET.bit.GPIO94 = 1;`. A 0 written to a SET register does nothing." },
         { kind: "source", mustMatch: "GPASET\\s*\\.\\s*all\\s*\\|?=", label: "LED1 uses GPASET.all" },
         { kind: "source", mustMatch: "GPCSET\\s*\\.\\s*bit\\s*\\.\\s*GPIO94\\s*=", label: "LED2 uses GPCSET.bit.GPIO94" },
         { kind: "led", led: "LED3", at: 1.5, on: false, label: "LED3 stays off: only the bits you mean are written", hint: "GPIO95 is LED3. A write to GPCSET must have a 1 only in the bit of GPIO94." },
@@ -221,15 +211,23 @@ ${LED_SETUP}
       goal: "Find out why LED1 stays dark, and fix it.",
       refs: [{ trm: "3.6.1" }, { course: "L2" }],
       brief: `
-This program sets GPIO22 as an output by writing the direction register directly, then drives it high. It compiles, it runs, and LED1 stays off.
+## Protected registers
+Some registers could break the system if they were written by accident: pin configuration, speed settings and a few others. They are **EALLOW-protected**. A write only takes effect between \`EALLOW;\`, which unlocks them, and \`EDIS;\`, which locks them again. Outside that pair the write is silently ignored: no error, nothing happens.
 
-Run it and read the message under the editor. Then open the **Registers** tab and look at \`GpioCtrlRegs.GPADIR\`: is the bit really set?
+\`\`\`c
+EALLOW;
+GpioCtrlRegs.GPADIR.bit.GPIO22 = 1;   // protected: needs EALLOW
+EDIS;
+\`\`\`
 
 {{figure:eallow-lock}}
 
-The figure shows what happens to a write like this one: run the lines in different orders.
+Try it in the figure: run the write first, on its own, then again after \`EALLOW;\`.
 
-Fix the program so LED1 lights.
+## Your task
+This program makes GPIO22 an output by writing 1 to its bit in the direction register \`GPADIR\`, then drives the pin high. It compiles, it runs, and LED1 stays off.
+
+Run it and read the message under the editor. Then open the **Registers** tab and look at \`GpioCtrlRegs.GPADIR\`: is the bit really set? Fix the program so LED1 lights.
 `,
       kit: "robot",
       durationMs: 2,
@@ -265,9 +263,9 @@ Fix the program so LED1 lights.
 }
 `,
       checks: [
-        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
-        { kind: "reg", reg: "GpioCtrlRegs.GPADIR", field: "GPIO22", equals: 1, label: "GPADIR says GPIO22 is an output" },
-        { kind: "no-diagnostic", code: "eallow", label: "No write to a protected register was ignored" },
+        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "The pin only drives the LED once it is an output. Check the next test first." },
+        { kind: "reg", reg: "GpioCtrlRegs.GPADIR", field: "GPIO22", equals: 1, label: "GPADIR says GPIO22 is an output", hint: "The GPADIR write was ignored. `EALLOW;` must come before that line and `EDIS;` after it. Each is a statement on its own, with a semicolon and no brackets." },
+        { kind: "no-diagnostic", code: "eallow", label: "No write to a protected register was ignored", hint: "Put `EALLOW;` on the line before the GPADIR write, not after it." },
       ],
       bonus: [
         {
@@ -334,9 +332,9 @@ The names in TI's header files are a convenience. Underneath, \`GpioDataRegs.GPA
 *(volatile Uint32 *)0x7F02 = 0x00400000;   // same as GpioDataRegs.GPASET.all = 0x00400000;
 \`\`\`
 
-Read it from the inside out: take the number \`0x7F02\`, treat it as the address of a 32-bit value, and store to it. \`volatile\` tells the compiler that hardware is on the other end, so every access must really happen.
+Read it from the inside out: take the number \`0x7F02\`, treat it as the address of a 32-bit value, and store to it. \`Uint32\` is TI's older name for \`uint32_t\` (and \`Uint16\` for \`uint16_t\`). \`volatile\` tells the compiler that hardware is on the other end, so every access must really happen.
 
-The starter wraps this in a macro, \`REG32(address)\`.
+The starter wraps this in a \`#define\` with an argument: wherever you write \`REG32(0x7F02)\`, the compiler pastes in the long expression with \`0x7F02\` as the address.
 
 Light **LED1** (GPIO22) and **LED2** (GPIO94) without the name \`GpioDataRegs\`. You need two facts: \`GpioDataRegs\` starts at \`0x7F00\`, and each port has DAT, SET, CLEAR and TOGGLE (two words each), port A first, then B, then C.
 `,
@@ -493,7 +491,7 @@ The **Registers** tab shows \`GpioCtrlRegs.GPBMUX1\` and \`GpioCtrlRegs.GPBDIR\`
 - \`setField(address, shift, width, value)\`: stores \`value\` in the field that is \`width\` bits wide and starts at bit \`shift\` of the 32-bit register at \`address\`. No other bit of the register may change. A value too wide for the field must not spill into its neighbours.
 - \`getField(address, shift, width)\`: returns that field, moved down to bit 0.
 
-\`main\` uses them on four real registers. Some are EALLOW-protected, so \`setField\` has to deal with that. \`width\` goes from 1 to 32.
+\`main\` uses them on four real registers. Some are EALLOW-protected, so \`setField\` has to deal with that. \`width\` goes from 1 to 32. \`Uint16\` and \`Uint32\` are TI's older names for \`uint16_t\` and \`uint32_t\`.
 
 The addresses used: \`GPAMUX2\` 0x7C08, \`GPADIR\` 0x7C0A, \`CpuTimer0Regs.PRD\` 0x0C02, \`GPASET\` 0x7F02.
 `,

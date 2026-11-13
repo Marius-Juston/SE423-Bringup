@@ -18,36 +18,29 @@ export const ch04: Chapter = {
       id: "tmr-brief",
       kind: "brief",
       title: "A counter that keeps time",
-      goal: "Learn how a CPU timer turns the 200 MHz clock into a period you choose.",
+      goal: "Learn how a CPU timer turns the 200 MHz clock into a period you choose, then answer three questions.",
       refs: [{ trm: "3.8" }, { trm: "3.7" }, { course: "L2" }, { course: "Lab 1" }],
       brief: `
-A timer is a **counter driven by a clock**. The chip's system clock, SYSCLK, runs at 200 MHz, so one clock cycle lasts **5 ns**. Counting cycles is measuring time.
+\`DELAY_US\` keeps the CPU busy doing nothing, and the time your own code takes is added on top. A **timer** keeps time on its own, in hardware, while your program does other things.
+
+A timer is a **counter driven by a clock**. The chip's system clock, called SYSCLK, beats 200 million times per second (200 MHz). One beat, a **clock cycle**, lasts 1 / 200 000 000 s = **5 ns**. Counting cycles is measuring time.
 
 ## How a CPU timer counts
-The chip has three identical 32-bit timers. Each has a counter \`TIM\` and a period register \`PRD\`:
+The chip has three identical 32-bit timers: \`CpuTimer0Regs\`, \`CpuTimer1Regs\` and \`CpuTimer2Regs\`. Each has a counter register \`TIM\` and a period register \`PRD\`:
 
 1. \`TIM\` is loaded with the value in \`PRD\`.
-2. \`TIM\` counts **down** by one on every tick.
-3. When \`TIM\` reaches 0, the timer sets its flag \`TIF\`, asks for an interrupt if that is enabled, and loads \`TIM\` from \`PRD\` again.
+2. \`TIM\` counts **down** by one on every clock cycle.
+3. When \`TIM\` reaches 0, the timer sets its **flag** \`TIF\`. A flag is one bit that hardware sets to say "this happened". Then it loads \`TIM\` from \`PRD\` again.
 
-Counting from \`PRD\` down to 0 and reloading takes \`PRD + 1\` ticks.
+Counting from \`PRD\` down to 0 and reloading takes \`PRD + 1\` cycles:
+
+**Period = (PRD + 1) x 5 ns**
+
+Example: \`PRD\` = 1999 gives 2000 cycles x 5 ns = 10 000 ns = 10 us.
 
 {{figure:timer-sawtooth}}
 
-Try it in the figure: change \`PRD\` and the prescaler and watch the period follow the formula, then stop the timer, reload it and clear the flag.
-
-## Two stages
-Before the 32-bit counter sits a 16-bit **prescaler**. Its divide-down value is split over two 8-bit fields, \`TDDRH\` (high half, in register \`TPRH\`) and \`TDDR\` (low half, in \`TPR\`). The counter gets one tick every \`TDDRH:TDDR + 1\` clock cycles.
-
-- The prescaler sets **how long one tick is**.
-- \`PRD\` sets **how many ticks** make a period.
-
-**Period = (PRD + 1) x (TDDRH:TDDR + 1) x 5 ns**
-
-With the prescaler at 0, a tick is one clock cycle, and the period is simply (PRD + 1) x 5 ns.
-
-## Three timers
-\`CpuTimer0Regs\`, \`CpuTimer1Regs\` and \`CpuTimer2Regs\` have the same registers. Timer 2 is reserved for a real-time operating system when one is used. The course projects do not use one, so all three are yours.
+Try it in the figure: change \`PRD\` and watch the period follow the formula. The figure also has a prescaler. Leave it at 0 for now.
 
 ## The helper function
 You rarely write \`PRD\` yourself. TI's function does the arithmetic:
@@ -56,22 +49,22 @@ InitCpuTimers();                          // once, before any ConfigCpuTimer
 ConfigCpuTimer(&CpuTimer0, 200, 10000);   // 200 MHz clock, 10000 microseconds
 CpuTimer0Regs.TCR.all = 0x4000;           // start the timer
 \`\`\`
-The second argument is the clock frequency in **MHz**, the third is the period in **microseconds**. The function sets \`PRD\` = frequency x period - 1 (here 200 x 10000 - 1 = 1999999), sets the prescaler to 0, and leaves the timer **stopped**. The last line starts it.
+\`CpuTimer0\` is a struct variable in which TI's code keeps notes about timer 0, and \`&CpuTimer0\` passes its address. The second argument is the clock frequency in **MHz**, the third is the period in **microseconds**. The function sets \`PRD\` = frequency x period - 1 (here 200 x 10000 - 1 = 1999999) and leaves the timer **stopped**. The last line starts it. You built that value in chapter 1: bit 14 on, everything else 0.
 `,
       questions: [
         {
-          prompt: "What does the prescaler (`TDDRH:TDDR`) decide?",
+          prompt: "What happens when the counter `TIM` reaches 0?",
           options: [
-            "How many ticks make one period",
-            "How many clock cycles make one tick of the counter",
-            "Whether the timer counts up or down",
-            "Which of the three timers is used",
+            "The timer stops until the program starts it again",
+            "`TIM` keeps counting down into negative numbers",
+            "The program is restarted",
+            "The flag `TIF` is set and `TIM` is loaded from `PRD` again",
           ],
-          answer: 1,
-          why: "The counter moves once every TDDRH:TDDR + 1 clock cycles. The number of ticks per period comes from PRD.",
+          answer: 3,
+          why: "The timer never stops by itself. It marks the end of each period by setting TIF, reloads and keeps counting.",
         },
         {
-          prompt: "The prescaler is 0 and `PRD` = 9. How long is one period?",
+          prompt: "`PRD` = 9. How long is one period?",
           options: ["9 clock cycles (45 ns)", "10 clock cycles (50 ns)", "11 clock cycles (55 ns)", "5 ns"],
           answer: 1,
           why: "The counter goes 9, 8, ... 1, 0 and then reloads: PRD + 1 = 10 cycles of 5 ns.",
@@ -88,7 +81,7 @@ The second argument is the clock frequency in **MHz**, the third is the period i
           why: "Frequency in MHz (200), then the period in microseconds: 20 ms = 20000 us. This is the line in the Lab 1 starter code.",
         },
       ],
-      takeaway: "Period = (PRD + 1) x (prescaler + 1) x 5 ns. ConfigCpuTimer takes MHz and microseconds and leaves the timer stopped.",
+      takeaway: "Period = (PRD + 1) x 5 ns. ConfigCpuTimer takes MHz and microseconds and leaves the timer stopped.",
     },
     {
       id: "tmr-period",
@@ -97,11 +90,13 @@ The second argument is the clock frequency in **MHz**, the third is the period i
       goal: "Convert between a period in time and the value in the period register.",
       refs: [{ trm: "3.8" }, { course: "Lab 1" }, { course: "Lab 2" }],
       brief: `
-In this level the prescaler is 0, so the counter ticks on every clock cycle of **5 ns** (200 MHz).
+The counter moves on every clock cycle of **5 ns** (200 MHz). Three ways to say the same thing:
 
 - Period = (PRD + 1) x 5 ns
-- PRD = period x 200 000 000 - 1, with the period in seconds
-- \`ConfigCpuTimer(&CpuTimer0, 200, us)\` writes PRD = 200 x us - 1
+- PRD = (period / 5 ns) - 1. Example: 10 us is 10 000 ns, and 10 000 / 5 = 2000 cycles, so PRD = 1999.
+- \`ConfigCpuTimer(&CpuTimer0, 200, us)\` writes PRD = 200 x us - 1, because 1 us is 200 cycles. Example: 10 us gives 200 x 10 - 1 = 1999, the same number.
+
+Keep the units straight: 1 s = 1000 ms, 1 ms = 1000 us, 1 us = 1000 ns.
 
 How long can a period be? \`PRD\` is a 32-bit unsigned number, so its largest value is 2^32 - 1 = 4294967295.
 `,
@@ -120,7 +115,7 @@ How long can a period be? \`PRD\` is a 32-bit unsigned number, so its largest va
           unit: "s",
           answer: 21.47,
           tolPct: 1,
-          why: "2^32 x 5 ns = 21.47 s. For anything longer, use the prescaler or count periods in a variable.",
+          why: "2^32 x 5 ns = 21.47 s. For anything longer, count periods in a variable or use the prescaler of the next level.",
         },
       ],
       hints: [
@@ -128,7 +123,7 @@ How long can a period be? \`PRD\` is a 32-bit unsigned number, so its largest va
         "1 ms = 1 000 000 ns, and 1 000 000 / 5 = 200000 cycles.",
         "For the longest period: 4294967296 cycles x 5 ns. Divide 4294967296 by 200 000 000.",
       ],
-      takeaway: "At 200 MHz with no prescaler, a CPU timer can time anything from 5 ns to about 21.5 s.",
+      takeaway: "At 200 MHz a CPU timer can time anything from 5 ns to about 21.5 s.",
     },
     {
       id: "tmr-prescale",
@@ -137,9 +132,16 @@ How long can a period be? \`PRD\` is a 32-bit unsigned number, so its largest va
       goal: "Use the prescaler to make the counter tick in convenient units.",
       refs: [{ trm: "3.8" }, { course: "L2" }],
       brief: `
-The counter ticks once every \`TDDRH:TDDR + 1\` clock cycles. To make a tick N clock cycles long, write **N - 1** to the prescaler.
+So far \`TIM\` moved on every clock cycle, and the longest period was about 21 s. In front of the counter sits a second, smaller counter, the **prescaler**. It lets one step of \`TIM\`, called a **tick**, last several clock cycles:
 
-\`TDDRH:TDDR\` is one 16-bit number stored in two places: the low 8 bits in \`CpuTimer0Regs.TPR.bit.TDDR\`, the high 8 bits in \`CpuTimer0Regs.TPRH.bit.TDDRH\`.
+- The prescaler sets **how long one tick is**: its value + 1 clock cycles. To make a tick N cycles long, write **N - 1**.
+- \`PRD\` sets **how many ticks** make a period.
+
+The prescaler value is one 16-bit number stored in two 8-bit fields: the low byte in \`CpuTimer0Regs.TPR.bit.TDDR\`, the high byte in \`CpuTimer0Regs.TPRH.bit.TDDRH\`. The manual writes the pair as \`TDDRH:TDDR\`.
+
+{{figure:timer-sawtooth}}
+
+Try it in the figure: raise the prescaler and watch each step of the counter get longer.
 
 **Period = (PRD + 1) x (TDDRH:TDDR + 1) x 5 ns**
 
@@ -157,10 +159,9 @@ Example: with the prescaler at 199, a tick is 200 clock cycles. \`PRD\` then cou
         },
         {
           id: "c",
-          label: "TDDRH:TDDR for a tick of 0.1 ms, as hex",
-          format: "hex",
-          answer: 0x4e1f,
-          why: "0.1 ms is 20000 clock cycles, so the prescaler is 19999 = 0x4E1F: TDDRH = 0x4E and TDDR = 0x1F.",
+          label: "TDDRH:TDDR for a tick of 0.1 ms",
+          answer: 19999,
+          why: "0.1 ms is 100 000 ns, which is 20000 clock cycles, so the prescaler is 19999. In hex that is 0x4E1F: the high byte 0x4E goes in TDDRH and the low byte 0x1F in TDDR.",
         },
         {
           id: "d",
@@ -173,7 +174,7 @@ Example: with the prescaler at 199, a tick is 200 clock cycles. \`PRD\` then cou
       ],
       hints: [
         "A tick lasts (prescaler + 1) x 5 ns.",
-        "For a 0.1 ms tick: 100 000 ns / 5 ns = 20000 cycles, so write 19999. Convert that to hex.",
+        "For a 0.1 ms tick: 100 000 ns / 5 ns = 20000 cycles, and the prescaler is one less.",
         "Longest: 4294967296 x 65536 x 5 ns = 1 407 375 s. Divide by 86400 s per day.",
       ],
       takeaway: "The prescaler trades resolution for range: a longer tick gives longer periods, in coarser steps.",
@@ -188,14 +189,14 @@ Example: with the prescaler at 199, a tick is 200 clock cycles. \`PRD\` then cou
 \`TCR\` is the control register of a CPU timer. Its fields:
 
 - \`TSS\` (bit 4), timer stop status: 1 stops the timer, 0 lets it run. After reset it is 0, so the timers run from power-up.
-- \`TRB\` (bit 5), timer reload: writing 1 loads \`TIM\` from \`PRD\` (and restarts the prescaler). It always reads back as 0.
+- \`TRB\` (bit 5), timer reload: writing 1 loads \`TIM\` from \`PRD\` at once (and restarts the prescaler). It always reads back as 0.
 - \`TIE\` (bit 14): 1 enables the timer's interrupt request.
 - \`TIF\` (bit 15): the flag. The timer sets it when the counter reaches 0. You clear it by **writing 1** to it. Writing 0 does nothing.
-- \`FREE\` and \`SOFT\` (bits 11 and 10) only matter while debugging: they choose whether the timer keeps running when the program halts at a breakpoint.
+- \`FREE\` and \`SOFT\` (bits 11 and 10) only matter when a debugger pauses the program. Leave them at 0.
 
 {{figure:timer-sawtooth}}
 
-Try it in the figure: stop the timer with \`TSS\`, step the clock, then write \`TRB\` and see where the counter starts again.
+Try it in the figure: stop the timer with **TSS = 1, stopped**, press **+1 clock cycle** to see that it no longer counts, then press **write TRB = 1** and see where the counter starts again.
 
 Right now the timer is **running** with its interrupt enabled (\`0x4000\`). You are about to change its period, so build the value to write that:
 
@@ -290,16 +291,16 @@ ${out(22)}
           led: "LED1",
           periodMs: 200,
           label: "LED1 blinks with a 200 ms period",
-          hint: "If the LED changes far too fast, the flag is not being cleared. If it never changes, check that the timer was started.",
+          hint: "If the LED changes far too fast (a period near 0 ms), the flag is not being cleared: write 1 to TIF, not 0. If it never changes, check that the timer was started and that the toggle line is inside the if.",
         },
         {
           kind: "reg",
           reg: "CpuTimer0Regs.PRD",
           equals: 19999999,
           label: "Timer 0 is set to 100 ms (PRD = 19999999)",
-          hint: "100 ms is 100000 microseconds, and the clock is 200 MHz.",
+          hint: "`ConfigCpuTimer(&CpuTimer0, 200, 100000);`: 200 for the 200 MHz clock, then 100 ms written in microseconds. `InitCpuTimers();` must stay on the line before it, or ConfigCpuTimer writes nothing.",
         },
-        { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", equals: 0, label: "Timer 0 is running" },
+        { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", equals: 0, label: "Timer 0 is running", hint: "ConfigCpuTimer leaves the timer stopped. TODO 2 starts it: `CpuTimer0Regs.TCR.all = 0x4000;`, after the ConfigCpuTimer line." },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the waiting, not DELAY_US" },
       ],
       inspect: ["CpuTimer0Regs.TIM", "CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR"],
@@ -398,7 +399,7 @@ ${out(22)}
       goal: "GPIO22 should switch every 1 ms, but after the first period it switches on every pass of the loop. Fix it.",
       refs: [{ trm: "3.8" }, { course: "L2" }],
       brief: `
-This program should produce a **500 Hz** square wave on GPIO22 (LED1): the pin switches every **1 ms**, a period of 2 ms. That is too fast to see, so use the scope. Run it and look at the trace: nothing happens for the first 1 ms, and then the pin switches as fast as the loop can run.
+This program should produce a **500 Hz** square wave on GPIO22 (LED1). A square wave is a signal that switches between low and high at a steady rate. Here the pin switches every **1 ms**, a period of 2 ms. That is too fast to see, so use the scope. Run it and look at the trace: nothing happens for the first 1 ms, and then the pin switches as fast as the loop can run.
 
 So the timer period is right, and the flag does get set. Look at what happens to the flag afterwards.
 
@@ -476,9 +477,9 @@ With \`DELAY_US\`, two different blink rates in one loop is awkward. With timers
 
 Poll both flags in the same \`while (1)\` loop. Each timer has its own registers: \`CpuTimer0Regs\` and \`CpuTimer1Regs\`.
 
-Set the timers up either way:
-- with \`InitCpuTimers();\`, \`ConfigCpuTimer(...)\` and \`TCR.all = 0x4000;\`, or
-- directly: stop the timer (\`TCR.bit.TSS = 1\`), write \`PRD.all\`, clear \`TPR.all\` and \`TPRH.all\`, reload (\`TCR.bit.TRB = 1\`), start (\`TCR.bit.TSS = 0\`).
+Set the timers up as before: \`InitCpuTimers();\` once, then for each timer \`ConfigCpuTimer(...)\` and \`TCR.all = 0x4000;\`.
+
+For the two stars, do it without the helpers. For each timer: stop it (\`TCR.bit.TSS = 1\`), write \`PRD.all\`, set the prescaler to 0 (\`TPR.all = 0\` and \`TPRH.all = 0\`), reload (\`TCR.bit.TRB = 1\`), start (\`TCR.bit.TSS = 0\`).
 
 Do not use \`DELAY_US\`.
 `,
@@ -543,14 +544,14 @@ ${out(34)}
           led: "LED1",
           periodMs: 200,
           label: "LED1 blinks with a 200 ms period",
-          hint: "LED1 follows CPU Timer 0, which needs a period of 100 ms.",
+          hint: "LED1 follows CPU Timer 0, which needs a period of 100 ms. Each flag needs its own if, and each if must clear its own timer's TIF.",
         },
         {
           kind: "blink",
           led: "RED",
           periodMs: 500,
           label: "The red LED blinks with a 500 ms period",
-          hint: "The red LED follows CPU Timer 1, which needs a period of 250 ms. GPIO34 is in port B.",
+          hint: "The red LED follows CPU Timer 1, which needs a period of 250 ms: `ConfigCpuTimer(&CpuTimer1, 200, 250000);` and `CpuTimer1Regs.TCR.all = 0x4000;`. Test and clear `CpuTimer1Regs.TCR.bit.TIF`. GPIO34 is in port B.",
         },
         {
           kind: "reg",
@@ -705,7 +706,7 @@ Lab 1 does the same with \`CpuTimer2.InterruptCount\` and the \`%\` operator. \`
 ## Your task
 Use **CPU Timer 0 only**, with a period of **1 ms**.
 
-- \`ms\` (a global \`Uint32\`) goes up by 1 on every period.
+- \`ms\` (a global \`Uint32\`, TI's older name for \`uint32_t\`) goes up by 1 on every period.
 - **LED1** (GPIO22) is a heartbeat: lit while \`ms % 500\` is less than 50, dark otherwise. That is a 50 ms flash every half second.
 - **LED2** (GPIO94) changes state every 100 ms, when \`ms % 100\` is 0.
 
@@ -1097,7 +1098,7 @@ ${INIT}
       goal: "Dim LED1 to 37 % brightness: switch it at 1 kHz, on for 370 us and off for 630 us, timed by a CPU timer.",
       refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
       brief: `
-An LED that is switched on and off faster than the eye can follow looks dimmer, in proportion to the share of time it is on. That share is the **duty cycle**. This is pulse width modulation, done by hand. Later the ePWM peripheral does it in hardware.
+An LED that is switched on and off faster than the eye can follow looks dimmer, in proportion to the share of time it is on. That share is the **duty cycle**. This is pulse width modulation (PWM), done by hand. In chapter 9 a peripheral does it in hardware.
 
 ## Your task
 Drive **LED1** (GPIO22) with a period of exactly **1 ms**:

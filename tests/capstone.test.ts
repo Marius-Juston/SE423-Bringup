@@ -41,6 +41,23 @@ describe("capstone chain", () => {
     });
   }
 
+  it("runs every code level with unequal motors", () => {
+    for (const l of code) expect(l.stimuli, l.id).toContainEqual({ at: 0, set: "MOTOR_RIGHT_GAIN", value: 0.88 });
+  });
+
+  it("gives the straight-line star of cap-steer only to a program with the steering coupling", () => {
+    const l = byId.get("cap-steer")!;
+    // Two separate PI loops: no Kturn * eSteer term in the wheel errors.
+    const uncoupled = l.solution
+      .replace("eLeft = vref - vLeft + Kturn * eSteer;", "eLeft = vref + 0.5 * turn - vLeft;")
+      .replace("eRight = vref - vRight - Kturn * eSteer;", "eRight = vref - 0.5 * turn - vRight;");
+    expect(uncoupled).not.toBe(l.solution);
+    const r = runProgram({ kit: l.kit, source: uncoupled, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks, bonus: l.bonus });
+    expect(r.passed).toBe(true);
+    const star = r.bonus.find((b) => b.label.includes("steering coupling"))!;
+    expect(star.pass).toBe(false);
+  });
+
   it("keeps every solution line within 100 characters", () => {
     for (const l of code) for (const line of l.solution.split("\n")) expect(line.length, `${l.id}: ${line}`).toBeLessThanOrEqual(100);
   });

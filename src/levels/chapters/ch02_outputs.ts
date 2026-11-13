@@ -107,7 +107,7 @@ Try it in the figure: drag the GPIO number across a port boundary and watch the 
       refs: [{ course: "L3" }, { trm: "8.2" }, { trm: "8.3" }, { trm: "8.7" }],
       brief: `
 ## Three settings per pin
-1. **Mux** (the pin multiplexer, a selector switch): the pin is a plain GPIO, or it carries the signal of one of the chip's peripherals (PWM, serial port...). Mux position 0 is plain GPIO.
+1. **Mux** (the pin multiplexer, a selector switch): the pin is a plain GPIO, or it carries the signal of one of the chip's peripherals (a timer output, a serial port and so on). Mux position 0 is plain GPIO.
 2. **Direction**: input (0, the state after reset) or output (1). One bit per pin in the \`GPxDIR\` register, where x is the port letter.
 3. **Output level**: the value the pin drives when it is an output. The chip keeps it in one bit per pin, the **output latch**.
 
@@ -127,13 +127,6 @@ GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;  // flip
 You always write a **1**: to SET to go high, to CLEAR to go low, to TOGGLE to flip. Writing 0 to these registers does nothing.
 
 \`GPxDAT\` reads the voltage on the pins. That is how a program reads an input. Do not use it to change outputs. A later level shows why.
-
-## Lit by a 1 or by a 0?
-That depends on how the LED is wired. The LEDs on the green robot board sit between the pin and 0 V, so they light when the pin is **high**. The two LEDs on the LaunchPad itself (blue on GPIO31, red on GPIO34) sit between 3.3 V and the pin, so they light when the pin is **low**.
-
-{{figure:led-wiring}}
-
-Try it in the figure: switch both pins between high and low and watch where current flows.
 `,
       questions: [
         {
@@ -154,13 +147,13 @@ Try it in the figure: switch both pins between high and low and watch where curr
           why: "Writing 0 to a SET register has no effect. To drive the pin low, write 1 to GPACLEAR.",
         },
         {
-          prompt: "The LaunchPad's red LED (GPIO34, port B) lights when its pin is low. Which line turns it **on**?",
-          options: ["`GpioDataRegs.GPBSET.bit.GPIO34 = 1;`", "`GpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;`", "`GpioDataRegs.GPBTOGGLE.bit.GPIO34 = 0;`", "`GpioDataRegs.GPBCLEAR.bit.GPIO34 = 0;`"],
-          answer: 1,
-          why: "CLEAR drives the pin low, and low lights this LED. A 0 written to SET, CLEAR or TOGGLE does nothing.",
+          prompt: "GPIO94 (port C) is an output. Which line drives it **low**?",
+          options: ["`GpioDataRegs.GPCSET.bit.GPIO94 = 0;`", "`GpioDataRegs.GPCCLEAR.bit.GPIO94 = 0;`", "`GpioDataRegs.GPACLEAR.bit.GPIO94 = 1;`", "`GpioDataRegs.GPCCLEAR.bit.GPIO94 = 1;`"],
+          answer: 3,
+          why: "CLEAR drives the pin low, it needs a 1, and GPIO94 belongs to port C. A 0 written to SET, CLEAR or TOGGLE does nothing.",
         },
       ],
-      takeaway: "To drive a pin: mux to GPIO, direction to output, then write 1 to SET, CLEAR or TOGGLE. Whether high or low lights an LED depends on its wiring.",
+      takeaway: "To drive a pin: mux to GPIO, direction to output, then write 1 to SET, CLEAR or TOGGLE.",
     },
     {
       id: "out-dir",
@@ -193,12 +186,12 @@ Make **GPIO22** (LED1) and **GPIO31** (the LaunchPad's blue LED) outputs. Leave 
       brief: `
 LED1 on the robot board is connected to **GPIO22** and lights when the pin is high.
 
-The starter already has the two lines every course program begins with: \`InitSysCtrl()\` starts the chip's clock, and \`InitGpio()\` puts every pin in its reset state, a plain GPIO input. The \`while (1) {}\` at the end keeps the program running: on a microcontroller \`main\` must never return.
+The starter already has the two lines every course program begins with. \`InitSysCtrl()\` starts the chip's **clock**, the steady beat that sets how fast the chip runs. \`InitGpio()\` puts every pin in its reset state, a plain GPIO input. The \`while (1) {}\` at the end keeps the program running: on a microcontroller \`main\` must never return.
 
 Three steps, each one line:
 1. Select the GPIO function: \`GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, 0);\`
 2. Make the pin a push-pull output: \`GPIO_SetupPinOptions(pin, GPIO_OUTPUT, GPIO_PUSHPULL);\`
-3. Drive it high through the SET register of its port.
+3. Drive it high through the SET register of its port: \`GpioDataRegs.GPxSET.bit.GPIOn = 1;\` with the port letter in place of x and the pin number in place of n.
 
 Press **Run** to watch the board, and **Run tests** when the LED is on.
 `,
@@ -229,12 +222,12 @@ ${out(22)}
 }
 `,
       checks: [
-        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
-        { kind: "reg", reg: "GpioCtrlRegs.GPADIR", field: "GPIO22", equals: 1, label: "GPIO22 is an output" },
+        { kind: "reg", reg: "GpioCtrlRegs.GPADIR", field: "GPIO22", equals: 1, label: "GPIO22 is an output", hint: "Step 2 is missing or names another pin: `GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);`" },
+        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "If GPIO22 is an output, look at step 3: write a 1 (not a 0) to GPIO22 in GPASET. Port A, because 22 is below 32." },
         { kind: "no-dat-write", label: "The pin is driven through SET, not DAT" },
       ],
       hints: [
-        "The two helper calls are written out in the task, with `pin` in place of 22.",
+        "The two helper calls are written out in the task. Type them with 22 in place of `pin`.",
         "GPIO22 is in port A, so the register is GpioDataRegs.GPASET.",
         "`GpioDataRegs.GPASET.bit.GPIO22 = 1;`",
       ],
@@ -255,7 +248,7 @@ The robot board's five LEDs:
 - LED4: GPIO97
 - LED5: GPIO111
 
-Set up **all five** as outputs. Turn LED1, LED3 and LED5 on. Make sure LED2 and LED4 are off: drive them low on purpose instead of relying on how they happen to start.
+These LEDs light when their pin is high. Set up **all five** as outputs, each with the two helper calls of the last level. Turn LED1, LED3 and LED5 on. Make sure LED2 and LED4 are off: drive them low on purpose instead of relying on how they happen to start.
 
 Watch the port letters. These five pins are in three different ports.
 `,
@@ -292,9 +285,9 @@ ${out(111)}
       checks: [
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
         { kind: "pin", pin: 94, at: 1.5, level: 0, label: "LED2 is driven low (off)", hint: "LED2 must be an output that is driving low, not an input left alone." },
-        { kind: "led", led: "LED3", at: 1.5, on: true, label: "LED3 is on" },
-        { kind: "pin", pin: 97, at: 1.5, level: 0, label: "LED4 is driven low (off)" },
-        { kind: "led", led: "LED5", at: 1.5, on: true, label: "LED5 is on" },
+        { kind: "led", led: "LED3", at: 1.5, on: true, label: "LED3 is on", hint: "GPIO95 is in port C: both helper calls with 95, then `GpioDataRegs.GPCSET.bit.GPIO95 = 1;`." },
+        { kind: "pin", pin: 97, at: 1.5, level: 0, label: "LED4 is driven low (off)", hint: "GPIO97 is in port D: make it an output, then `GpioDataRegs.GPDCLEAR.bit.GPIO97 = 1;`." },
+        { kind: "led", led: "LED5", at: 1.5, on: true, label: "LED5 is on", hint: "GPIO111 is in port D (111 / 32 = 3), so the register is GPDSET." },
         { kind: "reg", reg: "GpioCtrlRegs.GPCDIR", field: "GPIO94", equals: 1, label: "LED2's pin is an output" },
         { kind: "reg", reg: "GpioCtrlRegs.GPDDIR", field: "GPIO97", equals: 1, label: "LED4's pin is an output" },
         { kind: "no-dat-write", label: "Outputs are changed through SET and CLEAR" },
@@ -316,9 +309,9 @@ ${out(111)}
       goal: "The LaunchPad's red LED should be on and the blue one off. Fix the code.",
       refs: [{ course: "Lab 1" }, { course: "L3" }],
       brief: `
-The author of this program wanted the **red** LaunchPad LED on and the **blue** one off. It does the opposite.
+Does a 1 or a 0 light an LED? That depends on how it is wired. The LEDs on the green robot board sit between the pin and ground (0 V), so they light when the pin is **high**. The LaunchPad is the small red board that carries the chip. Its two own LEDs sit between 3.3 V and the pin, so current flows, and the LED lights, when the pin is **low**. Such a signal is called **active low**.
 
-The LaunchPad's own LEDs are connected between 3.3 V and the pin, so current flows, and the LED lights, when the pin is **low**.
+The author of this program wanted the **red** LaunchPad LED on and the **blue** one off. It does the opposite.
 
 {{figure:led-wiring}}
 
@@ -383,7 +376,7 @@ ${out(34)}
       goal: "LED1 should be on and the blue LED should be on. One of them is not. Fix it the right way.",
       refs: [{ trm: "8.3" }, { course: "L2" }, { course: "Lab 2" }],
       brief: `
-This program changes two pins of port A through the data register \`GPADAT\`, one after the other. Only the second change survives.
+This program changes two pins of port A through the data register \`GPADAT\`, one after the other. Only the second change survives. (The \`DELAY_US(100);\` line near the top only waits 100 microseconds. Leave it.)
 
 Why: a \`.bit\` write cannot change one bit on its own. The CPU **reads** the whole register, changes one bit, and **writes** the whole register back. \`GPADAT\` reads the actual pin levels, and a pin needs a moment to follow a change. The second statement reads port A while GPIO22 still shows its old level, and writes that old level back.
 
@@ -404,7 +397,7 @@ ${INIT}
 ${out(22)}
 ${out(31)}
     GpioDataRegs.GPASET.bit.GPIO31 = 1;     // blue LED off to start with
-    DELAY_US(100);
+    DELAY_US(100);                          // wait 100 microseconds
 
     // LED1 on
     GpioDataRegs.GPADAT.bit.GPIO22 = 1;
@@ -422,7 +415,7 @@ ${INIT}
 ${out(22)}
 ${out(31)}
     GpioDataRegs.GPASET.bit.GPIO31 = 1;     // blue LED off to start with
-    DELAY_US(100);
+    DELAY_US(100);                          // wait 100 microseconds
 
     // LED1 on
     GpioDataRegs.GPASET.bit.GPIO22 = 1;
@@ -435,8 +428,8 @@ ${out(31)}
 `,
       checks: [
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
-        { kind: "led", led: "BLUE", at: 1.5, on: true, label: "The blue LED is on" },
-        { kind: "no-dat-write", label: "No output is changed through GPADAT" },
+        { kind: "led", led: "BLUE", at: 1.5, on: true, label: "The blue LED is on", hint: "This LED lights when GPIO31 is low: write a 1 to GPIO31 in GPACLEAR." },
+        { kind: "no-dat-write", label: "No output is changed through GPADAT", hint: "Both GPADAT lines must go: one becomes a GPASET write, the other a GPACLEAR write." },
       ],
       bonus: [
         { kind: "source", mustNotMatch: "DELAY_US[\\s\\S]*DELAY_US", label: "No extra delay: the two changes stay back to back" },
@@ -460,7 +453,7 @@ Make **LED1** (GPIO22) blink with a period of **200 ms**: 100 ms on, 100 ms off,
 
 The **red LaunchPad LED** (GPIO34, lit when low) must do the opposite: on while LED1 is off.
 
-For the wait, use \`DELAY_US(microseconds);\`. It simply keeps the CPU busy for that long, which is fine for a first program. The next chapters replace it with a timer, so the CPU is free to do other work.
+For the wait, use \`DELAY_US(microseconds);\`, for example \`DELAY_US(500000);\` for half a second. Remember 1 ms is 1000 microseconds. It simply keeps the CPU busy for that long, which is fine for a first program. The next chapters replace it with a timer, so the CPU is free to do other work.
 
 Think about the starting levels: if both pins start high and you toggle both every 100 ms, what do the two LEDs do?
 `,
@@ -494,8 +487,8 @@ ${out(34)}
 }
 `,
       checks: [
-        { kind: "blink", led: "LED1", periodMs: 200, from: 50, label: "LED1 blinks with a 200 ms period" },
-        { kind: "blink", led: "RED", periodMs: 200, from: 50, label: "The red LED blinks with a 200 ms period" },
+        { kind: "blink", led: "LED1", periodMs: 200, from: 50, label: "LED1 blinks with a 200 ms period", hint: "One period is on plus off: toggle every 100 ms, so `DELAY_US(100000);`. DELAY_US counts microseconds, not milliseconds. Type the number out: `100 * 1000` overflows a 16-bit int. The toggle and the delay must both be inside the `while (1)` braces." },
+        { kind: "blink", led: "RED", periodMs: 200, from: 50, label: "The red LED blinks with a 200 ms period", hint: "GPIO34 is in port B: set it up as an output and toggle it with GPBTOGGLE in the same loop." },
         { kind: "opposite", a: "LED1", b: "RED", from: 60, to: 990, label: "Exactly one of the two LEDs is lit at any time", hint: "LED1 lights when its pin is high, the red LED when its pin is low." },
         { kind: "no-dat-write", label: "Outputs are changed through SET, CLEAR or TOGGLE" },
       ],
@@ -658,7 +651,7 @@ Every program so far called TI's two helpers. Now write them.
 - \`myPinMux(pin, muxPosition)\` selects one of the 16 mux positions. The **lower two bits** of the position go into the pin's 2-bit field of \`GPxMUX1\` (pins 0 to 15 of the port) or \`GPxMUX2\` (pins 16 to 31). The **upper two bits** go into the same field of \`GPxGMUX1\` or \`GPxGMUX2\`. The fields of other pins must not change.
 - \`myMakeOutput(pin)\` sets the pin's bit in \`GPxDIR\`.
 
-Both must work for any pin of any port, from the pin number alone. The TI helpers are not allowed.
+Both must work for any pin of any port, from the pin number alone. The TI helpers are not allowed. \`Uint16\` and \`Uint32\` are TI's older names for \`uint16_t\` and \`uint32_t\`.
 
 The reference manual asks for an order when the group mux changes: first set the pin's \`GPxMUX\` field to 0, then write \`GPxGMUX\`, then write the final \`GPxMUX\` value. Otherwise the pin is briefly connected to a signal nobody asked for.
 
