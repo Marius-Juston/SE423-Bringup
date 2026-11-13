@@ -105,6 +105,13 @@ export function runProgram(spec: RunSpec): RunResult {
     traces: b.gpio.trace, isrLog: b.isrLog, endMs: spec.durationMs, board: b, kit,
   };
   const finish = () => {
+    // Still waiting in the same loop after most of the test: what it waits for never came.
+    if (b.waitLine && b.now - b.waitSince >= 0.6 * end && !res.runtimeError)
+      b.warn(
+        b.waitLine,
+        "wait-forever",
+        `The program reached this loop at ${(b.waitSince / MS).toFixed(2)} ms and was still waiting in it when the test ended: its condition never changed. Whatever it waits for (a flag, a status bit) was never set. Check that the thing that sets it is switched on and can happen.`,
+      );
     res.diagnostics = [...b.diagnostics.values()].sort((x, y) => x.line - y.line);
     res.serial = [0, 1, 2, 3].map((p) => b.sci.text(p));
     res.console = b.console;

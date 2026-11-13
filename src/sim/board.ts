@@ -302,6 +302,16 @@ export class Board implements Rt {
     }
   }
 
+  /** Line of the conditional loop the program is waiting in, and since when (ns). */
+  waitLine = 0;
+  waitSince = 0;
+  waiting(line: number): void {
+    if (line !== this.waitLine) {
+      this.waitLine = line;
+      this.waitSince = this.now;
+    }
+  }
+
   idle(): void {
     if (this.irq) {
       this.dispatch();

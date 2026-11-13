@@ -36,6 +36,8 @@ export interface Rt {
   tick(line: number): void;
   /** The loop just ran a full pass without changing anything: skip ahead. */
   idle(): void;
+  /** A loop with a real condition is waiting at this line (0: it ended). */
+  waiting?(line: number): void;
   warn(line: number, code: string, msg: string): void;
 }
 
@@ -515,6 +517,8 @@ export class Compiler {
         this.scopes.pop();
         const mem = rt.mem;
         const testFirst = s.k !== "do";
+        // while (flag == 0) {} waits for something; while (1) {} does not.
+        const waits = this.file === "user" && !!s.c && s.c.k !== "num";
         return {
           gen: function* () {
             if (init) init.gen ? yield* init.gen() : init.sync!();
@@ -526,13 +530,17 @@ export class Compiler {
               const a0 = mem.sigA;
               const b0 = mem.sigB;
               rt.tick(tl);
-              if ((testFirst || !first) && c && !c()) break;
+              if ((testFirst || !first) && c && !c()) {
+                if (waits) rt.waiting?.(0);
+                break;
+              }
               // The previous pass changed nothing and the loop goes on:
               // every later pass would be identical until an event happens,
               // so jump to that event. (Tested after the condition, so a
               // loop that is about to end is never held back.)
               if (idleNext) {
                 idleNext = false;
+                if (waits) rt.waiting?.(tl);
                 rt.idle();
                 if (rt.pause) yield;
               }
