@@ -162,6 +162,10 @@ A character is sent as a **frame**:
 
 That is 10 bits on the wire for 8 bits of data. The SCI can also add a parity bit or a second stop bit; the course uses neither. The receiver times itself from the start bit and samples the middle of each bit.
 
+{{figure:uart-frame}}
+
+Try it in the figure: type a character and follow each written bit to its place on the wire, then send two characters and change the baud rate.
+
 ## ASCII: characters are numbers
 The 8 data bits are a number. ASCII is the table that says which number means which character:
 
@@ -286,6 +290,10 @@ The SCI makes its bit clock by dividing the low-speed peripheral clock, **LSPCLK
 BRR is a 16-bit number split over two registers: \`SCIHBAUD\` (upper 8 bits) and \`SCILBAUD\` (lower 8 bits).
 
 Turn the formula around to get BRR = LSPCLK / (baud x 8) - 1. The result is rarely a whole number. The course library, \`init_serialSCIA\`, does this with integer arithmetic, so the fraction is dropped.
+
+{{figure:baud-mismatch}}
+
+Dropping the fraction makes the real baud rate slightly different from the one you asked for. Try it in the figure: see how far the receiver's clock may be off before a character is misread.
 
 Each character is a frame of **10 bits**: start, 8 data, stop.
 `,

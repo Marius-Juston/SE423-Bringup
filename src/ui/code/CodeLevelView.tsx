@@ -9,6 +9,7 @@ import { Editor, type EditorHandle, type Mark } from "./Editor";
 import { Parts, Scope } from "./Bench";
 import { Registers } from "./Registers";
 import { Panel } from "../Panel";
+import { Icon } from "../Icon";
 import { VIEWS } from "../views";
 
 interface Problem {
@@ -84,6 +85,44 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
   };
 
   const board = live?.board ?? result?.board ?? null;
+  // One always-visible statement of what the program is doing.
+  const state: { kind: string; text: string } = live
+    ? live.error
+      ? { kind: "bad", text: live.error.kind === "compile" ? "Does not compile" : "Stopped: error" }
+      : live.paused
+        ? { kind: "paused", text: `Paused at line ${live.board.line}` }
+        : live.running
+          ? { kind: "running", text: "Running" }
+          : { kind: "idle", text: "Stopped" }
+    : result
+      ? result.passed
+        ? { kind: "ok", text: "All tests passed" }
+        : result.compileError
+          ? { kind: "bad", text: "Does not compile" }
+          : { kind: "bad", text: `${result.checks.filter((c) => c.pass).length} of ${result.checks.length} tests passed` }
+      : { kind: "idle", text: "Not running" };
+  // Keyboard: Ctrl+Enter tests, Ctrl+Shift+Enter run/stop, F10 step, F9 next write.
+  const keys = useRef({ start, stop, test });
+  keys.current = { start, stop, test };
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) (live?.running ? keys.current.stop : keys.current.start)();
+        else if (!sandbox) keys.current.test();
+      } else if (e.key === "F10" && live?.running) {
+        e.preventDefault();
+        live.stepLine();
+        setFrame((f) => f + 1);
+      } else if (e.key === "F9" && live?.running) {
+        e.preventDefault();
+        live.stepToWrite();
+        setFrame((f) => f + 1);
+      }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [live, sandbox]);
   // Signals this level is about: the ones its tests set or check.
   const focus = useMemo(() => {
     const names = new Set<string>();
@@ -117,19 +156,29 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
       <div className="pane editor-pane">
         <div className="toolbar">
           {live?.running ? (
-            <button className="btn" onClick={stop}>■ Stop</button>
+            <button className="btn" onClick={stop}><Icon name="stop" size={13} /> Stop</button>
           ) : (
-            <button className="btn" onClick={start}>▶ Run</button>
+            <button className="btn" onClick={start} title="Power the board and run your program (Ctrl+Shift+Enter)"><Icon name="play" size={13} /> Run</button>
           )}
           {live?.running && (
             <>
-              <button className="btn" aria-pressed={live.paused} onClick={() => { live.paused = !live.paused; setFrame((f) => f + 1); }}>{live.paused ? "▶ Resume" : "❙❙ Pause"}</button>
-              <button className="btn" onClick={() => { live.stepLine(); setFrame((f) => f + 1); }} title="Run one line of your code, then pause">Step line</button>
-              <button className="btn" onClick={() => { live.stepToWrite(); setFrame((f) => f + 1); }} title="Run until the next register write, then pause">Next register write</button>
+              <button className="btn" aria-pressed={live.paused} onClick={() => { live.paused = !live.paused; setFrame((f) => f + 1); }}>
+                <Icon name={live.paused ? "play" : "pause"} size={13} /> {live.paused ? "Resume" : "Pause"}
+              </button>
+              <button className="btn" onClick={() => { live.stepLine(); setFrame((f) => f + 1); }} title="Run one line of your code, then pause (F10)"><Icon name="step" size={14} /> Step line</button>
+              <button className="btn" onClick={() => { live.stepToWrite(); setFrame((f) => f + 1); }} title="Run until the next register write, then pause (F9)"><Icon name="skip" size={13} /> Next write</button>
             </>
           )}
-          {!sandbox && <button className="btn primary" onClick={test}>Run tests</button>}
-          <label style={{ fontSize: "0.85rem", color: "var(--dim)" }}>
+          {!sandbox && (
+            <button className="btn primary" onClick={test} title="Check your program against the level's tests (Ctrl+Enter)">
+              <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
+            </button>
+          )}
+          <span className={`chip state-${state.kind}`} role="status">
+            <i aria-hidden="true" /> {state.text}
+          </span>
+          <span className="spacer" />
+          <label className="speed">
             Speed{" "}
             <select value={speed} onChange={(e) => setSpeed(+e.target.value)}>
               <option value={0.0001}>1/10 000</option>
@@ -140,7 +189,6 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
               <option value={10}>10×</option>
             </select>
           </label>
-          <span className="spacer" />
           <button
             className="btn ghost small"
             onClick={() => {
@@ -150,7 +198,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
               }
             }}
           >
-            Reset code
+            <Icon name="reset" size={13} /> Reset code
           </button>
         </div>
         <Editor value={code} onChange={setCode} marks={marks} handle={editor} />
@@ -196,7 +244,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
               <ul className="checks">
                 {(result?.checks ?? level.checks.map((c) => ({ label: c.label, pass: null as boolean | null, detail: "", hint: undefined }))).map((c, i) => (
                   <li key={i}>
-                    <span className={c.pass === null ? "" : c.pass ? "pass" : "fail"} aria-hidden="true">{c.pass === null ? "○" : c.pass ? "✓" : "✗"}</span>
+                    <span className={c.pass === null ? "todo" : c.pass ? "pass" : "fail"} aria-hidden="true"><Icon name={c.pass === null ? "dot" : c.pass ? "check" : "cross"} size={15} /></span>
                     <span>
                       <span className="sr-only">{c.pass === null ? "Not run: " : c.pass ? "Passed: " : "Failed: "}</span>
                       {c.label}
@@ -216,7 +264,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
                       const now = !!r?.pass && !!result?.passed;
                       return (
                         <li key={i}>
-                          <span className={now || kept ? "star on" : "star"} aria-hidden="true">★</span>
+                          <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name="star" size={14} /></span>
                           <span>
                             <span className="sr-only">{now || kept ? "Earned: " : "Not earned: "}</span>
                             {b.label}

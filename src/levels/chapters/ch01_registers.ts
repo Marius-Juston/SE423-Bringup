@@ -33,6 +33,10 @@ Each peripheral's registers sit together, starting at a **base address**. A regi
 - \`GpioDataRegs\` starts at \`0x7F00\`. Its registers \`GPADAT\`, \`GPASET\`, \`GPACLEAR\`, \`GPATOGGLE\` are 32 bits each (two 16-bit words), so they sit at offsets 0, 2, 4 and 6.
 - \`CpuTimer0Regs\` starts at \`0x0C00\`: \`TIM\` at offset 0, \`PRD\` at 2, \`TCR\` at 4.
 
+{{figure:memory-map}}
+
+Try it in the figure: pick a register and read its address off the strip, then click its bits and watch the \`.all\` value and the \`.bit\` field change together.
+
 TI's header files give every register a C name, so you never type addresses.
 
 ## Two views of the same bits
@@ -50,6 +54,10 @@ EALLOW;
 GpioCtrlRegs.GPADIR.bit.GPIO22 = 1;   // protected: needs EALLOW
 EDIS;
 \`\`\`
+
+{{figure:eallow-lock}}
+
+Try it in the figure: run the write first, on its own, then again after \`EALLOW;\`.
 `,
       questions: [
         {
@@ -91,6 +99,10 @@ Each CPU timer has the same five registers. Offsets are in 16-bit words:
 Base addresses: \`CpuTimer0Regs\` = \`0x0C00\`, \`CpuTimer1Regs\` = \`0x0C08\`, \`CpuTimer2Regs\` = \`0x0C10\`.
 
 \`GpioDataRegs\` starts at \`0x7F00\`. Port A's \`DAT\`, \`SET\`, \`CLEAR\`, \`TOGGLE\` come first (two words each), then the same four for port B, and so on.
+
+{{figure:memory-map}}
+
+The figure draws these registers to scale for timer 0 and port A: use it to check how the offsets come about, then do the three below by the same rule.
 
 Give each address in hex.
 `,
@@ -208,6 +220,10 @@ ${LED_SETUP}
 This program sets GPIO22 as an output by writing the direction register directly, then drives it high. It compiles, it runs, and LED1 stays off.
 
 Run it and read the message under the editor. Then open the **Registers** tab and look at \`GpioCtrlRegs.GPADIR\`: is the bit really set?
+
+{{figure:eallow-lock}}
+
+The figure shows what happens to a write like this one: run the lines in different orders.
 
 Fix the program so LED1 lights.
 `,

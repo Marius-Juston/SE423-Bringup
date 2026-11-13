@@ -14,6 +14,7 @@ import { RegisterPuzzle } from "./widgets/RegisterPuzzle";
 import { CodeLevelView } from "./code/CodeLevelView";
 import type { View } from "./App";
 import { Splitter } from "./Splitter";
+import { Icon } from "./Icon";
 import { usePref } from "./prefs";
 
 /** True when the window is wide enough for side-by-side panes. */
@@ -65,6 +66,14 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
   const [taskW, setTaskW] = usePref<number>(isCode ? "w-task-code" : "w-task", isCode ? 340 : 460);
   const [benchW, setBenchW] = usePref<number>("w-bench", 440);
   const wide = useWide();
+  // The editor always keeps at least 400 px: the board pane cannot grow past that.
+  const [winW, setWinW] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const on = () => setWinW(window.innerWidth);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  const benchMax = Math.max(300, winW - Math.min(taskW, 520) - 414);
 
   const side = (
     <div className="pane">
@@ -82,14 +91,14 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
           ))}
           {shown < hints.length && (
             <button className="btn small" style={{ marginTop: "0.6rem" }} onClick={() => store.hint(id, shown + 1)}>
-              {shown === 0 ? "Show a hint" : "Show another hint"} ({hints.length - shown} left)
+              <Icon name="bulb" size={14} /> {shown === 0 ? "Show a hint" : "Show another hint"} ({hints.length - shown} left)
             </button>
           )}
         </div>
       )}
       {(passed || justPassed) && (
         <div className="takeaway" role="status">
-          <strong>Level passed.</strong> {level.takeaway && <Markdown text={level.takeaway} />}
+          <strong className="passed-title"><Icon name="check" size={16} /> Level passed.</strong> {level.takeaway && <Markdown text={level.takeaway} />}
           <div className="actions" style={{ marginTop: "0.5rem" }}>
             {next ? (
               <button className="btn primary" onClick={() => go({ name: "level", id: next.id })}>Next: {next.title}</button>
@@ -111,23 +120,57 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
   return (
     <div className="level">
       <div className="level-head">
-        <button className="btn ghost small" onClick={() => go({ name: "map" })}>← Map</button>
+        <button className="btn ghost small" onClick={() => go({ name: "map" })}>
+          <Icon name="back" size={14} /> Map
+        </button>
+        <div className="crumbs">
+          <span className="eyebrow">Chapter {chapter.number} · {chapter.title}</span>
+          <h1>
+            {chapter.number}.{index + 1} {level.title}
+          </h1>
+        </div>
         <span className="badge">{KIND_LABEL[kindOf(level)]}</span>
-        {tierOf(level) !== "core" && <span className={`badge tier-${tierOf(level)}`}>{tierOf(level) === "expert" ? "◆ Expert" : "Practice"}</span>}
-        <h1 style={{ fontSize: "1.15rem" }}>
-          {chapter.number}.{index + 1} {level.title}
-        </h1>
-        {passed && <span className="badge ok">Passed</span>}
+        {tierOf(level) !== "core" && (
+          <span className={`badge tier-${tierOf(level)}`}>
+            {tierOf(level) === "expert" && <Icon name="diamond" size={11} />} {tierOf(level) === "expert" ? "Expert" : "Practice"}
+          </span>
+        )}
+        {passed && (
+          <span className="badge ok">
+            <Icon name="check" size={12} /> Passed
+          </span>
+        )}
         <span className="spacer" />
-        <span style={{ color: "var(--dim)", fontSize: "0.9rem" }}>
-          Chapter {chapter.number}: {chapter.title}
-        </span>
+        <nav className="stepper" aria-label={`Levels of chapter ${chapter.number}`}>
+          {chapter.levels.map((l, i) => {
+            const t = tierOf(l);
+            const p = !!save.passed[l.id];
+            return (
+              <button
+                key={l.id}
+                className={`step tier-${t} ${p ? "passed" : ""}`}
+                aria-current={l.id === id ? "step" : undefined}
+                aria-label={`${chapter.number}.${i + 1} ${l.title}${t !== "core" ? `, ${t}` : ""}${p ? ", passed" : ""}`}
+                title={`${chapter.number}.${i + 1} ${l.title}`}
+                onClick={() => go({ name: "level", id: l.id })}
+              >
+                <span aria-hidden="true" />
+              </button>
+            );
+          })}
+        </nav>
+        <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title="Previous level">
+          <Icon name="back" size={16} />
+        </button>
+        <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title="Next level">
+          <Icon name="next" size={16} />
+        </button>
       </div>
-      <div className={`level-body ${isCode ? "code" : ""}`} style={wide ? { gridTemplateColumns: isCode ? `${taskW}px 7px minmax(300px, 1fr) 7px ${benchW}px` : `${taskW}px 7px 1fr` } : undefined}>
+      <div className={`level-body ${isCode ? "code" : ""}`} style={wide ? { gridTemplateColumns: isCode ? `${Math.min(taskW, 520)}px 7px minmax(380px, 1fr) 7px ${Math.min(benchW, benchMax)}px` : `${taskW}px 7px 1fr` } : undefined}>
         {side}
-        <Splitter value={taskW} onChange={setTaskW} min={240} max={760} side="left" label="Resize the task pane" />
+        <Splitter value={isCode ? Math.min(taskW, 520) : taskW} onChange={setTaskW} min={240} max={isCode ? 520 : 760} side="left" label="Resize the task pane" />
         {isCode ? (
-          <CodeLevelView level={level} onPass={onPass} splitter={<Splitter value={benchW} onChange={setBenchW} min={300} max={1100} side="right" label="Resize the board pane" />} />
+          <CodeLevelView level={level} onPass={onPass} splitter={<Splitter value={Math.min(benchW, benchMax)} onChange={setBenchW} min={300} max={benchMax} side="right" label="Resize the board pane" />} />
         ) : (
           <div className="pane">
             <div className="activity">

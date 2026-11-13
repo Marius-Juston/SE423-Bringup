@@ -79,6 +79,10 @@ You always write a **1**: to the SET register to go high, to the CLEAR register 
 
 ## Lit by a 1 or by a 0?
 It depends on how the LED is wired. The LEDs on the green robot board sit between the pin and 0 V, so they light when the pin is **high**. The two LEDs on the LaunchPad itself (blue on GPIO31, red on GPIO34) sit between 3.3 V and the pin, so they light when the pin is **low**.
+
+{{figure:led-wiring}}
+
+Try it in the figure: switch both pins between high and low and watch where current flows.
 `,
       questions: [
         {
@@ -124,6 +128,10 @@ It depends on how the LED is wired. The LEDs on the green robot board sit betwee
 Lab 1 asks which registers drive the LEDs on the robot board. Divide the GPIO number by 32 and drop the remainder: 0 is port A, 1 is B, 2 is C, 3 is D, 4 is E, 5 is F.
 
 The robot board's LEDs are on GPIO22, 94, 95, 97 and 111. Its push buttons are on GPIO157, 158, 159 and 160.
+
+{{figure:port-map}}
+
+Try it in the figure: drag the GPIO number across a port boundary and watch the letter in the register names change.
 `,
       questions: [
         { prompt: "LED2 is on **GPIO94**. Which port?", options: ["B", "C", "D", "E"], answer: 1, why: "94 / 32 = 2 remainder 30: port C, bit 30." },
@@ -295,6 +303,10 @@ The author of this program wanted the **red** LaunchPad LED on and the **blue** 
 
 The LaunchPad's own LEDs are connected between 3.3 V and the pin, so current flows, and the LED lights, when the pin is **low**.
 
+{{figure:led-wiring}}
+
+Try it in the figure: drive both pins low and see which of the two LEDs lights.
+
 - Blue LED: GPIO31 (port A)
 - Red LED: GPIO34 (port B)
 
@@ -359,6 +371,10 @@ This program changes two pins of port A through the data register \`GPADAT\`, on
 Why: a \`.bit\` write cannot change one bit on its own. The CPU **reads** the whole register, changes one bit, and **writes** the whole register back. \`GPADAT\` reads the actual pin levels, and a pin needs a moment to follow a change. The second statement reads port A while GPIO22 still shows its old level, and writes that old level back.
 
 The reference manual describes this exact case in section 8.3 and gives the fix: use \`GPASET\`, \`GPACLEAR\` and \`GPATOGGLE\`. They change only the bits you write as 1, with no read first.
+
+{{figure:set-clear-toggle}}
+
+Step through the figure: first the two lines through \`GPADAT.bit\`, then the same two lines through \`GPASET\` and \`GPACLEAR\`.
 
 Remember the blue LaunchPad LED lights when its pin is **low**.
 `,

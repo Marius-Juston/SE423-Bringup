@@ -43,7 +43,7 @@ beforeAll(async () => {
   await page.goto(url);
   await page.evaluate(() => localStorage.setItem("bringup-save-v1", JSON.stringify({ version: 1, passed: {}, hints: {}, code: {}, unlockAll: true })));
   await page.reload();
-  await page.waitForSelector(".chapters");
+  await page.waitForSelector(".map-cols");
 });
 
 afterAll(async () => {
@@ -116,7 +116,7 @@ async function solve(l: Level): Promise<void> {
       await page.locator(".cm-content").click();
       await page.keyboard.press("Control+A");
       await page.keyboard.insertText(l.solution);
-      await page.getByRole("button", { name: "Run tests" }).click();
+      await page.getByRole("button", { name: /^Run tests/ }).click();
       await page.waitForSelector(".bench .result");
       break;
   }
@@ -127,11 +127,12 @@ describe("playthrough", () => {
     for (const [i, l] of c.levels.entries()) {
       it(`${c.number}.${i + 1} ${l.title} (${kindOf(l)})`, async () => {
         errors.length = 0;
+        await page.locator(`button[data-chapter="${c.id}"]`).click();
         await page.locator(`button[data-level="${l.id}"]`).click();
         await page.waitForSelector(".level-head");
         if (l.kind === "code") {
           // The untouched starter must not pass, and must show why.
-          await page.getByRole("button", { name: "Run tests" }).click();
+          await page.getByRole("button", { name: /^Run tests/ }).click();
           await page.waitForSelector(".bench .result.bad");
           if (shots) await page.screenshot({ path: join(shots, `${c.number}-${i + 1}-${l.id}-starter.png`) });
         }
@@ -143,8 +144,8 @@ describe("playthrough", () => {
         expect(overflow, "horizontal overflow").toBeLessThanOrEqual(1);
         if (shots) await page.screenshot({ path: join(shots, `${c.number}-${i + 1}-${l.id}.png`) });
         expect(errors).toEqual([]);
-        await page.getByRole("button", { name: "← Map" }).click();
-        await page.waitForSelector(".chapters");
+        await page.locator(".level-head").getByRole("button", { name: "Map" }).click();
+        await page.waitForSelector(".map-cols");
       });
     }
   }
@@ -153,7 +154,7 @@ describe("playthrough", () => {
     errors.length = 0;
     await page.locator(".topnav").getByRole("button", { name: "Sandbox" }).click();
     await page.waitForSelector(".cm-content");
-    await page.getByRole("button", { name: "▶ Run" }).click();
+    await page.getByRole("button", { name: "Run", exact: true }).click();
     await page.waitForFunction(() => /t = \d{3}/.test(document.querySelector(".simstate")?.textContent ?? ""));
     const pb = page.getByRole("button", { name: /Push button PB1/ });
     await pb.dispatchEvent("pointerdown");
@@ -163,7 +164,7 @@ describe("playthrough", () => {
     await page.waitForSelector(".reg-row");
     await page.waitForSelector(".parts");
     if (shots) await page.screenshot({ path: join(shots, "sandbox.png") });
-    await page.getByRole("button", { name: "■ Stop" }).click();
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
     expect(errors).toEqual([]);
   });
 
@@ -178,7 +179,7 @@ describe("playthrough", () => {
     await page.waitForSelector("text=Unlock every chapter");
     if (shots) await page.screenshot({ path: join(shots, "settings.png") });
     await page.locator(".topnav").getByRole("button", { name: "Map" }).click();
-    await page.waitForSelector(".chapters");
+    await page.waitForSelector(".map-cols");
     if (shots) await page.screenshot({ path: join(shots, "map-after.png"), fullPage: true });
     expect(errors).toEqual([]);
   });

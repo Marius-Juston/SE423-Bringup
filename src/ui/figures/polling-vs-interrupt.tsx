@@ -1,0 +1,188 @@
+import { useState } from "react";
+
+// Polling a flag in while (1) against letting the hardware interrupt main.
+// The interrupt latency quoted is the minimum of TRM 3.4.3 "Interrupt Entry
+// Sequence": 14 SYSCLK cycles (70 ns at 200 MHz) from the flag being latched
+// to the first instruction of the function. A flag (TCR.TIF, TRM 3.8) is one
+// bit: a second event before it is cleared is not counted.
+
+const T_END = 100; // ms shown
+const EVENTS = [12, 37, 62, 87]; // ms: the timer reaches zero every 25 ms
+const HANDLE = 3; // ms the reaction itself takes
+
+interface Block {
+  from: number;
+  to: number;
+  kind: "work" | "react" | "ask";
+}
+
+function polling(work: number) {
+  const blocks: Block[] = [];
+  const late: { event: number; at: number }[] = [];
+  const lost: number[] = [];
+  let t = 0;
+  let next = 0; // index of the first event the loop has not seen yet
+  while (t < T_END) {
+    // The check itself: has the flag been set since the last look?
+    const pending = [];
+    while (next < EVENTS.length && EVENTS[next] <= t) pending.push(EVENTS[next++]);
+    if (pending.length) {
+      // One flag bit: every event but one is gone.
+      lost.push(...pending.slice(0, -1));
+      late.push({ event: pending[pending.length - 1], at: t });
+      blocks.push({ from: t, to: t + HANDLE, kind: "react" });
+      t += HANDLE;
+    }
+    if (work > 0) {
+      blocks.push({ from: t, to: t + work, kind: "work" });
+      t += work;
+    } else {
+      const until = next < EVENTS.length ? EVENTS[next] : T_END;
+      if (until > t) blocks.push({ from: t, to: until, kind: "ask" });
+      t = Math.max(until, t + 0.001);
+    }
+  }
+  return { blocks, late, lost };
+}
+
+function interrupted(work: number) {
+  const main: Block[] = [];
+  let t = 0;
+  let e = 0;
+  if (work <= 0) return main;
+  while (t < T_END) {
+    let left = work;
+    while (left > 1e-9 && t < T_END) {
+      if (e < EVENTS.length && EVENTS[e] <= t) {
+        t = EVENTS[e++] + HANDLE; // main is paused while the function runs
+        continue;
+      }
+      const stop = Math.min(t + left, e < EVENTS.length ? EVENTS[e] : Infinity);
+      main.push({ from: t, to: stop, kind: "work" });
+      left -= stop - t;
+      t = stop;
+    }
+  }
+  return main;
+}
+
+function PollingVsInterrupt() {
+  const [work, setWork] = useState(16);
+  const { blocks, late, lost } = polling(work);
+  const main = interrupted(work);
+  const delays = late.map((l) => l.at - l.event);
+  const worst = delays.length ? Math.max(...delays) : 0;
+
+  const X0 = 40;
+  const X1 = 412;
+  const x = (t: number) => X0 + (Math.min(t, T_END) / T_END) * (X1 - X0);
+  const w = (b: Block) => Math.max(0.5, x(b.to) - x(b.from));
+
+  const why =
+    work === 0
+      ? "With nothing else in the loop, polling reacts at once. But the CPU does nothing except ask, millions of times a second. Give main some work with the slider."
+      : lost.length
+        ? `main's own work takes ${work} ms per pass, longer than the 25 ms between events. The flag was set again before anyone looked, so ${lost.length} event${lost.length > 1 ? "s were" : " was"} lost: a flag is one bit and cannot count. The interrupt version still reacts to all ${EVENTS.length}, each 70 ns after the event.`
+        : `Polling notices an event only when the loop comes round again: ${delays.map((d) => d.toFixed(0)).join(", ")} ms late here, a different amount each time and up to ${work} ms. With an interrupt the function starts 70 ns after the event, whatever main is doing, and main just continues ${HANDLE} ms later.`;
+
+  return (
+    <figure className="figure pvi-fig" aria-label="Interactive comparison of polling and interrupts on a timeline">
+      <style>{`
+        .pvi-fig .pvi-work { fill: var(--surface-2); stroke: var(--dim); stroke-width: 0.8; }
+        .pvi-fig .pvi-react { fill: var(--orange); }
+        .pvi-fig .pvi-ask { fill: none; stroke: var(--dim); stroke-width: 0.8; stroke-dasharray: 1.5 2.5; }
+        .pvi-fig .pvi-late { stroke: var(--bad); stroke-width: 2; }
+        .pvi-fig .pvi-latetext { fill: var(--bad); font-size: 8.5px; font-weight: 700; font-family: var(--sans); }
+        .pvi-fig .pvi-lost { fill: var(--bad); font-size: 8.5px; font-weight: 700; font-family: var(--sans); }
+        .pvi-fig .pvi-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin: 0.5rem 0; }
+        .pvi-fig .pvi-sum div { background: var(--surface); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color: var(--dim); }
+        .pvi-fig .pvi-sum b { display: block; font-family: var(--mono); font-size: 1rem; color: var(--text); }
+        .pvi-fig input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--orange); }
+      `}</style>
+      <svg viewBox="0 0 420 198" role="img" aria-label={`Four events, 25 milliseconds apart. Polling with ${work} milliseconds of other work per loop pass reacts up to ${worst.toFixed(0)} milliseconds late and loses ${lost.length} events. The interrupt reacts 70 nanoseconds after each event.`}>
+        {/* events */}
+        <text x={4} y={10} className="fig-label">Events: the timer reaches zero every 25 ms</text>
+        {EVENTS.map((e) => (
+          <g key={e}>
+            <path d={`M${x(e) - 4},15 h8 l-4,8 z`} fill="var(--harvest)" />
+            <line x1={x(e)} x2={x(e)} y1={48} y2={90} className="fig-sample" />
+            <line x1={x(e)} x2={x(e)} y1={114} y2={180} className="fig-sample" />
+            {lost.includes(e) && <text x={x(e) + 7} y={23} className="pvi-lost">lost</text>}
+          </g>
+        ))}
+        {/* polling */}
+        <text x={4} y={40} className="fig-label">Polling: main asks "has it happened?" once per loop pass</text>
+        <text x={4} y={62} className="fig-label dim">main</text>
+        {blocks.map((b, i) =>
+          b.kind === "ask" ? (
+            <g key={i}>
+              <rect x={x(b.from)} y={50} width={w(b)} height={18} className="pvi-ask" />
+              {w(b) > 44 && <text x={x(b.from) + w(b) / 2} y={62} textAnchor="middle" className="fig-label dim">asking...</text>}
+            </g>
+          ) : (
+            <g key={i}>
+              <rect x={x(b.from)} y={50} width={w(b)} height={18} rx={b.kind === "work" ? 2 : 0} className={b.kind === "work" ? "pvi-work" : "pvi-react"} />
+              {b.kind === "work" && w(b) > 26 && <text x={x(b.from) + w(b) / 2} y={62} textAnchor="middle" className="fig-label">work</text>}
+            </g>
+          ),
+        )}
+        {late.map((l, i) => {
+          const d = l.at - l.event;
+          if (d < 0.5) return null;
+          return (
+            <g key={i}>
+              <line x1={x(l.event)} x2={x(l.at)} y1={74} y2={74} className="pvi-late" />
+              <text x={x(l.event) + 3} y={86} className="pvi-latetext">{d.toFixed(0)} ms late</text>
+            </g>
+          );
+        })}
+        {/* interrupt */}
+        <text x={4} y={106} className="fig-label">Interrupt: the hardware calls the function, main pauses</text>
+        <text x={4} y={127} className="fig-label dim">function</text>
+        <text x={4} y={158} className="fig-label dim">main</text>
+        {EVENTS.map((e) => (
+          <g key={e}>
+            <rect x={x(e)} y={116} width={x(e + HANDLE) - x(e)} height={16} className="pvi-react" />
+            <path d={`M${x(e)},146 V132 M${x(e + HANDLE)},132 V146`} className="fig-wire" />
+          </g>
+        ))}
+        {work === 0 ? (
+          <g>
+            <rect x={x(0)} y={146} width={x(T_END) - x(0)} height={18} className="pvi-ask" />
+            <text x={(X0 + X1) / 2} y={158} textAnchor="middle" className="fig-label dim">free for anything else</text>
+          </g>
+        ) : (
+          main.map((b, i) => (
+            <g key={i}>
+              <rect x={x(b.from)} y={146} width={w(b)} height={18} rx={2} className="pvi-work" />
+              {w(b) > 26 && <text x={x(b.from) + w(b) / 2} y={158} textAnchor="middle" className="fig-label">work</text>}
+            </g>
+          ))
+        )}
+        <text x={x(EVENTS[0]) + 3} y={176} className="pvi-latetext" style={{ fill: "var(--ok)" }}>70 ns late</text>
+        {/* axis */}
+        {[0, 25, 50, 75, 100].map((t) => (
+          <text key={t} x={x(t)} y={195} textAnchor={t === 100 ? "end" : t === 0 ? "start" : "middle"} className="fig-label dim">{t} ms</text>
+        ))}
+        <line x1={X0} x2={X1} y1={184} y2={184} className="fig-wire" style={{ strokeWidth: 0.8 }} />
+      </svg>
+      <div className="pvi-sum">
+        <div>Polling reacts<b>{work === 0 ? "at once" : `up to ${worst.toFixed(0)} ms late`}</b>{lost.length ? `${lost.length} of ${EVENTS.length} events lost` : `all ${EVENTS.length} events seen`}</div>
+        <div>Interrupt reacts<b>70 ns late</b>all {EVENTS.length} events seen</div>
+      </div>
+      <p className="fig-why" role="status">{why}</p>
+      <div className="fig-controls">
+        <div>
+          <span id="pvi-w">main's work</span>
+          <input type="range" min={0} max={40} step={2} value={work} aria-labelledby="pvi-w" aria-valuetext={`${work} milliseconds per loop pass`} onChange={(e) => setWork(+e.target.value)} />
+          <strong>{work} ms per pass</strong>
+        </div>
+      </div>
+      <figcaption>
+        Orange blocks are the reaction to the event ({HANDLE} ms of code, the same in both). Grey blocks are everything else main has to do. Top: <code>while (1) {"{"} if (flag) react(); work(); {"}"}</code>. Bottom: the reaction is an <code>__interrupt</code> function and the loop only contains <code>work();</code>.
+      </figcaption>
+    </figure>
+  );
+}
+
+export const figure = { id: "polling-vs-interrupt", Component: PollingVsInterrupt };

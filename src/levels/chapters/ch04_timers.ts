@@ -32,6 +32,10 @@ The chip has three identical 32-bit timers. Each has a counter \`TIM\` and a per
 
 Counting from \`PRD\` down to 0 and reloading takes \`PRD + 1\` ticks.
 
+{{figure:timer-sawtooth}}
+
+Try it in the figure: change \`PRD\` and the prescaler and watch the period follow the formula, then stop the timer, reload it and clear the flag.
+
 ## Two stages
 Before the 32-bit counter sits a 16-bit **prescaler**. Its divide-down value is split over two 8-bit fields, \`TDDRH\` (high half, in register \`TPRH\`) and \`TDDR\` (low half, in \`TPR\`). The counter gets one tick every \`TDDRH:TDDR + 1\` clock cycles.
 
@@ -188,6 +192,10 @@ Example: with the prescaler at 199, a tick is 200 clock cycles. \`PRD\` then cou
 - \`TIE\` (bit 14): 1 enables the timer's interrupt request.
 - \`TIF\` (bit 15): the flag. The timer sets it when the counter reaches 0. You clear it by **writing 1** to it. Writing 0 does nothing.
 - \`FREE\` and \`SOFT\` (bits 11 and 10) only matter while debugging: they choose whether the timer keeps running when the program halts at a breakpoint.
+
+{{figure:timer-sawtooth}}
+
+Try it in the figure: stop the timer with \`TSS\`, step the clock, then write \`TRB\` and see where the counter starts again.
 
 Right now the timer is **running** with its interrupt enabled (\`0x4000\`). You are about to change its period, so build the value to write that:
 

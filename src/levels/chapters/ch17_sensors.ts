@@ -873,6 +873,10 @@ d = c * t / 2;   // c = 3.0e8 m/s, t = time for the round trip
 
 The division by 2 is there because the light travels the distance twice. Light is fast: an echo from 3 m arrives after only 20 ns.
 
+Try it in the figure: move the wall and count how many 5 ns periods of the chip's clock fit into the round trip.
+
+{{figure:time-of-flight}}
+
 ## A scan
 The course robot carries a Hokuyo URG-04LX. A mirror inside spins the laser beam around, so one sensor measures in many directions. The result of one turn is a **scan**: a list of distances, one per direction, like a map seen from above.
 
@@ -934,6 +938,10 @@ d = c * t / 2;
 
 Use c = 3.0e8 m/s. One nanosecond (ns) is 1e-9 s, one picosecond (ps) is 1e-12 s.
 
+The figure draws the round trip and the CPU clock to the same scale. Work the numbers out first, then check them with the slider.
+
+{{figure:time-of-flight}}
+
 The CPU of the F28379D runs at 200 MHz. Imagine you tried to time the echo yourself by counting CPU clock periods. The last two questions show why nobody does that: the LIDAR has its own dedicated timing circuit and only sends you the finished distance.
 `,
       fields: [
@@ -973,6 +981,10 @@ angle = (3*i + 44)*0.3515625 - 135;
 
 0 degrees is straight ahead, negative angles are to the **right**, positive angles to the **left**. The 135 is the angle of step 384: 384 * 0.3515625.
 
+Try it in the figure: slide i from 0 to 227 and watch where each point looks, and what is behind the robot that no point sees.
+
+{{figure:lidar-fan}}
+
 The last group is not full (steps 725 and 726 are missing from it), but it still produces a point. HW4 rounds these numbers: 228 readings from -120 to 120 degrees, about 1.05 degrees apart, element 113 straight ahead.
 `,
       fields: [
@@ -1004,6 +1016,10 @@ To decode, undo it:
 1. subtract 0x30 from the first character: the upper 6 bits
 2. subtract 0x30 from the second character: the lower 6 bits
 3. distance = upper * 64 + lower
+
+Try it in the figure: step through the decode of another reading, then move the slider and watch which of the two characters changes.
+
+{{figure:lidar-encoding}}
 
 ## Your task
 The sensor sent the two characters \`M\` and \`c\`. In ASCII, \`'M'\` is 0x4D and \`'c'\` is 0x63.
@@ -1039,6 +1055,10 @@ Set the bits of the 12-bit distance. The field **high** takes the 6 bits from \`
       refs: [{ course: "L16" }],
       brief: `
 Now do in C what you just did by hand.
+
+The figure shows the same steps with the C expression next to them.
+
+{{figure:lidar-encoding}}
 
 ## \`int decode(char hi, char lo)\`
 Returns the distance in millimetres for the two characters of one reading: subtract 0x30 from each, shift the first one up by 6 bits, add the second.
@@ -1419,7 +1439,11 @@ Here is a wall follower with three states. \`front\` and \`right\` are distances
 
 If no condition is true, the robot stays in its state. The machine is evaluated once for every scan, and makes at most one transition each time.
 
-Notice the two different numbers for the front: the robot starts turning below 1.5 ft but only stops turning above 3.0 ft. Between them it keeps doing whatever it was doing. That gap is called **hysteresis**. Without it, a reading that hovers around a single threshold makes the robot flip between two states on every scan. That is called **chattering**.
+Try it in the figure: the sliders are the two readings, every move is one scan, and the state that lights up is where the robot is now. Play the quiz questions through on it.
+
+{{figure:state-machine}}
+
+Notice the two different numbers for the front: the robot starts turning below 1.5 ft but only stops turning above 3.0 ft. Between them it keeps doing whatever it was doing. That gap is called **hysteresis**. Without it, a reading that hovers around a single threshold makes the robot flip between two states on every scan. That is called **chattering**: switch the figure to one threshold and step through the noisy wall to see it.
 `,
       questions: [
         {
@@ -1487,6 +1511,10 @@ Do not forget the \`break;\` at the end of each case: without it the code runs o
 
 The four thresholds are defined at the top of the file.
 
+The figure is this machine: each arrow is one test inside the case of the state it leaves.
+
+{{figure:state-machine}}
+
 ## The action
 This robot has no motors yet, so each state only lights an LED. After the switch, in \`wall_follow()\`:
 
@@ -1546,6 +1574,10 @@ This wall follower works in open space, but in front of a wall the robot twitche
 The tests hold the robot about 1.5 ft from a wall. The front reading is never exactly the same twice: 1.47, 1.53, 1.46, 1.52, 1.48 ft. Then the turn is completed and the front opens up to 3.5 ft.
 
 \`transitions\` counts how often the state changed. For this run it should be **2**: one change into TURN_LEFT when the wall comes close, one change to FOLLOW when the turn is finished. Run the code and look at what it does instead.
+
+The figure replays exactly these readings: choose "one threshold", press the noisy wall button seven times and count the state changes. Then do the same with two thresholds.
+
+{{figure:state-machine}}
 
 Fix the state machine. Lecture 14 gives the cure: a **deadband** or **hysteresis**. Leave a state at a different threshold than the one that got you into it. For this robot, a turn is finished when the front is more than **3.0 ft** away.
 `,

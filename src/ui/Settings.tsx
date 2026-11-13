@@ -1,14 +1,51 @@
 import { useRef, useState } from "react";
 import { store, useSave } from "./store";
+import { usePref } from "./prefs";
 
 export function Settings() {
   const save = useSave();
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
+  const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
+  const [scale, setScale] = usePref<number>("text-scale", 1);
   const [text, setText] = useState<string | null>(null);
   return (
     <div className="map" style={{ maxWidth: 720 }}>
       <h1>Settings</h1>
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2>Appearance</h2>
+        <div className="setting-row">
+          <label htmlFor="set-theme">Theme</label>
+          <select id="set-theme" value={theme} onChange={(e) => setTheme(e.target.value as "system" | "light" | "dark")}>
+            <option value="system">Same as this computer</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <div className="setting-row">
+          <label htmlFor="set-scale">Text size</label>
+          <select id="set-scale" value={scale} onChange={(e) => setScale(+e.target.value)}>
+            <option value={0.9}>Small</option>
+            <option value={1}>Normal</option>
+            <option value={1.15}>Large</option>
+            <option value={1.3}>Extra large</option>
+          </select>
+        </div>
+        <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>Animations follow this computer's "reduce motion" setting.</p>
+      </section>
+      <section style={{ marginTop: "1.5rem" }}>
+        <h2>Keyboard</h2>
+        <table className="fields" style={{ maxWidth: 520 }}>
+          <tbody>
+            <tr><td><kbd>Ctrl</kbd> <kbd>Enter</kbd></td><td>Run the level's tests</td></tr>
+            <tr><td><kbd>Ctrl</kbd> <kbd>Shift</kbd> <kbd>Enter</kbd></td><td>Run or stop the program</td></tr>
+            <tr><td><kbd>F10</kbd></td><td>Step one line (while running)</td></tr>
+            <tr><td><kbd>F9</kbd></td><td>Run to the next register write</td></tr>
+            <tr><td><kbd>Esc</kbd> then <kbd>Tab</kbd></td><td>Leave the code editor</td></tr>
+            <tr><td><kbd>←</kbd> <kbd>→</kbd> on a divider</td><td>Resize panes</td></tr>
+          </tbody>
+        </table>
+      </section>
       <section style={{ marginTop: "1.5rem" }}>
         <h2>Chapters</h2>
         <label className="option" style={{ marginTop: "0.5rem" }}>

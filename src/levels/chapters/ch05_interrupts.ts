@@ -142,6 +142,10 @@ So far your code asked the hardware the same question over and over: "has the ti
 
 With an **interrupt** the hardware tells the CPU. When the event happens, the CPU pauses what it is doing, runs a function you wrote, and then continues exactly where it stopped. \`main()\` does not call that function. The hardware does.
 
+{{figure:polling-vs-interrupt}}
+
+Try it in the figure: give \`main()\` more work per loop pass and compare how late each version reacts.
+
 ## The interrupt function
 \`\`\`c
 __interrupt void cpu_timer0_isr(void)
@@ -170,6 +174,10 @@ A request must pass every gate in this chain:
 7. The CPU looks up the address of your function in the **vector table** (\`PieVectTable\`) and jumps to it.
 
 Miss one gate and nothing happens. There is no error message, your function just never runs. Most of this chapter is about finding the closed gate.
+
+{{figure:interrupt-path}}
+
+Try it in the figure: let the timer reach zero, see where the request stops, and open that gate with the line of C shown next to it. When the function has run once, let the timer reach zero again.
 
 ## What the CPU does on the way in
 It saves its state on the stack, clears \`IFR.x\` and \`IER.x\`, **sets INTM** and clears EALLOW. Because INTM is set, an interrupt function is not interrupted by another one unless you allow it. When the function returns, the old state comes back.
@@ -1407,6 +1415,10 @@ __interrupt void cpu_timer0_isr(void)
       refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "8.4" }, { trm: "3.8" }],
       brief: `
 A push button is two pieces of metal. When they meet they **bounce**: the contact closes, opens and closes again a few times before it settles. The same happens when they part. Code that reacts to every change of the pin counts one press as several.
+
+{{figure:button-bounce}}
+
+Try it in the figure: find how far apart the reads of the pin must be before one press counts as one.
 
 ## The button in this level
 - **PB1**, GPIO157 (port E), reads 0 while the contact is closed. It needs the pull-up.

@@ -26,6 +26,10 @@ A **bit** is one binary digit: a 0 or a 1. The F28379D, the microcontroller on t
 
 One hex digit is exactly four bits. \`0xA5\` is \`1010 0101\`. Bit numbers start at 0 on the right, and bit n is worth 2 to the power n, so bit 5 alone is \`0x20\` (32).
 
+{{figure:bit-explorer}}
+
+Try it in the figure: click bits and watch each hex digit follow its own four bits, and the decimal value add up from the weights.
+
 ## The bit operators
 C has operators that work on every bit of a number at once:
 - \`a | b\` (OR): a result bit is 1 if it is 1 in \`a\` or in \`b\`
@@ -40,6 +44,10 @@ A **mask** is a number whose 1 bits mark the bits you want to work on. With \`ma
 - **clear** it: \`x &= ~mask;\`
 - **toggle** it: \`x ^= mask;\`
 - **test** it: \`if (x & mask)\`
+
+{{figure:mask-ops}}
+
+Try it in the figure: pick an operation, click bits of the mask, and see which bits of \`x\` change and which C statement does it.
 
 ## Two things that are different on this chip
 - An \`int\` is **16 bits** (-32768 to 32767). \`200 * 1000\` does not fit and silently wraps around. Use \`int32_t\`, \`uint32_t\` or a long constant (\`1000L\`) for bigger numbers.
@@ -128,6 +136,10 @@ A signed N-bit number covers -2^(N-1) up to 2^(N-1) - 1. To negate a value: flip
 Example in 16 bits: 1 is \`0x0001\`. Flipped: \`0xFFFE\`. Plus one: \`0xFFFF\`. So -1 is \`0xFFFF\`.
 
 To read a pattern whose top bit is 1, do the same in reverse, or subtract 2^N: \`0xFFFF\` is 65535 - 65536 = -1.
+
+{{figure:bit-explorer}}
+
+Try it in the figure: switch it to two's complement and turn bit 15 on. Its weight becomes -32768, and that is the whole difference between signed and unsigned.
 
 Answers may be typed in decimal or in hex (\`0x...\`).
 `,
@@ -252,6 +264,10 @@ Run it and look at the terminal and at the messages under the editor. There are 
 
 - arithmetic between two \`int\` values is done in 16 bits, even if the result is stored in a 32-bit variable;
 - \`%d\` prints a 16-bit value. A 32-bit value needs \`%ld\`.
+
+{{figure:int16-overflow}}
+
+Try it in the figure: press the example \`200 * 1000\`, see where the result lands, then make the second operand a long.
 
 Fix the program so that it prints \`counts = 200000\`.
 `,

@@ -349,12 +349,16 @@ counter += 1;
 \`\`\`
 looks like one step. The machine does three: **read** the value from memory into a register, **add** 1 in the register, **write** the register back. If another thread, or an interrupt, changes \`counter\` between the read and the write, that change is overwritten and lost. The result depends on timing. This is a **race condition**, and an operation that cannot be split like this is called **atomic**.
 
+Try it in the figure: you are the scheduler. Step A once, run B to its end, then finish A, and look at the counter.
+
+{{figure:lost-update}}
+
 ## The fixes
 - A **mutex** (mutual exclusion lock): a thread locks it before touching the shared data and unlocks it after. A second thread that wants the lock waits. The code between lock and unlock is the **critical section**.
 - A **semaphore**: a counter with two operations. **post** adds 1. **wait** takes 1, and blocks while the count is 0. It lets one thread tell another "there is work for you".
 - **Producer-consumer**: one side puts data into a buffer, the other takes it out. The buffer absorbs the difference in speed.
 
-On the microcontroller the mutex is simpler: \`DINT;\` before the critical section and \`EINT;\` after it. With interrupts disabled, nothing can interleave.
+On the microcontroller the mutex is simpler: \`DINT;\` before the critical section and \`EINT;\` after it. With interrupts disabled, nothing can interleave. Switch the figure above to "main and an interrupt" to try both.
 `,
       questions: [
         {
@@ -459,6 +463,10 @@ A local variable never needs protection. A constant never needs protection: nobo
 
 Each thread does three machine steps: **read** \`counter\` into its own register, **add** 1 in the register, **write** the register back to \`counter\`.
 
+Play the schedule in the figure first, then put the steps below in the same order.
+
+{{figure:lost-update}}
+
 The scheduler may pause a thread between any two steps. Build the unlucky schedule in which the result is **6**:
 
 - Thread A starts, and is paused straight after its read.
@@ -510,6 +518,10 @@ shared = tmp;       // write
 \`\`\`
 
 This is what your compiled \`shared++\` does. Treat every \`x++\`, \`x += n\` and \`x = x + n\` on shared data as these three steps.
+
+Try it in the figure: choose "main and an interrupt", step main() once and fire the interrupt. Then turn on DINT / EINT and fire it at the same moment.
+
+{{figure:lost-update}}
 
 ## What to do
 1. Press **Run** as it is. Look at \`lost\` in the watch list: it is not 0. Each lost update is one interrupt that landed between the read and the write.
@@ -647,6 +659,10 @@ uint16_t count;   // how many samples are in the buffer
 \`\`\`
 
 Both indexes move forward and wrap from the last slot to slot 0: \`head = (head + 1) % BUF_SIZE;\`
+
+Try it in the figure: press Put until the buffer is full, then Get until it is empty, and watch head and tail wrap from slot 7 to slot 0.
+
+{{figure:ring-buffer}}
 
 ## Two special cases
 - **Empty** (\`count == 0\`): there is nothing to take. \`buf_get\` returns 0.
@@ -1036,6 +1052,10 @@ With only two indexes, \`head == tail\` could mean empty or full. The usual answ
 - full: the slot after \`head\` is \`tail\`
 
 So a buffer of \`BUF_SIZE\` 8 holds at most 7 samples.
+
+Switch the figure to "lock-free, no count" and fill it: it stops at 7 samples.
+
+{{figure:ring-buffer}}
 
 ## Why it is safe
 Think about what the other side can do at each point of your code. While the consumer runs, the producer can only move \`head\` forward: a buffer the consumer saw as non-empty stays non-empty, and the slot at \`tail\` is not touched. While the producer runs, the consumer can only move \`tail\` forward: a buffer the producer saw as not full stays not full. A stale index only makes a side **too careful** (it reports full or empty one sample early), never wrong.

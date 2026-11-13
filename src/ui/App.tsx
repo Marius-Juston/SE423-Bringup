@@ -1,4 +1,4 @@
-import { Component, useState, type ReactNode } from "react";
+import { Component, useEffect, useState, type ReactNode } from "react";
 import { CHAPTERS, findLevel } from "../levels/index";
 import { useSave } from "./store";
 import { MapView } from "./MapView";
@@ -7,6 +7,9 @@ import { Handbook } from "./Handbook";
 import { Sandbox } from "./Sandbox";
 import { Settings } from "./Settings";
 import { Figure } from "./figures";
+import { Icon, Ring } from "./Icon";
+import { usePref } from "./prefs";
+import { tierOf } from "../levels/types";
 
 export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook" } | { name: "sandbox" } | { name: "settings" };
 
@@ -53,30 +56,47 @@ export function App() {
 function Game() {
   const [view, setView] = useState<View>({ name: "map" });
   const save = useSave();
-  const total = CHAPTERS.reduce((n, c) => n + c.levels.length, 0);
-  const done = CHAPTERS.reduce((n, c) => n + c.levels.filter((l) => save.passed[l.id]).length, 0);
-  const nav = (name: "map" | "handbook" | "sandbox" | "settings", label: string) => (
+  const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
+  const [scale] = usePref<number>("text-scale", 1);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "system") delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    root.style.fontSize = `${16 * scale}px`;
+  }, [theme, scale]);
+  const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches) || (theme === "system" && !window.matchMedia("(prefers-color-scheme: light)").matches);
+  const core = CHAPTERS.flatMap((c) => c.levels).filter((l) => tierOf(l) === "core");
+  const done = core.filter((l) => save.passed[l.id]).length;
+  const nav = (name: "map" | "handbook" | "sandbox" | "settings", label: string, icon: string) => (
     <button aria-current={view.name === name || (name === "map" && view.name === "level") ? "page" : undefined} onClick={() => setView({ name } as View)}>
-      {label}
+      <Icon name={icon} size={16} /> {label}
     </button>
   );
   return (
     <div className="app">
+      <a className="skip" href="#main">Skip to content</a>
       <header className="topbar">
         <button className="brand" onClick={() => setView({ name: "map" })} aria-label="Bringup, go to the map">
-          <span className="brand-mark" aria-hidden="true">01</span>
+          <span className="brand-mark" aria-hidden="true">
+            <i /><i /><i /><i />
+          </span>
           Bringup
         </button>
         <nav className="topnav" aria-label="Main">
-          {nav("map", "Map")}
-          {nav("handbook", "Handbook")}
-          {nav("sandbox", "Sandbox")}
-          {nav("settings", "Settings")}
+          {nav("map", "Map", "map")}
+          {nav("handbook", "Handbook", "book")}
+          {nav("sandbox", "Sandbox", "flask")}
+          {nav("settings", "Settings", "gear")}
         </nav>
         <span className="spacer" />
-        <span className="progress-pill">{done} of {total} levels passed</span>
+        <span className="progress-pill" title="Core levels passed">
+          <Ring value={done} max={core.length} size={22} /> {done}/{core.length}
+        </span>
+        <button className="icon-btn" onClick={() => setTheme(dark ? "light" : "dark")} aria-label={dark ? "Switch to the light theme" : "Switch to the dark theme"} title={dark ? "Light theme" : "Dark theme"}>
+          <Icon name={dark ? "sun" : "moon"} size={18} />
+        </button>
       </header>
-      <main>
+      <main id="main" tabIndex={-1}>
         <Boundary key={view.name === "level" ? view.id : view.name} onReset={() => setView({ name: "map" })}>
         {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} />}
         {view.name === "level" && findLevel(view.id) && <LevelView key={view.id} id={view.id} go={setView} />}

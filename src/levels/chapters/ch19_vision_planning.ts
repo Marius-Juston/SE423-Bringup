@@ -832,6 +832,10 @@ With R, G, B scaled to 0..1, max and min the largest and smallest of the three, 
 - H = 60 x ((B - R) / d + 2) when G is the largest
 - H = 60 x ((R - G) / d + 4) when B is the largest
 
+Try it in the figure: press Shadow and watch R, G and B all change while the hue stays where it was.
+
+{{figure:hsl-picker}}
+
 The lecture slides show HSV, a close relative that uses V = max where HSL uses L. The OpenMV camera code in the lab thresholds in LAB, another space that separates lightness from colour. The idea is the same in all three.
 
 ## Features: blobs and moments
@@ -842,6 +846,10 @@ A **blob** is a group of mask pixels that touch each other. Small blobs are nois
 - M01 = sum of the row numbers of its pixels
 
 The **centroid**, the blob's centre, is at column M10 / M00 and row M01 / M00.
+
+Try it in the figure: paint pixels and watch the moments, the centroid and the turn command follow. Then switch the area filter off.
+
+{{figure:blob-centroid}}
 
 ## Control
 If the centroid is to the right of the image centre, the ball is to the right, so turn right. For a 640-pixel-wide image the centre is column 320, and a simple controller is
@@ -898,6 +906,10 @@ Let max and min be the largest and smallest of R, G, B and d = max - min.
 H is in degrees. If it comes out negative, add 360.
 
 Work out the fields, then compare pixel 1 and pixel 2.
+
+The figure computes the same formulas for any pixel (its sliders run from 0 to 255, so 0.8 is 204). Use it to check your working, and to see which branch of the hue formula applies.
+
+{{figure:hsl-picker}}
 `,
       fields: [
         { id: "l1", label: "Pixel 1: lightness L", answer: 0.4, tolPct: 1, why: "max = 0.8, min = 0. L = (0.8 + 0) / 2 = 0.4." },
@@ -1023,6 +1035,10 @@ Use \`float\` sums.
 - \`turn = KP_TURN * (CENTRE_COL - cx);\` With this sign, a ball to the **right** of the centre gives a **negative** command, a turn to the right (clockwise).
 
 You can pass an array element straight to \`rgb_to_hsl\`. It is converted to float.
+
+The figure does steps 2 and 3 on a mask you paint yourself: M10 only looks at columns, M01 only at rows.
+
+{{figure:blob-centroid}}
 `,
       kit: "robot",
       durationMs: 20,
@@ -1134,6 +1150,10 @@ All three keep a **frontier** (cells found but not yet expanded) and a **came_fr
 
 **Greedy best-first** search orders by h alone. It is fast and heads straight for the goal, but the path it finds is not always the shortest.
 
+Try it in the figure: step BFS, Greedy and A* on the same map and watch which frontier cell each one takes next. The map "greedy trap" shows greedy search finding a longer path.
+
+{{figure:search-explorer}}
+
 ## The heuristic
 For a cell and a goal that are dr rows and dc columns apart:
 
@@ -1204,6 +1224,10 @@ cell = queue[head];  head++;     // take from the front
 
 The queue is empty when \`head == tail\`.
 
+The figure runs this loop on this map, with the same neighbour order: choose BFS, press Step and follow the queue. Move the start to the top left corner to match the tests.
+
+{{figure:search-explorer}}
+
 For the four neighbours, two small arrays save you from writing the same code four times:
 
 \`\`\`c
@@ -1270,6 +1294,10 @@ Each cell has
 - \`state[]\`: 0 not seen yet, 1 in the **open set** (found, waiting), 2 **closed** (expanded, finished).
 
 The loop: take the open cell with the smallest f. If it is the goal, rebuild the path and return 1. Otherwise close it and look at its neighbours. A neighbour that is new, or that is now reached more cheaply than before, gets the new \`g\` and the new \`parent\` and goes into the open set.
+
+The figure runs this loop on this map from (4, 0) to (0, 6): choose A* and press Step. The map "walled in" is the last test, where the open set runs empty.
+
+{{figure:search-explorer}}
 
 ## The six items
 1. \`heuristic\`: the **Manhattan** distance, \`abs()\` of the row difference plus \`abs()\` of the column difference.
@@ -1497,6 +1525,10 @@ This program looks for the red cone with "hue from 340 through 0 to 20, saturati
 
 Read the condition as the computer does. Can a number be at least 340 **and** at most 20?
 
+Try it in the figure: pick Red cone and see where its hue lands on the circle, just before the seam where 360 becomes 0.
+
+{{figure:hsl-picker}}
+
 Fix the test. Keep the saturation requirement: the grey floor has hue 0 by convention, and only its low saturation keeps it out of the mask. The image also holds an orange ball (hue 30) and a magenta marker (hue 320), which must stay out.
 `,
       kit: "robot",
@@ -1577,6 +1609,10 @@ Find where they are swapped.
       refs: [{ course: "L17" }, { course: "HW5" }],
       brief: `
 A real mask is never clean. A few stray pixels pass the threshold, and their weight pulls the centroid of "all mask pixels" away from the ball. The cure is to treat the mask as separate **blobs** and ignore the small ones.
+
+The figure starts with this level's mask. Switch the area filter off and see the specks drag the centroid away, then move MIN_AREA.
+
+{{figure:blob-centroid}}
 
 A blob is a **connected component**: a set of mask pixels joined through neighbours. Here neighbours are the four pixels above, below, left and right (4-connectivity). Two pixels that touch only at a corner are **not** connected.
 
@@ -1690,6 +1726,10 @@ Four searches, one skeleton. They differ only in **which frontier cell is expand
 - **A***: the one with the smallest f = g + h. Shortest path whenever h is **admissible** (never more than the true remaining cost), usually with far fewer expansions than Dijkstra.
 
 Two limits explain how they relate. With h = 0 everywhere, A* **is** Dijkstra. With a heuristic that is much too large, g hardly matters and A* behaves like greedy search.
+
+In the figure, pick the map "greedy trap" and compare the table: every step costs 1 there, so BFS stands in for Dijkstra.
+
+{{figure:search-explorer}}
 
 The maps also differ in connectivity. On a **4-connected** grid a cell has up to four neighbours. On an **8-connected** grid the diagonals are neighbours too, and a diagonal step is longer: about 1.41 cells.
 `,
@@ -1935,6 +1975,10 @@ l_new = l_old + l_sensor - l_0
 - l_sensor is the log-odds of what the sensor just said about the cell,
 - l_0 is the log-odds of the prior, the belief before any measurement. With a prior of 0.5, l_0 = 0.
 
+Try it in the figure, which uses the sensor model of the exercise below: send hits and pass-throughs and watch the log-odds add up while the probability follows.
+
+{{figure:log-odds}}
+
 ## The exercise
 A cell starts at p = 0.5. The sensor model says: when the beam **ends** in a cell, the cell is occupied with p = 0.8. When the beam **passes through** a cell, the cell is occupied with p = 0.3.
 `,
@@ -1965,6 +2009,10 @@ One row of 8 map cells lies straight ahead of the LIDAR, cell 0 nearest. Every s
 - the cells **behind** it were not seen: no evidence, no change.
 
 Each cell stores log-odds, starting at 0 (p = 0.5).
+
+The figure shows one such cell. It uses p = 0.8 for a hit and 0.3 for a miss; this level's constants are weaker (L_OCC and L_FREE), the adding is the same.
+
+{{figure:log-odds}}
 
 ## Write
 \`update_row(hit)\`: for every cell that was seen, apply

@@ -1003,6 +1003,10 @@ ${SETUP_BUTTONS}
       brief: `
 A real push button is two pieces of metal. When they meet they **bounce**: the contact closes, opens and closes again several times before it settles. The same happens on release. HW4 warns about this for the buttons of your board. A fast loop sees every bounce as a press.
 
+{{figure:button-bounce}}
+
+Try it in the figure: move the slider to change how often the pin is read, and watch what a plain edge detector counts on the press and on the release.
+
 What this button does:
 
 - When pressed or released, the contact bounces for **up to 1 ms**, then it is stable.

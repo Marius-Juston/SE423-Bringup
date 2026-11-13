@@ -50,9 +50,12 @@ try {
     await page.goto(url);
     await page.evaluate(() => localStorage.setItem("bringup-save-v1", JSON.stringify({ version: 1, passed: {}, stars: {}, hints: {}, code: {}, unlockAll: true })));
     await page.reload();
-    await page.waitForSelector(".chapters");
-    // The level may sit in a folded chapter: open every chapter first.
-    await page.evaluate(() => document.querySelectorAll("details").forEach((d) => (d.open = true)));
+    await page.waitForSelector(".map-cols");
+    // Levels are listed per chapter: try each chapter until the level shows.
+    for (const tile of await page.locator("button[data-chapter]").all()) {
+      await tile.click();
+      if (await page.locator(`button[data-level="${id}"]`).count()) break;
+    }
     await page.locator(`button[data-level="${id}"]`).click();
     await page.waitForSelector(".level-head");
     const code = opt("code");
@@ -62,10 +65,10 @@ try {
       await page.keyboard.insertText(readFileSync(code, "utf8"));
     }
     if (rest.includes("--tests")) {
-      await page.getByRole("button", { name: "Run tests" }).click();
+      await page.getByRole("button", { name: /^Run tests/ }).click();
       await page.waitForSelector(".bench .result");
     } else if (opt("run")) {
-      await page.getByRole("button", { name: "▶ Run" }).click();
+      await page.getByRole("button", { name: "Run", exact: true }).click();
       await page.waitForTimeout(+opt("run"));
     }
     for (const c of clicks) await page.getByRole("button", { name: c }).first().click();
