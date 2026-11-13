@@ -18,7 +18,7 @@ export const ch00: Chapter = {
       mode: "complete",
       title: "First light",
       goal: "Change one character of a finished program so that LED1 lights.",
-      refs: [{ course: "Lab 1" }, { course: "L3" }],
+      refs: [{ course: "L2", slide: 13 }, { course: "L3", slide: 7 }, { course: "Lab 1" }],
       brief: `
 Every level works the same way. Read the short text on this side. Try things with **Run** and watch the board. Press **Run tests** to check your work, and open a **hint** if you are stuck.
 
@@ -73,7 +73,7 @@ Change the 0 to a 1. Press **Run** and look at LED1 on the board, then press **R
       kind: "brief",
       title: "Why bits matter here",
       goal: "Learn to read numbers written in binary and in hex, then answer three questions.",
-      refs: [{ course: "L2" }, { course: "L4" }],
+      refs: [{ course: "L2", slide: [17, 18] }],
       brief: `
 A **bit** is one binary digit: a 0 or a 1. Inside the chip a bit is one memory cell that is either low (0) or high (1). Chapter C showed that a **register** is a variable at a fixed address whose bits are wired to the chip's hardware: one bit turns an LED on, three bits pick a speed. To set the right bits you must read numbers the way the chip stores them.
 
@@ -118,7 +118,7 @@ Try it in the figure: click bits and watch each hex digit follow its own four bi
       kind: "register",
       title: "Light the bits of 0x00A5",
       goal: "Switch bits on until the value reads 0x00A5.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "L2", slide: [18, 19] }, { course: "HW1" }],
       brief: `
 Click a bit to flip it. The hex and decimal readouts update as you go.
 
@@ -141,7 +141,7 @@ Split the hex number into digits first: \`0x00A5\` is the digits 0, 0, A, 5. The
       kind: "calc",
       title: "The bit operators",
       goal: "Work out by hand what OR, AND, XOR, NOT and the two shifts do to a number.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "L2", slide: [20, 19] }, { course: "HW1" }],
       brief: `
 C has operators that work on each bit of a number separately. Write the two numbers in binary, one above the other, and look at one column at a time:
 
@@ -191,7 +191,7 @@ Answers may be typed in hex (\`0x...\`) or in decimal.
       kind: "register",
       title: "Set one bit, clear another",
       goal: "Starting from 0x00A5, apply `v |= (1 << 9);` and then `v &= ~0x0004;` by hand.",
-      refs: [{ course: "L2" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: [19, 20] }, { course: "Lab 2" }],
       brief: `
 A register holds many settings side by side. To change one of them you must change its bits and leave all the others alone. The bit operators do that with a **mask**: a number whose 1 bits mark the bits you want to work on. \`1 << n\` is a mask with a single 1 in position n.
 
@@ -238,7 +238,7 @@ Make the bits show what \`v\` holds afterwards. Every bit that the two lines do 
       mode: "complete",
       title: "The mask moves in C",
       goal: "Finish three one-line functions that set, clear and test bit n of a value.",
-      refs: [{ course: "L2" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: [20, 19] }, { course: "Lab 2" }],
       brief: `
 Now write the mask moves yourself. Each function gets a 16-bit value \`v\` and a bit number \`n\`:
 
@@ -335,7 +335,7 @@ void main(void)
       kind: "calc",
       title: "Two's complement",
       goal: "Convert between negative numbers and their bit patterns.",
-      refs: [{ course: "L4" }, { course: "Lab 2" }],
+      refs: [{ course: "L4", slide: [7, 8] }, { course: "Lab 2" }],
       brief: `
 So far every pattern was a number from 0 up: **unsigned**. A **signed** type must also hold negative numbers, and bits have no minus sign. The chip uses **two's complement**: the top bit is worth the same as before, but negative. In 16 bits, bit 15 is worth -32768 instead of +32768.
 
@@ -370,7 +370,7 @@ Answers may be typed in decimal or in hex (\`0x...\`).
       kind: "brief",
       title: "An int is 16 bits here",
       goal: "Learn what happens when a result is too big for its type, then answer three questions.",
-      refs: [{ course: "L4" }, { course: "HW1" }, { course: "Lab 1" }],
+      refs: [{ course: "L4", slide: [5, 7] }, { course: "HW1" }, { course: "Lab 1" }],
       brief: `
 On a PC an \`int\` has 32 bits. On this chip it has **16**. In two's complement that is -32768 to 32767, and nothing larger.
 
@@ -418,7 +418,7 @@ The smallest piece of memory this CPU can reach is 16 bits, called a **word**. E
       mode: "complete",
       title: "Split and join bytes",
       goal: "Finish three small functions that take a 16-bit value apart and put it back together.",
-      refs: [{ course: "HW1" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: [19, 20] }, { course: "HW1" }],
       brief: `
 A **byte** is 8 bits. Sensors often send a 16-bit reading as two bytes, one after the other. You will do this for real with the motion sensor (IMU) and the laser scanner (LIDAR) later, so build the tools now.
 
@@ -518,7 +518,7 @@ void main(void)
       mode: "debug",
       title: "The count that came out wrong",
       goal: "Find the two bugs that make this program print the wrong number.",
-      refs: [{ course: "HW1" }, { course: "Lab 1" }, { course: "L4" }],
+      refs: [{ course: "L4", slide: [5, 14] }, { course: "HW1" }, { course: "Lab 1" }],
       brief: `
 A **timer** is a counter inside the chip that counts up at a steady rate, here 200 times per microsecond (us). \`toCounts(microseconds)\` works out how many counts a time takes. \`main\` calls it for 1000 us (it should give 200000) and for 500 us (100000), and prints both on the **serial terminal**, the text window next to the board.
 
@@ -613,7 +613,7 @@ ${SERIAL_SETUP}
       mode: "checkpoint",
       title: "Pack a control word",
       goal: "Write functions that place three settings into one 16-bit word, and read one back.",
-      refs: [{ course: "L2" }, { course: "Lab 3" }],
+      refs: [{ course: "L2", slide: [19, 20] }, { course: "L3", slide: 22, note: "fields written with mask and shift" }, { course: "Lab 3" }],
       brief: `
 A register packs several settings into one word. Each setting has its own group of bits, called a **field**. This word is modelled on a control register you will meet in chapter 9:
 
@@ -705,7 +705,7 @@ void main(void)
       mode: "write",
       title: "A 12-bit reading in a 16-bit word",
       goal: "Turn a 12-bit two's complement sensor reading into a correct int16_t.",
-      refs: [{ course: "L4" }, { course: "Lab 2" }],
+      refs: [{ course: "L4", slide: 7 }, { course: "Lab 2" }],
       brief: `
 Many sensors send fewer than 16 bits. This one packs each sample into a 16-bit word:
 
@@ -785,7 +785,7 @@ void main(void)
       mode: "debug",
       title: "A mask from two bit numbers",
       goal: "Fix a function that should build the mask for bits hi down to lo of a 32-bit register.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "L2", slide: 19 }, { course: "HW1" }],
       brief: `
 Register fields are described by bit numbers: "bits 12 to 10". \`fieldMask(hi, lo)\` should return a 32-bit value with exactly those bits set, so \`fieldMask(12, 10)\` is \`0x00001C00\`.
 
@@ -858,7 +858,7 @@ void main(void)
       mode: "write",
       title: "Mirror a word",
       goal: "Reverse the bit order of a 16-bit value.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "L2", slide: [19, 20] }, { course: "HW1" }],
       brief: `
 Some devices send the **least significant bit** (bit 0, worth the least) first while your code expects the **most significant bit** (the top bit) first. The fix is to mirror the word: bit 0 becomes bit 15, bit 1 becomes bit 14, and so on.
 
@@ -937,7 +937,7 @@ void main(void)
       mode: "write",
       title: "Fractions without float",
       goal: "Multiply two Q15 fixed-point numbers with rounding and without ever wrapping around.",
-      refs: [{ course: "L4" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 A **Q15** number is an \`int16_t\` that stands for its value divided by 32768. So 16384 means 0.5, -8192 means -0.25, and the range is -1.0 to just under +1.0. Controllers use this format when float is too slow or not available.
 
@@ -1022,7 +1022,7 @@ void main(void)
       mode: "write",
       title: "Print a number without %ld",
       goal: "Convert an int32_t to decimal text yourself, digit by digit.",
-      refs: [{ course: "L4" }, { course: "HW1" }, { course: "Lab 1" }],
+      refs: [{ course: "L4", slide: [10, 11] }, { course: "HW1" }, { course: "Lab 1" }],
       brief: `
 \`serial_printf\` is convenient, but it is large and slow. Do its job by hand once and you will know what \`%ld\` costs.
 

@@ -1290,7 +1290,7 @@ export const ch17: Chapter = {
       kind: "brief",
       title: "Measuring distance with light",
       goal: "Learn how the robot measures distance and how it turns a scan into a decision.",
-      refs: [{ course: "L14" }, { course: "L16" }],
+      refs: [{ course: "L14", slide: [7, 13, 20] }, { course: "L16", slide: [14, 10] }],
       brief: `
 A robot that drives has to know how far away things are. Without that it finds a wall by hitting it.
 
@@ -1361,7 +1361,7 @@ The scan arrives as text over a serial port (chapter 6). Your code asks for it e
       kind: "calc",
       title: "Where each point looks",
       goal: "Work out how many points the course's scan has and in which direction each one looks.",
-      refs: [{ course: "L16" }, { course: "HW4" }],
+      refs: [{ course: "L16", slide: [23, 24, 31] }, { course: "HW4" }],
       brief: `
 A scan is a list of distances. To use one you must know which way each distance was measured.
 
@@ -1409,7 +1409,7 @@ The last group is not full: it starts at step 725, where the scan ends. It still
       kind: "register",
       title: "Two characters, twelve bits",
       goal: "Decode the two characters M and c into a 12-bit distance.",
-      refs: [{ course: "L16" }],
+      refs: [{ course: "L16", slide: 21 }],
       brief: `
 The LIDAR sends text, not binary numbers, so that no distance can ever look like a line feed. A distance is at most 4095 mm, which fits in **12 bits**. The sensor splits those 12 bits into two halves of **6 bits** and adds **0x30** to each half. Every half then becomes a printable character between \`'0'\` (0x30) and \`'o'\` (0x6F).
 
@@ -1454,7 +1454,7 @@ Set the bits of the 12-bit distance. The field **high** takes the 6 bits from \`
       mode: "complete",
       title: "Ask every 100 ms",
       goal: "Send the G command to the LIDAR from CPU timer 1 and let the receive interrupt count the reply.",
-      refs: [{ course: "L16" }, { trm: "19" }, { trm: "3.8" }, { trm: "3.4.5" }],
+      refs: [{ course: "L16", slide: [32, 23, 26] }, { trm: "19" }, { trm: "3.8" }, { trm: "3.4.5" }],
       brief: `
 The URG-04LX only speaks when spoken to: you send it a command, it sends a reply. Asking again and again at a fixed rate is called **polling**. The command for distances is the letter \`G\`. Here the sensor listens at **115200** baud.
 
@@ -1583,7 +1583,7 @@ __interrupt void cpu_timer1_isr(void)
       mode: "complete",
       title: "The parser is a state machine",
       goal: "Complete the data state of the receive function so that it fills the distance array.",
-      refs: [{ course: "L16" }, { course: "L14" }, { trm: "19" }],
+      refs: [{ course: "L16", slide: [26, 29, 30] }, { course: "L14", slide: 35 }, { trm: "19" }],
       brief: `
 The receive interrupt gets **one character at a time**. The same character means different things in different places: a \`'0'\` in the header is the status, a \`'0'\` in the data is half a distance. So the function has to remember where in the reply it is. That memory is one variable, the **state**, here \`read_ladar_state\`. Code built around such a variable is a **state machine**: it is always in exactly one state, and what arrives decides when it moves to another.
 
@@ -1633,7 +1633,7 @@ The robot stands in the middle of a 10 ft square room (1524 mm to each wall), th
       kind: "quiz",
       title: "States and transitions",
       goal: "Read a state machine: which state the robot is in, and what makes it change.",
-      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      refs: [{ course: "L14", slide: [35, 37] }, { course: "HW3" }, { course: "HW4" }],
       brief: `
 A **finite state machine** has
 
@@ -1697,7 +1697,7 @@ Notice the two different numbers for the front: the robot starts turning below 1
       kind: "calc",
       title: "Steer in proportion",
       goal: "Compute the turn command of a robot that should stay 1.1 ft from a wall: the error, the gain and the limit.",
-      refs: [{ course: "L14" }, { course: "Lab 6" }],
+      refs: [{ course: "L14", slide: 37, note: "the turn law of state 1" }, { course: "Lab 6" }],
       brief: `
 The robot should drive along a wall on its right, 1.1 ft away from it. How hard should it steer when it is off? Full lock every time makes it zigzag. The usual answer is to steer **in proportion**: a little when it is a little off, more when it is far off. That takes three steps.
 
@@ -1747,7 +1747,7 @@ Try it in the figure: move the robot away from the wall until the command hits t
       mode: "write",
       title: "The course's wall follower",
       goal: "Turn the front and right-front distances into a speed and a turn command, with the two states of the course's starter code.",
-      refs: [{ course: "L14" }, { course: "Lab 6" }, { course: "HW3" }],
+      refs: [{ course: "L14", slide: [37, 33] }, { course: "L16", slide: 36 }, { course: "Lab 6" }, { course: "HW3" }],
       brief: `
 A state is more than a name: each state has an **action**. Here the action is two numbers for the **wheel controller**, code that runs every 1 ms and makes the wheels turn at the speeds you ask for (chapter 16 builds it; the tests here only read your two numbers):
 
@@ -1841,7 +1841,7 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
       mode: "debug",
       title: "Left, no, right, no, left",
       goal: "Stop the wall follower from flipping between two states when the front distance hovers around the threshold.",
-      refs: [{ course: "L14" }],
+      refs: [{ course: "L14", slide: [38, 39, 40] }],
       brief: `
 This is the three-state wall follower of "States and transitions". It works in open space, but in front of a wall the robot twitches: it starts to turn, stops, starts again, stops again. The motors get a new command on every scan and the robot hardly moves.
 
@@ -1910,7 +1910,7 @@ ${SHOW}`,
       kind: "quiz",
       title: "From words to a state diagram",
       goal: "Turn a sentence about what a robot should do into states, arrows and a table.",
-      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      refs: [{ course: "L14", slide: [36, 37] }, { course: "HW3" }, { course: "HW4" }],
       brief: `
 So far the states were handed to you. On the robot you start with a sentence about what it should do. This level turns such a sentence into a **state diagram**: one circle per state and one arrow per transition, each arrow labelled with its condition. The next level turns the diagram into C.
 
@@ -2001,7 +2001,7 @@ A state that is in no row's "from" column would be a trap: the robot could never
       mode: "write",
       title: "From the table to a switch",
       goal: "Write the patrol robot's state machine as a switch, straight from its transition table.",
-      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      refs: [{ course: "L14", slide: 37 }, { course: "L16", slide: 27, note: "a state machine written in C" }, { course: "HW3" }, { course: "HW4" }],
       brief: `
 A transition table turns into a \`switch\` almost line by line: **one \`case\` per state**. Inside a case, first the **action** of that state, then one \`if\` for **each row that leaves it**. Every case ends with \`break;\`.
 
@@ -2077,7 +2077,7 @@ Write the \`switch\` in \`patrol()\`. The names and the variables \`state\`, \`c
       mode: "checkpoint",
       title: "Down the corridor",
       goal: "Poll the LIDAR, parse its reply, run the wall follower on every scan and report over serial.",
-      refs: [{ course: "Lab 6" }, { course: "L14" }, { course: "L16" }, { course: "Lab 1" }, { trm: "19" }, { trm: "3.4.5" }],
+      refs: [{ course: "L16", slide: [31, 32, 30] }, { course: "L14", slide: 37 }, { course: "Lab 6" }, { course: "Lab 1" }, { trm: "19" }, { trm: "3.4.5" }],
       brief: `
 Everything together, on the real serial path. You have written every piece in this chapter; here you connect them.
 
@@ -2192,7 +2192,7 @@ The robot is in a corridor 3 ft wide and 32 ft long. The tests move it: at the s
       tier: "practice",
       title: "What an IR sensor can and cannot do",
       goal: "Put numbers on the limits of an infrared sensor that measures the strength of the reflection.",
-      refs: [{ course: "L14" }],
+      refs: [{ course: "L14", slide: [14, 13] }],
       brief: `
 A simple IR distance sensor sends out infrared light and measures how much comes back. Light that spreads out covers four times the area at twice the distance, so each part of it is four times weaker. That is the **inverse square law** of lecture 14:
 
@@ -2227,7 +2227,7 @@ The last field is the reason for the LIDAR. An IR sensor looks in one direction 
       tier: "practice",
       title: "How fast is light",
       goal: "Work out the times a laser range finder has to measure, and compare them with the CPU clock.",
-      refs: [{ course: "L14" }, { trm: "3.7" }],
+      refs: [{ course: "L14", slide: [20, 21, 22] }, { trm: "3.7" }],
       brief: `
 Time of flight: the sensor sends a pulse and times the echo.
 
@@ -2264,7 +2264,7 @@ The CPU of the F28379D runs at 200 MHz. Imagine you tried to time the echo yours
       tier: "practice",
       title: "Decode a line",
       goal: "Write decode() for one reading and decode_line() for a whole line of readings.",
-      refs: [{ course: "L16" }],
+      refs: [{ course: "L16", slide: [21, 26] }],
       brief: `
 Do in C what you did by hand in "Two characters, twelve bits". The figure shows the same steps with the C expression next to them.
 
@@ -2314,7 +2314,7 @@ The program calls your functions on two pieces of a real reply: a full line of 6
       tier: "practice",
       title: "Right on the right, wrong in front",
       goal: "Find out why only the first 32 points of the scan are correct, and fix the parser.",
-      refs: [{ course: "L16" }],
+      refs: [{ course: "L16", slide: [26, 29] }],
       brief: `
 A teammate rewrote the data state of the parser "to make it shorter". Now the robot reports nonsense:
 
@@ -2346,7 +2346,7 @@ Fix the bug in state 2 of \`RXCINT_recv_ready\`. Change as little as you can.
       tier: "practice",
       title: "From a laser pulse to the wheels",
       goal: "Put the steps of one 100 ms cycle of the wall-following robot in order.",
-      refs: [{ course: "L14" }, { course: "L16" }],
+      refs: [{ course: "L14", slide: [29, 31] }, { course: "L16", slide: [32, 33] }],
       brief: `
 The robot runs two loops at two speeds.
 
@@ -2378,7 +2378,7 @@ Order the steps of one cycle, starting with the timer that asks for a scan.
       tier: "practice",
       title: "What is closest, and where",
       goal: "Find the nearest obstacle in a scan and its direction, and the distance in front and to the right.",
-      refs: [{ course: "L14" }, { course: "L16" }, { course: "HW4" }],
+      refs: [{ course: "L14", slide: 33 }, { course: "L16", slide: [31, 36] }, { course: "HW4" }],
       brief: `
 A scan is 228 numbers. Behaviour needs a few meaningful ones. Here the decoded scan is handed to you directly, so you can concentrate on using it: \`dist[i]\` is the distance of point \`i\` in **feet**, as in the course code. A point without an echo holds 18.7 ft (the course's "maximum reading"), so it is never the nearest.
 
@@ -2471,7 +2471,7 @@ The robot is in a 10 ft square room with a box in it. The tests look at two pose
       tier: "practice",
       title: "A three-state wall follower",
       goal: "Write the wall follower's state machine as a switch and show the state on three LEDs.",
-      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      refs: [{ course: "L14", slide: [37, 36] }, { course: "L16", slide: 27, note: "a state machine written in C" }, { course: "HW3" }, { course: "HW4" }],
       brief: `
 Write the three-state machine of "States and transitions" in C. The usual form is a \`switch\` on the state variable, with one \`case\` per state. Inside each case, test that state's transitions and assign the new state.
 
@@ -2554,7 +2554,7 @@ ${SHOW}`),
       tier: "practice",
       title: "Your own state machine",
       goal: "Design and write a state machine from a description alone: no states, no table and no names are given.",
-      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      refs: [{ course: "L14", slide: [36, 44] }, { course: "HW3" }, { course: "HW4" }],
       brief: `
 This time you get what the homeworks and the final project give you: a description. The states, their names, the variables and the \`switch\` are yours. Do "From words to a state diagram" and "From the table to a switch" first.
 
@@ -2615,7 +2615,7 @@ Then write your \`#define\` names, your variables and the \`switch\` at the two 
       tier: "practice",
       title: "Zero is not a distance",
       goal: "Find out why the robot believes there is a wall 0 mm ahead in an empty corridor, and fix it.",
-      refs: [{ course: "L16" }],
+      refs: [{ course: "L16", slide: [25, 30] }],
       brief: `
 The robot stands at the start of a long corridor, 1.5 ft from the wall on each side. Nothing is in front of it for 30 ft. This program reports:
 
@@ -2660,7 +2660,7 @@ Fix the program so that error codes never reach \`ladar_mm[]\` as distances. Hal
       tier: "practice",
       title: "A different request",
       goal: "Predict the reply to a G command with other parameters.",
-      refs: [{ course: "L16" }],
+      refs: [{ course: "L16", slide: [22, 24, 26] }],
       brief: `
 Suppose you only care about what is in front of and beside the robot, but want it finer. You send
 
@@ -2694,7 +2694,7 @@ The reply has the same shape as always: the echo with its line feed, the status 
       tier: "practice",
       title: "From a beam to a point",
       goal: "Turn one LIDAR reading, a distance and an angle, into how far ahead and how far to the side the point is.",
-      refs: [{ course: "L16" }, { course: "HW5" }],
+      refs: [{ course: "L15", slide: 14 }, { course: "L16", slide: 31, note: "degrees to radians for each point" }, { course: "HW5" }],
       brief: `
 A LIDAR reading says "something is \`d\` away, in direction \`alpha\`". A map needs "how far ahead, and how far to the side". This level converts one into the other. The expert levels build on it.
 
@@ -2750,7 +2750,7 @@ Set the same beam in the figure, then use it (or a calculator in degree mode) fo
       tier: "expert",
       title: "Where is that wall, really",
       goal: "Turn a scan into world coordinates and fit a line to a wall, so that the answer does not depend on where the robot stands.",
-      refs: [{ course: "L16" }, { course: "L14" }, { course: "HW5" }],
+      refs: [{ course: "L16", slide: [37, 38] }, { course: "L15", slide: [19, 17] }, { course: "HW5" }],
       brief: `
 A LIDAR reading is seen from the sensor. A map needs the same point in **world** coordinates: x and y measured from a fixed corner of the room, so that a wall stays where it is when the robot moves. Do "From a beam to a point" (practice) first.
 
@@ -2880,7 +2880,7 @@ The given \`process_scan()\` calls your two functions. Together they call \`sin\
       tier: "expert",
       title: "Find the doorway",
       goal: "Detect a doorway in a scan and report its direction and width.",
-      refs: [{ course: "HW4" }, { course: "L14" }],
+      refs: [{ course: "L16", slide: [30, 31], note: "no-echo readings and the angle of each point" }, { course: "HW4" }],
       brief: `
 HW4 asks how you would recognise things in a scan. Here is one: a doorway.
 
@@ -2953,7 +2953,7 @@ The tests look from two poses in the room with the doorway, then put the robot i
       tier: "expert",
       title: "One character goes missing",
       goal: "Harden the parser so that a reply with a lost character is thrown away instead of producing wrong distances.",
-      refs: [{ course: "L16" }, { trm: "19" }],
+      refs: [{ course: "L16", slide: [26, 28, 29] }, { trm: "19" }],
       brief: `
 Serial lines lose characters now and then: a glitch on the wire, a receive buffer that overflowed while a long interrupt was running. The SCIP 1 reply has no checksum, and the course's parser trusts every character. Find out what that costs.
 

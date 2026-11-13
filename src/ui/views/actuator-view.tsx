@@ -1,4 +1,5 @@
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
+import { buzz, hush, playTones, setSoundOn, soundOn } from "../sound";
 import type { Board } from "../../sim/board";
 import type { BenchView, ViewProps } from "./types";
 
@@ -91,27 +92,74 @@ function Buzzer({ hz }: { hz: number }) {
   );
 }
 
+/** Makes the buzzer audible: live while the program runs, or replayed after a test run. */
+function BuzzerSound({ board, hz, live, nowMs }: { board: ViewProps["board"]; hz: number; live: boolean; nowMs: number }) {
+  const [on, setOn] = useState(soundOn);
+  const [playing, setPlaying] = useState<{ stop: () => void } | null>(null);
+  // Called again on every frame of a live run, so the tone follows the pin
+  // and fades by itself when the run pauses or stops.
+  useEffect(() => {
+    if (live && on) buzz(hz);
+  }, [live, on, hz, nowMs]);
+  useEffect(() => () => hush(), []);
+  useEffect(() => () => playing?.stop(), [playing]);
+  const history = board.outputs.get("BUZZER_HZ") ?? [];
+  const heard = history.some((h) => h.v >= 20);
+  return (
+    <div className="fig-controls" style={{ justifyContent: "center" }}>
+      <button
+        className="fig-opt"
+        aria-pressed={on}
+        onClick={() => {
+          setSoundOn(!on);
+          setOn(!on);
+        }}
+      >
+        {on ? "Sound on" : "Sound off"}
+      </button>
+      {!live && heard && (
+        <button
+          className="fig-opt"
+          onClick={() => {
+            if (playing) return playing.stop();
+            const p = playTones(history, board.now, () => setPlaying(null));
+            setPlaying(p);
+          }}
+        >
+          {playing ? "Stop" : "Play what the buzzer did"}
+        </button>
+      )}
+      <span className="hint-text">{live ? (on ? "You hear the buzzer while the program runs." : "The buzzer is muted.") : heard ? "Replays the tones of this run through your speakers." : "The buzzer was silent in this run."}</span>
+    </div>
+  );
+}
+
 /** Servo arms and the buzzer, as the PWM pins are driving them at the time shown. */
-function ActuatorView({ board, window: [, to] }: ViewProps) {
+function ActuatorView({ board, window: [, to], live, nowMs }: ViewProps) {
   const t = to * 1e6;
   const cells: ReactElement[] = [];
+  let buzzerHz: number | null = null;
   for (const [name, label] of SERVOS) {
     const deg = at(board.outputs.get(name), t);
     if (deg !== undefined && Number.isFinite(deg)) cells.push(<Servo key={name} label={label} deg={deg} />);
   }
   if (moved(board, "BUZZER_HZ")) {
     const hz = at(board.outputs.get("BUZZER_HZ"), t) ?? 0;
-    cells.push(<Buzzer key="buzzer" hz={Number.isFinite(hz) ? hz : 0} />);
+    buzzerHz = Number.isFinite(hz) ? hz : 0;
+    cells.push(<Buzzer key="buzzer" hz={buzzerHz} />);
   }
   if (!cells.length) return <p className="hint-text">Servos and the buzzer appear here once their PWM pin drives them.</p>;
   const cols = Math.min(3, cells.length);
   const rows = Math.ceil(cells.length / cols);
   return (
+    <>
     <svg className="scope" viewBox={`0 0 ${cols * CELL} ${rows * H}`} style={{ maxWidth: `${cols * 9}rem`, margin: "0 auto" }} role="group" aria-label="Servos and buzzer driven by the PWM pins">
       {cells.map((c, i) => (
         <g key={c.key} transform={`translate(${(i % cols) * CELL} ${Math.floor(i / cols) * H})`}>{c}</g>
       ))}
     </svg>
+    {buzzerHz !== null && <BuzzerSound board={board} hz={buzzerHz} live={live} nowMs={nowMs} />}
+    </>
   );
 }
 

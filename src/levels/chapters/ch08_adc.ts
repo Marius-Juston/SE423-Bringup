@@ -414,7 +414,7 @@ export const ch08: Chapter = {
       kind: "brief",
       title: "A voltage becomes a number",
       goal: "Learn what the ADC measures, what a sample is and what 12 bits give you.",
-      refs: [{ course: "L5" }, { course: "HW2" }, { trm: "11.1" }, { trm: "11.4.5" }],
+      refs: [{ course: "L5", slide: [13, 14, 18] }, { course: "HW2" }, { trm: "11.1" }, { trm: "11.4.5" }],
       brief: `
 A digital input only tells high from low. An **analog** signal is a voltage that can take any value in a range, and its exact value is the information. The **ADC** (analog-to-digital converter) measures the voltage on a pin and gives you a number. It is how the robot reads a light sensor, a joystick or its turn-rate sensor.
 
@@ -477,7 +477,7 @@ Try it in the figure: move the pin voltage and watch which step it lands on and 
       kind: "register",
       title: "Be the converter",
       goal: "Find the 8-bit result for 1.2 V the way the converter does: one bit at a time, from the top.",
-      refs: [{ course: "L5" }, { trm: "11.14" }, { trm: "11.1" }],
+      refs: [{ course: "L5", slide: [19, 20] }, { trm: "11.14" }, { trm: "11.1" }],
       brief: `
 How does the converter find the number for the voltage it is holding? Inside it are a small **DAC**, which makes a voltage from a number, and a **comparator**, a circuit that only says which of two voltages is higher. With them it plays a guessing game called **successive approximation** (SAR). It is a **binary search**: the way you find a number between 1 and 100 by always asking "is it at least the middle?". Every answer throws away half of what was left.
 
@@ -535,7 +535,7 @@ Add the bit you are trying to what you have **kept** so far. Set all eight bits.
       kind: "brief",
       title: "Trigger, SOC, converter, result",
       goal: "Learn the chain from a trigger to your interrupt function, and what a SOC is.",
-      refs: [{ course: "L5" }, { course: "HW2" }, { trm: "11.5" }, { trm: "11.5.1" }, { trm: "11.9" }],
+      refs: [{ course: "L5", slide: [22, 23, 26] }, { course: "HW2" }, { trm: "11.5" }, { trm: "11.5.1" }, { trm: "11.9" }],
       brief: `
 ## One converter, many pins
 The chip has four ADCs: ADCA, ADCB, ADCC and ADCD. Each is **one converter** with several input pins in front of it and a selector switch (a multiplexer) that connects **one** pin at a time. ADCA has the pins ADCINA0 to ADCINA5.
@@ -610,7 +610,7 @@ Step through the figure with **Next**. It shows the example this chapter builds:
       mode: "complete",
       title: "One sample by hand",
       goal: "Set SOC0 to the photoresistor pin, trigger it from software once per millisecond and convert each result to volts.",
-      refs: [{ trm: "11.6.4" }, { trm: "11.12" }, { trm: "11.4.6" }, { course: "HW2" }, { course: "L5" }],
+      refs: [{ trm: "11.6.4" }, { trm: "11.12" }, { trm: "11.4.6" }, { course: "HW2" }, { course: "L5", slide: [27, 25, 18] }],
       brief: `
 Before an ePWM gets involved, pull the trigger yourself. It is the same chain with a different first link, and it shows that the trigger really is only "when".
 
@@ -695,7 +695,7 @@ In the test the photoresistor is at 1.2 V, then at 2.4 V. On the board you can t
       mode: "complete",
       title: "An ePWM pulls the trigger",
       goal: "Fill in the blanks so that EPWM5 starts SOC0 every half millisecond and ADCA_ISR gets each result.",
-      refs: [{ course: "HW2" }, { trm: "11.6.1" }, { trm: "15.10" }, { trm: "11.16.2" }, { trm: "3.4.5" }],
+      refs: [{ course: "L8-9", slide: 20, note: "an ePWM used as the ADC's sample clock" }, { course: "L5", slide: 27 }, { course: "HW2" }, { trm: "11.6.1" }, { trm: "15.10" }, { trm: "11.16.2" }, { trm: "3.4.5" }],
       brief: `
 Now hand the trigger to hardware: an ePWM, used only as a very regular clock. Homework 2 does this with EPWM4 and its own numbers. Here it is **EPWM5**, with a different event and rate.
 
@@ -850,7 +850,7 @@ ${ISR_END}`,
       mode: "write",
       title: "Night light",
       goal: "Write the ADCA1 interrupt function and its enables so that LED1 turns on when the photoresistor is in the dark.",
-      refs: [{ course: "HW2" }, { trm: "11.9" }, { trm: "3.4.5" }, { trm: "11.4.6" }],
+      refs: [{ course: "L5", slide: 26 }, { course: "L4", slide: [28, 29] }, { course: "HW2" }, { trm: "11.9" }, { trm: "3.4.5" }, { trm: "11.4.6" }],
       brief: `
 EPWM5, SOC0 and the ADC interrupt select are set up as before. Three things are missing: the path to the CPU, the interrupt function, and a use for the number.
 
@@ -953,7 +953,7 @@ ${ISR_END}`,
       mode: "debug",
       title: "The interrupt that never comes",
       goal: "Find two mistakes in the chain: first ADCA_ISR never runs, then it runs only once.",
-      refs: [{ trm: "11.9" }, { trm: "11.9.1" }, { trm: "11.9.2" }, { course: "HW2" }],
+      refs: [{ course: "L5", slide: [26, 28] }, { trm: "11.9" }, { trm: "11.9.1" }, { trm: "11.9.2" }, { course: "HW2" }],
       brief: `
 Somebody set up the example from memory. The program builds, and \`adcina4volts\` stays at 0. \`numADCA\` shows that \`ADCA_ISR\` **never runs**.
 
@@ -1042,7 +1042,7 @@ ${ISR_END}`,
       mode: "complete",
       title: "Another ADC, another letter",
       goal: "Read the robot's turn-rate sensor on ADCC: find its result register and clear the right flag.",
-      refs: [{ course: "Lab 4" }, { course: "L5" }, { trm: "11.5.5" }, { trm: "11.9" }, { trm: "3.4.5" }],
+      refs: [{ course: "Lab 4" }, { course: "L5", slide: [16, 26] }, { trm: "11.5.5" }, { trm: "11.9" }, { trm: "3.4.5" }],
       brief: `
 The robot carries a **rate gyro** (an LPR510). It is a sensor whose output voltage follows how fast the robot **turns**. At rest it gives about 1.2 V. Turning one way raises the voltage, turning the other way lowers it.
 
@@ -1138,7 +1138,7 @@ __interrupt void ADCC_ISR(void)
       mode: "write",
       title: "How fast is the robot turning",
       goal: "Remove the gyro's offset, then turn its voltage into a turn rate and an angle.",
-      refs: [{ course: "Lab 4" }, { course: "L5" }, { trm: "11.5.5" }, { trm: "11.9" }],
+      refs: [{ course: "Lab 4" }, { course: "L15", slide: [33, 32], note: "gyro bias calibration, then rate to angle" }, { trm: "11.5.5" }, { trm: "11.9" }],
       continues: "adc-adcc",
       brief: `
 \`adcC5Volt\` from the last level is a voltage. The robot wants to know how fast it turns, and how far it has turned.
@@ -1276,7 +1276,7 @@ __interrupt void ADCC_ISR(void)
       mode: "checkpoint",
       title: "Three pins, one trigger",
       goal: "Add the joystick's two axes to the sequence and light the LED for the direction it is pushed.",
-      refs: [{ course: "HW2" }, { trm: "11.6.3" }, { trm: "11.7" }, { trm: "11.9" }],
+      refs: [{ course: "L5", slide: [26, 16] }, { course: "HW2" }, { trm: "11.6.3" }, { trm: "11.7" }, { trm: "11.9" }],
       brief: `
 A joystick is two sensors: its **X** axis is on **ADCINA2** and its **Y** axis on **ADCINA3**. Each gives 1.5 V at rest and moves towards 0 V or 3 V when pushed. Homework 2 reads the same joystick with its own SOC order and LEDs.
 
@@ -1459,7 +1459,7 @@ ${ISR_END}
       tier: "practice",
       title: "Steps of 0.73 mV",
       goal: "Convert between pin voltage and 12-bit result, and see what quantisation does.",
-      refs: [{ trm: "11.4.5" }, { trm: "11.4.6" }, { course: "L5" }, { course: "HW2" }],
+      refs: [{ trm: "11.4.5" }, { trm: "11.4.6" }, { course: "L5", slide: 18 }, { course: "HW2" }],
       brief: `
 In the 12-bit mode the course uses, the manual gives:
 
@@ -1524,7 +1524,7 @@ The photoresistor on ADCINA4 is at **1.2 V**. Work out what the ADC reports.
       tier: "practice",
       title: "One sample, start to finish",
       goal: "Put the steps of one photoresistor measurement in order, from the ePWM pulse to your interrupt function.",
-      refs: [{ trm: "11.5" }, { trm: "11.9" }, { trm: "11.14" }, { course: "HW2" }, { course: "L5" }],
+      refs: [{ trm: "11.5" }, { trm: "11.9" }, { trm: "11.14" }, { course: "HW2" }, { course: "L5", slide: [22, 26] }],
       brief: `
 The example of the code levels, with every setting written out:
 
@@ -1560,7 +1560,7 @@ Think of it as a relay race: the trigger hands over to the SOC, the SOC tells th
       tier: "practice",
       title: "Which setting answers which question",
       goal: "Match the five questions of the chain (when, which pin, how long, where, who tells the CPU) to their registers.",
-      refs: [{ trm: "11.5.1" }, { trm: "11.5.2" }, { trm: "11.5.3" }, { trm: "11.5.5" }, { trm: "11.9" }, { course: "HW2" }],
+      refs: [{ course: "L5", slide: [22, 27, 28] }, { trm: "11.5.1" }, { trm: "11.5.2" }, { trm: "11.5.3" }, { trm: "11.5.5" }, { trm: "11.9" }, { course: "HW2" }],
       brief: `
 Every link of the chain is one setting. Here is the example of the code levels:
 
@@ -1639,7 +1639,7 @@ The names are easy to mix up, so say them slowly: **ADCINA4** is a pin. **SOC0**
       tier: "practice",
       title: "Fill in a SOC",
       goal: "Set the three fields of ADCSOC0CTL for a joystick axis on a CPU timer trigger.",
-      refs: [{ trm: "11.5.1" }, { trm: "11.16.2" }, { trm: "11.6.3" }, { course: "HW2" }],
+      refs: [{ course: "L5", slide: [27, 25] }, { trm: "11.5.1" }, { trm: "11.16.2" }, { trm: "11.6.3" }, { course: "HW2" }],
       brief: `
 This is the real register \`AdcaRegs.ADCSOC0CTL\`: the slot SOC0. It is empty after reset.
 
@@ -1676,7 +1676,7 @@ EDIS;`,
       tier: "practice",
       title: "Four steps of the search",
       goal: "Work out the first four trial voltages of the 12-bit converter for an input of 2.0 V.",
-      refs: [{ course: "L5" }, { trm: "11.14" }],
+      refs: [{ course: "L5", slide: [20, 19] }, { trm: "11.14" }],
       brief: `
 The real converter has 12 bits and a 3.0 V reference. Its bits are worth 1.5 V (bit 11), 0.75 V (bit 10), 0.375 V (bit 9), 0.1875 V (bit 8), and so on.
 
@@ -1734,7 +1734,7 @@ Give the trial voltage of each of the first four steps, then the four bits as on
       tier: "practice",
       title: "How long is a sample",
       goal: "Calculate acquisition windows, ACQPS values and the time a sequence of conversions takes.",
-      refs: [{ trm: "11.5.3" }, { trm: "11.14.1" }, { trm: "11.6.3" }, { trm: "11.15.2" }, { course: "L5" }],
+      refs: [{ trm: "11.5.3" }, { trm: "11.14.1" }, { trm: "11.6.3" }, { trm: "11.15.2" }, { course: "L5", slide: [25, 13, 28] }],
       brief: `
 While the capacitor is connected to the pin it has to charge to the pin's voltage. A sensor with a large resistance in its output charges it slowly (the RC rule: a capacitor's voltage cannot jump), so it needs a longer **acquisition window**, the time the capacitor stays connected. Too short, and the capacitor still carries some of the voltage of the pin measured before: a "ghost" of the other channel.
 
@@ -1801,7 +1801,7 @@ After the window, with PRESCALE = 6, the manual's timing table says the conversi
       tier: "practice",
       title: "Wrong volts",
       goal: "Fix three mistakes that make the photoresistor voltage come out wrong.",
-      refs: [{ course: "HW2" }, { trm: "11.5.5" }, { trm: "11.16.2" }, { trm: "11.4.6" }],
+      refs: [{ course: "L5", slide: [18, 27] }, { course: "HW2" }, { trm: "11.5.5" }, { trm: "11.16.2" }, { trm: "11.4.6" }],
       brief: `
 The interrupt runs on every sample, as it should. But \`adcina4volts\` is nonsense: the photoresistor is at 1.2 V and then at 2.4 V, and the variable shows neither.
 
@@ -1885,7 +1885,7 @@ ${ISR_END}`,
       tier: "practice",
       title: "The set-up, line by line",
       goal: "Put the steps of the ADC set-up in the order the course writes them, and know why each comes where it does.",
-      refs: [{ trm: "11.12" }, { trm: "11.5" }, { trm: "11.9" }, { course: "HW2" }, { course: "Lab 4" }],
+      refs: [{ course: "L5", slide: 28, note: "the complete ADC set-up, line by line" }, { trm: "11.12" }, { trm: "11.5" }, { trm: "11.9" }, { course: "HW2" }, { course: "Lab 4" }],
       brief: `
 So far the ADC set-up was given and you filled in numbers. In the lab you type all of it. The next levels have you write it from an empty function, so first get the order straight.
 
@@ -1924,7 +1924,7 @@ The reasons for the order:
       tier: "practice",
       title: "Power up, from an empty function",
       goal: "Write the whole body of setupADCA(): power up ADCA, set up SOC0 for the photoresistor and its ADCINT1 flag.",
-      refs: [{ trm: "11.12" }, { trm: "11.5" }, { trm: "11.9" }, { course: "HW2" }, { course: "Lab 4" }],
+      refs: [{ course: "L5", slide: 28, note: "the complete ADC set-up, line by line" }, { trm: "11.12" }, { trm: "11.5" }, { trm: "11.9" }, { course: "HW2" }, { course: "Lab 4" }],
       brief: `
 \`setupADCA()\` is empty. \`main()\` is given: it is the loop of "One sample by hand". It starts SOC0 from software once per millisecond, waits for the flag ADCINT1, and converts the result to volts. With an empty set-up the ADC is off and the loop waits for ever.
 
@@ -2027,7 +2027,7 @@ void setupADCA(void)
       continues: "adc-setup-own",
       title: "Hand the trigger to EPWM5",
       goal: "Add the EPWM5 trigger block and the interrupt path to your own set-up, so that ADCA_ISR gets a sample every half millisecond.",
-      refs: [{ course: "HW2" }, { trm: "15.10" }, { trm: "15.4.3" }, { trm: "11.6.1" }, { trm: "3.4.5" }],
+      refs: [{ course: "L8-9", slide: 20, note: "an ePWM used as the ADC's sample clock" }, { course: "L5", slide: 27 }, { course: "HW2" }, { trm: "15.10" }, { trm: "15.4.3" }, { trm: "11.6.1" }, { trm: "3.4.5" }],
       brief: `
 Your program from the last level samples when \`main()\` says so. Now hardware does it: EPWM5 sends SOCA every **0.5 ms**, and the result arrives in an interrupt function. You write the trigger block this time. Your \`setupADCA()\` stays, with one number changed.
 
@@ -2132,7 +2132,7 @@ Declare it at the top: \`__interrupt void ADCA_ISR(void);\`. In it: read the res
       tier: "expert",
       title: "From a blank page",
       goal: "Write a complete sampling program from its requirements: no given lines, no checklist.",
-      refs: [{ trm: "11.12" }, { trm: "11.5" }, { trm: "11.6.1" }, { trm: "15.10" }, { trm: "3.4.5" }, { course: "HW2" }],
+      refs: [{ course: "L5", slide: [28, 27] }, { course: "L8-9", slide: 20, note: "an ePWM used as the ADC's sample clock" }, { trm: "11.12" }, { trm: "11.5" }, { trm: "11.6.1" }, { trm: "15.10" }, { trm: "3.4.5" }, { course: "HW2" }],
       brief: `
 This is what the lab asks of you: a sentence of requirements and an empty \`main()\`. Only \`InitSysCtrl()\`, two variables and the empty interrupt function are there.
 
@@ -2212,7 +2212,7 @@ Each check names one decision. The joystick is at 0.9 V, then at 2.1 V.
       tier: "expert",
       title: "Average out the ripple",
       goal: "Average blocks of 16 samples so that a 0.4 V ripple on the photoresistor signal disappears.",
-      refs: [{ trm: "11.6.2" }, { course: "L5" }, { course: "HW2" }],
+      refs: [{ trm: "11.6.2" }, { course: "L8-9", slide: [28, 29], note: "averaging samples to smooth a noisy reading" }, { course: "HW2" }],
       brief: `
 The room lights flicker, and the photoresistor sees it: its voltage jumps up and down by 0.2 V around the real level from one millisecond to the next. Such a regular wobble is called **ripple**. A single sample is off by 0.2 V. The average of many is not.
 
@@ -2292,7 +2292,7 @@ ${ISR_END}`,
       tier: "expert",
       title: "A switch that does not chatter",
       goal: "Turn LED1 on above 2.0 V and off below 1.0 V, hold it in between, and count the times it turns on.",
-      refs: [{ course: "HW2" }, { course: "L5" }, { trm: "11.9" }],
+      refs: [{ course: "HW2" }, { course: "L14", slide: [38, 40], note: "two thresholds against chattering" }, { trm: "11.9" }],
       brief: `
 A single threshold has a problem. A **threshold** is the level at which a decision flips. If the light sits right at the threshold, the smallest ripple pushes the reading above and below it, and the output flickers on and off.
 
@@ -2384,7 +2384,7 @@ ${ISR_END}`,
       tier: "expert",
       title: "Joystick angle",
       goal: "Sample both joystick axes on one trigger and compute the direction the stick is pushed, in degrees.",
-      refs: [{ course: "HW2" }, { trm: "11.6.3" }, { trm: "11.7" }, { trm: "11.15.3" }],
+      refs: [{ course: "L5", slide: [26, 16] }, { course: "HW2" }, { trm: "11.6.3" }, { trm: "11.7" }, { trm: "11.15.3" }],
       brief: `
 The joystick's X axis is on ADCINA2 and its Y axis on ADCINA3, both 1.5 V at rest.
 
@@ -2541,7 +2541,7 @@ ${ISR_END}
       tier: "expert",
       title: "ADC to DAC and back",
       goal: "Output 3.0 V minus the photoresistor voltage on DACA and measure that output again with a second SOC.",
-      refs: [{ course: "L5" }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "11.6.3" }, { trm: "11.5.5" }],
+      refs: [{ course: "L5", slide: [16, 11, 26] }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "11.6.3" }, { trm: "11.5.5" }],
       brief: `
 This level also needs the DAC chapter: you bring up DACA and write \`setDACA\` yourself.
 

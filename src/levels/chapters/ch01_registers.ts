@@ -24,7 +24,7 @@ export const ch01: Chapter = {
       kind: "brief",
       title: "A register is memory with wires attached",
       goal: "Learn where registers live in memory and the two ways C names their bits, then answer three questions.",
-      refs: [{ course: "L2" }, { trm: "3.6.1" }, { trm: "8.9" }],
+      refs: [{ course: "L2", slide: [8, 9, 10] }, { trm: "3.6.1" }, { trm: "8.9" }],
       brief: `
 A microcontroller is a **CPU** (the part that runs your program) plus **peripherals**: hardware blocks built into the same chip, such as the pins, the timers and the serial ports. The CPU controls every peripheral by reading and writing **registers**: memory locations whose bits are wired to hardware. Writing a 1 to the right bit turns an LED on.
 
@@ -76,7 +76,7 @@ Both lines do the same thing: bit 11 is \`0x800\`. \`.all\` is the full value. \
       kind: "calc",
       title: "Find the address",
       goal: "Work out where three registers live in memory.",
-      refs: [{ course: "L2" }, { trm: "3.8" }, { trm: "8.9" }],
+      refs: [{ course: "L2", slide: 10 }, { trm: "3.8" }, { trm: "8.9" }],
       brief: `
 The chip has three CPU timers, and each has the same five registers. What they do comes in chapter 4. Here only their places matter. Offsets are in 16-bit words:
 
@@ -114,7 +114,7 @@ Give each address in hex.
       kind: "register",
       title: "Start a timer by its bits",
       goal: "Set the timer control register so the timer runs and its interrupt is enabled.",
-      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 1" }],
+      refs: [{ course: "L2", slide: [23, 24] }, { course: "Lab 1" }, { trm: "3.8" }],
       brief: `
 CPU Timer 0 is a counter built into the chip. This is its real control register, with the fields TI gives it. A **field** is a group of one or more bits with one meaning. Right now the timer is **stopped** (\`TSS\` = 1).
 
@@ -144,7 +144,7 @@ Leave every other bit at 0. Then look at the hex value: the starter code of the 
       mode: "complete",
       title: ".all and .bit",
       goal: "Turn on LED1 with a whole-register write and LED2 with a single-field write.",
-      refs: [{ course: "Lab 2" }, { course: "L2" }, { trm: "8.3" }],
+      refs: [{ course: "L2", slide: [13, 10] }, { course: "Lab 2" }, { trm: "8.3" }],
       brief: `
 The chip's pins are numbered GPIO0 to GPIO168 and grouped in **ports** of 32: port A is GPIO0 to GPIO31, port B is GPIO32 to GPIO63, port C is GPIO64 to GPIO95. Each port has its own registers, with the port letter in the name.
 
@@ -209,7 +209,7 @@ ${LED_SETUP}
       mode: "debug",
       title: "The write that did nothing",
       goal: "Find out why LED1 stays dark, and fix it.",
-      refs: [{ trm: "3.6.1" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: [12, 11] }, { trm: "3.6.1" }],
       brief: `
 ## Protected registers
 Some registers could break the system if they were written by accident: pin configuration, speed settings and a few others. They are **EALLOW-protected**. A write only takes effect between \`EALLOW;\`, which unlocks them, and \`EDIS;\`, which locks them again. Outside that pair the write is silently ignored: no error, nothing happens.
@@ -287,7 +287,7 @@ Run it and read the message under the editor. Then open the **Registers** tab an
       kind: "register",
       title: "Two bits per pin",
       goal: "Change two pin multiplexer fields of GPBMUX1 and leave every other field alone.",
-      refs: [{ trm: "8.7" }, { trm: "8.9.2" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [21, 22] }, { trm: "8.7" }, { trm: "8.9.2" }],
       brief: `
 The chip has more peripherals than pins, so most pins can do one of several jobs. A **pin multiplexer** (mux for short) is the selector switch behind each pin: it connects the pin either to plain input/output (GPIO) or to one of the peripherals.
 
@@ -324,7 +324,7 @@ A full mux position has four bits, 0 to 15. The upper two are in a second regist
       mode: "complete",
       title: "Registers without their names",
       goal: "Light LED1 and LED2 by writing to raw addresses.",
-      refs: [{ course: "L2" }, { trm: "8.9.1" }, { trm: "8.3" }],
+      refs: [{ course: "L2", slide: [10, 13] }, { course: "L3", slide: 22, note: "volatile pointers to register addresses" }, { trm: "8.9.1" }, { trm: "8.3" }],
       brief: `
 The names in TI's header files are a convenience. Underneath, \`GpioDataRegs.GPASET\` is the 32-bit value at address \`0x7F02\`, and a pointer reaches it directly:
 
@@ -391,7 +391,7 @@ ${LED_SETUP}
       mode: "debug",
       title: "Three innocent lines",
       goal: "Since the red LED was added, the serial message is gone and LED11 is dark. Repair the damage.",
-      refs: [{ trm: "8.9.2" }, { trm: "8.7" }, { trm: "3.6.1" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: 20 }, { course: "L3", slide: 22, note: "changing one pin's field only" }, { trm: "8.9.2" }, { trm: "8.7" }, { trm: "3.6.1" }],
       brief: `
 This program printed \`ready\` and lit LED11 (GPIO60). Then a teammate added the LaunchPad's red LED (GPIO34) with three \`.all\` writes. Each value is right for GPIO34. The red LED works. The message and LED11 do not.
 
@@ -484,7 +484,7 @@ The **Registers** tab shows \`GpioCtrlRegs.GPBMUX1\` and \`GpioCtrlRegs.GPBDIR\`
       mode: "write",
       title: "Your own .bit",
       goal: "Write setField and getField: they change or read any field of any 32-bit register, given only numbers.",
-      refs: [{ trm: "3.6.1" }, { trm: "8.9.2" }, { trm: "3.8" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: [19, 20] }, { course: "L3", slide: 22, note: "fields written with mask and shift" }, { trm: "3.6.1" }, { trm: "8.9.2" }, { trm: "3.8" }],
       brief: `
 \`.bit.NAME\` only works when the register and the field are known while you type. Library code gets them as numbers. Write the two functions such code is built on:
 
@@ -605,7 +605,7 @@ void main(void)
       kind: "calc",
       title: "Read a memory dump",
       goal: "Work out what a program configured from the raw words in the debugger's memory view.",
-      refs: [{ course: "L2" }, { trm: "3.8" }, { trm: "8.9.2" }],
+      refs: [{ course: "L2", slide: [9, 10] }, { trm: "3.8" }, { trm: "8.9.2" }],
       brief: `
 A debugger's memory view shows 16-bit words and nothing else. The names are up to you.
 

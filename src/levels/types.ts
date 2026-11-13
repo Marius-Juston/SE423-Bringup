@@ -4,12 +4,23 @@
 
 import type { Check, Stimulus } from "../sim/runner";
 
-/** Where the material comes from. Shown on every level. */
+/** Where the material comes from. Shown on every level, as a link. */
 export interface Ref {
   /** Section number in the Technical Reference Manual (SPRUHM8I), e.g. "3.4.3". */
   trm?: string;
-  /** Course lecture, lab or homework, e.g. "L3", "Lab 2", "HW1". */
+  /**
+   * Course lecture, lab or homework: "L3", "L6-7", "Lab 2", "HW1", "LabVIEW2",
+   * "Project", "Syllabus" (see src/levels/course-links.ts for every form).
+   */
   course?: string;
+  /**
+   * Slide number(s) in the deck named by `course`, counted from 1 as in
+   * src/levels/slides-index.json. Only for lectures. The first one is the
+   * slide the link opens.
+   */
+  slide?: number | number[];
+  /** A few words on what to look for there, shown in the tooltip. */
+  note?: string;
 }
 
 interface Base {

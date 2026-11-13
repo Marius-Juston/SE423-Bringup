@@ -34,7 +34,7 @@ export const chB: Chapter = {
       mode: "complete",
       title: "Your first program",
       goal: "Run a finished program, then change the text it prints.",
-      refs: REFS,
+      refs: [{ course: "L4", slide: 12 }, { course: "Lab 1" }, { course: "HW1" }],
       brief: `
 A **program** is a list of instructions for a computer. The computer runs them one after another, from the top line to the bottom line. It does exactly what the lines say and nothing else. You will write programs in a language called **C**, the language the robot's chip is programmed in.
 
@@ -221,7 +221,7 @@ Try it in the figure: press Step and watch each line change one box. Look closel
       mode: "complete",
       title: "Print what a box holds",
       goal: "Store a new number in a variable and print it.",
-      refs: REFS,
+      refs: [{ course: "L4", slide: [13, 14] }, { course: "Lab 1" }, { course: "HW1" }],
       brief: `
 You cannot see inside a variable. To find out what it holds, print it.
 

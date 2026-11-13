@@ -377,7 +377,7 @@ export const ch20: Chapter = {
       kind: "brief",
       title: "Two things at once",
       goal: "Learn what processes and threads are, what they share, and how a shared counter loses an update.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [13, 17, 34] }, { trm: "3.4.3" }],
       brief: `
 Your robot has two computers. The F28379D runs your C code and nothing else. The second is a **Raspberry Pi**, a small computer that runs **Linux**. Linux is an **operating system**: a program that starts other programs and shares the processor among them, so that many run at the same time.
 
@@ -439,7 +439,7 @@ The cure is to keep the three steps together. The next levels show how.
       kind: "quiz",
       title: "Whose memory is it?",
       goal: "Decide what processes, threads and interrupt functions share.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: [16, 17, 15] }],
       brief: `
 Before you can protect shared data you have to know what is shared.
 
@@ -523,7 +523,7 @@ The course runs two processes on the Pi. \`serial_COMandOpti\` talks to the F283
       mode: "complete",
       title: "Catch the race, then close it",
       goal: "Watch a counter lose updates between main and a timer interrupt, then protect it with DINT and EINT.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
+      refs: [{ course: "L13", slide: [34, 35] }, { trm: "3.4.3" }, { trm: "3.4.4" }],
       brief: `
 \`shared\` is a counter. \`main()\` adds 1 to it 20000 times. The timer 0 interrupt function also adds 1 to it, every 50 microseconds. Each side counts its own additions in \`main_adds\` and \`isr_adds\`, so at the end
 
@@ -606,7 +606,7 @@ pthread_mutex_unlock(&lock);
       mode: "complete",
       title: "Two values that belong together",
       goal: "Copy a position (x and y) that the interrupt keeps changing, so that the two numbers always come from the same moment.",
-      refs: [{ course: "L13" }, { course: "Lab 1" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [33, 36] }, { course: "Lab 1" }, { trm: "3.4.3" }],
       brief: `
 In the last level main **changed** shared data. Here main only **reads** it, and there is still a race.
 
@@ -677,7 +677,7 @@ This is the pattern for printing as well. Printing takes milliseconds, and the v
       mode: "write",
       title: "A semaphore made of a counter",
       goal: "Write post and wait so that the interrupt can hand jobs to main without losing any.",
-      refs: [{ course: "L13" }, { course: "Lab 1" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [39, 40] }, { course: "Lab 1" }, { trm: "3.4.3" }],
       brief: `
 You know the flag pattern from chapter 5: the interrupt sets \`UARTPrint = 1;\` and \`main()\` does the slow work. A flag has a weakness. If the interrupt fires three times while main is still busy, the flag is still just 1, and two jobs are forgotten.
 
@@ -768,7 +768,7 @@ int sem_trywait(void)
       kind: "calc",
       title: "An array that goes round",
       goal: "Work out where a ring buffer's two indexes point after some puts and gets.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: 37, note: "producer and consumer share an array" }],
       brief: `
 A semaphore says how many jobs wait. Usually a job carries **data**: a sensor reading, a received character. The interrupt makes the data (it is the **producer**) and main uses it (the **consumer**), often a little later. In between, the data needs a place to wait, in order: first in, first out.
 
@@ -821,7 +821,7 @@ For the fields below the buffer has 8 slots and starts empty, with \`head\`, \`t
       mode: "write",
       title: "Producer and consumer",
       goal: "Write the put and get functions of a ring buffer that carries samples from the timer interrupt to main, with the full and empty cases.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [37, 38] }, { trm: "3.4.3" }],
       brief: `
 Now write the ring buffer of the last level. The array \`buf\`, the indexes \`head\` and \`tail\`, and \`count\` are declared for you. \`BUF_SIZE\` is 8.
 
@@ -882,7 +882,7 @@ int buf_get(uint16_t *v)
       mode: "debug",
       title: "The lock that was never opened",
       goal: "The interrupt stops producing almost at once. Find the path that leaves the critical section without EINT.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [35, 36] }, { trm: "3.4.3" }],
       brief: `
 This is the ring buffer from the last level, written by someone in a hurry. Run it: \`produced\` stays at 0 and main receives nothing. The timer is set up correctly, and its interrupt worked in the last level.
 
@@ -939,7 +939,7 @@ int buf_get(uint16_t *v)
       kind: "order",
       title: "The same hand-off on the Pi",
       goal: "Read a producer and a consumer written with pthreads, and put the lines in the order in which they run.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: [40, 36] }],
       brief: `
 This program runs on the **Raspberry Pi, not in the game**. The game simulates the F28379D only, and that chip has no threads. So you read this code and trace it, as you would before you type it on the Pi.
 
@@ -1017,7 +1017,7 @@ Put the lines in the order in which they run. Each one says which thread runs it
       kind: "quiz",
       title: "Real time or not",
       goal: "Decide which jobs belong on the F28379D and which on the Raspberry Pi, and why.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: [5, 15], note: "why the robot has a Pi and a Red Board" }],
       brief: `
 A job is **real time** when a late answer is a wrong answer. Real time does not mean fast. It means **on time, every time**.
 
@@ -1107,7 +1107,7 @@ The two talk over a serial line. When the Pi is late, the F28379D keeps driving 
       kind: "quiz",
       title: "Same ideas, two machines",
       goal: "Match each tool for threads on the Pi with what you already built from interrupts on the F28379D.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [35, 39] }, { trm: "3.4.3" }],
       brief: `
 The code in this level runs on the **Raspberry Pi, not in the game**. You have already written the microcontroller side of every line of it. This level puts the two side by side.
 
@@ -1207,7 +1207,7 @@ Every way out of a critical section must unlock. A \`return\` between \`DINT;\` 
       mode: "checkpoint",
       title: "Data logger",
       goal: "Build a logger: the timer interrupt samples a sensor, main sums and prints, and no sample is lost or used twice.",
-      refs: [{ course: "L13" }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [37, 39] }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.4.3" }],
       brief: `
 Put the chapter together. The start-up code, the serial port and the "sensor" are given. The rest is yours. Copy \`buf\`, \`head\`, \`tail\`, \`count\`, \`buf_put\` and \`buf_get\` from your "Producer and consumer" into the marked places. The figure is a reminder of how the buffer works.
 
@@ -1309,7 +1309,7 @@ uint16_t count = 0;`,
       tier: "practice",
       title: "Deadlock",
       goal: "Recognise a deadlock from two locks, and learn the rule that prevents it.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: 35 }],
       brief: `
 Locks fix races and bring a new problem. This one belongs to the Raspberry Pi, so there is nothing to run in the game: you read and reason. On the Pi, threads use a mutex: \`pthread_mutex_lock(&m);\` takes the lock \`m\`, or waits until the thread that holds it gives it back.
 
@@ -1382,7 +1382,7 @@ There is only one "lock", \`DINT;\`, so this deadlock cannot happen. A relative 
       tier: "practice",
       title: "Find the bug: the program that hangs",
       goal: "Read a pthread function and find the path that leaves its mutex locked.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: 36 }],
       brief: `
 This code runs on the **Raspberry Pi, not in the game**. You cannot press Run here. Read it the way you read your own code before a lab: follow each path with a finger.
 
@@ -1472,7 +1472,7 @@ A mutex does not know why it is locked. If the thread that locked it never unloc
       tier: "practice",
       title: "Find the bug: works most of the time",
       goal: "Read two pthread functions that take two mutexes, and find why the program sometimes freezes.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: 35 }],
       brief: `
 This code runs on the **Raspberry Pi, not in the game**. Read it and trace it by hand.
 
@@ -1561,7 +1561,7 @@ Two threads that each hold one lock and wait forever for the other's lock are in
       tier: "practice",
       title: "Find the bug: the lock around the wrong lines",
       goal: "Read a pthread program that uses a mutex and still prints positions where the robot never was.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: [33, 36] }],
       brief: `
 This code runs on the **Raspberry Pi, not in the game**. Read it and trace it by hand.
 
@@ -1647,7 +1647,7 @@ So for each line that touches \`pose_x\` or \`pose_y\`, ask: is the mutex held h
       tier: "practice",
       title: "Practice: the lost update, step by step",
       goal: "Order the machine steps of two threads so that one increment is lost.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: 34 }],
       brief: `
 \`counter\` holds **5**. Thread A and thread B each run \`counter += 1;\` once. The result should be 7.
 
@@ -1688,7 +1688,7 @@ Put the steps in that order.
       tier: "practice",
       title: "Counting interleavings",
       goal: "Work out the result of unprotected increments for given schedules, and count how many schedules there are.",
-      refs: [{ course: "L13" }],
+      refs: [{ course: "L13", slide: [34, 33] }],
       brief: `
 Two threads, A and B, run \`counter += 1;\` with **no** protection. Each increment is three machine steps: read, add, write. The add happens in the thread's own CPU register, so only the order of the reads and writes of \`counter\` matters.
 
@@ -1758,7 +1758,7 @@ With three steps per thread there are six positions and three of them are A's: 6
       tier: "practice",
       title: "The clock that ran backwards",
       goal: "main reads a 64-bit time stamp in two halves and sometimes gets nonsense. Make the read consistent.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: 34, note: "atomic operations" }, { trm: "3.4.3" }],
       brief: `
 The F28379D reads or writes a 16-bit or a 32-bit variable (\`int\`, \`long\`, \`float\`) with one machine instruction, and an interrupt cannot split one instruction. An operation that cannot be split is called **atomic**. Reading one such variable is atomic.
 
@@ -1819,7 +1819,7 @@ Fix the read so that \`lo\` and \`hi\` always belong to the same value. Keep the
       tier: "expert",
       title: "A buffer without a lock",
       goal: "Write a ring buffer for one producer and one consumer that never disables interrupts.",
-      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      refs: [{ course: "L13", slide: [37, 34], note: "producer and consumer; atomic operations" }, { trm: "3.4.3" }],
       brief: `
 Disabling interrupts delays the control loop. With exactly **one producer** (the interrupt) and **one consumer** (main) a ring buffer needs no critical section at all, if you obey three rules.
 
@@ -1904,7 +1904,7 @@ int buf_get(uint16_t *v)
       tier: "expert",
       title: "Priority inversion and other traps",
       goal: "Reason about priorities, locks and lock-free code in situations where intuition fails.",
-      refs: [{ course: "L13" }, { trm: "3.4.5" }],
+      refs: [{ course: "L13", slide: 35, note: "mutex and deadlock; priority inversion goes beyond the lecture" }, { trm: "3.4.5" }],
       brief: `
 ## Priority inversion
 A **priority** is a rank the programmer gives a thread. Take three threads with priorities **high**, **medium** and **low**. This scheduler always runs the highest-priority thread that is ready. If a higher one becomes ready, it takes the processor away from the one that is running: it **preempts** it.

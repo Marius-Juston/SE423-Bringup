@@ -23,7 +23,7 @@ export const chA: Chapter = {
       kind: "brief",
       title: "What you are going to build",
       goal: "See the whole robot in one picture, then answer three questions.",
-      refs: REF,
+      refs: [{ course: "L1", slide: 9, note: "what the robot will do by the end" }, { course: "Primer A" }],
       brief: `
 Without a picture of the whole machine, every detail you learn later has nowhere to go. So start with the whole thing.
 
@@ -342,7 +342,7 @@ Select every symbol in the figure and read what it stands for. Two of them are p
       kind: "calc",
       title: "The LED and its resistor",
       goal: "Work out the resistor that an LED needs on 3.3 V.",
-      refs: [{ course: "Primer A" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: 9, note: "LED with its resistor on 3.3 V" }, { course: "Primer A" }],
       brief: `
 Put an LED straight across 3.3 V and far too much current flows. The LED is damaged, or the pin that feeds it is. That is why every LED on the robot has a resistor next to it.
 
@@ -504,7 +504,7 @@ A **potentiometer** is a resistor with a sliding contact. Turning the knob moves
       kind: "brief",
       title: "Buttons, floating wires and the pull-up",
       goal: "See why a button needs a resistor, and what a floating wire is.",
-      refs: [{ course: "Primer A" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [10, 11, 16] }, { course: "Primer A" }],
       brief: `
 Wire a button to a pin with nothing else, and the robot reacts when you wave a hand near the board. The pin reads random values. Here is why, and the fix.
 
@@ -570,7 +570,7 @@ Chapter 3 uses this circuit for every button on the robot.
       kind: "brief",
       title: "Digital, analog, and why a pin cannot run a motor",
       goal: "Learn how a pin turns a voltage into a 0 or a 1, and how much current it can give.",
-      refs: [{ course: "Primer A" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [6, 10, 15] }, { course: "Primer A" }],
       brief: `
 Wire a motor straight to a pin of the microcontroller and the pin is destroyed. A pin is made to signal, not to supply power. First, what it signals.
 
@@ -635,7 +635,7 @@ Set the pin high and low in the figure. The pin gives the order, and the transis
       kind: "timing",
       title: "Signals over time",
       goal: "Read period, frequency and duty cycle from a waveform, then draw one.",
-      refs: REF,
+      refs: [{ course: "L6-7", slide: [58, 59] }, { course: "Primer A" }],
       brief: `
 The command to a motor is not a steady voltage. It switches between high and low thousands of times per second. To check it, you must read a picture of voltage against time.
 
@@ -689,7 +689,7 @@ Draw a signal of **250 Hz** with a duty cycle of **25 %**. Start high in slot 0.
       kind: "brief",
       title: "The capacitor: voltages take time",
       goal: "Learn the one thing a capacitor does, and how R and C set how long it takes.",
-      refs: REF,
+      refs: [{ course: "L5", slide: 25, note: "a capacitor needs time to charge" }, { course: "Primer A" }],
       brief: `
 Press a button and the pin's voltage does not move cleanly from one level to the other. Measure a sensor too early and the number is wrong. Both come from the same part.
 
@@ -757,7 +757,7 @@ You will meet this curve again when a button is cleaned up (chapter 3) and when 
       kind: "brief",
       title: "Power and not breaking things",
       goal: "Learn what power is and the four rules that keep a board alive.",
-      refs: REF,
+      refs: [{ course: "L3", slide: [15, 6], note: "a pin is not a power supply" }, { course: "Primer A" }],
       brief: `
 Electronic parts die of heat, and heat comes from power. A handful of mistakes kill most student boards. All of them can be seen coming with what you know now.
 
@@ -816,7 +816,7 @@ And one habit: switch the power off before you move a wire.
       kind: "quiz",
       title: "Checkpoint: read the circuit",
       goal: "Work out the voltages and currents in a button circuit and an LED circuit.",
-      refs: [{ course: "Primer A" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [11, 9] }, { course: "Primer A" }],
       brief: `
 This is the circuit behind the first real chapters: a push button that the microcontroller reads, and an LED that it switches. If you can read it, you are ready for the board.
 
@@ -893,7 +893,7 @@ An **output pin**: a pin that the program sets to 3.3 V (high) or 0 V (low). The
       tier: "practice",
       title: "Practice: wire an LED to a pin",
       goal: "Connect a resistor and an LED so that a high pin lights the LED.",
-      refs: [{ course: "Primer A" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: 9, note: "LED with its resistor on 3.3 V" }, { course: "Primer A" }],
       brief: `
 An LED that is wired backwards, or without its resistor, is the classic first mistake on a real board. Practise the right order once.
 
@@ -1077,7 +1077,7 @@ Resistors are sold only in certain values. The nearest one below your exact answ
       tier: "expert",
       title: "Expert: the robot's time scales",
       goal: "Move between frequency, period, duty cycle and time constant on the robot's real numbers.",
-      refs: REF,
+      refs: [{ course: "L2", slide: 25, note: "200 MHz clock ticks into times" }, { course: "L6-7", slide: 58 }, { course: "Primer A" }],
       brief: `
 Three time scales meet on the robot, a factor of a thousand or more apart. Mix them up and a motor signal is a thousand times too slow, or a filter does nothing. These are the real numbers the later chapters use:
 

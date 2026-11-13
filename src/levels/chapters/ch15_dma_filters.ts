@@ -746,7 +746,7 @@ export const ch15: Chapter = {
       mode: "complete",
       title: "A signal is a list",
       goal: "Take a sample every 0.1 ms and collect 50 of them in an array.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }],
+      refs: [{ course: "L8-9", slide: [26, 17] }, { course: "L5", slide: 18, note: "voltage to ADC number" }, { course: "Lab 4" }],
       brief: `
 A sensor turns something physical (sound, light, distance) into a voltage that changes with time. That changing voltage is a **signal**. This chapter is about what a program can do with one.
 
@@ -818,7 +818,7 @@ Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms: that is the sampling rate. \`tb_s
       kind: "calc",
       title: "A wave has a frequency",
       goal: "Describe a sine wave with three numbers, and count how many samples fall into one period.",
-      refs: [{ course: "L8-9" }],
+      refs: [{ course: "L8-9", slide: [37, 36], note: "samples per period" }],
       brief: `
 The smoothest signal there is goes up and down like a swing: a **sine wave**. A whistle, the hum of a motor and the voltage of a wall socket are sine waves. In this chapter a sine wave is also called a **tone**.
 
@@ -863,7 +863,7 @@ A slow tone gets many samples per period, a fast one few. The next level asks ho
       kind: "calc",
       title: "Nyquist and aliases",
       goal: "Find out how few samples per period are enough, and what the samples show when there are fewer.",
-      refs: [{ course: "L8-9" }, { course: "HW3" }, { trm: "5.4" }],
+      refs: [{ course: "L8-9", slide: [33, 35, 34] }, { course: "HW3" }, { trm: "5.4" }],
       brief: `
 How few samples per period are enough? Try it. In the figure, set Sampling to 1000 Hz, leave Signal at 100 Hz and then raise it slowly.
 
@@ -900,7 +900,7 @@ Nothing in your code can tell an alias from a real tone afterwards. The samples 
       kind: "brief",
       title: "Samples by the thousand",
       goal: "Learn how 1024 samples reach a buffer without the CPU touching one of them.",
-      refs: [{ course: "L8-9" }, { trm: "5.1" }, { trm: "5.2" }, { trm: "5.4" }],
+      refs: [{ course: "L8-9", slide: [12, 23, 18] }, { trm: "5.1" }, { trm: "5.2" }, { trm: "5.4" }],
       brief: `
 In "A signal is a list" an interrupt function ran for every sample and stored it. A microphone sampled 10 000 times a second would cost 10 000 interrupts a second, each with its entry, its exit and its acknowledge, just to copy one number.
 
@@ -953,7 +953,7 @@ What main does with a full buffer, the FFT and filters, comes after the DMA leve
       kind: "quiz",
       title: "Whose turn is it",
       goal: "Decide which buffer main may read, and when a new address takes effect.",
-      refs: [{ course: "L8-9" }, { trm: "5.4" }],
+      refs: [{ course: "L8-9", slide: [18, 15] }, { trm: "5.4" }],
       brief: `
 Two buffers of 1024 samples, \`ping\` and \`pong\`. The DMA fills one. main reads the other. Filling one buffer is one **transfer**: 1024 copies.
 
@@ -1025,7 +1025,7 @@ Step through the figure, one sample per press, with buffers of 8 samples instead
       mode: "complete",
       title: "Let the DMA do the copying",
       goal: "Finish the course's DMA channel 1 setup and swap the two buffers in the DMA interrupt function.",
-      refs: [{ course: "L8-9" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.3" }, { trm: "3.4.5" }],
+      refs: [{ course: "L8-9", slide: [22, 15] }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.3" }, { trm: "3.4.5" }],
       brief: `
 Now the DMA does the copying. The interrupt function runs once per buffer, not once per sample.
 
@@ -1105,7 +1105,7 @@ The signal is a slow 50 Hz sine around 1.5 V. main computes the mean of each fin
       kind: "calc",
       title: "What the FFT tells you",
       goal: "Read the output of the course's 1024-point FFT: which bin stands for which frequency.",
-      refs: [{ course: "L8-9" }],
+      refs: [{ course: "L8-9", slide: [26, 25], note: "bin width fs / N" }],
       brief: `
 Real signals are several tones added together: a motor's hum plus a whistle plus a voice. Added sines make a bumpy curve, and looking at the samples you cannot tell which tones are in it.
 
@@ -1156,7 +1156,7 @@ In the course fs = 10 000 Hz and N = 1024.
       mode: "complete",
       title: "Five-point moving average",
       goal: "Complete an interrupt function that outputs the mean of the last 5 samples.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
+      refs: [{ course: "L8-9", slide: [28, 29] }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
 Real samples are never clean. Wires pick up **noise**: small random errors that push each sample a little up or down.
 
@@ -1226,7 +1226,7 @@ An offset of 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling o
       mode: "debug",
       title: "An average that is not",
       goal: "This 5-point average has two bugs. Find and fix both.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
+      refs: [{ course: "L8-9", slide: [29, 44] }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
 The signal is a constant 1.2 with a 2 kHz tone of amplitude 0.8 on top. A 5-point average at 10 kHz should remove the tone and output a steady **1.2**.
 
@@ -1279,7 +1279,7 @@ The tests also read \`xk[4]\` after the 22nd sample to see whether it really is 
       mode: "write",
       title: "Any coefficients you like",
       goal: "Write one step of a general FIR filter: y = b[0] x[n] + b[1] x[n-1] + ... with the coefficients from an array.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
+      refs: [{ course: "L8-9", slide: [30, 44, 31] }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
 The moving average multiplies every sample by the same weight, 1/5. A designed filter gives each sample its own weight. This is the general **FIR** filter (the letters stand for finite impulse response). The weights \`b\` are its **coefficients**. A filter of **order** M uses the newest sample and the M before it, so it has M + 1 coefficients:
 
@@ -1341,7 +1341,7 @@ The test signal is a 300 Hz tone, a 4 kHz tone and an offset. The tests compare 
       mode: "checkpoint",
       title: "Slow tone, fast tone",
       goal: "Sample a signal, low-pass filter it with 22 coefficients, measure the amplitude that is left, and show on LED1 whether a slow tone is present.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }, { course: "Lab 1" }],
+      refs: [{ course: "L8-9", slide: [38, 40, 44] }, { course: "Lab 4" }, { course: "HW3" }, { course: "Lab 1" }],
       brief: `
 A sensor signal contains either a slow tone (200 Hz) or a fast one (3 kHz), both with amplitude 1. Your program must tell them apart: **LED1 on while the slow tone is there**, off otherwise. A low-pass filter does the telling. The slow tone passes it almost unchanged, the fast one is cut down to almost nothing.
 
@@ -1438,7 +1438,7 @@ Keep the names of the function and the global variables. The tests read them.
       tier: "practice",
       title: "From the timer to your buffer",
       goal: "Put the steps of the sampling chain in order, from the ePWM pulse to main processing a full buffer.",
-      refs: [{ course: "L8-9" }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "11.9" }],
+      refs: [{ course: "L8-9", slide: [23, 15, 25] }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "11.9" }],
       brief: `
 The course's FFT starter project samples a microphone on ADCB with this setup:
 
@@ -1474,7 +1474,7 @@ Order the steps for one buffer. Follow the data: timer, converter, copy. The CPU
       tier: "practice",
       title: "Reading the wrong buffer",
       goal: "main computes the mean of a buffer the interrupt function is still writing. Make it read the finished one.",
-      refs: [{ course: "L8-9" }, { trm: "5.4" }],
+      refs: [{ course: "L8-9", slide: [18, 25] }, { trm: "5.4" }],
       brief: `
 This program does ping-pong buffering by hand, without the DMA, so that you can see every step.
 
@@ -1539,7 +1539,7 @@ Think about the moment main sees the flag. The interrupt function has **already 
       tier: "practice",
       title: "Too slow to see it",
       goal: "Mark what a 1 kHz sampler sees of a 900 Hz square wave.",
-      refs: [{ course: "L8-9" }],
+      refs: [{ course: "L8-9", slide: [35, 33] }],
       brief: `
 A square wave of **900 Hz** is high during the first half of each period and low during the second half. It is sampled at **1 kHz**, which is far too slow: the Nyquist frequency is only 500 Hz.
 
@@ -1583,7 +1583,7 @@ The figure shows the same situation for a sine: 900 Hz sampled 1000 times a seco
       tier: "practice",
       title: "One element short",
       goal: "The output of this order 4 filter is wrong, although the loops are right. Find the declaration that is too small.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
+      refs: [{ course: "L8-9", slide: [39, 44] }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
 This is the FIR filter of order 4 from before. The loops are the ones you wrote. The output is still wrong.
 
@@ -1620,7 +1620,7 @@ Writing one element past the end of an array does not fail. It changes whatever 
       tier: "practice",
       title: "InitDma(), from an empty function",
       goal: "Write the whole DMA channel 1 set-up yourself, building its mode word bit by bit.",
-      refs: [{ course: "L8-9" }, { trm: "5.9.3" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.1" }, { trm: "3.4.5" }],
+      refs: [{ course: "L8-9", slide: [22, 13] }, { trm: "5.9.3" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.1" }, { trm: "3.4.5" }],
       brief: `
 In "Let the DMA do the copying" \`InitDma()\` was given and you changed two lines. Here it is empty. The rest of the program is the one you finished there, with the test bench as the ADC and CPU timer 0 as the trigger.
 
@@ -1683,7 +1683,7 @@ Write these steps in this order. The channel's registers are \`DmaRegs.CH1.\` pl
       tier: "expert",
       title: "The real chain, on channel 2",
       goal: "Set up DMA channel 2 from its requirements so that it collects real ADC results, with no test bench and no list of lines.",
-      refs: [{ course: "L8-9" }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "5.9.3" }, { trm: "11.9" }, { trm: "3.4.5" }],
+      refs: [{ course: "L8-9", slide: [20, 21, 22] }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "5.9.3" }, { trm: "11.9" }, { trm: "3.4.5" }],
       brief: `
 No test bench this time. \`setupSampling()\` is given: EPWM5 starts SOC0 of ADCA every 0.1 ms, and ADCA raises **ADCAINT1** after every conversion. The result is in \`AdcaResultRegs.ADCRESULT0\`. Your DMA channel moves it into a buffer.
 
@@ -1760,7 +1760,7 @@ A star if \`DMA_ISR\` stays under 1 us: it reports, main() calculates.
       tier: "expert",
       title: "200 samples in 2 microseconds",
       goal: "Make a 200-point moving average fast enough: no shifting, constant work per sample.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }],
+      refs: [{ course: "L8-9", slide: 44, note: "keep only the last M samples" }, { course: "Lab 4" }],
       brief: `
 A sensor reading of about 1.25 V carries a 50 Hz hum and some noise. Averaging over exactly one period of the hum, 200 samples at 10 kHz, removes the hum.
 
@@ -1828,7 +1828,7 @@ float total = 0;             // sum of everything in the buffer`,
       tier: "expert",
       title: "Is there a 1 kHz tone",
       goal: "Detect a weak 1 kHz tone next to a strong 2.5 kHz one by computing a single frequency of the Fourier transform, with no buffer.",
-      refs: [{ course: "L8-9" }],
+      refs: [{ course: "L8-9", slide: 5, note: "what one frequency of the transform measures" }],
       brief: `
 The FFT of Lecture 8 gives the strength of about 512 frequencies from 1024 samples. If you care about **one** frequency, that is a lot of wasted work. The Goertzel algorithm computes a single one, sample by sample, with two stored numbers and no buffer.
 
@@ -1914,7 +1914,7 @@ uint16_t count = 0;`,
       tier: "expert",
       title: "Spikes",
       goal: "Remove single-sample glitches with a median-of-5 filter, without disturbing the signal underneath.",
-      refs: [{ course: "L8-9" }, { course: "Lab 4" }],
+      refs: [{ course: "Lab 4" }],
       brief: `
 A sensor wire picks up a glitch now and then: one sample is 8 V too high. The signal itself is a 100 Hz sine between 0.5 and 1.5.
 

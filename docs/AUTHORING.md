@@ -29,11 +29,53 @@ keep them gentle and complete. Aim for 6 to 9 core levels.
 - `id` (unique, short, prefixed by the chapter), `title`, `goal` (one
   sentence), `brief`, `refs`, up to 3 `hints` (a nudge, then where to look,
   then nearly the answer), and a `takeaway` when there is a real lesson.
-- `refs`: `{ course: "L5" | "Lab 3" | "HW2" }` and/or `{ trm: "15.4" }`.
-  A `trm` value must be a key of `src/levels/trm-index.json` (section
-  numbers of the Technical Reference Manual, SPRUHM8I).
+- `refs`: where the level's material is taught, see "References" below.
+  At least one per level.
 - Text uses a small Markdown subset: paragraphs, `**bold**`, `` `code` ``,
   `- ` lists, `1. ` lists, `## ` headings, and ```` ```c ```` blocks.
+
+## References
+Every level links to the place in the course that teaches it. A student who
+is stuck clicks the chip under the brief (or the "Where this is taught" line
+that appears with the first hint) and lands on that slide, lab or homework.
+
+```ts
+refs: [
+  { course: "L5", slide: [21, 22] },          // lecture 5, slides 21 and 22
+  { course: "L17", slide: 24, note: "why an RGB threshold fails in shadow" },
+  { course: "Lab 3" }, { course: "HW2" },     // handout PDFs
+  { trm: "11.5" },                            // Technical Reference Manual
+]
+```
+
+- `course` is a lecture deck (`L1` to `L5`, `L6-7`, `L8-9`, `L10` to `L19`,
+  `L20-21`, `L22-23`, `L24-25`; `L6` or `L21` resolve to their deck),
+  `Lab 1` to `Lab 7`, `HW1` to `HW6`, `LabVIEW1` to `LabVIEW4`, `Project`,
+  `Syllabus`, or `Primer A`/`B`/`C` (this game's own primers, no link).
+  `src/levels/course-links.ts` turns each into a URL and a label.
+- `slide` is the slide number inside that deck, counted from 1. It is the
+  section `#s<N>` of the published page
+  `.../Lectures/Slides/<deck>.html` (and page N of the deck's PDF). Give
+  one slide, or two or three in reading order; the first is where the link
+  opens. Choose the slide that teaches what the level practises: read its
+  text, not only its title, and prefer a content slide to a section divider.
+- `note` is a few words for the tooltip, for a slide with a generic title
+  ("Camera Vision (16/33)") or a loose fit. Say so honestly.
+- Do not force a slide. A level on material the lectures do not cover (the
+  primers, CAN, a pitfall only a lab meets) cites the lab, the homework or
+  the manual instead. Order: lectures, then labs and homeworks, then `trm`.
+- A `trm` value must be a key of `src/levels/trm-index.json` (section
+  numbers of the Technical Reference Manual, SPRUHM8I).
+- Slide titles come from `src/levels/slides-index.json`. Regenerate it when
+  the instructor changes a deck, from a checkout of the course repo:
+  `uv run tools/gen-slides-index.py [path to SE-423---Class-Material]`
+  (add `--check` to compare the titles with the published pages, and
+  `--full notes.json` for titles plus the start of each slide's text).
+- **Slide numbers move** when a slide is added or removed in a deck. The
+  test catches a number beyond the end of its deck and a `course` that does
+  not resolve. It cannot catch a number that now points at a neighbouring
+  slide: after regenerating, look at `git diff src/levels/slides-index.json`
+  and re-check the levels that cite a deck whose titles shifted.
 
 ## Interactive figures
 A brief can embed a figure by putting a directive on a line of its own:
@@ -119,5 +161,5 @@ exactly what to do.
 
 ## Verify
 `npx vitest run tests/levels.test.ts` (every reference solution passes all
-checks and bonus objectives, every starter compiles but fails, citations
-exist) and `npx tsc --noEmit`.
+checks and bonus objectives, every starter compiles but fails, every
+reference resolves and every cited slide exists) and `npx tsc --noEmit`.

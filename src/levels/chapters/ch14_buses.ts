@@ -945,7 +945,7 @@ export const ch14: Chapter = {
       kind: "brief",
       title: "Many devices, two wires",
       goal: "See why a shared bus saves pins and how I2C and CAN compare with UART and SPI, then answer three questions.",
-      refs: [{ course: "L10" }, { trm: "20.1" }, { trm: "22.1" }],
+      refs: [{ course: "L10", slide: [23, 24, 44] }, { trm: "20.1" }, { trm: "22.1" }],
       brief: `
 A UART joins two devices. A robot has many sensors, and a pair of pins for each would use up the chip. A **bus** is a set of wires that all devices share: every device hears everything, and the **protocol** (the agreed rules) decides who may talk and who is meant. On most buses one device, the **master**, starts every transfer, and the others, the **slaves**, only answer.
 
@@ -1011,7 +1011,7 @@ Try it in the figure: let two devices pull the same line low, then release one o
       kind: "timing",
       title: "START, address, ACK, STOP",
       goal: "Draw SDA while the master calls the sensor at address 0x48 for writing and then stops.",
-      refs: [{ course: "L10" }, { trm: "20.3.2" }, { trm: "20.3.4" }, { trm: "20.3.5" }],
+      refs: [{ course: "L10", slide: [47, 48] }, { trm: "20.3.2" }, { trm: "20.3.4" }, { trm: "20.3.5" }],
       brief: `
 SCL is drawn for you. Draw **SDA**. Each bit takes two cells: SCL low, then SCL high.
 
@@ -1060,7 +1060,7 @@ The columns are: idle, S, address bits 6 to 0, W (the R/W bit), A (the ACK bit),
       mode: "complete",
       title: "Read the temperature",
       goal: "Complete read_temperature() so it fetches two bytes from the sensor at 0x48 and converts them to degrees C.",
-      refs: [{ course: "L10" }, { trm: "20.3.3" }, { trm: "20.6.2" }, { trm: "20.2" }],
+      refs: [{ course: "L10", slide: [59, 48], note: "the write version of this transfer" }, { trm: "20.3.3" }, { trm: "20.6.2" }, { trm: "20.2" }],
       brief: `
 The robot kit in this game has a temperature sensor on the I2C bus at address **0x48**. Use the temperature knob next to the board to change what it measures.
 
@@ -1137,7 +1137,7 @@ Bit n is worth 2^n, so a mode word is a sum. Example: bits 10 and 5 alone are 0x
       kind: "order",
       title: "Anatomy of a CAN frame",
       goal: "Put the parts of a CAN data frame in the order they appear on the bus.",
-      refs: [{ course: "L10" }, { trm: "22.1" }, { trm: "22.14.1" }],
+      refs: [{ trm: "22.1" }, { trm: "22.14.1" }],
       brief: `
 CAN (Controller Area Network) was made for cars: long cables, electrical noise, and many control units that must all hear each other. The bus is one twisted pair of wires, CANH and CANL. A small **transceiver** chip sits between the pair and the microcontroller's two pins, CANTX and CANRX.
 
@@ -1185,7 +1185,7 @@ Order the parts.
       kind: "quiz",
       title: "The lower identifier wins",
       goal: "Answer four questions about identifiers, arbitration and acknowledgement on CAN.",
-      refs: [{ course: "L10" }, { trm: "22.1" }, { trm: "22.11.6" }, { trm: "22.10.3" }],
+      refs: [{ course: "L10", slide: 24, note: "CAN: the identifier is the priority" }, { trm: "22.1" }, { trm: "22.11.6" }, { trm: "22.10.3" }],
       brief: `
 ## Arbitration
 Two nodes may start a frame in the same instant. Both send their identifier, most significant bit first, and both **read the bus back** after every bit. A node that sent recessive (1) but reads dominant (0) knows that someone else is driving the bus. It has lost. It stops sending at once and becomes a receiver.
@@ -1253,7 +1253,7 @@ The course's distance sensors (SEN-36005) send extended frames at 1 Mbit/s. Thei
       mode: "complete",
       title: "Hear sensor 1",
       goal: "Set up a message object for sensor 1's distance, enable the CAN interrupt, and decode the distance.",
-      refs: [{ course: "L10" }, { trm: "22.10.3" }, { trm: "22.6" }, { trm: "22.11.9" }, { trm: "3.4.5" }],
+      refs: [{ trm: "22.10.3" }, { trm: "22.6" }, { trm: "22.11.9" }, { trm: "3.4.5" }],
       brief: `
 This is the CAN code of the final project starter, reduced to one sensor. The course file \`F28379dCAN.c\` supplies the functions whose names start with \`CAN\`, and the array \`rxMsgData\` (\`extern\` in front of a variable means "it is defined in another file"). Everything outside the three TODOs is given: read it once with this list.
 
@@ -1337,7 +1337,7 @@ The sensor sends every 100 ms. The tests turn its knob to 1234 mm and then to 30
       mode: "write",
       title: "Parking sensor",
       goal: "Write can_isr and show_distance() so the LEDs show how close an obstacle is to the two sensors.",
-      refs: [{ course: "L10" }, { trm: "22.6" }, { trm: "22.11.9" }, { trm: "3.4.5" }],
+      refs: [{ trm: "22.6" }, { trm: "22.11.9" }, { trm: "3.4.5" }],
       brief: `
 Both distance sensors are in use now: message object 1 receives sensor 1 (identifier 0x060B0101), message object 2 receives sensor 2 (0x060B0102). All the set-up is written.
 
@@ -1414,7 +1414,7 @@ An LED must go off again when its condition no longer holds.
       mode: "debug",
       title: "64 millimetres, for ever",
       goal: "Find the three mistakes that make this program report a distance that never changes.",
-      refs: [{ course: "L10" }, { trm: "22.6" }, { trm: "22.11.6" }, { trm: "3.4.5" }],
+      refs: [{ trm: "22.6" }, { trm: "22.11.6" }, { trm: "3.4.5" }],
       brief: `
 This program should track sensor 1's distance in \`dis_1\`. It shows 64 mm, whatever the knob says, and \`rxMsgCount_1\` stops at 1.
 
@@ -1474,7 +1474,7 @@ The tests turn the knob to 1234 mm and then to 300 mm.
       mode: "checkpoint",
       title: "Checkpoint: two buses, one report",
       goal: "Each time sensor 1 sends a distance over CAN, read the temperature over I2C and print both on the serial terminal.",
-      refs: [{ course: "L10" }, { course: "HW4" }, { trm: "20.6.2" }, { trm: "22.6" }, { trm: "19.11" }],
+      refs: [{ course: "L10", slide: 59, note: "I2C transfer code" }, { course: "HW4" }, { trm: "20.6.2" }, { trm: "22.6" }, { trm: "19.11" }],
       brief: `
 Put the chapter together. The robot reports what it measures: a distance from the CAN bus and a temperature from the I2C bus, on the serial terminal you know from the serial chapter.
 
@@ -1552,7 +1552,7 @@ The tests change both knobs while the program runs.
       tier: "practice",
       title: "Two devices, two resistors",
       goal: "Wire a temperature sensor and a clock chip to the I2C bus, with its two pull-up resistors.",
-      refs: [{ course: "L10" }, { trm: "20.2" }, { trm: "20.3.1" }],
+      refs: [{ course: "L10", slide: [45, 44] }, { trm: "20.2" }, { trm: "20.3.1" }],
       brief: `
 An I2C pin is an **open-drain** output: inside the chip, one transistor (an electronic switch) can connect the pin to ground. There is no transistor to 3.3 V. So a device can pull a line **low**, or **let go** of it. It cannot drive it high.
 
@@ -1628,7 +1628,7 @@ Add the six missing wires.
       tier: "practice",
       title: "Who pulls the line?",
       goal: "Answer four questions about open-drain lines, the ACK bit and two masters starting at once.",
-      refs: [{ course: "L10" }, { trm: "20.3.5" }, { trm: "20.3.7" }, { trm: "20.3.8" }],
+      refs: [{ course: "L10", slide: [44, 49, 51] }, { trm: "20.3.5" }, { trm: "20.3.7" }, { trm: "20.3.8" }],
       brief: `
 Because every device can only pull low or let go, each line behaves like an AND gate made of wire: it is 1 only if **all** devices have let go. This **wired-AND** gives I2C three things for free.
 
@@ -1691,7 +1691,7 @@ Try it in the figure: give the two masters different addresses and step through 
       tier: "practice",
       title: "Address bytes and clock dividers",
       goal: "Work out the first byte on the bus and the SCL frequency the clock registers give.",
-      refs: [{ trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.5" }, { course: "L10" }],
+      refs: [{ course: "L10", slide: [48, 58] }, { trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.5" }],
       brief: `
 ## The address byte
 The first byte after a START is the 7-bit address shifted left by one, with the R/W bit in bit 0:
@@ -1777,7 +1777,7 @@ The lecture's \`I2CA_Init\`, taken from TI's example, uses I2CPSC = 16, I2CCLKL 
       tier: "practice",
       title: "The mode word",
       goal: "Set the bits of I2CMDR that start a write: master, transmitter, START, and a STOP at the end.",
-      refs: [{ trm: "20.6.2" }, { trm: "20.3.3" }, { course: "L10" }],
+      refs: [{ course: "L10", slide: 59 }, { trm: "20.6.2" }, { trm: "20.3.3" }],
       brief: `
 \`I2CMDR\` is the mode register: one write to it starts a whole transfer. "Read the temperature" used 0x2C20 to **read**. A master that **writes** to a device, for example to set a sensor's alarm limit, needs one more bit.
 
@@ -1814,7 +1814,7 @@ Set the register so the module **writes** as a master and ends with a STOP.
       tier: "practice",
       title: "Is anybody there?",
       goal: "Write read_temp() so it reads a sensor at any address and reports when no device answers.",
-      refs: [{ course: "L10" }, { trm: "20.3.4" }, { trm: "20.6.2" }, { trm: "20.4.1" }],
+      refs: [{ course: "L10", slide: [49, 59] }, { trm: "20.3.4" }, { trm: "20.6.2" }, { trm: "20.4.1" }],
       brief: `
 The robot is meant to get a second temperature sensor at address **0x49**. It is not fitted yet. \`main()\` already asks both addresses in turn.
 
@@ -1898,7 +1898,7 @@ A variable that is never written keeps its starting value: \`tempB\` must stay a
       tier: "practice",
       title: "0x91 on the analyser",
       goal: "Find the two mistakes that keep this program from ever reading the sensor at 0x48.",
-      refs: [{ course: "L10" }, { trm: "20.3.5" }, { trm: "20.6.2" }],
+      refs: [{ course: "L10", slide: [48, 59] }, { trm: "20.3.5" }, { trm: "20.6.2" }],
       brief: `
 A teammate watched a working board with a logic analyser, saw the first byte **0x91** = \`1001 0001\` on the bus, and wrote this program from it. The mode word came from the lecture's \`I2CA_WriteData\` example.
 
@@ -1951,7 +1951,7 @@ Remember what the byte on the bus is made of, and which bit of \`I2CMDR\` decide
       tier: "practice",
       title: "Read the analyser",
       goal: "Decode a captured I2C transfer: the address, the direction, the ACK and a data byte.",
-      refs: [{ course: "L10" }, { trm: "20.3.5" }],
+      refs: [{ course: "L10", slide: [48, 49] }, { trm: "20.3.5" }],
       brief: `
 A logic analyser on the robot's I2C bus recorded one transfer. It lists the level of **SDA at each rising edge of SCL**, which is when the receiver reads a bit.
 
@@ -1989,7 +1989,7 @@ The device answering is the board's clock chip. Its register 0 holds the seconds
       tier: "practice",
       title: "The bus that stays busy",
       goal: "Find the two mistakes in read_seconds() that bring the program to a halt.",
-      refs: [{ course: "L10" }, { trm: "20.3.4" }, { trm: "20.6.2" }],
+      refs: [{ course: "L10", slide: 59, note: "check STP and BB first" }, { trm: "20.3.4" }, { trm: "20.6.2" }],
       brief: `
 This program reads the temperature sensor (0x48) and then the seconds from the clock chip (0x68), over and over. \`read_temperature()\` is correct. \`read_seconds()\` has **two** mistakes. With both, the program stops inside its first pass. With only the first one fixed, it completes one pass and stops in the second: \`cycles\` stays at 1.
 
@@ -2043,7 +2043,7 @@ Read the message under the editor: it names the first problem and its line.
       tier: "practice",
       title: "Two bytes of distance",
       goal: "Decode the distance bytes of a sensor frame and work out the numbers behind setCANBitRate.",
-      refs: [{ trm: "22.12.1" }, { course: "L10" }],
+      refs: [{ trm: "22.12.1" }],
       brief: `
 ## The distance message
 The sensor's "measured distance" frame has 8 data bytes. The first three:
@@ -2119,7 +2119,7 @@ A frame with a 29-bit identifier and 8 data bytes is 128 bits long (the hardware
       tier: "practice",
       title: "I2C from two empty functions",
       goal: "Write init_I2CB() and read_temperature() yourself: pins, clock, reset, then a two-byte read.",
-      refs: [{ course: "L10" }, { trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.3" }, { trm: "20.2" }],
+      refs: [{ course: "L10", slide: [58, 59] }, { trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.3" }, { trm: "20.2" }],
       brief: `
 In "Read the temperature" both functions were written and you filled in four values. Here both are empty. The course has no I2C starter file, so on the robot you would write exactly this.
 
@@ -2191,7 +2191,7 @@ The tests set the temperature to 30.5 and then to -4 degrees C.
       tier: "practice",
       title: "The CAN set-up, typed once",
       goal: "Write the whole CAN receive set-up in main(): pins, bit rate, interrupt path, message object, start.",
-      refs: [{ course: "L10" }, { trm: "22.4.1" }, { trm: "22.10.3" }, { trm: "22.6" }, { trm: "3.4.5" }],
+      refs: [{ trm: "22.4.1" }, { trm: "22.10.3" }, { trm: "22.6" }, { trm: "3.4.5" }],
       brief: `
 The final project starter gives you the CAN set-up, and you only change it. Type it once anyway: when a second sensor has to be added, you need to know what each line is for and why the order matters. \`can_isr\` is given.
 
@@ -2266,7 +2266,7 @@ The sensor sends every 100 ms. The tests move it to 1234 mm, then to 300 mm.
       tier: "expert",
       title: "I2C by hand",
       goal: "Without the I2C module, drive GPIO40 and GPIO41 yourself to set the sensor's high-temperature limit to 30.5 degrees C.",
-      refs: [{ course: "L10" }, { trm: "20.3.2" }, { trm: "20.3.4" }, { trm: "8.3" }, { trm: "8.8" }],
+      refs: [{ course: "L10", slide: [47, 48, 54] }, { trm: "20.3.2" }, { trm: "20.3.4" }, { trm: "8.3" }, { trm: "8.8" }],
       brief: `
 I2C is simple enough to produce with two ordinary GPIO pins. This is called **bit-banging**. Doing it once shows exactly what the I2C module does for you.
 
@@ -2320,7 +2320,7 @@ Write \`sda()\`, \`scl()\`, \`send_byte()\` and the transfer in \`main()\`. Coun
       tier: "expert",
       title: "Bus scan",
       goal: "Set up I2CB from the registers, try every valid address, and print which devices answer.",
-      refs: [{ course: "L10" }, { trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.2" }, { trm: "20.6.2" }],
+      refs: [{ course: "L10", slide: [58, 59, 49] }, { trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.2" }, { trm: "20.6.2" }],
       brief: `
 A bus scan is the first thing to run on a new board: call every address and note which ones are acknowledged.
 
@@ -2372,7 +2372,7 @@ The star is for speed: at 400 kHz the whole scan fits in 4 ms.
       tier: "expert",
       title: "Trust, but filter",
       goal: "Take the median of sensor 1's last three distances, and detect when sensor 2 stops sending.",
-      refs: [{ course: "L10" }, { trm: "22.6" }, { trm: "22.10.3" }, { trm: "3.4.5" }],
+      refs: [{ trm: "22.6" }, { trm: "22.10.3" }, { trm: "3.4.5" }],
       brief: `
 Real distance sensors glitch: one reading in many is far off. And cables come loose: a sensor that falls silent leaves its last value behind, which looks perfectly healthy. A robot that drives by these values must handle both.
 

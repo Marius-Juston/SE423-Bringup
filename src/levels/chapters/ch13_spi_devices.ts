@@ -219,7 +219,7 @@ export const ch13: Chapter = {
       kind: "brief",
       title: "Registers behind a serial port",
       goal: "Learn how the MPU-9250's registers are read and written over SPI, then answer three questions.",
-      refs: [{ course: "L12" }, { course: "HW3" }, { trm: "18.3.1" }],
+      refs: [{ course: "L12", slide: [31, 36, 30] }, { course: "HW3" }, { trm: "18.3.1" }],
       brief: `
 The **MPU-9250** on the robot is an **IMU** (inertial measurement unit). Its gyroscope measures how fast the board turns, in degrees per second. Its accelerometer measures acceleration in **g**: 1 g is the pull of gravity, so a board lying still reads 1 g. Each measures along three **axes**: directions at right angles, called X, Y and Z (Z points up out of the board). The robot uses the gyro's Z axis to know how far it has turned.
 
@@ -283,7 +283,7 @@ The chip reports a **raw** number: a count from -32768 to 32767, not yet in any 
       kind: "calc",
       title: "Building the words",
       goal: "Work out the words to send, the number of words in a burst, and what the raw numbers mean.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.3.4" }],
+      refs: [{ course: "L12", slide: [31, 39, 30] }, { course: "HW3" }, { trm: "18.3.4" }],
       brief: `
 Before writing code, build the numbers by hand. Each 16-bit word is two bytes: the first word of a transfer is **address byte, then one data byte**; every later word is **two data bytes**.
 
@@ -358,7 +358,7 @@ value = raw * range / 32767, and turned around, raw = value * 32767 / range. Exa
       kind: "order",
       title: "One transfer, step by step",
       goal: "Put the steps of reading one MPU-9250 register in order.",
-      refs: [{ course: "HW3" }, { trm: "18.3.7" }, { trm: "18.3.2" }],
+      refs: [{ course: "L12", slide: 34 }, { course: "HW3" }, { trm: "18.3.7" }, { trm: "18.3.2" }],
       brief: `
 The course's set-up code talks to the MPU-9250 by **polling**: it starts a transfer and waits in an empty loop until the reply is there. That is fine before the interrupts are switched on, and it shows every step of a transfer.
 
@@ -385,7 +385,7 @@ Order the steps of reading the WHO_AM_I register (0x75). Think about what the de
       mode: "complete",
       title: "First contact",
       goal: "Complete the function that reads one MPU-9250 register, and use it to check the chip's identity.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [31, 34] }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 SPIB is set up as in the SPI chapter: 16-bit words, 1 MHz, clock resting low, data read on the rising edge. GPIO66 is the MPU-9250's chip select.
 
@@ -508,7 +508,7 @@ ${SPIB}
       mode: "write",
       title: "Choosing the range",
       goal: "Write the function that writes an MPU-9250 register, select two measuring ranges, and read them back.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [34, 29] }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 After power-up the MPU-9250 measures +-250 degrees per second and +-2 g. Bits 4 and 3 of two registers choose other ranges:
 
@@ -663,7 +663,7 @@ int16_t read_accel_z(void)
       mode: "write",
       title: "How fast are we rolling?",
       goal: "Read the gyro's X axis every millisecond with interrupts and convert it to degrees per second.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.2.3" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [38, 39, 30] }, { course: "HW3" }, { trm: "18.2.3" }, { trm: "18.3.7" }],
       brief: `
 The robot reads its gyro 1000 times a second. Waiting in a loop for each reading is out of the question, so the read is split over two interrupts, the pattern from the SPI chapter. HW3 has you read gyro Z this way. Here you read **gyro X**: registers 0x43 (high byte) and 0x44 (low byte).
 
@@ -789,7 +789,7 @@ ${MPU_WRITE}`,
       mode: "debug",
       title: "The word in the middle",
       goal: "This program reads all six axes in one burst, but the values are in the wrong variables. Find out why and fix the indexes.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [37, 39] }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 Every millisecond this program reads one burst of **nine** words, starting at register 0x38. \`SPIB_isr\` copies the nine received words into \`readdata[]\` and converts them. The indexes were copied from a program whose burst started somewhere else.
 
@@ -969,7 +969,7 @@ ${MPU_WRITE}`,
       mode: "complete",
       title: "The other chip on the bus",
       goal: "Complete the three-word exchange with the DAN28027: send it two PWM values and receive its two ADC readings.",
-      refs: [{ course: "L12" }, { course: "Lab 4" }, { trm: "18.3.7" }, { trm: "18.3.3" }],
+      refs: [{ course: "Lab 4" }, { trm: "18.3.7" }, { trm: "18.3.3" }],
       brief: `
 The second device on SPIB is the **DAN28027**, a small TI microcontroller on the robot board. It does two jobs for the F28379D:
 
@@ -1144,7 +1144,7 @@ __interrupt void SPIB_isr(void)
       mode: "checkpoint",
       title: "Checkpoint: turn indicator",
       goal: "Read the MPU-9250 every millisecond, light LED1 while the robot turns, and print turn rate and Z acceleration four times a second.",
-      refs: [{ course: "HW3" }, { course: "Lab 4" }, { course: "HW1" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [38, 30] }, { course: "HW3" }, { course: "Lab 4" }, { course: "HW1" }, { trm: "18.3.7" }],
       brief: `
 Put the chapter together: a burst read driven by two interrupts, scaling, an LED and the serial port.
 
@@ -1322,7 +1322,7 @@ ${MPU_WRITE}`,
       tier: "practice",
       title: "Five registers, one transfer",
       goal: "Write five neighbouring MPU-9250 registers in a single burst, the way the course's setupSpib() configures the chip.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: 35 }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 The course's \`setupSpib()\` configures the MPU-9250 by writing a run of registers with **one** chip-select pulse. HW3 has you work out that burst. This level practises the same thing on a shorter run with other values: registers 0x19 to 0x1D.
 
@@ -1445,7 +1445,7 @@ ${MPU_READ}`,
       tier: "practice",
       title: "Read the data sheet, write the set-up",
       goal: "Write the SPIB set-up for the MPU-9250 from what its data sheet and the board require.",
-      refs: [{ course: "HW3" }, { course: "L12" }, { trm: "18.3.6" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [29, 33, 41] }, { course: "L6-7", slide: [43, 44] }, { course: "HW3" }, { trm: "18.3.6" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }],
       brief: `
 In this chapter the SPIB set-up was always given. A new chip never comes with one. It comes with a **data sheet**: the maker's document that says how the chip must be driven. Here \`setupSpib()\` is empty, and these are your sources.
 
@@ -1512,7 +1512,7 @@ Write the block in the order you know: chip selects and pins, reset held, settin
       tier: "practice",
       title: "Two chips answering",
       goal: "The DAN28027 exchange returns nonsense. Fix the chip select mistake and the missing pause between words.",
-      refs: [{ course: "L12" }, { course: "Lab 4" }, { trm: "18.3.7" }, { trm: "18.3.3" }],
+      refs: [{ course: "L10", slide: 41, note: "one chip select per slave" }, { course: "Lab 4" }, { trm: "18.3.7" }, { trm: "18.3.3" }],
       brief: `
 This program was made by copying an MPU-9250 read and changing the words. It should send \`0x00DA\`, 1000 and 2000 to the DAN28027 once and store the two ADC readings. The inputs are at 1.65 V and 1.0 V, so the readings should be 2048 and 1241.
 
@@ -1611,7 +1611,7 @@ ${SPIB}
       tier: "expert",
       title: "From turn rate to heading",
       goal: "Measure the gyro's bias at start-up, then integrate gyro Z with the trapezoidal rule to get the heading in degrees.",
-      refs: [{ course: "L12" }, { course: "Lab 4" }, { course: "HW3" }, { trm: "18.3.7" }],
+      refs: [{ course: "L15", slide: [33, 27, 28] }, { course: "Lab 4" }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 A gyro measures turn **rate**. The robot wants its **heading**, the angle it has turned through. Angle is the integral of rate, and the course's final project computes it exactly like this.
 
@@ -1774,7 +1774,7 @@ ${MPU_WRITE}`,
       tier: "expert",
       title: "Which way is down?",
       goal: "Read the three accelerometer axes in one burst and compute the board's roll and pitch angles with atan2.",
-      refs: [{ course: "L12" }, { course: "HW3" }, { trm: "18.3.7" }],
+      refs: [{ course: "L12", slide: [38, 30], note: "accelerometer burst read" }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 At rest the accelerometer measures only gravity: a vector of length 1 g that always points down. How that vector is split over the board's X, Y and Z axes tells you how the board is tilted.
 
@@ -1938,7 +1938,7 @@ ${MPU_WRITE}`,
       tier: "expert",
       title: "Two devices, one interrupt",
       goal: "Serve the MPU-9250 and the DAN28027 from one receive interrupt: read the gyro, then send the DAN28027 a command computed from it.",
-      refs: [{ course: "L12" }, { course: "Lab 4" }, { course: "HW3" }, { trm: "18.3.7" }],
+      refs: [{ course: "L10", slide: 41 }, { course: "L12", slide: 38 }, { course: "Lab 4" }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
 Both devices share SPIB and its one receive interrupt. The interrupt function must know **which transfer just ended**. The course's final project keeps that in a variable, \`CurrentChip\`, and you will build the same state machine.
 

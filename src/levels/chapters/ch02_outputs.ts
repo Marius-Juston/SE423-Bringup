@@ -19,7 +19,7 @@ export const ch02: Chapter = {
       kind: "brief",
       title: "What a GPIO pin is",
       goal: "Learn what a GPIO pin is and what it can do, then answer three questions.",
-      refs: [{ course: "L3" }, { trm: "8.1" }, { trm: "8.2" }, { trm: "8.8" }],
+      refs: [{ course: "L3", slide: [6, 10] }, { trm: "8.1" }, { trm: "8.2" }, { trm: "8.8" }],
       brief: `
 ## What a pin is
 The chip is a small black package with rows of metal contacts. Each contact is a **pin**. The pins are the only places where the chip touches the rest of the circuit. A **GPIO** pin (general-purpose input/output) is a pin that your software controls. "General purpose" means the pin has no fixed job: your code decides what it does.
@@ -72,7 +72,7 @@ In code a pin is named by its **GPIO number**, such as GPIO22. That number is no
       kind: "quiz",
       title: "Which port?",
       goal: "Find the port, and so the register names, of the robot board's LEDs and buttons.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { trm: "8.9" }],
+      refs: [{ course: "L3", slide: 20 }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "8.9" }],
       brief: `
 The pins are grouped in **ports** of 32. The pins of a port share one set of registers, and the port letter is part of every register name: GPIO94 is in port C, so it is driven through \`GPCSET\` and \`GPCCLEAR\`.
 
@@ -104,7 +104,7 @@ Try it in the figure: drag the GPIO number across a port boundary and watch the 
       kind: "brief",
       title: "What it takes to drive a pin",
       goal: "Learn the three settings a pin needs before it can light an LED, then answer three questions.",
-      refs: [{ course: "L3" }, { trm: "8.2" }, { trm: "8.3" }, { trm: "8.7" }],
+      refs: [{ course: "L3", slide: 7 }, { course: "L2", slide: 13 }, { trm: "8.2" }, { trm: "8.3" }, { trm: "8.7" }],
       brief: `
 ## Three settings per pin
 1. **Mux** (the pin multiplexer, a selector switch): the pin is a plain GPIO, or it carries the signal of one of the chip's peripherals (a timer output, a serial port and so on). Mux position 0 is plain GPIO.
@@ -160,7 +160,7 @@ You always write a **1**: to SET to go high, to CLEAR to go low, to TOGGLE to fl
       kind: "register",
       title: "Make two pins outputs",
       goal: "Set the direction register so GPIO22 and GPIO31 are outputs.",
-      refs: [{ trm: "8.9" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: 7 }, { trm: "8.9" }],
       brief: `
 \`GpioCtrlRegs.GPADIR\` has one bit per pin of port A: 0 = input, 1 = output. After reset (power-up) every pin is an input.
 
@@ -182,7 +182,7 @@ Make **GPIO22** (LED1) and **GPIO31** (the LaunchPad's blue LED) outputs. Leave 
       mode: "complete",
       title: "First light",
       goal: "Set up GPIO22 as an output and turn LED1 on.",
-      refs: [{ course: "Lab 1" }, { course: "L3" }, { trm: "8.7" }],
+      refs: [{ course: "L3", slide: [7, 9] }, { course: "L2", slide: 13 }, { course: "Lab 1" }, { trm: "8.7" }],
       brief: `
 LED1 on the robot board is connected to **GPIO22** and lights when the pin is high.
 
@@ -238,7 +238,7 @@ ${out(22)}
       mode: "write",
       title: "Every other LED",
       goal: "Light LED1, LED3 and LED5, and keep LED2 and LED4 dark.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { course: "HW1" }],
+      refs: [{ course: "L2", slide: 13 }, { course: "L3", slide: 20 }, { course: "Lab 1" }, { course: "Lab 2" }, { course: "HW1" }],
       brief: `
 The robot board's five LEDs:
 
@@ -307,7 +307,7 @@ ${out(111)}
       mode: "debug",
       title: "On means low",
       goal: "The LaunchPad's red LED should be on and the blue one off. Fix the code.",
-      refs: [{ course: "Lab 1" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: 9, note: "how the wiring decides which level lights an LED" }, { course: "Lab 1" }],
       brief: `
 Does a 1 or a 0 light an LED? That depends on how it is wired. The LEDs on the green robot board sit between the pin and ground (0 V), so they light when the pin is **high**. The LaunchPad is the small red board that carries the chip. Its two own LEDs sit between 3.3 V and the pin, so current flows, and the LED lights, when the pin is **low**. Such a signal is called **active low**.
 
@@ -374,7 +374,7 @@ ${out(34)}
       mode: "debug",
       title: "The change that vanished",
       goal: "LED1 should be on and the blue LED should be on. One of them is not. Fix it the right way.",
-      refs: [{ trm: "8.3" }, { course: "L2" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: [13, 14] }, { course: "Lab 2" }, { trm: "8.3" }],
       brief: `
 This program changes two pins of port A through the data register \`GPADAT\`, one after the other. Only the second change survives. (The \`DELAY_US(100);\` line near the top only waits 100 microseconds. Leave it.)
 
@@ -447,7 +447,7 @@ ${out(31)}
       mode: "checkpoint",
       title: "Blink",
       goal: "Blink LED1 five times a second, with the red LaunchPad LED lit whenever LED1 is dark.",
-      refs: [{ course: "Lab 1" }, { course: "L3" }],
+      refs: [{ course: "L2", slide: 13 }, { course: "L3", slide: 7 }, { course: "Lab 1" }],
       brief: `
 Make **LED1** (GPIO22) blink with a period of **200 ms**: 100 ms on, 100 ms off, forever.
 
@@ -509,7 +509,7 @@ ${out(34)}
       mode: "write",
       title: "Heartbeat",
       goal: "Flash LED3 briefly four times a second: 50 ms on, 200 ms off.",
-      refs: [{ course: "Lab 1" }, { course: "L3" }],
+      refs: [{ course: "L2", slide: 13 }, { course: "L3", slide: 20 }, { course: "Lab 1" }],
       brief: `
 A status LED that is on half the time wastes power and is hard to tell apart from a stuck one. A short flash reads better.
 
@@ -569,7 +569,7 @@ ${out(95)}
       mode: "debug",
       title: "Three lamps, four mistakes",
       goal: "LED5 and the blue LED should be on and the red LED off. None of the three is right. Fix it.",
-      refs: [{ course: "Lab 1" }, { course: "L3" }, { trm: "8.3" }],
+      refs: [{ course: "L3", slide: 23 }, { course: "L2", slide: 13 }, { course: "Lab 1" }, { trm: "8.3" }],
       brief: `
 A status display uses three LEDs:
 
@@ -644,7 +644,7 @@ ${out(34)}
       mode: "write",
       title: "Write the helpers yourself",
       goal: "Replace GPIO_SetupPinMux and GPIO_SetupPinOptions with your own functions, built on raw register addresses, for any pin.",
-      refs: [{ trm: "8.2" }, { trm: "8.7" }, { trm: "8.9.1" }, { trm: "8.9.2" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [22, 21] }, { trm: "8.2" }, { trm: "8.7" }, { trm: "8.9.1" }, { trm: "8.9.2" }],
       brief: `
 Every program so far called TI's two helpers. Now write them.
 
@@ -815,7 +815,7 @@ void main(void)
       mode: "write",
       title: "Sixteen LEDs, six ports",
       goal: "Show a 16-bit value on the red board's 16 LEDs, then sweep a single light back and forth.",
-      refs: [{ course: "HW1" }, { course: "Lab 2" }, { trm: "8.3" }, { trm: "8.9.1" }],
+      refs: [{ course: "L2", slide: [10, 20] }, { course: "L3", slide: 20 }, { course: "HW1" }, { course: "Lab 2" }, { trm: "8.3" }, { trm: "8.9.1" }],
       brief: `
 The homework red board has 16 LEDs, all lit when high. Their pins are scattered over all six ports. The starter lists them in order, LED1 first.
 
@@ -943,7 +943,7 @@ void main(void)
       mode: "debug",
       title: "The pulse nobody ordered",
       goal: "GPIO31 goes low for an instant at power-up. Remove the pulse without changing what the program does afterwards.",
-      refs: [{ trm: "8.2" }, { trm: "8.3" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [6, 7], note: "the output latch and the set-up steps" }, { trm: "8.2" }, { trm: "8.3" }],
       brief: `
 GPIO31 is the enable line of a motor driver: **low means enabled**. The blue LED sits on the same pin, so it shows the state. The program must hold the line high during a 5 ms self-test and pull it low afterwards.
 

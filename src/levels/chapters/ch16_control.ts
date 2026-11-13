@@ -137,7 +137,7 @@ export const ch16: Chapter = {
       kind: "brief",
       title: "Closing the loop",
       goal: "Learn what feedback is, what an error and a control effort are, and meet the test bench robot.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }, { course: "Lab 3" }],
+      refs: [{ course: "L11", slide: [5, 7] }, { course: "Lab 5" }, { course: "Lab 3" }],
       brief: `
 You cannot tell a motor "turn at 1 ft/s". You can only tell it how hard to push. That command is the **control effort**: a number from **-10 to 10** (10 is full power forwards, -10 full power backwards, 0 is off). How fast the wheel then turns depends on the battery, the friction and the floor. Sending an effort and hoping is **open loop** control.
 
@@ -207,7 +207,7 @@ Each wheel needs an effort of **0.8** just to start turning (friction). Every un
       kind: "calc",
       title: "What P alone can do",
       goal: "Compute the error and the effort of a P controller, and the error it leaves behind.",
-      refs: [{ course: "L11" }],
+      refs: [{ course: "L11", slide: [9, 18] }],
       brief: `
 A **P controller** is one line: \`u = Kp * e\`.
 
@@ -247,7 +247,7 @@ The same steps with letters give **v = (Kp r - 0.8) / (Kp + 4)**. What is left, 
       mode: "complete",
       title: "A P speed controller",
       goal: "Complete a proportional speed controller in the 1 ms timer interrupt.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }, { trm: "3.8" }],
+      refs: [{ course: "L11", slide: [9, 13] }, { course: "Lab 5" }, { trm: "3.8" }],
       brief: `
 Timer 0 already interrupts every 1 ms, and the function measures the left wheel speed. Complete the pass:
 
@@ -327,7 +327,7 @@ ${SAT}
       kind: "calc",
       title: "Maths you need: adding up over time",
       goal: "Learn what an integral is: a running sum of error times time step, kept from one pass to the next.",
-      refs: [{ course: "L11" }],
+      refs: [{ course: "L11", slide: [10, 12] }],
       brief: `
 P control stopped 0.3 ft/s short, because zero error means zero effort. What is missing is a **memory**: something that keeps pushing after the error is gone.
 
@@ -384,7 +384,7 @@ Once the wheel is at the reference, e = 0 and the P term gives nothing. The whol
       mode: "write",
       title: "PI: no error left",
       goal: "Write a PI speed controller that brings the wheel exactly to the reference.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: [10, 13] }, { course: "Lab 5" }],
       brief: `
 Add the integral of the previous level to the P controller, and write the whole pass yourself this time:
 
@@ -441,7 +441,7 @@ ${SAT}
       kind: "quiz",
       title: "Integrator windup",
       goal: "Understand what the integral does when the motor is already at its limit, before you meet it in code.",
-      refs: [{ course: "L11" }],
+      refs: [{ course: "L11", slide: [8, 14] }],
       brief: `
 On paper PI is two lines. On a real robot the integral has a problem as soon as the motor reaches its limit.
 
@@ -500,7 +500,7 @@ See it in the figure: choose "3 ft/s for 2 s (too fast), then 1" and switch the 
       mode: "debug",
       title: "The wheel that would not slow down",
       goal: "Fix integrator windup with clamping: stop integrating while the effort is saturated.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: [13, 14] }, { course: "Lab 5" }],
       brief: `
 For the first 2 seconds this program asks for **3 ft/s**. The wheel cannot go faster than 2.3 ft/s, so the effort sits at 10. Then the reference drops to 1 ft/s. (At 2.6 s the test adds a small load, to check that the integral still does its job.)
 
@@ -566,7 +566,7 @@ ${clampedPI("Left")}
       mode: "complete",
       title: "Friction compensation",
       goal: "Identify the wheel's friction from measurements and add Lab 3's friction compensation to a P controller.",
-      refs: [{ course: "Lab 3" }, { course: "L11" }],
+      refs: [{ course: "L11", slide: 20, note: "friction_comp in the Lab 5 loop" }, { course: "Lab 3" }],
       brief: `
 A feedback controller waits for an error before it acts. If you already **know** what the motor needs, you can add it to the effort right away. That is **feed-forward**. Lab 3 uses it against friction.
 
@@ -679,7 +679,7 @@ ${SAT}
       kind: "calc",
       title: "Maths you need: radians and turn rate",
       goal: "Measure an angle in radians, and work out how fast the robot turns from its two wheel speeds.",
-      refs: [{ course: "L11" }, { course: "L15" }],
+      refs: [{ course: "L15", slide: [23, 25] }, { course: "L11", slide: 22 }],
       brief: `
 The next levels make the robot turn, and the course's code measures turning in **radians**, not degrees. Here is what a radian is and why it is the handy unit.
 
@@ -725,7 +725,7 @@ vLeft = 0.7 and vRight = 1.3 ft/s: turn rate = (1.3 - 0.7) / 0.6 = 1 rad/s. The 
       kind: "calc",
       title: "Speed and steering",
       goal: "Compute the steering error and the two wheel errors of the course's coupled controller, and what a turn command does.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: [21, 22, 23] }, { course: "Lab 5" }],
       brief: `
 One PI loop per wheel does not make a robot drive straight. If the right wheel is slowed for a moment, its controller (its "loop") restores the **speed**, but the distance lost is never made up: the robot now points somewhere else. You also want to turn on purpose.
 
@@ -771,7 +771,7 @@ The turn rate is (vRight - vLeft) / 0.6 rad/s, counter-clockwise positive, as in
       mode: "checkpoint",
       title: "Checkpoint: speed and steering",
       goal: "Control both wheels with PI, anti-windup and the steering coupling of Lab 5: straight under load, then a commanded turn.",
-      refs: [{ course: "Lab 5" }, { course: "L11" }, { course: "Lab 3" }],
+      refs: [{ course: "L11", slide: [21, 23, 13] }, { course: "Lab 5" }, { course: "Lab 3" }],
       brief: `
 Build the structure of the course's \`PIcontrol\` function. In the 1 ms interrupt, after the lines that are given:
 
@@ -876,7 +876,7 @@ ${clampedPI("Right")}
       tier: "practice",
       title: "Practice: one pass of the loop",
       goal: "Put the steps of one pass through a PI speed controller in order.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: 13 }, { course: "Lab 5" }],
       brief: `
 Timer 0 interrupts every 1 ms and your function runs one pass of the speed controller.
 
@@ -913,7 +913,7 @@ Order the steps.
       tier: "practice",
       title: "Practice: three slips",
       goal: "Find three classic mistakes in a PI controller: a sign, a time step, and a missing limit.",
-      refs: [{ course: "L11" }, { course: "Lab 3" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: [7, 13] }, { course: "Lab 3" }, { course: "Lab 5" }],
       brief: `
 This PI controller should bring the wheel to 1.5 ft/s. Run it: the wheel runs **backwards** at full speed.
 
@@ -964,7 +964,7 @@ ${SAT}
       tier: "practice",
       title: "Practice: another gain, another speed",
       goal: "Repeat the steady-state calculations for a faster reference and a higher gain.",
-      refs: [{ course: "L11" }],
+      refs: [{ course: "L11", slide: [9, 10] }],
       brief: `
 Same wheel: it settles at v = 0.25 x (u - 0.8), so holding a speed v needs **u = 4 v + 0.8**.
 
@@ -994,7 +994,7 @@ Now the reference is **1.5 ft/s**.
       tier: "practice",
       title: "Practice: the D term and why the robot has none",
       goal: "Compute a rate of change from two samples and see what measurement noise does to it.",
-      refs: [{ course: "L11" }],
+      refs: [{ course: "L11", slide: [11, 8] }],
       brief: `
 The D in PID stands for **derivative**: how fast something changes. The idea of the D term is to brake early. If the error is shrinking fast, the wheel is about to overshoot, so take some effort away now.
 
@@ -1042,7 +1042,7 @@ The cure is to smooth the derivative, or to leave the D term out. The robot's sp
       tier: "practice",
       title: "Practice: hold a turn rate",
       goal: "Write a PI controller that spins the robot in place at 1 rad/s, measured by the gyro.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: 13 }, { course: "L15", slide: 23 }, { course: "Lab 5" }],
       brief: `
 The same controller works for any quantity you can measure and influence. Here it is the robot's **turn rate**.
 
@@ -1113,7 +1113,7 @@ float uTurn = 0;`,
       tier: "expert",
       title: "Expert: tune to a specification",
       goal: "Choose Kp and Ki so a step to 1 ft/s meets a rise-time, overshoot and settling specification.",
-      refs: [{ course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L11", slide: [17, 18] }, { course: "Lab 5" }],
       brief: `
 The controller below is complete and correct, but its gains are far too low. Tune it. Change only \`Kp\` and \`Ki\`.
 
@@ -1193,7 +1193,7 @@ ${BENCH_NOTE}`,
       tier: "expert",
       title: "Expert: back-calculation anti-windup",
       goal: "Replace clamping by back-calculation: feed the amount of saturation back into the integrator.",
-      refs: [{ course: "L11" }],
+      refs: [{ course: "L11", slide: 14, note: "names back-calculation; the diagram shows clamping" }],
       brief: `
 Clamping freezes the integral while the effort is saturated. **Back-calculation** does something smoother: it measures **how far** the effort is beyond the limit and uses that to pull the integral back.
 

@@ -65,7 +65,7 @@ export const ch07: Chapter = {
       kind: "brief",
       title: "A number becomes a voltage",
       goal: "Learn what a DAC is and how its 12-bit number sets the output voltage.",
-      refs: [{ course: "L5" }, { trm: "12.1" }, { trm: "12.2" }],
+      refs: [{ course: "L5", slide: [6, 9] }, { trm: "12.1" }, { trm: "12.2" }],
       brief: `
 A GPIO pin is **digital**: it has two levels, 0 V or 3.3 V. A speaker, a motor driver input or a test signal needs a voltage **in between**, and one that can change smoothly. A voltage that can take any value in a range is called **analog**.
 
@@ -133,7 +133,7 @@ There are three: **DACA**, **DACB** and **DACC**, with registers \`DacaRegs\`, \
       kind: "calc",
       title: "Volts and numbers",
       goal: "Convert between the 12-bit DAC number and the output voltage, in both directions.",
-      refs: [{ trm: "12.2" }, { course: "L5" }],
+      refs: [{ trm: "12.2" }, { course: "L5", slide: 6 }],
       brief: `
 The manual's formula, with the 3.0 V reference of the course boards:
 
@@ -195,7 +195,7 @@ Work out the four values. Give voltages in volts.
       kind: "register",
       title: "Flip the ladder switches",
       goal: "Set the switches of an 8-bit R-2R ladder so that it outputs 1.125 V.",
-      refs: [{ course: "L5" }, { trm: "12.1.2" }],
+      refs: [{ course: "L5", slide: 7 }, { trm: "12.1.2" }],
       brief: `
 This is the resistor network inside a DAC, here with **8 bits** and a 3.0 V reference. It is called an **R-2R ladder**: it is built from only two resistor values, R and 2R, drawn like the rungs of a ladder. Each bit is one switch. A switch that is on adds its share to the output: bit 7 adds 3.0 / 2 = **1.5 V**, and every lower bit adds half of the one before.
 
@@ -234,7 +234,7 @@ Start from the top. Would bit 7 alone already be too much? If yes, leave it off 
       kind: "order",
       title: "Switching the DAC on",
       goal: "Put the steps that bring up DACA in the order the reference manual gives.",
-      refs: [{ trm: "12.2.1" }, { trm: "12.4.2" }, { course: "L5" }],
+      refs: [{ trm: "12.2.1" }, { trm: "12.4.2" }, { course: "L5", slide: [11, 8] }],
       brief: `
 After reset the DAC is off: its output pin is not driven at all. Three registers bring it up.
 
@@ -269,7 +269,7 @@ The manual's sequence is: choose the reference, enable the output, wait for the 
       mode: "complete",
       title: "Half scale",
       goal: "Bring up DACA and make it output 1.5 V.",
-      refs: [{ course: "L5" }, { trm: "12.2.1" }, { trm: "12.2" }],
+      refs: [{ course: "L5", slide: [11, 6] }, { trm: "12.2.1" }, { trm: "12.2" }],
       brief: `
 The robot board has a meter on the DACA pin. Right now it reads 0 V, because the DAC is off.
 
@@ -356,7 +356,7 @@ The two set-up registers are protected, so the lines sit between \`EALLOW;\` and
       mode: "write",
       title: "Write setDACA",
       goal: "Write the course's setDACA(volts) helper, including the limits at 0 V and 3 V.",
-      refs: [{ course: "L5" }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "12.4.2" }],
+      refs: [{ course: "L5", slide: [11, 6], note: "DACVALS keeps only 12 bits: clamp first" }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "12.4.2" }],
       brief: `
 Nobody wants to think in 12-bit numbers. The course library has a helper that takes **volts**:
 
@@ -465,7 +465,7 @@ ${DAC_ON}
       mode: "debug",
       title: "The meter stays at zero",
       goal: "Find the two reasons this program shows 0 V instead of 1 V and then 2 V.",
-      refs: [{ trm: "12.4.2" }, { trm: "12.2.1" }, { course: "L5" }],
+      refs: [{ trm: "12.4.2" }, { trm: "12.2.1" }, { course: "L5", slide: 11 }],
       brief: `
 This program should put **1.0 V** on DACA, wait a millisecond, and then go to **2.0 V**. \`setDACA\` is correct.
 
@@ -554,7 +554,7 @@ void main(void)
       mode: "checkpoint",
       title: "Sawtooth from a timer",
       goal: "Use the timer 0 interrupt to step DACA from 0 V to 3 V over 100 ms, again and again.",
-      refs: [{ course: "L5" }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "3.4.4" }],
+      refs: [{ course: "L5", slide: 11 }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "3.4.4" }],
       brief: `
 A voltage that changes in time needs two things you already have: a **timer interrupt** to say when, and the **DAC** to say how much.
 
@@ -694,7 +694,7 @@ __interrupt void cpu_timer0_isr(void)
       tier: "practice",
       title: "Louder makes it quieter",
       goal: "Fix a program that doubles a signal and whose output collapses when the result goes above 3 V.",
-      refs: [{ course: "L5" }, { trm: "12.4.2" }],
+      refs: [{ course: "L5", slide: 11, note: "a value above 4095 wraps to a low output" }, { trm: "12.4.2" }],
       brief: `
 This program is a small amplifier: it makes a signal bigger. Every millisecond the timer interrupt takes the next value of a test signal, multiplies it by 2 (the factor is called the **gain**), and sends it to DACA.
 
@@ -815,7 +815,7 @@ __interrupt void cpu_timer0_isr(void)
       tier: "practice",
       title: "Two outputs, one total",
       goal: "Bring up DACB yourself and keep DACA + DACB at 3 V while DACA steps up.",
-      refs: [{ course: "L5" }, { trm: "12.2.1" }, { trm: "12.4.1" }],
+      refs: [{ course: "L5", slide: [11, 9] }, { trm: "12.2.1" }, { trm: "12.4.1" }],
       brief: `
 The second DAC works exactly like the first. Its registers are \`DacbRegs\`, and the robot board has a meter on it too.
 
@@ -950,7 +950,7 @@ ${SYNC}
       tier: "expert",
       title: "A clean 100 Hz sine",
       goal: "Output a 100 Hz sine wave between 0.5 V and 2.5 V from a 10 kHz interrupt that stays short.",
-      refs: [{ course: "L5" }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "3.8" }],
+      refs: [{ course: "L5", slide: [11, 6] }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "3.8" }],
       brief: `
 Generate this on DACA:
 
@@ -1091,7 +1091,7 @@ __interrupt void cpu_timer0_isr(void)
       tier: "expert",
       title: "Triangle, integers only",
       goal: "Generate a triangle wave on DACB from raw registers, with integer arithmetic only and no helper.",
-      refs: [{ course: "L5" }, { trm: "12.2" }, { trm: "12.4.2" }, { trm: "3.8" }],
+      refs: [{ course: "L5", slide: 11 }, { trm: "12.2" }, { trm: "12.4.2" }, { trm: "3.8" }],
       brief: `
 No \`float\`, no \`setDACB\`, no given set-up. Just registers.
 

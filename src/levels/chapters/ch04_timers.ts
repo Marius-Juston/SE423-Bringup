@@ -19,7 +19,7 @@ export const ch04: Chapter = {
       kind: "brief",
       title: "A counter that keeps time",
       goal: "Learn how a CPU timer turns the 200 MHz clock into a period you choose, then answer three questions.",
-      refs: [{ trm: "3.8" }, { trm: "3.7" }, { course: "L2" }, { course: "Lab 1" }],
+      refs: [{ course: "L2", slide: [22, 23, 24] }, { course: "Lab 1" }, { trm: "3.8" }, { trm: "3.7" }],
       brief: `
 \`DELAY_US\` keeps the CPU busy doing nothing, and the time your own code takes is added on top. A **timer** keeps time on its own, in hardware, while your program does other things.
 
@@ -88,7 +88,7 @@ CpuTimer0Regs.TCR.all = 0x4000;           // start the timer
       kind: "calc",
       title: "Period and PRD",
       goal: "Convert between a period in time and the value in the period register.",
-      refs: [{ trm: "3.8" }, { course: "Lab 1" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: [25, 27] }, { course: "L4", slide: 24, note: "the period formula, in the lecture notes" }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 The counter moves on every clock cycle of **5 ns** (200 MHz). Three ways to say the same thing:
 
@@ -130,7 +130,7 @@ How long can a period be? \`PRD\` is a 32-bit unsigned number, so its largest va
       kind: "calc",
       title: "Stretch the tick",
       goal: "Use the prescaler to make the counter tick in convenient units.",
-      refs: [{ trm: "3.8" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: [25, 23] }, { trm: "3.8" }],
       brief: `
 So far \`TIM\` moved on every clock cycle, and the longest period was about 21 s. In front of the counter sits a second, smaller counter, the **prescaler**. It lets one step of \`TIM\`, called a **tick**, last several clock cycles:
 
@@ -184,7 +184,7 @@ Example: with the prescaler at 199, a tick is 200 clock cycles. \`PRD\` then cou
       kind: "register",
       title: "Stop and reload",
       goal: "Set the timer control register so the timer stops and starts again from a full period.",
-      refs: [{ trm: "3.8" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: 23, note: "TCR.4 stops the timer; the reload path" }, { trm: "3.8" }],
       brief: `
 \`TCR\` is the control register of a CPU timer. Its fields:
 
@@ -226,7 +226,7 @@ Right now the timer is **running** with its interrupt enabled (\`0x4000\`). You 
       mode: "complete",
       title: "Watch the flag",
       goal: "Toggle LED1 every 100 ms by checking the timer's flag instead of waiting with DELAY_US.",
-      refs: [{ trm: "3.8" }, { course: "Lab 1" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: [23, 27], note: "the counter reaching 0 raises the request" }, { course: "Lab 1" }, { trm: "3.8" }],
       brief: `
 Each time the counter reaches 0, the timer sets its flag: \`CpuTimer0Regs.TCR.bit.TIF\` becomes 1. The flag **stays** 1 until your code clears it, and you clear it by **writing 1** to it:
 \`\`\`c
@@ -319,7 +319,7 @@ ${out(22)}
       mode: "debug",
       title: "A thousand times too fast",
       goal: "LED1 should change every 400 ms. It looks permanently half lit. Fix the timer setup.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.8" }],
+      refs: [{ course: "L2", slide: 27 }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 The author wanted LED1 to change every **400 ms**, which is a blink period of 800 ms. On the board the LED just glows dimly, and the scope shows it switching thousands of times a second.
 
@@ -399,7 +399,7 @@ ${out(22)}
       mode: "debug",
       title: "The flag that would not clear",
       goal: "GPIO22 should switch every 1 ms, but after the first period it switches on every pass of the loop. Fix it.",
-      refs: [{ trm: "3.8" }, { course: "L2" }],
+      refs: [{ trm: "3.8" }],
       brief: `
 This program should produce a **500 Hz** square wave on GPIO22 (LED1). A square wave is a signal that switches between low and high at a steady rate. Here the pin switches every **1 ms**, a period of 2 ms. That is too fast to see, so use the scope. Run it and look at the trace: nothing happens for the first 1 ms, and then the pin switches as fast as the loop can run.
 
@@ -470,7 +470,7 @@ ${out(22)}
       mode: "checkpoint",
       title: "Two rates, one loop",
       goal: "Blink LED1 from CPU Timer 0 and the red LaunchPad LED from CPU Timer 1, each at its own rate.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.8" }],
+      refs: [{ course: "L2", slide: [27, 22] }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 With \`DELAY_US\`, two different blink rates in one loop is awkward. With timers it is two flags.
 
@@ -603,7 +603,7 @@ ${out(34)}
       mode: "write",
       title: "By hand, with a prescaler",
       goal: "Set up CPU Timer 1 with register writes only, prescaler included, and toggle LED2 every 50 ms.",
-      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: [25, 23] }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 \`ConfigCpuTimer\` always sets the prescaler to 0. This time you write the registers yourself and use the prescaler, so no helper function: no \`InitCpuTimers\`, no \`ConfigCpuTimer\`.
 
@@ -792,7 +792,7 @@ ${out(94)}
       mode: "write",
       title: "Stopwatch",
       goal: "Measure the time from a press of PB1 to a press of PB2 in microseconds, by reading the counter of a timer that keeps reloading.",
-      refs: [{ trm: "3.8" }, { course: "Lab 2" }, { course: "L2" }],
+      refs: [{ course: "L2", slide: 23, note: "TIM counts down and reloads from PRD" }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 \`CpuTimer0Regs.TIM.all\` is the live counter. Read it twice and the difference is elapsed time, in clock cycles of 5 ns.
 
@@ -961,7 +961,7 @@ ${out(22)}
       mode: "debug",
       title: "The stopwatch that loses time",
       goal: "ms should count milliseconds while push button 1 is not held. It hardly counts at all. Find out why and fix it.",
-      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: 14, note: "a .bit write reads and rewrites the whole register" }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 This stopwatch counts milliseconds in \`ms\` with CPU Timer 0. Holding **push button 1** pauses it: the program stops the timer with \`TSS\`, so the part of a millisecond already counted is kept, and starts it again on release.
 
@@ -1098,7 +1098,7 @@ ${INIT}
       mode: "write",
       title: "Dim it",
       goal: "Dim LED1 to 37 % brightness: switch it at 1 kHz, on for 370 us and off for 630 us, timed by a CPU timer.",
-      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
+      refs: [{ course: "L6-7", slide: [58, 59] }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
 An LED that is switched on and off faster than the eye can follow looks dimmer, in proportion to the share of time it is on. That share is the **duty cycle**. This is pulse width modulation (PWM), done by hand. In chapter 9 a peripheral does it in hardware.
 

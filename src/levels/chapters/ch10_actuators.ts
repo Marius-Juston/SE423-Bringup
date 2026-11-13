@@ -143,7 +143,7 @@ export const actuators: Chapter = {
       kind: "brief",
       title: "Three things a PWM pin can move",
       goal: "See how one PWM signal becomes a motor speed with a direction, a servo angle, or a tone.",
-      refs: [{ course: "L6-7" }, { course: "Lab 3" }, { course: "HW3" }, { course: "HW4" }],
+      refs: [{ course: "L6-7", slide: [77, 80, 82] }, { course: "Lab 3" }, { course: "HW3" }, { course: "HW4" }],
       brief: `
 A PWM pin gives a few milliamps at 3.3 V. That moves nothing by itself. Each actuator on the course boards reads the PWM signal in its own way.
 
@@ -194,7 +194,7 @@ A **piezo buzzer** is a small disc that clicks each time its voltage changes. Fe
       kind: "wiring",
       title: "Build the H",
       goal: "Wire four switches so the motor can be connected to the battery in either direction.",
-      refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "15.13.5" }],
+      refs: [{ course: "L6-7", slide: [75, 78] }, { course: "Lab 3" }, { trm: "15.13.5" }],
       brief: `
 A DC motor turns one way when current flows from terminal A to terminal B, and the other way when it flows from B to A. To reverse it without unplugging anything you need four switches.
 
@@ -260,7 +260,7 @@ The amplifier's direction input chooses between those two pairs, and never close
       kind: "calc",
       title: "From a command to counts",
       goal: "Convert motor commands from -10 to 10 into duty cycles and compare values.",
-      refs: [{ course: "Lab 3" }, { trm: "15.5" }],
+      refs: [{ course: "L6-7", slide: 77 }, { course: "Lab 3" }, { trm: "15.5" }],
       brief: `
 Your control code should not have to think in counts. Lab 3 has you write every motor command as a **control effort** \`u\`: a number from **-10** (full power backward) through **0** (stop) to **10** (full power forward). One function, \`setEPWM2A(float u)\`, turns it into a duty cycle on a straight line:
 
@@ -299,7 +299,7 @@ A value outside -10..10 is first **saturated**: cut back to the nearest limit. A
       mode: "complete",
       title: "setEPWM1A and setEPWM2A",
       goal: "Complete the two functions that turn a control effort of -10 to 10 into a motor duty cycle.",
-      refs: [{ course: "Lab 3" }, { trm: "15.5" }],
+      refs: [{ course: "L6-7", slide: 77 }, { course: "Lab 3" }, { trm: "15.5" }],
       brief: `
 Lab 3, exercise 2. EPWM1A (GPIO0) drives the left motor and EPWM2A (GPIO2) the right motor, both at 20 kHz. \`init_EPWM1and2()\`, at the bottom of the file, is given: it is the chapter 9 set-up written once per motor, and it leaves both at 50 %: stopped.
 
@@ -445,7 +445,7 @@ ${INIT_MOTORS()}
       mode: "debug",
       title: "The robot that will not stand still",
       goal: "Find out why both motors turn slowly when the command is zero, and fix it.",
-      refs: [{ course: "Lab 3" }, { trm: "15.5" }, { trm: "15.6.3" }],
+      refs: [{ course: "L6-7", slide: 77, note: "50 % duty is a stopped motor" }, { course: "Lab 3" }, { trm: "15.5" }, { trm: "15.6.3" }],
       brief: `
 Your lab partner raised the motor PWM from 20 kHz to **25 kHz**, so \`TBPRD\` is now 2000. Since then the robot slowly turns on the spot with a command of zero, and a command of 10 no longer gives full power.
 
@@ -561,7 +561,7 @@ ${INIT_MOTORS(2000, "25 kHz")}
       kind: "calc",
       title: "A slow clock for a servo",
       goal: "Work out the clock divider, TBPRD and CMPA values that make a 20 ms servo pulse.",
-      refs: [{ course: "HW4" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: [80, 81] }, { course: "HW4" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
       brief: `
 A servo wants a pulse every **20 ms**. At the 50 MHz counter clock of chapter 9 that is 20 ms / 20 ns = 1 000 000 counts. \`TBPRD\` is a 16-bit register: its largest value is 65535. A million does not fit.
 
@@ -605,7 +605,7 @@ Homework 4 has you choose the divider. This chapter uses \`CLKDIV = 5\`, so its 
       mode: "write",
       title: "An angle on EPWM8A",
       goal: "Set up EPWM8A for an RC servo and write the function that commands an angle.",
-      refs: [{ course: "HW4" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: [80, 81] }, { course: "HW4" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
       brief: `
 Homework 4 connects an RC servo to **GPIO14** of the red homework board. In the pin mux table GPIO14 is **EPWM8A** at index 1. This is the first ePWM you set up from an empty function. The comments in the starter name each register, in the order chapter 9 used for EPWM12.
 
@@ -736,7 +736,7 @@ ${SET_SERVO_A}
       kind: "timing",
       title: "A square wave without CMPA",
       goal: "Draw the buzzer output when the action qualifier toggles the pin once per tooth of the counter.",
-      refs: [{ course: "HW3" }, { trm: "15.6.2" }, { trm: "15.6.5" }],
+      refs: [{ course: "L6-7", slide: 82 }, { course: "HW3" }, { trm: "15.6.2" }, { trm: "15.6.5" }],
       brief: `
 For the buzzer you want a square wave whose **frequency** changes, always at 50 % duty. \`CMPA\` is not needed for that. The action qualifier gets one action only: **toggle** the pin (flip it to the other level) at one event that happens once per tooth of the counter. In an \`AQCTLA\` field, 0 is "do nothing", 1 is clear, 2 is set and 3 is toggle.
 
@@ -778,7 +778,7 @@ Homework 3 asks which values of \`CAU\` and \`ZRO\` give a square wave. The idea
       mode: "complete",
       title: "A scale on the buzzer",
       goal: "Complete the EPWM9A set-up for the buzzer and play a scale by changing TBPRD from a timer interrupt.",
-      refs: [{ course: "HW3" }, { trm: "15.6.2" }, { trm: "15.4.3" }],
+      refs: [{ course: "L6-7", slide: [82, 83] }, { course: "HW3" }, { trm: "15.6.2" }, { trm: "15.4.3" }],
       brief: `
 The piezo buzzer is on **EPWM9A**, **GPIO16** (mux index 5), as in homework 3. The set-up is the one for EPWM12 with three changes:
 
@@ -923,7 +923,7 @@ __interrupt void cpu_timer1_isr(void)
       mode: "checkpoint",
       title: "Bench test",
       goal: "Ramp both motors back and forth from a timer interrupt, show the power on LED1, and stop while PB1 is held.",
-      refs: [{ course: "Lab 3" }, { course: "Lab 2" }, { trm: "15.5" }],
+      refs: [{ course: "L6-7", slide: 77 }, { course: "Lab 3" }, { course: "Lab 2" }, { trm: "15.5" }],
       brief: `
 Lab 3 ends its PWM part with the robot on the bench stand, wheels in the air, both motors sweeping slowly from full forward to full reverse. Build that, with a stop button and a power light.
 
@@ -1085,7 +1085,7 @@ ${INIT_MOTORS()}
       tier: "practice",
       title: "Two servos, one time base",
       goal: "Add EPWM8B for a second servo and sweep the two servos in opposite directions.",
-      refs: [{ course: "HW4" }, { trm: "15.5.2" }, { trm: "15.6.2" }],
+      refs: [{ course: "L6-7", slide: [67, 80] }, { course: "HW4" }, { trm: "15.5.2" }, { trm: "15.6.2" }],
       brief: `
 HW4's second servo is on **GPIO15**, which is **EPWM8B** at mux index 1. A and B are two outputs of the same module:
 
@@ -1254,7 +1254,7 @@ __interrupt void cpu_timer0_isr(void)
       tier: "practice",
       title: "The second servo broke the first",
       goal: "Fix a set-up in which adding EPWM8B stopped both servos.",
-      refs: [{ course: "HW4" }, { trm: "15.5.2" }, { trm: "15.4.3" }, { trm: "15.6.3" }],
+      refs: [{ course: "L6-7", slide: [67, 80] }, { course: "HW4" }, { trm: "15.5.2" }, { trm: "15.4.3" }, { trm: "15.6.3" }],
       brief: `
 Servo 1 on EPWM8A worked. Then a second servo was added on EPWM8B by pasting a block from the LED code and changing the names. Now **neither** servo moves.
 
@@ -1341,7 +1341,7 @@ ${SERVO_A_INIT}
       tier: "expert",
       title: "Play it, then be quiet",
       goal: "Play a melody on the buzzer from a timer interrupt, and hand the pin back to GPIO when it ends.",
-      refs: [{ course: "HW3" }, { trm: "15.6.2" }, { trm: "15.4.2" }, { trm: "8.7" }],
+      refs: [{ course: "L6-7", slide: [82, 83] }, { course: "HW3" }, { trm: "15.6.2" }, { trm: "15.4.2" }, { trm: "8.7" }],
       brief: `
 A whole song player from an empty \`main\`, as homework 3 asks for with its own song and clock. The note values and the song are given.
 
@@ -1470,7 +1470,7 @@ __interrupt void cpu_timer1_isr(void)
       tier: "expert",
       title: "No sudden moves",
       goal: "Write a ramp limiter so the motor command changes by at most 0.05 per millisecond and lands exactly on its target.",
-      refs: [{ course: "Lab 3" }, { course: "L6-7" }, { trm: "15.5" }],
+      refs: [{ course: "Lab 3" }, { trm: "15.5" }],
       brief: `
 Jumping a motor from stop to full power draws a large current and jerks the gears. A **ramp limiter** (also called a slew-rate limiter) sits between the command you want and the command you send, and lets the sent command change only so fast.
 
@@ -1615,7 +1615,7 @@ ${INIT_MOTORS()}
       tier: "expert",
       title: "Any frequency",
       goal: "Write tone(hz), which picks the clock divider and period itself so that low notes fit in 16 bits and high notes keep their resolution.",
-      refs: [{ course: "HW3" }, { trm: "15.4.3" }, { trm: "15.15.2" }, { trm: "15.4.2" }],
+      refs: [{ course: "L6-7", slide: [82, 83] }, { course: "HW3" }, { trm: "15.4.3" }, { trm: "15.15.2" }, { trm: "15.4.2" }],
       brief: `
 A note table works for one clock divider. With a divide by 4 the lowest note that fits in the 16-bit \`TBPRD\` is about 95 Hz, and the higher the divider, the coarser the pitch. Write a function that plays **any** frequency.
 

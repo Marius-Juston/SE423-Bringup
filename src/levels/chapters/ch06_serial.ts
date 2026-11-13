@@ -145,7 +145,7 @@ export const ch06: Chapter = {
       kind: "brief",
       title: "One wire, no clock",
       goal: "Learn how a character travels over a serial line, then answer three questions.",
-      refs: [{ course: "L4" }, { trm: "19.1" }, { trm: "19.6" }, { trm: "19.10" }],
+      refs: [{ course: "L4", slide: [17, 18, 20] }, { trm: "19.1" }, { trm: "19.6" }, { trm: "19.10" }],
       brief: `
 \`serial_printf\` sends text from the chip to a terminal on your PC. The peripheral that does it is a **UART** (universal asynchronous receiver/transmitter). TI calls its UART the **SCI** (Serial Communications Interface). This chip has four: SCIA to SCID.
 
@@ -211,7 +211,7 @@ You do not need one on the LaunchPad. Its USB port carries **SCIA** (TX on GPIO4
       kind: "quiz",
       title: "ASCII, strings and format codes",
       goal: "Check that you can tell a character from a number and pick the right format code.",
-      refs: [{ course: "L4" }, { course: "HW1" }, { course: "Lab 1" }],
+      refs: [{ course: "L4", slide: [10, 11, 13] }, { course: "HW1" }, { course: "Lab 1" }],
       brief: `
 ## ASCII: characters are numbers
 A serial line carries numbers. **ASCII** (American Standard Code for Information Interchange) is the table that says which number means which character:
@@ -285,7 +285,7 @@ End each line with \`\\r\\n\`: carriage return (back to the first column) and li
       kind: "timing",
       title: "Draw an E",
       goal: "Draw what the TX pin does while the character 'E' is sent.",
-      refs: [{ course: "HW1" }, { course: "L4" }, { trm: "19.6" }],
+      refs: [{ course: "HW1" }, { course: "L4", slide: [18, 11] }, { trm: "19.6" }],
       brief: `
 HW1 asks what an oscilloscope on the TX pin shows when characters are sent. Practise on \`'E'\`.
 
@@ -316,7 +316,7 @@ Settings are the course's: 8 data bits, no parity, 1 stop bit.
       kind: "timing",
       title: "Two characters back to back",
       goal: "Draw the TX pin while '2' and then 'E' are sent with no pause.",
-      refs: [{ course: "HW1" }, { trm: "19.6" }, { trm: "19.10" }],
+      refs: [{ course: "L4", slide: 18 }, { course: "HW1" }, { trm: "19.6" }, { trm: "19.10" }],
       brief: `
 HW1 has an exercise of this kind with two other characters. Here \`'2'\` and \`'E'\` are sent one right after the other at 115200 baud.
 
@@ -348,7 +348,7 @@ Each character has its own start bit (S), data bits 0 to 7 and stop bit (P). Eac
       kind: "calc",
       title: "Baud rate arithmetic",
       goal: "Work out the baud rate register value and how long characters take.",
-      refs: [{ trm: "19.12" }, { trm: "19.14.2" }, { course: "HW1" }, { course: "L4" }],
+      refs: [{ trm: "19.12" }, { trm: "19.14.2" }, { course: "HW1" }, { course: "L4", slide: [17, 21], note: "bit time, characters per second, the LSPCLK source" }],
       brief: `
 The SCI makes its bit clock by dividing the low-speed peripheral clock, **LSPCLK**, which is 50 MHz in the course projects:
 
@@ -411,7 +411,7 @@ Each character is a frame of **10 bits**: start, 8 data, stop.
       mode: "complete",
       title: "Four lines a second",
       goal: "Print the timer count on the terminal every 250 ms, the way the course starter does.",
-      refs: [{ course: "HW1" }, { course: "Lab 1" }, { trm: "19.13.1" }],
+      refs: [{ course: "L4", slide: [12, 13] }, { course: "HW1" }, { course: "Lab 1" }, { trm: "19.13.1" }],
       brief: `
 Printing is slow: a 30-character line takes about 2.6 ms at 115200 baud. The course rule is: **never print inside an interrupt function**. Use the flag of chapter 5: the interrupt function sets \`UARTPrint = 1;\`, and the \`while (1)\` loop sees the flag, prints, and sets it back to 0.
 
@@ -521,7 +521,7 @@ __interrupt void cpu_timer2_isr(void)
       mode: "debug",
       title: "Slow and wrong",
       goal: "This program prints from the wrong place and prints wrong numbers. Fix both.",
-      refs: [{ course: "HW1" }, { course: "Lab 1" }, { course: "L4" }],
+      refs: [{ course: "HW1" }, { course: "Lab 1" }, { course: "L4", slide: [13, 14] }],
       brief: `
 CPU Timer 2 interrupts every 250 ms. Each time, the program should print how many times the timer has fired and the elapsed time in microseconds:
 
@@ -618,7 +618,7 @@ __interrupt void cpu_timer2_isr(void)
       mode: "complete",
       title: "Keys that switch an LED",
       goal: "Turn the red LED on when 'a' is typed and off when 'b' is typed.",
-      refs: [{ course: "Lab 1" }, { trm: "19.11" }, { trm: "19.13.1" }, { trm: "3.4.5" }],
+      refs: [{ course: "L4", slide: [26, 29], note: "the SCIA receive vector and its enable" }, { course: "Lab 1" }, { trm: "19.11" }, { trm: "19.13.1" }, { trm: "3.4.5" }],
       brief: `
 Receiving works by interrupt. \`init_serialSCIA\` sets SCIA up so that every character that arrives causes the SCIA receive interrupt (PIE group 9, interrupt 1). The function that runs is \`RXAINT_recv_ready\`, in the course file \`F28379dSerial.c\`. Three things connect it, all already in this program:
 
@@ -699,7 +699,7 @@ ${rxIsr(`        if (RXAdata == 'a') {
       mode: "checkpoint",
       title: "Answer in capitals",
       goal: "Reply to every typed character with its upper-case form and the number of characters received.",
-      refs: [{ course: "Lab 1" }, { course: "HW1" }, { course: "L4" }, { trm: "19.11" }],
+      refs: [{ course: "Lab 1" }, { course: "HW1" }, { course: "L4", slide: [11, 12] }, { trm: "19.11" }],
       brief: `
 Put the chapter together. For every character typed in the terminal, print one line with:
 
@@ -797,7 +797,7 @@ ${rxIsr(`        newChar = RXAdata;
       mode: "write",
       title: "Twice the number",
       goal: "Read a number typed as ASCII digits and answer with its double.",
-      refs: [{ course: "Lab 1" }, { course: "HW1" }, { course: "L4" }, { trm: "19.11" }],
+      refs: [{ course: "Lab 1" }, { course: "HW1" }, { course: "L4", slide: 11, note: "digit character to value: c - '0'" }, { trm: "19.11" }],
       brief: `
 A number typed in the terminal does not arrive as a number. \`305\` arrives as three characters: \`'3'\`, \`'0'\`, \`'5'\`, then \`'\\r'\` when Enter is pressed.
 
@@ -894,7 +894,7 @@ ${rxIsr(`        if (RXAdata >= '0' && RXAdata <= '9') {
       mode: "debug",
       title: "Sixteen and no more",
       goal: "This program sends the alphabet through the transmit register, but only part of it arrives. Fix it.",
-      refs: [{ trm: "19.13.1" }, { trm: "19.14.2" }, { trm: "19.2" }, { course: "L4" }],
+      refs: [{ trm: "19.13.1" }, { trm: "19.14.2" }, { trm: "19.2" }, { course: "L6-7", slide: 52, note: "the 16-level transmit FIFO, shown for SPI" }],
       brief: `
 \`serial_printf\` hides what happens to a character on its way out. This program does it by hand: it writes each character of the alphabet to the transmit register, \`SciaRegs.SCITXBUF\`.
 
@@ -973,7 +973,7 @@ void main(void)
       mode: "write",
       title: "No library",
       goal: "Bring SCIA up from its registers and print text and 32-bit numbers with code you wrote yourself.",
-      refs: [{ trm: "19.14.2" }, { trm: "19.12" }, { trm: "19.13.1" }, { trm: "19.4" }, { trm: "8.7" }, { course: "L4" }],
+      refs: [{ trm: "19.14.2" }, { trm: "19.12" }, { trm: "19.13.1" }, { trm: "19.4" }, { trm: "8.7" }, { course: "L4", slide: [21, 17] }],
       brief: `
 The course library is gone: no \`init_serialSCIA\`, no \`serial_printf\`, no \`sprintf\`. Only the registers are left, and the terminal still expects 115200 baud, 8 data bits, no parity, 1 stop bit.
 
@@ -1135,7 +1135,7 @@ void sci_putlong(int32_t v)
       mode: "write",
       title: "Faster than you can read",
       goal: "Characters arrive ten times faster than main() can handle them. Lose none, until the buffer is truly full.",
-      refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "19.11" }, { trm: "19.13.1" }],
+      refs: [{ course: "Lab 1" }, { trm: "19.11" }, { trm: "19.13.1" }],
       brief: `
 The echo program of this chapter kept **one** character for \`main()\`. That works for a person typing. A program on the other end sends a whole line at once: at 115200 baud a character arrives every 87 microseconds.
 
@@ -1265,7 +1265,7 @@ ${rxIsr(`        // One place always stays free, so that a full buffer does not
       mode: "write",
       title: "Trust nothing on the wire",
       goal: "Receive checksummed command frames, carry out the good ones and refuse the damaged ones.",
-      refs: [{ course: "L4" }, { course: "Lab 1" }, { trm: "19.11" }, { trm: "19.6" }],
+      refs: [{ course: "L16", slide: [26, 27], note: "a receive state machine that waits for a start character" }, { course: "Lab 1" }, { trm: "19.11" }, { trm: "19.6" }],
       brief: `
 A serial line has no error correction. A loose wire or a motor switching nearby flips a bit, and \`L11\` becomes \`L51\`. Real links wrap each message in a **frame** with a **checksum**, so the receiver can tell. This one is the format GPS receivers use (NMEA 0183).
 

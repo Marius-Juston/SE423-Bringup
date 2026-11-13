@@ -188,7 +188,7 @@ export const ch11: Chapter = {
       kind: "brief",
       title: "Counting light",
       goal: "Learn how an optical encoder turns rotation into two square waves, and what the eQEP does with them.",
-      refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "17.1" }, { trm: "17.3.1" }],
+      refs: [{ course: "L6-7", slide: [5, 10, 23] }, { course: "Lab 3" }, { trm: "17.1" }, { trm: "17.3.1" }],
       brief: `
 A motor command tells the wheel what to do. It does not tell you what the wheel **did**. For that the robot has a sensor on each motor's **shaft** (the rod that turns): an **optical encoder**.
 
@@ -256,7 +256,7 @@ At full speed more than a hundred thousand edges arrive per second, too many to 
       kind: "timing",
       title: "Which one leads",
       goal: "Draw channel B for both directions of rotation, given channel A.",
-      refs: [{ trm: "17.3.1" }, { trm: "17.4.1" }, { course: "L6-7" }],
+      refs: [{ course: "L6-7", slide: [12, 13] }, { trm: "17.3.1" }, { trm: "17.4.1" }],
       brief: `
 Channel A is drawn for you. Each slot is a **quarter** of a slit period, so A is high for two slots and low for two.
 
@@ -289,7 +289,7 @@ Try it in the figure: press **Step** and **Back** and read off which signal chan
       kind: "calc",
       title: "Counts, radians, feet",
       goal: "Convert encoder counts to wheel angle and distance with the robot's numbers.",
-      refs: [{ course: "Lab 3" }, { trm: "17.4.1" }],
+      refs: [{ course: "L6-7", slide: 37, note: "2000 counts x 20:1 gear ratio" }, { course: "Lab 3" }, { trm: "17.4.1" }],
       brief: `
 Your code reads a count. The robot needs an angle and a distance. Three facts link them (Lab 3).
 
@@ -336,7 +336,7 @@ Try it in the figure: roll the wheel and follow one number through the chain, fr
       kind: "calc",
       title: "Speed, and counts below zero",
       goal: "Work out a speed from two readings 1 ms apart, and read a counter that has gone backward past 0.",
-      refs: [{ course: "Lab 3" }, { trm: "17.5.1" }],
+      refs: [{ course: "L6-7", slide: [36, 37] }, { course: "Lab 3" }, { trm: "17.5.1" }],
       brief: `
 ## Speed
 Speed is how far something moves per second. Your code will look at the wheel once every millisecond. So it takes the change since the last look and divides by the time between the two looks, 0.001 s:
@@ -379,7 +379,7 @@ From the last level: one count is 0.00015708 rad of wheel angle.
       kind: "register",
       title: "Switch the counter on",
       goal: "Set QEPCTL the way the course's init_eQEPs() leaves it.",
-      refs: [{ trm: "17.10.2" }, { trm: "17.5.1" }, { course: "Lab 3" }],
+      refs: [{ course: "L6-7", slide: [28, 30] }, { course: "Lab 3" }, { trm: "17.10.2" }, { trm: "17.5.1" }],
       brief: `
 Two registers decide how the eQEP counts.
 
@@ -415,7 +415,7 @@ The other fields stay 0 in this course.
       mode: "complete",
       title: "The second encoder",
       goal: "Complete the eQEP2 set-up and the scale factor so the right wheel angle is read in radians.",
-      refs: [{ course: "Lab 3" }, { trm: "17.2" }, { trm: "17.4.1" }, { trm: "17.5.1" }],
+      refs: [{ course: "L6-7", slide: [28, 29, 37] }, { course: "Lab 3" }, { trm: "17.2" }, { trm: "17.4.1" }, { trm: "17.5.1" }],
       brief: `
 Lab 3 gives you \`init_eQEPs()\` complete. Here the eQEP1 block (left wheel) is complete, and the eQEP2 block (right wheel) has five \`???\` comments. Fix those lines, using eQEP1 as the model. Then fill in the scale factor of \`readEncRight()\`. The rest is given: every millisecond the timer interrupt function calls the two read functions.
 
@@ -497,7 +497,7 @@ ${READ_RIGHT}
       mode: "write",
       title: "Read all three",
       goal: "Write the three read functions so each returns its shaft angle in radians, positive when turned forward.",
-      refs: [{ course: "Lab 3" }, { trm: "17.5.1" }, { trm: "17.10.2" }],
+      refs: [{ course: "L6-7", slide: 37 }, { course: "Lab 3" }, { trm: "17.5.1" }, { trm: "17.10.2" }],
       brief: `
 \`init_eQEPs()\` is complete. Write the bodies of \`readEncLeft()\`, \`readEncRight()\` and \`readEncWheel()\`.
 
@@ -604,7 +604,7 @@ ${INIT_ALL}
       mode: "write",
       title: "How fast, how far",
       goal: "Compute each wheel's distance in feet and its speed in ft/s every millisecond.",
-      refs: [{ course: "Lab 3" }, { course: "L6-7" }],
+      refs: [{ course: "L6-7", slide: 36, note: "speed = change in position / fixed time" }, { course: "Lab 3" }],
       brief: `
 The read functions work. Now turn angles into distance and speed, inside the 1 ms interrupt function.
 
@@ -800,7 +800,7 @@ ${READ_RIGHT}
       mode: "checkpoint",
       title: "Trip computer",
       goal: "Report the distance of both wheels and the average speed every 100 ms, and light LED1 while the robot moves.",
-      refs: [{ course: "Lab 3" }, { course: "Lab 1" }, { trm: "17.5.1" }],
+      refs: [{ course: "L6-7", slide: [37, 36] }, { course: "Lab 3" }, { course: "Lab 1" }, { trm: "17.5.1" }],
       brief: `
 Put the chapter together with the timer, interrupt and serial chapters. Lab 3 prints these numbers on the robot's LCD. Here they go to the serial terminal.
 
@@ -962,7 +962,7 @@ ${READ_RIGHT}
       tier: "practice",
       title: "Four states, one slit",
       goal: "Put the states of A and B in the order the eQEP sees them while it counts up through one slit.",
-      refs: [{ trm: "17.4.1" }, { course: "L6-7" }],
+      refs: [{ course: "L6-7", slide: [14, 15] }, { trm: "17.4.1" }],
       brief: `
 Written as a pair, A and B have four possible states: 00, 10, 11 and 01. While the shaft turns, the pair walks through them in a fixed circle. The eQEP adds 1 for every step in one direction around the circle and subtracts 1 for every step in the other.
 
@@ -995,7 +995,7 @@ Start from A = 0, B = 0 with the count at 0, and order the steps for the count g
       tier: "practice",
       title: "Stuck at zero",
       goal: "Both wheels turn but both angles stay at 0. Find what is missing in each eQEP block.",
-      refs: [{ course: "Lab 3" }, { trm: "17.2" }, { trm: "17.10.2" }],
+      refs: [{ course: "L6-7", slide: [28, 29] }, { course: "Lab 3" }, { trm: "17.2" }, { trm: "17.10.2" }],
       brief: `
 Someone retyped \`init_eQEPs()\` instead of pasting it. The program builds and runs, the wheels turn, and \`LeftWheel\` and \`RightWheel\` both stay at exactly 0.
 
@@ -1071,7 +1071,7 @@ ${READ_RIGHT}
       tier: "practice",
       title: "Wrong way, wrong size",
       goal: "One wheel reads a negative angle and the other reads nothing. Fix both scale factors.",
-      refs: [{ course: "Lab 3" }],
+      refs: [{ course: "L6-7", slide: 37, note: "the scale factor and its sign" }, { course: "Lab 3" }],
       brief: `
 The counters count. The angles are still wrong:
 
@@ -1154,7 +1154,7 @@ ${READ_RIGHT}
       tier: "expert",
       title: "Be the eQEP",
       goal: "Decode the hand wheel's A and B signals in software, from two GPIO inputs, without the eQEP.",
-      refs: [{ trm: "17.4.1" }, { course: "L6-7" }],
+      refs: [{ course: "L6-7", slide: [15, 31] }, { trm: "17.4.1" }],
       brief: `
 The hand wheel's A and B outputs are on **GPIO6** and **GPIO7**. In this level they stay plain GPIO inputs, and your code does the eQEP's job.
 
@@ -1313,7 +1313,7 @@ __interrupt void cpu_timer0_isr(void)
       tier: "expert",
       title: "Round the corner",
       goal: "Measure speed and total angle from a counter that wraps around once per turn.",
-      refs: [{ trm: "17.5.1" }, { course: "Lab 3" }],
+      refs: [{ course: "L6-7", slide: 28, note: "QPOSMAX sets where the counter wraps" }, { course: "Lab 3" }, { trm: "17.5.1" }],
       brief: `
 Here eQEP3 is set up differently from the course: \`QPOSMAX = 3999\`. The hand wheel has 4000 counts per turn, so \`QPOSCNT\` is now the **angle within one turn**: it runs 0 to 3999, and then
 
@@ -1428,7 +1428,7 @@ ${QEP3.replace("EQep3Regs.QPOSMAX = 0xFFFFFFFF;   // use full range of the 32 bi
       tier: "expert",
       title: "Slower than one count",
       goal: "Measure a wheel that turns so slowly that most milliseconds see no count at all, and detect when it has stopped.",
-      refs: [{ trm: "17.6" }, { course: "Lab 3" }, { course: "L6-7" }],
+      refs: [{ course: "L6-7", slide: [34, 35] }, { course: "Lab 3" }, { trm: "17.6" }],
       brief: `
 The backward difference counts how many counts arrive in a fixed time. One count per millisecond is already 0.157 rad/s. Below that, the 1 ms difference is 0 most of the time and one count now and then: useless.
 

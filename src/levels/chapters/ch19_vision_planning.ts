@@ -1,4 +1,5 @@
 import type { Chapter } from "../types";
+import { rgbToLabInt, type Rgb } from "../../ui/figures/lab-color";
 
 // ------------------------------------------------------------------ data
 // Small test images and maps are written into each level's code as plain
@@ -18,8 +19,10 @@ const cells = (picture: string[]): string[] => picture.flatMap((row) => row.spli
 const maskArray = (name: string, picture: string[]) =>
   cArray("uint16_t", name, "NPIX", cells(picture).map((c) => (c === "1" ? 1 : 0)), picture[0].split(" ").length);
 
-// Colours of the camera test image, as (R, G, B) from 0 to 255.
-const RGB: Record<string, [number, number, number]> = {
+// Colours of the camera test images, as (R, G, B) from 0 to 255. The levels
+// get them the way the course's camera hands them over: converted to L, A, B
+// (whole numbers), by the same formulas as the "lab-picker" figure.
+const RGB: Record<string, Rgb> = {
   ".": [160, 160, 160], // grey floor in the light
   ",": [64, 64, 64], // grey floor in the shadow
   O: [255, 128, 0], // orange golf ball in the light
@@ -27,8 +30,16 @@ const RGB: Record<string, [number, number, number]> = {
   B: [0, 90, 255], // blue golf ball
   Y: [230, 200, 40], // yellow tape
   R: [230, 20, 40], // red cone
-  W: [180, 150, 120], // wooden wall: orange hue, but pale
+  W: [180, 150, 120], // wooden wall: a little orange, but pale
+  P: [150, 60, 200], // purple marker in the light
+  p: [89, 31, 121], // the same marker in the shade
+  K: [240, 150, 170], // pink sticker
+  h: [0, 62, 187], // blue ball, shaded part
+  s: [0, 40, 128], // blue ball in deep shadow
+  M: [150, 60, 200], // purple marker
+  w: [150, 170, 200], // pale blue reflection on the floor
 };
+const LAB = Object.fromEntries(Object.entries(RGB).map(([k, v]) => [k, rgbToLabInt(v)])) as Record<string, [number, number, number]>;
 
 const BALL_IMAGE = [
   ". . . . . . . . , , , ,",
@@ -41,92 +52,31 @@ const BALL_IMAGE = [
   ". . . . . . . . , , , ,",
 ];
 
-const rgbArrays = (picture: string[]) =>
+/** Three C arrays img_l, img_a, img_b: the picture as the camera's LAB numbers. */
+const labArrays = (picture: string[], perLine: number) =>
   [0, 1, 2]
-    .map((ch) => cArray("uint16_t", `img_${"rgb"[ch]}`, "NPIX", cells(picture).map((c) => RGB[c][ch]), 12))
+    .map((ch) => cArray("int16_t", `img_${"lab"[ch]}`, "NPIX", cells(picture).map((c) => LAB[c][ch]), perLine))
     .join("\n\n");
 
 const IMG_DEFS = `#define ROWS 8
 #define COLS 12
 #define NPIX (ROWS * COLS)`;
 
-// The finished conversion, reused by the levels after it.
-const HSL_BODY = `    float hi, lo, d;
-
-    r = r / 255.0f;
-    g = g / 255.0f;
-    b = b / 255.0f;
-
-    // Largest and smallest of the three channels
-    hi = r;
-    if (g > hi) hi = g;
-    if (b > hi) hi = b;
-    lo = r;
-    if (g < lo) lo = g;
-    if (b < lo) lo = b;
-    d = hi - lo;
-
-    *l = (hi + lo) / 2.0f;
-`;
-
-const HSL_FN = `// (r, g, b) from 0 to 255  ->  hue in degrees (0 to 360), saturation and lightness from 0 to 1
-void rgb_to_hsl(float r, float g, float b, float *h, float *s, float *l)
-{
-${HSL_BODY}
-    if (d == 0.0f) {
-        *h = 0.0f;      // grey: no colour, so no hue
-        *s = 0.0f;
-        return;
-    }
-    *s = d / (1.0f - fabs(2.0f * (*l) - 1.0f));
-    if (hi == r) {
-        *h = 60.0f * ((g - b) / d);
-    } else if (hi == g) {
-        *h = 60.0f * ((b - r) / d + 2.0f);
-    } else {
-        *h = 60.0f * ((r - g) / d + 4.0f);
-    }
-    if (*h < 0.0f) {
-        *h = *h + 360.0f;
-    }
-}`;
-
-const hslProgram = (rest: string) => `float hA, sA, lA;   // orange ball in the light
-float hB, sB, lB;   // the same ball in the shadow
-float hC, sC, lC;   // blue ball
-float hD, sD, lD;   // green marker
-float hE, sE, lE;   // red cone
-float hF, sF, lF;   // grey floor
-
-// (r, g, b) from 0 to 255  ->  hue in degrees (0 to 360), saturation and lightness from 0 to 1
-void rgb_to_hsl(float r, float g, float b, float *h, float *s, float *l)
-{
-${HSL_BODY}
-${rest}
-}
-
-void main(void)
-{
-    rgb_to_hsl(255.0f, 128.0f, 0.0f, &hA, &sA, &lA);
-    rgb_to_hsl(102.0f, 51.0f, 0.0f, &hB, &sB, &lB);
-    rgb_to_hsl(0.0f, 90.0f, 255.0f, &hC, &sC, &lC);
-    rgb_to_hsl(40.0f, 200.0f, 120.0f, &hD, &sD, &lD);
-    rgb_to_hsl(230.0f, 20.0f, 40.0f, &hE, &sE, &lE);
-    rgb_to_hsl(128.0f, 128.0f, 128.0f, &hF, &sF, &lF);
-    while (1) {}
-}
-`;
-
 // ---- threshold + moments on the ball image
 const targetProgram = (body: string) => `${IMG_DEFS}
 
-#define H_MIN 15.0f       // orange: hue from 15 to 45 degrees ...
-#define H_MAX 45.0f
-#define S_MIN 0.5f        // ... and a strong colour
+// The threshold of the orange ball: six numbers, as on the camera
+#define L_MIN 15          // L: 0 = black, 100 = white. Kept wide.
+#define L_MAX 80
+#define A_MIN 12          // A: negative = green, positive = red
+#define A_MAX 55
+#define B_MIN 25          // B: negative = blue, positive = yellow
+#define B_MAX 90
 #define CENTRE_COL 6.0f   // middle of the image (COLS / 2)
 #define KP_TURN 0.5f
 
-${rgbArrays(BALL_IMAGE)}
+// The image as the camera hands it over: L, A and B of every pixel
+${labArrays(BALL_IMAGE, 12)}
 
 uint16_t mask[NPIX];      // 1 where the pixel is the target colour
 uint16_t area = 0;        // M00: number of pixels in the mask
@@ -142,8 +92,6 @@ float cx2 = 0, turn2 = 0;               // mirrored: the ball is on the left
 int area3 = -1;
 float turn3 = 9;                        // the ball is gone
 
-${HSL_FN}
-
 void find_target(void)
 {
 ${body}
@@ -153,14 +101,14 @@ ${body}
 void mirror_image(void)
 {
     int row, col, a, b;
-    uint16_t t;
+    int16_t t;
 
     for (row = 0; row < ROWS; row++) {
         for (col = 0; col < COLS / 2; col++) {
             a = row * COLS + col;
             b = row * COLS + (COLS - 1 - col);
-            t = img_r[a]; img_r[a] = img_r[b]; img_r[b] = t;
-            t = img_g[a]; img_g[a] = img_g[b]; img_g[b] = t;
+            t = img_l[a]; img_l[a] = img_l[b]; img_l[b] = t;
+            t = img_a[a]; img_a[a] = img_a[b]; img_a[b] = t;
             t = img_b[a]; img_b[a] = img_b[b]; img_b[b] = t;
         }
     }
@@ -184,10 +132,78 @@ void main(void)
 
     // The ball is taken away: only grey floor is left
     for (i = 0; i < NPIX; i++) {
-        img_r[i] = 160; img_g[i] = 160; img_b[i] = 160;
+        img_l[i] = ${LAB["."][0]}; img_a[i] = 0; img_b[i] = 0;
     }
     find_target();
     area3 = area; turn3 = turn;
+    while (1) {}
+}
+`;
+
+// ---- two colours, one test function
+const TWO_IMAGE = [
+  ". . . . . . . B B .",
+  ". O O o . . . B B .",
+  ". O O o . K . . . .",
+  ". . O o . . P P p .",
+  ". R . . . . P P p .",
+  ". . Y Y . . . p p .",
+];
+const twoProgram = (o: { test: string; sums: string }) => `#define ROWS 6
+#define COLS 10
+#define NPIX (ROWS * COLS)
+
+// Two thresholds, each six numbers in the camera's order:
+//               L_min, L_max, A_min, A_max, B_min, B_max
+int orange[6] = {   15,    85,    14,    52,    32,    80 };
+int purple[6] = {   10,    70,    35,    75,   -75,   -30 };
+int green[6]  = {   20,    90,   -80,   -30,     5,    50 };
+
+${labArrays(TWO_IMAGE, 10)}
+
+// Results
+int areaO = -1, areaP = -1, areaG = -1;
+float cxO = 0, cyO = 0;       // centroid of the orange ball
+float cxP = 0, cyP = 0;       // centroid of the purple marker
+float cxG = -1, cyG = -1;     // nothing green: these must stay -1
+int testIn = -1, testOut = -1, testEdge = -1;
+
+// Returns 1 when the pixel (l, a, b) is inside threshold t, else 0.
+int in_threshold(int l, int a, int b, int *t)
+{
+${o.test}
+}
+
+// Area and centroid of all pixels inside threshold t.
+// Returns the area. The centroid is only written when the area is above 0.
+int measure(int *t, float *cx, float *cy)
+{
+    int row, col, i;
+    float m00 = 0, m10 = 0, m01 = 0;
+
+    for (row = 0; row < ROWS; row++) {
+        for (col = 0; col < COLS; col++) {
+            i = row * COLS + col;
+            if (in_threshold(img_l[i], img_a[i], img_b[i], t)) {
+${o.sums}
+            }
+        }
+    }
+    if (m00 > 0) {
+        *cx = m10 / m00;
+        *cy = m01 / m00;
+    }
+    return (int)m00;
+}
+
+void main(void)
+{
+    testIn = in_threshold(40, 50, -50, purple);     // inside
+    testOut = in_threshold(40, 50, -20, purple);    // B is too high
+    testEdge = in_threshold(40, 35, -50, purple);   // A is equal to A_min: outside
+    areaO = measure(orange, &cxO, &cyO);
+    areaP = measure(purple, &cxP, &cyP);
+    areaG = measure(green, &cxG, &cyG);
     while (1) {}
 }
 `;
@@ -274,48 +290,40 @@ void main(void)
 }
 `;
 
-// ---- hue wrap-around
-const RED_HUE: Record<string, [number, number]> = {
-  ".": [0, 0], // grey floor: hue 0 by convention, saturation 0
-  a: [352, 85],
-  b: [357, 90],
-  c: [2, 90],
-  d: [8, 80],
-  O: [30, 90], // orange ball
-  M: [320, 80], // magenta marker
-  p: [350, 20], // pale pink reflection: a red hue, but hardly any colour
-};
-const RED_IMAGE = [
+// ---- a threshold on negative numbers
+const BLUE_IMAGE = [
   ". . . . . . . .",
-  ". . a b c d . .",
-  ". . b c a c . M",
-  ". . d a b b . M",
+  ". . B h h B . .",
+  ". . h B B h . M",
+  ". . h h B B . M",
   ". O . . . . . .",
-  ". O . . . p . .",
+  ". O . . . w . .",
 ];
-const redProgram = (test: string) => `#define ROWS 6
+const blueProgram = (bMin: number, bMax: number) => `#define ROWS 6
 #define COLS 8
 #define NPIX (ROWS * COLS)
 
-#define H_MIN 340         // red: from 340 degrees ...
-#define H_MAX 20          // ... through 0 to 20 degrees
-#define S_MIN 50          // percent
+// The threshold of the blue ball (L is left wide open and not tested)
+#define A_MIN 20
+#define A_MAX 55
+#define B_MIN ${bMin}
+#define B_MAX ${bMax}
 
-// Hue of every pixel in degrees, and saturation in percent
-${cArray("uint16_t", "hue", "NPIX", cells(RED_IMAGE).map((c) => RED_HUE[c][0]), 8)}
+// A and B of every pixel, as the camera reports them
+${cArray("int16_t", "img_a", "NPIX", cells(BLUE_IMAGE).map((c) => LAB[c][1]), 8)}
 
-${cArray("uint16_t", "sat", "NPIX", cells(RED_IMAGE).map((c) => RED_HUE[c][1]), 8)}
+${cArray("int16_t", "img_b", "NPIX", cells(BLUE_IMAGE).map((c) => LAB[c][2]), 8)}
 
 uint16_t mask[NPIX];
 uint16_t area = 0;
 float cx = 0;
 float cy = 0;
 
-// Results copied by main: the image above, then with the cone's left edge washed out
+// Results copied by main: the image above, then with the ball's left edge in deep shadow
 int area1 = -1, area2 = -1;
 float cx1 = 0, cy1 = 0, cx2 = 0, cy2 = 0;
 
-void find_red(void)
+void find_blue(void)
 {
     int row, col, i;
     float m00 = 0, m10 = 0, m01 = 0;
@@ -323,7 +331,7 @@ void find_red(void)
     for (row = 0; row < ROWS; row++) {
         for (col = 0; col < COLS; col++) {
             i = row * COLS + col;
-            if (${test}) {
+            if (img_a[i] > A_MIN && img_a[i] < A_MAX && img_b[i] > B_MIN && img_b[i] < B_MAX) {
                 mask[i] = 1;
                 m00 += 1;
                 m10 += col;
@@ -345,14 +353,15 @@ void main(void)
 {
     int row;
 
-    find_red();
+    find_blue();
     area1 = area; cx1 = cx; cy1 = cy;
 
-    // Glare washes out column 2: same hue, hardly any colour left
-    for (row = 0; row < ROWS; row++) {
-        sat[row * COLS + 2] = 10;
+    // A deep shadow falls on column 2: A and B shrink towards 0
+    for (row = 1; row < 4; row++) {
+        img_a[row * COLS + 2] = ${LAB.s[1]};
+        img_b[row * COLS + 2] = ${LAB.s[2]};
     }
-    find_red();
+    find_blue();
     area2 = area; cx2 = cx; cy2 = cy;
     while (1) {}
 }
@@ -1240,16 +1249,16 @@ void main(void)
 }
 `;
 
-// ---- checkpoint scene
+// ---- checkpoint scene: A and B of each floor cell
 const SCENE: Record<string, [number, number]> = {
-  ".": [0, 5], // floor
-  B: [225, 80], // blue obstacle
-  b: [205, 70], // blue obstacle, another shade
-  O: [28, 90], // orange target
-  Y: [55, 85], // yellow tape
-  R: [350, 80], // red cone
-  W: [30, 20], // pale wood
-  P: [220, 20], // pale blue reflection on the floor
+  ".": [0, 0], // floor
+  B: [LAB.B[1], LAB.B[2]], // blue obstacle
+  b: [LAB.h[1], LAB.h[2]], // blue obstacle in the shade
+  O: [LAB.O[1], LAB.O[2]], // orange target
+  Y: [LAB.Y[1], LAB.Y[2]], // yellow tape
+  R: [LAB.R[1], LAB.R[2]], // red cone
+  W: [LAB.W[1], LAB.W[2]], // pale wood
+  P: [LAB.w[1], LAB.w[2]], // pale blue reflection on the floor
 };
 const SCENE_PIC = [". . . B . B O .", ". W . B . b b .", ". . . B . . . .", ". b . . . B Y .", ". b P . . B . .", ". . . R . . . ."];
 
@@ -1261,10 +1270,10 @@ const sceneProgram = (fns: string) => `#define ROWS 6
 #define START_COL 0
 
 // What the camera sees, already reduced to one colour per floor cell:
-// hue in degrees and saturation in percent
-${cArray("uint16_t", "scene_h", "NCELLS", cells(SCENE_PIC).map((c) => SCENE[c][0]), 8)}
+// its A (green to red) and its B (blue to yellow)
+${cArray("int16_t", "scene_a", "NCELLS", cells(SCENE_PIC).map((c) => SCENE[c][0]), 8)}
 
-${cArray("uint16_t", "scene_s", "NCELLS", cells(SCENE_PIC).map((c) => SCENE[c][1]), 8)}
+${cArray("int16_t", "scene_b", "NCELLS", cells(SCENE_PIC).map((c) => SCENE[c][1]), 8)}
 
 char map[NCELLS];         // you fill this in: 'x' = obstacle, '0' = free
 int queue[NCELLS];
@@ -1283,10 +1292,10 @@ int obstacles3 = -9, steps3 = -9;
 ${fns}
 
 // Repaints one cell of the scene. Do not change.
-void paint(int row, int col, uint16_t hue, uint16_t sat)
+void paint(int row, int col, int a, int b)
 {
-    scene_h[row * COLS + col] = hue;
-    scene_s[row * COLS + col] = sat;
+    scene_a[row * COLS + col] = a;
+    scene_b[row * COLS + col] = b;
 }
 
 // Do not change main.
@@ -1306,16 +1315,16 @@ void main(void)
     DELAY_US(10000);
 
     // Scene 2: the target is moved to (1, 4) and the blue box at (0, 5) is taken away
-    paint(0, 6, 0, 5);
-    paint(1, 4, 28, 90);
-    paint(0, 5, 0, 5);
+    paint(0, 6, 0, 0);
+    paint(1, 4, ${SCENE.O[0]}, ${SCENE.O[1]});
+    paint(0, 5, 0, 0);
     look_and_plan();
     row2 = targetRow; col2 = targetCol; obstacles2 = numObstacles; steps2 = steps;
     DELAY_US(10000);
 
     // Scene 3: two blue boxes close the target in
-    paint(0, 5, 225, 80);
-    paint(2, 4, 205, 70);
+    paint(0, 5, ${SCENE.B[0]}, ${SCENE.B[1]});
+    paint(2, 4, ${SCENE.b[0]}, ${SCENE.b[1]});
     look_and_plan();
     obstacles3 = numObstacles; steps3 = steps;
     while (1) {}
@@ -1364,8 +1373,8 @@ void main(void)
 }
 `;
 
-// Statement budgets of the stars (reference solutions: 7061 and 4069 statements).
-const STEPS_TARGET = 7400;
+// Statement budgets of the stars (reference solutions: 3405 and 4069 statements).
+const STEPS_TARGET = 3700;
 const STEPS_BFS = 4800;
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 const range = (v: number, tol = 0.01) => ({ min: round6(v - tol), max: round6(v + tol) });
@@ -1376,75 +1385,75 @@ export const ch19: Chapter = {
   title: "Seeing and planning",
   blurb: "Colour, blobs and centroids, then BFS, A* and occupancy grids.",
   requires: ["sensors"],
-  course: ["L17", "L18", "L22-23", "L24-25", "HW5", "HW6"],
+  course: ["L17", "L18", "L22-23", "L24-25", "Lab 7", "HW5", "HW6"],
   levels: [
     {
       id: "vis-brief",
       kind: "brief",
       title: "From pixels to a turn command",
       goal: "Learn how a camera image becomes a number the robot can steer with.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: [24, 31, 35] }, { course: "Lab 7" }],
       brief: `
-The robot's camera answers one question many times per second: **where is the golf ball?** This chapter builds the answer in small steps, then plans a route to the ball.
+The robot's camera answers one question many times per second: **where is the golf ball?**
 
 ## A picture is numbers
-A camera image is a grid of small squares called **pixels**. Each pixel holds three numbers from 0 to 255: how much **red**, **green** and **blue** light it received (R, G, B). (255, 128, 0) is orange, (160, 160, 160) is grey, (0, 0, 0) is black.
+A camera image is a grid of small squares called **pixels**. Each pixel holds three numbers from 0 to 255: how much **red**, **green** and **blue** light it received (R, G, B). (255, 128, 0) is orange, (160, 160, 160) is grey.
 
 ## Which pixels are the ball?
-The obvious test, "R above 200", fails as soon as a shadow falls on the ball: all three numbers drop together. So the same colour is written a second way, called **HSL**:
+"R above 200" fails as soon as the light changes: in a shadow all three numbers drop together. So the course's camera writes every pixel a second way, called **LAB**, which keeps brightness apart from colour:
 
-- **Hue** H: which colour it is, as a position on a colour circle in degrees. 0 is red, 120 green, 240 blue, and 360 is red again.
-- **Saturation** S: how strong the colour is. 0 is grey, 1 is pure colour.
-- **Lightness** L: 0 is black, 1 is white.
+- **L**, lightness: 0 is black, 100 is white.
+- **A**: negative is green, positive is red. About -128 to 127.
+- **B**: negative is blue, positive is yellow. About -128 to 127.
 
-A shadow lowers L and leaves H almost unchanged. Press Shadow in the figure: R, G and B all change, and the hue stays.
+Grey has A = 0 and B = 0. The orange ball is about L 67, A 43, B 74. With half the light it is about L 50, A 34, B 59: L fell a lot, A and B moved a little towards 0 and kept their signs.
 
-{{figure:hsl-picker}}
+A **threshold** is a lowest and a highest allowed value. The camera takes six numbers, (L min, L max, A min, A max, B min, B max), and a pixel passes when all three of its numbers lie between their two limits. The result is a **mask**: a second grid with 1 where the pixel passed and 0 everywhere else.
 
-So the test is on H, and it asks for enough S as well, because grey has no real hue. A test that compares a number with a fixed limit is called a **threshold**. The result is a **mask**: a second grid with 1 where the pixel has the target colour and 0 everywhere else.
+{{figure:lab-picker}}
+
+Try it: drag **Light** down until the ball's darkest pixels drop out because of L. Lower L min and they are back: L is left wide, A and B do the choosing.
 
 ## From the mask to the wheels
 1. Count the 1s: the **area**. A few scattered 1s are noise, not a ball.
 2. Find the middle of the 1s: the **centroid**.
 3. Steer: if the centroid is right of the middle of the image, turn right.
 
-The next levels take these one at a time: how a grid is stored in C, the centroid, then the whole function.
-
-The lecture's HSV and the lab camera's LAB thresholds rest on the same idea as HSL.
+The lecture first shows HSV (hue, saturation, value), which other tools use. The idea is the same; the lab's camera code uses LAB.
 `,
       questions: [
         {
-          prompt: "A pixel holds R = 200, G = 200, B = 200. What does it look like?",
-          options: ["Bright red", "Light grey: the three colours are equally strong", "Black", "Orange"],
+          prompt: "A pixel has L = 60, A = 0, B = 0. What does it look like?",
+          options: ["Bright red", "Grey: A and B are 0, so it has no colour, only lightness", "Black", "Orange"],
           answer: 1,
-          why: "Equal amounts of red, green and blue give no colour at all, only brightness: grey. Its saturation is 0.",
+          why: "A says green or red, B says blue or yellow. Both 0 means neither: grey. L = 60 makes it a medium-light grey.",
         },
         {
           prompt: "A shadow falls on half of the orange ball. Which test still finds the whole ball?",
-          options: ["R > 200", "R + G + B > 300", "Hue between 15 and 45 degrees, with saturation above 0.5", "Lightness above 0.4"],
+          options: ["R above 200", "L between 60 and 75", "A between 12 and 55 and B between 25 and 90, with L allowed from 15 to 80", "R + G + B above 300"],
           answer: 2,
-          why: "The shadow lowers R, G, B and the lightness. The hue depends on the ratio between the three numbers, which stays the same.",
+          why: "The shadow lowers R, G, B and L a lot. A and B only move part of the way towards 0, so ranges on A and B with some room still hold, and L is left wide.",
         },
         {
-          prompt: "The mask of an image holds 1 at 14 pixels and 0 at all the others. What does that tell you?",
+          prompt: "A threshold is (30, 80, 20, 60, -10, 40). A pixel has L 50, A 35, B 55. Is it in the mask?",
           options: [
-            "The image is 14 pixels wide",
-            "14 pixels passed the colour test: the area of the target is 14",
-            "The ball is at column 14",
-            "The image has 14 colours",
+            "Yes: L and A are inside their ranges",
+            "No: B is 55 and the highest B allowed is 40. All three must be inside.",
+            "Yes: two out of three is enough",
+            "No: L is too low",
           ],
           answer: 1,
-          why: "The mask marks the pixels that have the target colour. Counting its 1s gives the area.",
+          why: "The order is L min, L max, A min, A max, B min, B max. L 50 is between 30 and 80, A 35 between 20 and 60, but B 55 is above 40. One channel outside is enough to fail.",
         },
       ],
-      takeaway: "A pixel is three numbers. Threshold its hue and saturation to get a mask, find the middle of the mask, and steer on how far that is from the middle of the image.",
+      takeaway: "A pixel is three numbers. Written as L, A, B, a box of six limits picks one colour in changing light. The pixels that pass form the mask; its middle tells the robot which way to turn.",
     },
     {
       id: "vis-grid",
       kind: "calc",
       title: "Maths you need: a grid in one array",
       goal: "Convert between the row and column of a pixel and its place in the array that stores the image.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: 9, note: "the image as an array of numbers" }, { course: "Lab 7" }],
       brief: `
 An image has rows and columns. C memory is one long line. So the image is stored **row after row** in one array: all of row 0, then all of row 1, and so on. The maps later in this chapter are stored the same way.
 
@@ -1502,7 +1511,7 @@ The camera image of this chapter has **8 rows and 12 columns**.
       kind: "calc",
       title: "Maths you need: the average position",
       goal: "Compute the centroid of a few mask pixels as the average of their columns and of their rows.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: [39, 40] }, { course: "Lab 7" }],
       brief: `
 The robot steers on **where** the ball is in the image. A ball covers many pixels, so "where" means the middle of them: the **centroid**. It is the **average** position of the pixels in the mask.
 
@@ -1558,21 +1567,24 @@ A mask has 1s at five pixels: (row 2, column 4), (row 2, column 5), (row 2, colu
       mode: "complete",
       title: "Find the ball",
       goal: "Threshold a small camera image into a mask, compute area and centroid from the moments, and turn towards the ball.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: [35, 40, 41] }, { course: "Lab 7" }],
       brief: `
-Now put the pieces together. The image is 8 rows by 12 columns, stored as three arrays \`img_r\`, \`img_g\` and \`img_b\`, each with one number per pixel. It shows a grey floor, an orange golf ball that is half in shadow, a blue ball, yellow tape, a red cone and a pale wooden wall.
+The image is 8 rows by 12 columns: a grey floor, an orange golf ball that is half in shadow, a blue ball, yellow tape, a red cone and a pale wooden wall.
 
-Complete \`find_target()\`, about 100 lines down in the editor, below the image data. This is what the lab's first camera script does, pixel by pixel.
+This is the job of the lab's first camera script. There, two loops visit every pixel, \`img.get_pixel()\` reads its R, G, B and \`image.rgb_to_lab()\` converts them to L, A, B. Here that part is done: the image arrives as three arrays \`img_l\`, \`img_a\` and \`img_b\`.
 
-**Given, do not change:** the two loops over every pixel, and the call of \`rgb_to_hsl()\`. After that call \`h\` holds the pixel's hue in degrees and \`s\` its saturation from 0 to 1. The function hands back three results through pointers, which is why the call passes \`&h, &s, &l\`. Its inside is the practice level "rgb_to_hsl".
+Complete \`find_target()\`, below the image data. **Given, do not change:** the two loops and the three lines that copy the pixel into \`l\`, \`a\` and \`b\`.
 
 ## 1. Mask
-The pixel belongs to the target when
+The pixel belongs to the target when **all three** numbers are inside the threshold, as in the lab script:
 
-- its hue is between \`H_MIN\` and \`H_MAX\` (15 to 45 degrees), **and**
-- its saturation is at least \`S_MIN\` (0.5). The wooden wall has an orange hue too, but it is pale.
+- \`l\` is above \`L_MIN\` and below \`L_MAX\`,
+- \`a\` is above \`A_MIN\` and below \`A_MAX\`,
+- \`b\` is above \`B_MIN\` and below \`B_MAX\`.
 
-"Between" is two comparisons in C: \`h >= H_MIN && h <= H_MAX\`. Store 1 or 0 in \`mask[i]\`.
+C has no "between": each line is two comparisons, and all six are joined with \`&&\`. For L alone: \`l > L_MIN && l < L_MAX\`. Store 1 or 0 in \`mask[i]\`.
+
+Every limit is needed. The blue ball has the same A as the orange one and differs only in B. The red cone differs in A.
 
 ## 2. Moments
 For every pixel that is in the mask, add 1 to \`m00\`, its **column** to \`m10\` and its **row** to \`m01\`. The sums are \`float\`, so that the divisions keep their fraction.
@@ -1582,24 +1594,26 @@ For every pixel that is in the mask, add 1 to \`m00\`, its **column** to \`m10\`
 - \`cx\` = M10 / M00 and \`cy\` = M01 / M00
 - \`turn = KP_TURN * (cx - CENTRE_COL);\`
 
-\`turn\` is the turn command you used in the wall follower: a **positive** value makes the left wheel faster, so the robot turns **right**. \`cx - CENTRE_COL\` says how far the ball is from the middle of the image. \`KP_TURN\` is a constant that sets how strongly the robot reacts, called a **gain**. Check the sign with one number: a ball at column 9 gives 0.5 x (9 - 6) = +1.5, a right turn, towards the ball.
+A **positive** \`turn\` turns the robot **right**, as in the wall follower. \`KP_TURN\` sets how strongly it reacts and is called a **gain**. Check the sign: a ball at column 9 gives 0.5 x (9 - 6) = +1.5, a right turn, towards the ball.
 
-An image without the ball has M00 = 0, and a division by 0 gives garbage. Divide only when M00 is above 0, and set \`turn\` to 0 otherwise.
+An image without the ball has M00 = 0, and 0 / 0 gives garbage. Divide only when M00 is above 0, and set \`turn\` to 0 otherwise.
 
-\`main\` runs your function on three images: the one in the code, the same one mirrored (ball on the left), and one with only floor.
+\`main\` runs your function on three images: the one in the code, the same one mirrored, and one with only floor.
 `,
       kit: "robot",
       durationMs: 40,
       starter: targetProgram(`    int row, col, i;
-    float h, s, l;                      // one pixel: hue, saturation, lightness
+    int l, a, b;                        // one pixel: L, A and B
     float m00 = 0, m10 = 0, m01 = 0;    // the three sums, 0 on every call
 
     for (row = 0; row < ROWS; row++) {
         for (col = 0; col < COLS; col++) {
             i = row * COLS + col;
-            rgb_to_hsl(img_r[i], img_g[i], img_b[i], &h, &s, &l);   // given
+            l = img_l[i];               // given: the pixel's three numbers
+            a = img_a[i];
+            b = img_b[i];
 
-            // TODO 1: mask[i] = 1 if h and s say "target colour", else 0
+            // TODO 1: mask[i] = 1 if l, a and b are all inside the threshold, else 0
             // TODO 2: for a target pixel, add to m00, m10 and m01
             mask[i] = 0;    // replace this line
         }
@@ -1608,14 +1622,16 @@ An image without the ball has M00 = 0, and a division by 0 gives garbage. Divide
     // TODO 3: area. Then, only if m00 is above 0: cx, cy and turn.
     //         Otherwise turn = 0.`),
       solution: targetProgram(`    int row, col, i;
-    float h, s, l;
+    int l, a, b;
     float m00 = 0, m10 = 0, m01 = 0;
 
     for (row = 0; row < ROWS; row++) {
         for (col = 0; col < COLS; col++) {
             i = row * COLS + col;
-            rgb_to_hsl(img_r[i], img_g[i], img_b[i], &h, &s, &l);
-            if (h >= H_MIN && h <= H_MAX && s >= S_MIN) {
+            l = img_l[i];
+            a = img_a[i];
+            b = img_b[i];
+            if (l > L_MIN && l < L_MAX && a > A_MIN && a < A_MAX && b > B_MIN && b < B_MAX) {
                 mask[i] = 1;
                 m00 += 1;
                 m10 += col;
@@ -1635,7 +1651,7 @@ An image without the ball has M00 = 0, and a division by 0 gives garbage. Divide
         turn = 0;
     }`),
       checks: [
-        { kind: "var", name: "area1", equals: 14, label: "Image 1: area is 14, the whole orange ball, lit and shadowed", hint: "0: nothing is stored in mask[] or added to m00 yet, or area is never set. 7: a brightness test crept in. 18: the pale wall is included, so also ask for s >= S_MIN. 20: C has no `15 <= h <= 45`, write two comparisons joined with &&. 96: every pixel counts, so look for a `;` directly after `if (...)`." },
+        { kind: "var", name: "area1", equals: 14, label: "Image 1: area is 14, the whole orange ball, lit and shadowed", hint: "0: nothing is stored in mask[] or added to m00 yet, or area is never set. 7: only half the ball, so a comparison on L is too tight or points the wrong way. More than 14: one of the six comparisons is missing (the blue ball differs only in B, the red cone in A, the yellow tape in A). C has no `12 < a < 55`: write two comparisons joined with &&. 96: every pixel counts, so look for a `;` directly after `if (...)`." },
         { kind: "var", name: "maskCount", equals: 14, label: "Image 1: mask[] holds 14 ones", hint: "0 while the area is right: the starter's line `mask[i] = 0;` still runs after your if and wipes the 1. Store 1 for a target pixel and 0 only in the else branch. Otherwise fix the area first." },
         { kind: "var", name: "cx1", ...range(7.5), label: "Image 1: centroid column is 7.5", hint: "Fix the area first. Exactly 7: the sums are integers, so the division dropped the fraction. Keep m00, m10 and m01 as float. About 3.29: rows and columns are swapped, m10 adds col. 0: cx is never set." },
         { kind: "var", name: "cy1", ...range(3.2857), label: "Image 1: centroid row is about 3.29", hint: "Fix the area first. Exactly 3: integer sums, keep them float. 7.5: rows and columns are swapped, m01 adds row." },
@@ -1647,15 +1663,15 @@ An image without the ball has M00 = 0, and a division by 0 gives garbage. Divide
         { kind: "var", name: "turn3", ...range(0, 0.001), label: "Image 3: turn is 0, and nothing was divided by zero", hint: "NaN means \"not a number\": the result of 0 / 0. Divide only when m00 is above 0, and set turn to 0 otherwise. A value left over from image 2 means the else branch is missing." },
       ],
       bonus: [
-        { kind: "max-steps", max: STEPS_TARGET, label: "Lean: mask and moments in one loop over each image, at most 7400 statements in all", hint: "A second loop over the image for the moments costs about 200 extra statements per image." },
+        { kind: "max-steps", max: STEPS_TARGET, label: `Lean: mask and moments in one loop over each image, at most ${STEPS_TARGET} statements in all`, hint: "A second loop over the image for the moments costs about 200 extra statements per image." },
       ],
       watch: ["area", "cx", "cy", "turn", "area1", "cx1", "turn1", "cx2", "turn2", "turn3"],
       hints: [
-        "TODO 1 and 2 are one `if` with an `else`, placed after the given call. The condition has three parts joined with `&&`: h at least H_MIN, h at most H_MAX, s at least S_MIN.",
-        "`if (h >= H_MIN && h <= H_MAX && s >= S_MIN) { ... } else { mask[i] = 0; }`. In the if branch set the mask to 1 and add to the three sums: 1, the column, the row.",
+        "TODO 1 and 2 are one `if` with an `else`, placed after the three given lines. The condition has six parts joined with `&&`: two for l, two for a, two for b.",
+        "`if (l > L_MIN && l < L_MAX && a > A_MIN && a < A_MAX && b > B_MIN && b < B_MAX) { ... } else { mask[i] = 0; }`. In the if branch set the mask to 1 and add to the three sums: 1, the column, the row.",
         "Inside the if: `mask[i] = 1; m00 += 1; m10 += col; m01 += row;` (else `mask[i] = 0;`). After the loops: `area = (uint16_t)m00;` and, if m00 > 0, the two divisions and the turn line, else `turn = 0;`.",
       ],
-      takeaway: "Seven of the fourteen ball pixels are in shadow, and the hue test finds them all. One pass over the image gives mask, area and centroid together, and the test for M00 = 0 keeps an empty image from steering the robot.",
+      takeaway: "Seven of the fourteen ball pixels are in shadow, and the same six limits find them all: L is wide, A and B do the choosing. One pass over the image gives mask, area and centroid together, and the test for M00 = 0 keeps an empty image from steering the robot.",
     },
     {
       id: "vis-follow",
@@ -1663,7 +1679,7 @@ An image without the ball has M00 = 0, and a division by 0 gives garbage. Divide
       mode: "debug",
       title: "Follow the ball",
       goal: "The robot turns away from the ball and spins when there is none. Fix the code that turns the camera's numbers into vref and turn.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: [41, 38] }, { course: "Lab 7" }, { course: "HW5" }],
       brief: `
 On the robot you do not process pixels yourself. The camera does what you just wrote, with one refinement: it groups mask pixels that touch into **blobs** and measures each blob on its own. For the largest blob it sends the **area** in pixels and the **column** and row of the centroid. When it finds nothing it sends zeros. One camera picture is called a **frame**. It is 160 columns wide, so the centre is column 80.
 
@@ -1725,7 +1741,7 @@ On the real robot the ball also leaves the picture just before the robot drives 
       kind: "calc",
       title: "Maths you need: a queue",
       goal: "Follow a queue made of an array and two indexes: what goes in first comes out first.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [25, 26] }, { course: "HW6" }],
       brief: `
 The robot now knows where the ball is. Next it needs a route around the obstacles. The search for a route has to remember which places it still has to look at, **in the order it found them**. The tool for that is a **queue**.
 
@@ -1780,7 +1796,7 @@ A queue starts empty, with \`head = 0\` and \`tail = 0\`. The program adds 5, th
       mode: "write",
       title: "Breadth-first search",
       goal: "Write BFS with an array as the queue and return the length of the shortest path on a grid.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [26, 28, 31] }, { course: "HW6" }],
       brief: `
 The floor is stored as a **grid map**: a grid of cells, each free or blocked, in one array like the image. The robot steps from a cell to a free **neighbour**: up, down, left or right.
 
@@ -1904,7 +1920,7 @@ int lenOpen = -2;       // (4, 0) to (0, 4) with two walls removed`,
       kind: "calc",
       title: "g, h and f",
       goal: "Compute heuristics and f = g + h for a few cells and decide which one A* expands next.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [42, 43, 21] }, { course: "HW6" }],
       brief: `
 BFS spreads in every direction, also away from the goal. **A*** (say "A star") looks first where the goal will probably be reached soonest. The cells that were found and are still waiting to be expanded are called the **frontier**. BFS takes the oldest one. A* keeps two numbers for each:
 
@@ -1957,7 +1973,7 @@ Use the Manhattan distance for f.
       mode: "complete",
       title: "A* through the mud",
       goal: "Fill in the six missing pieces of A* on a map where some cells cost more to cross, including the answer when there is no path.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [43, 44] }, { course: "HW6" }],
       brief: `
 Floors are not all alike: mud or carpet costs more than tile. BFS only counts steps. A* handles any step cost, because g adds up **cost**.
 
@@ -2035,7 +2051,7 @@ The robot's own planner runs this loop with every step costing 1. The A* mode of
       kind: "calc",
       title: "Maths you need: the logarithm",
       goal: "Use the one property of the logarithm the robot's map depends on: it turns multiplying into adding.",
-      refs: [{ course: "L24-25" }],
+      refs: [{ course: "L24-25", slide: 89, note: "the logarithm is used for log-odds" }],
       brief: `
 The last topic of this chapter is a map the robot builds itself. Its arithmetic needs one tool from beyond school algebra: the **logarithm**. This level is only about that tool.
 
@@ -2078,7 +2094,7 @@ Use these values: ln 2 = 0.693, ln 3 = 1.099, ln 9 = 2.197. The rules are enough
       kind: "calc",
       title: "Log-odds",
       goal: "Convert between probability and log-odds and apply the occupancy update by hand.",
-      refs: [{ course: "L24-25" }],
+      refs: [{ course: "L24-25", slide: [89, 92, 84] }],
       brief: `
 The maps so far were given. A robot that builds its own map keeps, for every cell, a **probability** p that the cell is occupied. A probability is a number from 0 (certainly not) to 1 (certainly): 0.5 means "no idea", near 1 is a wall, near 0 is free floor. Such a map is an **occupancy grid**, and every LIDAR beam corrects it.
 
@@ -2139,19 +2155,19 @@ You need: ln 9 = 2.197, ln 0.25 = -1.386, e^4.394 = 81, e^3.008 = 20.25.
       mode: "checkpoint",
       title: "See it, then plan the way",
       goal: "Find the orange target in a colour grid, turn the blue cells into obstacles, and plan the shortest path to the target.",
-      refs: [{ course: "L17" }, { course: "L18" }, { course: "HW5" }, { course: "HW6" }],
+      refs: [{ course: "L17", slide: 35 }, { course: "L18", slide: [26, 31] }, { course: "Lab 7" }, { course: "HW6" }],
       brief: `
-The camera looks down at a floor of 6 by 8 cells. For every cell you get a hue in degrees (\`scene_h\`) and a saturation in percent (\`scene_s\`). The robot stands in cell (\`START_ROW\`, \`START_COL\`), the bottom left corner.
+The camera looks down at a floor of 6 by 8 cells. For every cell you get its colour as two numbers: A in \`scene_a\` (negative green, positive red) and B in \`scene_b\` (negative blue, positive yellow). The robot stands in cell (\`START_ROW\`, \`START_COL\`), the bottom left corner.
 
 Write \`look_and_plan()\`. \`main\` calls it three times and changes the scene in between, so start every call from scratch.
 
 ## 1. Read the scene
-A colour only counts when it is strong: saturation of **50 or more**.
+Two thresholds. L is left wide open, so lit and shaded cells count alike, and only A and B are tested. As on the camera, a value must be **above** the lower limit and **below** the upper one.
 
-- **Orange**, hue 15 to 45: the target, one cell. Store its position in \`targetRow\` and \`targetCol\`, or -1 in both if there is none.
-- **Blue**, hue 200 to 260: an obstacle.
+- **Orange**, the target, one cell: A from 15 to 60 **and** B from 30 to 90. Store its position in \`targetRow\` and \`targetCol\`, or -1 in both if there is none.
+- **Blue**, an obstacle: A from 20 to 55 **and** B from -100 to -40.
 
-Everything else is free floor: grey, yellow tape, a red cone, pale wood and a pale blue reflection are in the picture to test your thresholds. "Hue 15 to 45" is two comparisons joined with \`&&\`, as in "Find the ball".
+Everything else is free floor: grey, yellow tape, a red cone, pale wood and a pale blue reflection are in the picture to test your thresholds. Each range is two comparisons joined with \`&&\`, as in "Find the ball". Mind the negative limits: -100 is the lower one.
 
 Fill \`map[]\` with \`'x'\` for obstacles and \`'0'\` for free cells, and count the obstacles in \`numObstacles\`.
 
@@ -2234,14 +2250,12 @@ void look_and_plan(void)
     steps = -1;
     for (i = 0; i < NCELLS; i++) {
         map[i] = '0';
-        if (scene_s[i] >= 50) {
-            if (scene_h[i] >= 200 && scene_h[i] <= 260) {
-                map[i] = 'x';
-                numObstacles++;
-            } else if (scene_h[i] >= 15 && scene_h[i] <= 45) {
-                targetRow = i / COLS;
-                targetCol = i % COLS;
-            }
+        if (scene_a[i] > 20 && scene_a[i] < 55 && scene_b[i] > -100 && scene_b[i] < -40) {
+            map[i] = 'x';
+            numObstacles++;
+        } else if (scene_a[i] > 15 && scene_a[i] < 60 && scene_b[i] > 30 && scene_b[i] < 90) {
+            targetRow = i / COLS;
+            targetCol = i % COLS;
         }
     }
 
@@ -2255,9 +2269,9 @@ void look_and_plan(void)
     }
 }`),
       checks: [
-        { kind: "var", name: "row1", equals: 0, label: "Scene 1: the target is in row 0", hint: "-1: no cell passed the orange test (hue 15 to 45 and saturation at least 50), or targetRow was never set. The row of cell i is i / COLS. 1: the pale wood was taken for the target, check the saturation." },
-        { kind: "var", name: "col1", equals: 6, label: "Scene 1: the target is in column 6", hint: "The pale wood at (1, 1) has an orange hue and a saturation of only 20." },
-        { kind: "var", name: "obstacles1", equals: 10, label: "Scene 1: the map has 10 obstacle cells", hint: "11: the pale blue reflection is not an obstacle. Fewer: both shades of blue (hue 205 and 225) count." },
+        { kind: "var", name: "row1", equals: 0, label: "Scene 1: the target is in row 0", hint: "-1: no cell passed the orange test (A from 15 to 60 and B from 30 to 90), or targetRow was never set. The row of cell i is i / COLS. 1: the pale wood was taken for the target, so check the lower limits. 3 or 5: the yellow tape or the red cone got in, so both A limits are needed." },
+        { kind: "var", name: "col1", equals: 6, label: "Scene 1: the target is in column 6", hint: "The pale wood at (1, 1) is a little orange (A 7, B 20), below both lower limits. The yellow tape at (3, 6) has the ball's B and an A below 0." },
+        { kind: "var", name: "obstacles1", equals: 10, label: "Scene 1: the map has 10 obstacle cells", hint: "11: the pale blue reflection (B -18) is not an obstacle. Fewer: both shades of blue count (B -87 and B -69). 0: a number cannot be above -40 and below -100, so the lower limit is -100." },
         { kind: "var", name: "steps1", equals: 13, label: "Scene 1: the shortest path has 13 steps", hint: "11 is the distance without obstacles. The path has to go round the blue boxes." },
         { kind: "led", led: "LED1", at: 5, on: true, label: "Scene 1: LED1 is on, a path was found", hint: "Switch the LED on with GPASET when steps is 0 or more." },
         { kind: "var", name: "row2", equals: 1, label: "Scene 2: the target is now in row 1", hint: "Start every call from scratch: the old target is gone." },
@@ -2270,133 +2284,130 @@ void look_and_plan(void)
       ],
       watch: ["targetRow", "targetCol", "numObstacles", "steps", "steps1", "steps2", "steps3"],
       hints: [
-        "One loop over the 48 cells does step 1: reset the results, then test the saturation first and the two hue ranges after it.",
+        "One loop over the 48 cells does step 1: reset the results, then test the blue box (four comparisons) and, else, the orange box (four comparisons).",
         "Then `if (targetRow >= 0) steps = bfs(START_ROW, START_COL, targetRow, targetCol);` and set or clear GPIO22 on `steps >= 0`.",
         "If you no longer have your BFS: set dist[] to -1, put the start in queue[] with dist 0, then `while (head < tail)` take `cur = queue[head]; head++;`, return dist[cur] at the goal, and for the four neighbours that canTravel and have dist -1 set dist to dist[cur] + 1 and append them. Return -1 after the loop.",
       ],
       takeaway: "Perception turns pixels into a map and a goal. Planning turns the map and the goal into a path. The robot's software has the same two halves.",
     },
     {
-      id: "vis-hsl-calc",
+      id: "vis-lab-pick",
       kind: "calc",
       tier: "practice",
-      title: "The same ball, lit and in shadow",
-      goal: "Convert three pixels from RGB to HSL by hand and see what a shadow changes.",
-      refs: [{ course: "L17" }],
+      title: "Pick the six numbers",
+      goal: "Turn a few sampled pixels of the ball into a threshold, and test other pixels against it.",
+      refs: [{ course: "L17", slide: [31, 32] }, { course: "Lab 7" }],
       brief: `
-The camera gives R, G and B. The colour test needs H, S and L. Here you do that conversion by hand, the way \`rgb_to_hsl\` does it.
+Nobody knows the six numbers of a threshold in advance. You measure them: hold the ball in front of the camera, read L, A and B of a few of its pixels, bright ones and shaded ones, and build the box around them.
 
-Three pixels, with R, G, B already divided by 255, so each is between 0 and 1:
+1. For each channel, find the smallest and the largest value among your samples.
+2. **Widen** the range by a margin on both sides, because the next frame will not repeat your samples exactly. Take a large margin for L, since light changes most, and a small one for A and B, since they tell the colours apart.
 
-- **Pixel 1**, the orange ball in the light: R = 0.8, G = 0.4, B = 0.0
-- **Pixel 2**, the same ball in a shadow, every channel halved: R = 0.4, G = 0.2, B = 0.0
-- **Pixel 3**, the blue ball: R = 0.2, G = 0.4, B = 0.8
+**Worked example**, a blue ball, three samples (L, A, B): (45, 43, -87), (38, 38, -76), (32, 35, -69).
 
-## The formulas
-Let max and min be the largest and smallest of R, G, B, and d = max - min. A grey pixel has d = 0. The more colourful the pixel, the further its channels are apart.
+- L goes from 32 to 45. With a margin of 15: **17 to 60**.
+- A goes from 35 to 43. With a margin of 8: **27 to 51**.
+- B goes from -87 to -69. With a margin of 8: **-95 to -61**. With negative numbers the minimum is the one further below zero.
 
-- **Lightness** is halfway between the brightest and the darkest channel: L = (max + min) / 2
-- **Saturation** compares the spread d with the largest spread that is possible at this lightness: S = d / (1 - |2L - 1|). The bars mean the **absolute value**: the number without its sign, so |-0.2| is 0.2 and |0.2| is 0.2.
-- **Hue** starts at the angle of the largest channel (red 0, green 120, blue 240) and leans up to 60 degrees towards the stronger of the other two:
-  - R largest: H = 60 x (G - B) / d
-  - G largest: H = 60 x ((B - R) / d + 2)
-  - B largest: H = 60 x ((R - G) / d + 4)
+Threshold: (17, 60, 27, 51, -95, -61). In the figure, "Set from probe" does this from one pixel with a margin of 12.
 
-H is in degrees. If it comes out negative, add 360.
+{{figure:lab-picker}}
 
-**Worked example**, R = 0.6, G = 0.9, B = 0.3: max = 0.9 (green), min = 0.3, d = 0.6. L = (0.9 + 0.3) / 2 = 0.6. S = 0.6 / (1 - |1.2 - 1|) = 0.6 / 0.8 = 0.75. G is the largest: H = 60 x ((0.3 - 0.6) / 0.6 + 2) = 60 x 1.5 = 90, a yellowish green.
+A pixel is in the mask only if **all three** of its numbers are above the minimum and below the maximum of their channel.
 
-Work out the fields, then compare pixel 1 and pixel 2.
+## The exercise
+Five samples of the orange ball, (L, A, B):
+
+(66, 44, 72), (58, 40, 66), (47, 34, 57), (38, 29, 49), (30, 22, 40)
+
+Use a margin of **15 for L** and of **8 for A and B**. Then test two other things in the picture:
+
+- the red cone: (49, 73, 47)
+- the blue ball: (45, 43, -87)
 `,
       fields: [
-        { id: "l1", label: "Pixel 1: lightness L", answer: 0.4, tolPct: 1, why: "max = 0.8, min = 0. L = (0.8 + 0) / 2 = 0.4." },
-        { id: "s1", label: "Pixel 1: saturation S", answer: 1, tolPct: 1, why: "d = 0.8. S = 0.8 / (1 - |0.8 - 1|) = 0.8 / 0.8 = 1." },
-        { id: "h1", label: "Pixel 1: hue H", unit: "degrees", answer: 30, tolPct: 1, why: "R is the largest: H = 60 x (0.4 - 0) / 0.8 = 30. Orange, between red (0) and yellow (60)." },
-        { id: "l2", label: "Pixel 2: lightness L", answer: 0.2, tolPct: 1, why: "max = 0.4, min = 0. L = 0.2: half as light as pixel 1." },
-        { id: "h2", label: "Pixel 2: hue H", unit: "degrees", answer: 30, tolPct: 1, why: "H = 60 x (0.2 - 0) / 0.4 = 30. Halving every channel halves G - B and d alike, so the hue does not move." },
-        { id: "s3", label: "Pixel 3: saturation S", answer: 0.6, tolPct: 1, why: "max = 0.8, min = 0.2, d = 0.6, L = 0.5. S = 0.6 / (1 - 0) = 0.6." },
-        { id: "h3", label: "Pixel 3: hue H", unit: "degrees", answer: 220, tolPct: 1, why: "B is the largest: H = 60 x ((0.2 - 0.4) / 0.6 + 4) = 60 x 3.667 = 220. A little before pure blue at 240." },
+        { id: "lmin", label: "L min", answer: 15, why: "The smallest L among the samples is 30. 30 - 15 = 15." },
+        { id: "lmax", label: "L max", answer: 81, why: "The largest L is 66. 66 + 15 = 81." },
+        { id: "amin", label: "A min", answer: 14, why: "The smallest A is 22. 22 - 8 = 14." },
+        { id: "amax", label: "A max", answer: 52, why: "The largest A is 44. 44 + 8 = 52." },
+        { id: "bmin", label: "B min", answer: 32, why: "The smallest B is 40. 40 - 8 = 32." },
+        { id: "bmax", label: "B max", answer: 80, why: "The largest B is 72. 72 + 8 = 80." },
+        { id: "cone", label: "Red cone (49, 73, 47): how many of its three numbers are inside their range?", answer: 2, why: "L 49 is between 15 and 81, and B 47 is between 32 and 80. A 73 is above 52. Two of three: the cone is not in the mask, and A is what keeps it out." },
+        { id: "blue", label: "Blue ball (45, 43, -87): how many of its three numbers are inside their range?", answer: 2, why: "L 45 and A 43 are inside. B -87 is far below 32. The blue ball has the same A as the orange one: only B tells them apart." },
       ],
       hints: [
-        "Start every pixel with max, min and d.",
-        "Pixel 3 has L = 0.5, so 1 - |2L - 1| is 1 and S is simply d.",
-        "Pixel 3: (R - G) / d = -0.2 / 0.6 = -0.333, plus 4 is 3.667, times 60.",
+        "Write the five L values in a row, then the five A values, then the five B values. Find the smallest and the largest of each row.",
+        "L: 30 to 66. A: 22 to 44. B: 40 to 72. Subtract the margin from the smallest and add it to the largest.",
+        "Threshold (15, 81, 14, 52, 32, 80). For the cone, compare 49 with 15 and 81, 73 with 14 and 52, 47 with 32 and 80.",
       ],
-      takeaway: "The shadow halved R and L, and left H at 30 degrees. That is why you threshold on hue. The figure in the briefing computes these formulas for any pixel.",
+      takeaway: "A threshold is measured, not guessed: sample the object in good and bad light, take the smallest and largest of each channel, and widen. Too wide a box lets in other objects; too narrow a box loses the ball in a shadow.",
     },
     {
-      id: "vis-rgb2hsl",
+      id: "vis-two-colours",
       kind: "code",
       mode: "complete",
       tier: "practice",
-      title: "rgb_to_hsl",
-      goal: "Finish the function that converts one pixel from RGB to hue, saturation and lightness.",
-      refs: [{ course: "L17" }],
+      title: "Two colours, one test",
+      goal: "Write the test for a six-number threshold once, and use it to find an orange ball and a purple marker.",
+      refs: [{ course: "L17", slide: [35, 40] }, { course: "Lab 7" }],
       brief: `
-\`rgb_to_hsl\` takes one pixel as three floats from 0 to 255 and returns three results. A C function returns only one value, so the results go back through **pointers**: the caller passes the addresses \`&h, &s, &l\`, and the function writes with \`*h = ...\`.
+The robot looks for two colours at once. The lab's second camera script does this with two thresholds, each a list of six numbers in the camera's order:
 
-The first part is done: scale to 0..1, find the largest (\`hi\`) and smallest (\`lo\`) channel, \`d = hi - lo\`, and the lightness.
+\`\`\`c
+//               L_min, L_max, A_min, A_max, B_min, B_max
+int orange[6] = {   15,    85,    14,    52,    32,    80 };
+\`\`\`
+
+So \`orange[0]\` is L min, \`orange[1]\` is L max, \`orange[2]\` is A min, and so on up to \`orange[5]\`, B max.
+
+A function that gets the list can test any colour. An array is handed to a function as a pointer, here \`int *t\`, and inside the function \`t[2]\` reads its third number.
 
 ## Your part
-1. **Grey.** If \`d\` is 0, all three channels are equal. There is no colour: set \`*h\` and \`*s\` to 0 and return. Without this test the next lines divide by zero.
-2. **Saturation.** \`d / (1 - |2L - 1|)\`. The absolute value of a float is \`fabs()\`.
-3. **Hue**, depending on which channel is the largest:
-   - \`hi == r\`: \`60 * ((g - b) / d)\`
-   - \`hi == g\`: \`60 * ((b - r) / d + 2)\`
-   - otherwise: \`60 * ((r - g) / d + 4)\`
-4. If the hue is negative, add 360.
+1. **\`in_threshold(l, a, b, t)\`** returns 1 when the pixel is inside threshold \`t\` and 0 otherwise. Inside means, as in the lab script: \`l\` above \`t[0]\` and below \`t[1]\`, \`a\` above \`t[2]\` and below \`t[3]\`, \`b\` above \`t[4]\` and below \`t[5]\`. A value equal to a limit is outside.
+2. In **\`measure()\`**, add to the three sums for every pixel that passes: 1 to \`m00\`, the column to \`m10\`, the row to \`m01\`.
 
-Write float constants with an \`f\`, as in \`60.0f\`.
+The loops, the division and the test for an empty mask are given.
 
-\`main\` converts six test pixels. Compare the lit and the shadowed orange ball (A and B) in the watch list when it works.
+**Worked example** with \`purple\` = (10, 70, 35, 75, -75, -30) and the pixel (40, 50, -20): L 40 is between 10 and 70, A 50 between 35 and 75, but B -20 is not below -30. Result: 0.
+
+\`main\` tests three single pixels, then measures the orange ball, the purple marker and, with a third threshold, something green that is not in the picture.
 `,
       kit: "robot",
-      durationMs: 5,
-      starter: hslProgram(`    // TODO 1: grey (d == 0): hue 0, saturation 0, return
-
-    // TODO 2: saturation
-    *s = 0.0f;
-
-    // TODO 3: hue from the largest channel
-    *h = 0.0f;
-
-    // TODO 4: a negative hue gets 360 added
-`),
-      solution: hslProgram(`    if (d == 0.0f) {
-        *h = 0.0f;      // grey: no colour, so no hue
-        *s = 0.0f;
-        return;
+      durationMs: 20,
+      starter: twoProgram({
+        test: `    // TODO 1: return 1 if l, a and b are all strictly inside t[0]..t[5]
+    return 0;`,
+        sums: `                // TODO 2: add this pixel to m00, m10 and m01`,
+      }),
+      solution: twoProgram({
+        test: `    if (l > t[0] && l < t[1] && a > t[2] && a < t[3] && b > t[4] && b < t[5]) {
+        return 1;
     }
-    *s = d / (1.0f - fabs(2.0f * (*l) - 1.0f));
-    if (hi == r) {
-        *h = 60.0f * ((g - b) / d);
-    } else if (hi == g) {
-        *h = 60.0f * ((b - r) / d + 2.0f);
-    } else {
-        *h = 60.0f * ((r - g) / d + 4.0f);
-    }
-    if (*h < 0.0f) {
-        *h = *h + 360.0f;
-    }`),
+    return 0;`,
+        sums: `                m00 += 1;
+                m10 += col;
+                m01 += row;`,
+      }),
       checks: [
-        { kind: "var", name: "hA", ...range(30.12, 0.1), label: "Orange in the light (255, 128, 0): hue about 30 degrees" },
-        { kind: "var", name: "sA", ...range(1), label: "Orange in the light: saturation 1" },
-        { kind: "var", name: "hB", ...range(30, 0.1), label: "Orange in the shadow (102, 51, 0): hue still 30 degrees" },
-        { kind: "var", name: "lB", ...range(0.2), label: "Orange in the shadow: lightness 0.2" },
-        { kind: "var", name: "hC", ...range(218.82, 0.1), label: "Blue (0, 90, 255): hue about 219 degrees", hint: "Blue is the largest channel: 60 * ((r - g) / d + 4)." },
-        { kind: "var", name: "hD", ...range(150, 0.1), label: "Green (40, 200, 120): hue 150 degrees", hint: "Green is the largest channel: 60 * ((b - r) / d + 2)." },
-        { kind: "var", name: "sD", ...range(0.6667), label: "Green (40, 200, 120): saturation 0.667" },
-        { kind: "var", name: "hE", ...range(354.29, 0.1), label: "Red (230, 20, 40): hue about 354 degrees", hint: "The formula gives about -5.7. Add 360 to a negative hue." },
-        { kind: "var", name: "sF", ...range(0, 0.001), label: "Grey (128, 128, 128): saturation 0 and no division by zero" },
-        { kind: "var", name: "hF", ...range(0, 0.001), label: "Grey: hue 0" },
+        { kind: "var", name: "testIn", equals: 1, label: "Pixel (40, 50, -50) is inside the purple threshold", hint: "0: the function still returns 0 for every pixel, or a comparison points the wrong way. With negative limits, -50 is above -75 and below -30." },
+        { kind: "var", name: "testOut", equals: 0, label: "Pixel (40, 50, -20) is outside: B is too high", hint: "All six comparisons must hold, joined with &&. `||` lets a pixel through as soon as one of them holds." },
+        { kind: "var", name: "testEdge", equals: 0, label: "Pixel (40, 35, -50) is outside: A is equal to A min", hint: "The lab script uses `<`, not `<=`: a value equal to a limit does not pass." },
+        { kind: "var", name: "areaO", equals: 8, label: "Orange ball: area 8, lit and shaded pixels", hint: "0: TODO 2 adds nothing to m00 yet. 9 or more: the pink sticker, the red cone or the yellow tape got in, so check the index of each limit: t[2] and t[3] belong to A, t[4] and t[5] to B." },
+        { kind: "var", name: "cxO", ...range(2.125), label: "Orange ball: centroid column 2.125", hint: "1.875: rows and columns are swapped. m10 adds col, m01 adds row." },
+        { kind: "var", name: "cyO", ...range(1.875), label: "Orange ball: centroid row 1.875" },
+        { kind: "var", name: "areaP", equals: 8, label: "Purple marker: area 8", hint: "12: the blue ball was counted. It has a B of -87, below the purple B min of -75." },
+        { kind: "var", name: "cxP", ...range(7.125), label: "Purple marker: centroid column 7.125" },
+        { kind: "var", name: "cyP", ...range(3.875), label: "Purple marker: centroid row 3.875" },
+        { kind: "var", name: "areaG", equals: 0, label: "Green: area 0, nothing in the picture is green" },
+        { kind: "var", name: "cxG", ...range(-1, 0.001), label: "Green: the centroid was left alone" },
       ],
-      watch: ["hA", "sA", "lA", "hB", "sB", "lB", "hC", "hD", "hE"],
+      watch: ["testIn", "testOut", "testEdge", "areaO", "cxO", "cyO", "areaP", "cxP", "cyP", "areaG"],
       hints: [
-        "Do the grey test first, with a `return;` inside it.",
-        "The saturation is one line with `fabs()`; the lightness is already in `*l`. The hue is an if / else if / else on which channel equals `hi`.",
-        "`*s = d / (1.0f - fabs(2.0f * (*l) - 1.0f));` then `if (hi == r) { *h = 60.0f * ((g - b) / d); } else if (hi == g) { ... + 2.0f ... } else { ... + 4.0f ... }` and `if (*h < 0.0f) *h = *h + 360.0f;`",
+        "The test is the one from \"Find the ball\", with `t[0]` in place of `L_MIN`, `t[1]` in place of `L_MAX`, and so on in the camera's order.",
+        "`if (l > t[0] && l < t[1] && a > t[2] && a < t[3] && b > t[4] && b < t[5]) { return 1; }` and after it `return 0;`.",
+        "In `measure()`, inside the if: `m00 += 1; m10 += col; m01 += row;`.",
       ],
-      takeaway: "The lit and the shadowed ball differ in lightness (0.5 and 0.2) and share hue 30. Red sits at both ends of the hue circle, which matters in the level \"Red is at both ends\".",
+      takeaway: "Six numbers in a fixed order describe a colour, and one function tests any of them. Adding a third colour to the robot is one more line of six numbers, not more code.",
     },
     {
       id: "vis-intdiv",
@@ -2405,7 +2416,7 @@ Write float constants with an \`f\`, as in \`60.0f\`.
       tier: "practice",
       title: "The centroid that snaps to whole pixels",
       goal: "The robot steers in steps. Find out why the centroid loses its fraction.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: 40 }, { course: "Lab 7" }],
       brief: `
 This version works on a finished mask and keeps the moments in integers, which is sensible: they are counts and sums of whole numbers.
 
@@ -2457,7 +2468,7 @@ In C, the type of a division is decided by its **operands**, not by the variable
       tier: "practice",
       title: "Counting Bayer pixels",
       goal: "Count the colour sites of a Bayer sensor and demosaic one pixel by averaging its neighbours.",
-      refs: [{ course: "L17" }],
+      refs: [{ course: "L17", slide: [19, 21] }],
       brief: `
 So far every pixel came with R, G and B. The sensor does not deliver that. A camera pixel measures brightness only, so each one sits behind a red, a green or a blue filter and measures just that colour. The layout of the filters is the **Bayer** pattern.
 
@@ -2487,46 +2498,52 @@ Around one red site the sensor measured:
       takeaway: "Two thirds of every RGB image are estimates. Fine detail and sharp colour edges are where demosaicing shows.",
     },
     {
-      id: "vis-hue-wrap",
+      id: "vis-neg-range",
       kind: "code",
       mode: "debug",
       tier: "practice",
-      title: "Red is at both ends",
-      goal: "The red cone is never found. Fix the hue test for a colour that wraps around 360 degrees.",
-      refs: [{ course: "L17" }],
+      title: "The blue ball is never found",
+      goal: "The threshold for the blue ball selects nothing. Find what is wrong with its numbers.",
+      refs: [{ course: "L17", slide: [31, 35] }, { course: "Lab 7" }],
       brief: `
-Hue is an angle, and red sits where the circle closes: a red object has pixels with hues such as 352, 357, 2 and 8 degrees. They are all within a few degrees of each other.
+Blue lies on the **negative** side of B. The pixels of the blue ball have B values such as -87 and -69, and an A around 35 to 43.
 
-This program looks for the red cone with "hue from 340 through 0 to 20, saturation at least 50 percent". It finds **nothing**: \`area\` is 0.
+Somebody read those values off the camera and typed the threshold "B from -60 to -100" into the program. It finds **nothing**: \`area\` is 0.
 
-Read the condition as the computer does. Can a number be at least 340 **and** at most 20?
+Read the test as the computer does:
 
-Try it in the figure: pick Red cone and see where its hue lands on the circle, just before the seam where 360 becomes 0.
+\`\`\`c
+img_b[i] > B_MIN && img_b[i] < B_MAX
+\`\`\`
 
-{{figure:hsl-picker}}
+With negative numbers, "smaller" means further below zero: -100 is smaller than -60. Draw the two limits on a number line and ask which numbers are above \`B_MIN\` **and** below \`B_MAX\`.
 
-Fix the test. Keep the saturation requirement for the whole range: the grey floor has hue 0 by convention, a pale pink reflection has hue 350, and only their low saturation keeps them out of the mask. The image also holds an orange ball (hue 30) and a magenta marker (hue 320), which must stay out.
+Try it in the figure: put the probe on the blue ball and press "Set from probe". Look at which of the two B numbers ends up as the minimum.
 
-\`main\` runs the search twice. The second time glare has washed out the cone's left edge.
+{{figure:lab-picker}}
+
+Fix the threshold, not the test. The image also holds an orange ball (same A, positive B), a purple marker (A of 60, too red) and a pale blue reflection (B of only -18), which must all stay out.
+
+\`main\` runs the search twice. The second time a deep shadow lies on the ball's left edge. Those three pixels have a B of -52 and drop out of the mask, which is correct for this threshold.
 `,
       kit: "robot",
       durationMs: 5,
-      starter: redProgram("hue[i] >= H_MIN && hue[i] <= H_MAX && sat[i] >= S_MIN"),
-      solution: redProgram("(hue[i] >= H_MIN || hue[i] <= H_MAX) && sat[i] >= S_MIN"),
+      starter: blueProgram(-60, -100),
+      solution: blueProgram(-100, -60),
       checks: [
-        { kind: "var", name: "area1", equals: 12, label: "The mask holds the 12 pixels of the red cone", hint: "0: no hue is both above 340 and below 20. More than 12: the floor or the pale reflection got in, so the saturation test must apply to both halves of the range." },
+        { kind: "var", name: "area1", equals: 12, label: "The mask holds the 12 pixels of the blue ball", hint: "0: no number is above -60 and below -100. More than 12: the limits were opened too far, and the purple marker or the reflection got in. Keep the numbers -100 and -60." },
         { kind: "var", name: "cx1", ...range(3.5), label: "Centroid column is 3.5" },
         { kind: "var", name: "cy1", ...range(2), label: "Centroid row is 2" },
-        { kind: "var", name: "area2", equals: 9, label: "With column 2 washed out, 9 pixels are left", hint: "12 or more: pixels with a red hue and too little saturation are still accepted." },
+        { kind: "var", name: "area2", equals: 9, label: "With column 2 in deep shadow, 9 pixels are left", hint: "12: the upper limit was raised above -52. Keep it at -60." },
         { kind: "var", name: "cx2", ...range(4), label: "Their centroid column is 4" },
       ],
       watch: ["area1", "cx1", "cy1", "area2", "cx2"],
       hints: [
-        "A range that passes through 0 is two ranges: 340 to 360, and 0 to 20.",
-        "Join the two hue tests with OR, and keep AND for the saturation.",
-        "`(hue[i] >= H_MIN || hue[i] <= H_MAX) && sat[i] >= S_MIN`. The brackets matter: && binds tighter than ||.",
+        "Which is the smaller number, -60 or -100? The minimum of a range is its smaller end.",
+        "`B_MIN` must be the limit further below zero. The two numbers are right; they are in the wrong places.",
+        "`#define B_MIN -100` and `#define B_MAX -60`.",
       ],
-      takeaway: "When H_MIN is larger than H_MAX the range wraps, and the test becomes OR. Averaging hues near red needs the same care: the mean of 350 and 10 is 0, not 180.",
+      takeaway: "The camera's order is always minimum first: for a colour on the negative side that is the number further from zero. A threshold with its limits swapped selects nothing and gives no error. The deep shadow also shows the limit of LAB: A and B do shrink in the dark, so sample the shaded side of the ball too.",
     },
     {
       id: "vis-rowcol",
@@ -2535,7 +2552,7 @@ Fix the test. Keep the saturation requirement for the whole range: the grey floo
       tier: "practice",
       title: "The robot turns away",
       goal: "The ball is on the right and the robot turns left. Find the mix-up between rows and columns.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: [40, 41] }, { course: "Lab 7" }],
       brief: `
 The ball is in the top right corner of the image: columns 8 to 11, rows 1 and 2. Its centroid should be at column **9.5**, row **1.5**, and the turn command should be positive (turn right).
 
@@ -2589,7 +2606,7 @@ Find where they are swapped. \`main\` measures the mask twice: as shown, and mir
       tier: "practice",
       title: "Blobs and the area filter",
       goal: "Group the mask pixels into blobs with a flood fill, drop the small ones, and report the largest.",
-      refs: [{ course: "L17" }, { course: "HW5" }],
+      refs: [{ course: "L17", slide: [36, 37, 38] }, { course: "Lab 7" }],
       brief: `
 A real mask is never clean. A few stray pixels pass the threshold, and their weight pulls the centroid of "all mask pixels" away from the ball. The cure is to treat the mask as separate **blobs** and ignore the small ones.
 
@@ -2703,7 +2720,7 @@ The mask has two real objects and three specks of noise, one of which touches th
       tier: "practice",
       title: "How far away is it?",
       goal: "Compute distance from the apparent size of a known object and from the disparity between two cameras.",
-      refs: [{ course: "L17" }, { course: "L22-23" }],
+      refs: [{ course: "L22-23", slide: [15, 41] }],
       brief: `
 The centroid says where the ball is in the image, not how far away it is. One camera loses depth: every point along a line of sight lands on the same pixel. Either of two extra facts brings the distance back.
 
@@ -2739,7 +2756,7 @@ Both cameras have f = 200 pixels. A golf ball is 43 mm wide. The stereo pair has
       tier: "practice",
       title: "Planning without a map: the Bug algorithms",
       goal: "Compare Bug 0, Bug 1 and Bug 2, the planners that only need to feel the obstacle in front of them.",
-      refs: [{ course: "L18" }, { course: "L14" }],
+      refs: [{ course: "L14", slide: 35, note: "wall following, the half of a Bug algorithm the course builds; the Bug algorithms themselves are not in the lectures" }, { course: "L18", slide: 24 }],
       brief: `
 BFS and A* need a map. A **Bug algorithm** needs none: only the position of the goal and a sensor that feels the obstacle the robot is touching. Your wall follower is the second half of one already.
 
@@ -2807,7 +2824,7 @@ Bug 1 and Bug 2 are **complete**: they reach the goal whenever a path exists, an
       tier: "practice",
       title: "Which search?",
       goal: "Compare breadth-first search, Dijkstra, greedy best-first and A*.",
-      refs: [{ course: "L18" }],
+      refs: [{ course: "L18", slide: [34, 42, 44] }],
       brief: `
 Four searches, one skeleton. They differ only in **which frontier cell is expanded next**.
 
@@ -2882,7 +2899,7 @@ The maps also differ in connectivity. On a **4-connected** grid a cell has up to
       tier: "practice",
       title: "One round of A*",
       goal: "Put the steps of the A* loop in order.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: 43 }, { course: "HW6" }],
       brief: `
 A* keeps two sets. The **open set** holds cells that have been found and wait to be expanded. The **closed set** holds cells that are finished.
 
@@ -2914,7 +2931,7 @@ Order the steps of the algorithm from the first action to the final answer. The 
       tier: "practice",
       title: "The heuristic that was too sure",
       goal: "A* returns a path that is longer than necessary. Find out why and fix the heuristic.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: 44 }, { course: "HW6" }],
       brief: `
 Someone changed the heuristic to the straight-line distance and, to save time, left out the square root. The search still finds a path from (5, 0) to (0, 6). It has **15** steps. The shortest path has **11**.
 
@@ -2969,7 +2986,7 @@ Fix \`heuristic()\` so that it is admissible. The rest of the code is correct. \
       tier: "practice",
       title: "The search that goes in circles",
       goal: "This BFS fills its queue and gives up on a short path. Add what stops it from revisiting cells.",
-      refs: [{ course: "L18" }],
+      refs: [{ course: "L18", slide: [26, 25] }],
       brief: `
 This BFS should find the 9-step path from (0, 0) to (4, 5) on the map you know, and then the 8-step path to (0, 4). It returns **-1**, "no path", both times.
 
@@ -3059,7 +3076,7 @@ int lenRound = -2;      // to (0, 4)`,
       tier: "practice",
       title: "A* from scratch 1: the open list",
       goal: "Write the two functions of the open list: add a cell, and take out the cell with the smallest f.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [36, 43] }, { course: "HW6" }],
       brief: `
 In "A* through the mud" most of the search was written for you. The next three levels build it from nothing: the list, then the cost update, then the whole search.
 
@@ -3127,7 +3144,7 @@ BFS took the oldest entry. A* takes the cheapest:
       tier: "practice",
       title: "A* from scratch 2: the cost update",
       goal: "Write the function that decides whether a neighbour gets a new cost and a new parent.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [35, 36] }, { course: "HW6" }],
       brief: `
 A* has just expanded a cell \`cur\`. For each free neighbour \`next\` it asks one question: **is the way through cur the cheapest way to next that I know?** If yes, it writes that down. This step is the heart of the search. You write it as \`relax(cur, next)\`.
 
@@ -3204,7 +3221,7 @@ xxmx0xx
       tier: "practice",
       title: "A* from scratch 3: the whole search",
       goal: "Write A* from an almost empty file and run it on two floors: the shortest path, with few cells expanded.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: 43 }, { course: "HW6" }],
       brief: `
 Now the whole search is yours. The file gives you the two floors, the arrays, \`canTravel\`, a path checker and \`main\`. \`astar()\` is empty. Bring your open list and your cost update from the last two levels.
 
@@ -3271,7 +3288,7 @@ To give you the idea of the size: the reference has a heuristic, the two open li
       tier: "practice",
       title: "One beam across the map",
       goal: "Apply LIDAR hits and misses to a row of occupancy cells in log-odds and convert the result to probabilities.",
-      refs: [{ course: "L24-25" }],
+      refs: [{ course: "L24-25", slide: [95, 96] }],
       brief: `
 One row of 8 map cells lies straight ahead of the LIDAR, cell 0 nearest. Every scan returns the index of the cell where the beam was stopped. That tells you three things:
 
@@ -3331,7 +3348,7 @@ with \`L_FREE\` as l_sensor for a miss and \`L_OCC\` for the hit cell.
       tier: "practice",
       title: "SLAM in three ideas",
       goal: "Check the ideas behind scan matching, Monte Carlo localisation and loop closure.",
-      refs: [{ course: "L24-25" }],
+      refs: [{ course: "L24-25", slide: [11, 25] }],
       brief: `
 Mapping needs to know where the robot is. Finding out where the robot is (**localisation**) needs a map. Doing both at once is **SLAM**, simultaneous localisation and mapping.
 
@@ -3424,7 +3441,7 @@ Scan matching still drifts over a long drive. A **pose graph** stores the robot'
       tier: "expert",
       title: "A* with diagonal moves",
       goal: "Write A* on an 8-connected grid with diagonal cost, no corner cutting, and a heuristic that stays admissible.",
-      refs: [{ course: "L18" }, { course: "HW6" }],
+      refs: [{ course: "L18", slide: [15, 21, 43] }, { course: "HW6" }],
       brief: `
 The robot can drive diagonally. Write \`astar8()\` for the map below, from (5, 0) to (0, 6).
 
@@ -3567,7 +3584,7 @@ int astar8(int rowStart, int colStart, int rowEnd, int colEnd)
       tier: "expert",
       title: "Two-pass labelling",
       goal: "Label the blobs of a mask in two row-by-row scans with an equivalence table, without a stack or a queue.",
-      refs: [{ course: "L17" }],
+      refs: [{ course: "L17", slide: 37 }],
       brief: `
 A flood fill (the practice level "Blobs and the area filter") jumps around the image and needs a stack as large as the biggest blob. A camera delivers pixels row by row, and the classic way to label blobs in that order needs only the row above. It is the **two-pass** algorithm.
 

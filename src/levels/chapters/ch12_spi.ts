@@ -273,7 +273,7 @@ export const ch12: Chapter = {
       kind: "brief",
       title: "A wire that says when",
       goal: "Learn what the clock line is for and how two chips swap a byte, then answer three questions.",
-      refs: [{ course: "L10" }, { trm: "18.1" }, { trm: "18.3.1" }],
+      refs: [{ course: "L10", slide: [28, 35] }, { trm: "18.1" }, { trm: "18.3.1" }],
       brief: `
 A UART has no clock wire: both ends agree on a baud rate and each measures time by itself (**asynchronous**). **SPI** (Serial Peripheral Interface) is **synchronous**: one extra wire, the **clock**, tells the receiver when to look at the data wire. The robot's motion sensor, the MPU-9250, speaks SPI. It holds a **gyro** (how fast the robot turns) and an **accelerometer** (how hard it speeds up or slows down).
 
@@ -330,7 +330,7 @@ So **every word you send is also a word you receive**. To read from a sensor you
       kind: "wiring",
       title: "One bus, two slaves",
       goal: "Wire the F28379D to the two SPI devices on the robot board.",
-      refs: [{ course: "L10" }, { course: "HW3" }, { trm: "18.2.1" }],
+      refs: [{ course: "L10", slide: [41, 42] }, { course: "HW3" }, { trm: "18.2.1" }],
       brief: `
 A **bus** is a set of wires shared by several devices. The F28379D has three SPI modules, SPIA, SPIB and SPIC. The robot has two slaves on the bus of **SPIB**:
 
@@ -396,7 +396,7 @@ Place the eight wires.
       mode: "complete",
       title: "Talking to yourself",
       goal: "Finish the SPIB set-up, send three words in loopback and read back the three that arrive.",
-      refs: [{ course: "HW3" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
+      refs: [{ course: "L6-7", slide: [43, 44, 52] }, { course: "HW3" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
       brief: `
 This is the course's SPIB set-up with four values left for you. Every other line is **given**: it is the same in every course program, and its comment says what it does. The order never changes:
 
@@ -555,7 +555,7 @@ ${PINS}
       kind: "brief",
       title: "Clock polarity and phase: two questions",
       goal: "Learn to describe a clock mode with two facts, the rest level and the reading edge, then answer four questions.",
-      refs: [{ trm: "18.3.6" }, { trm: "18.5.2" }, { course: "L10" }, { course: "HW2" }],
+      refs: [{ course: "L10", slide: [37, 38, 39] }, { course: "HW2" }, { trm: "18.3.6" }, { trm: "18.5.2" }],
       brief: `
 Master and slave must agree on **when** the data line is read. The clock can rest low or high, and the data can be read on its first or its second edge. That gives four **clock modes**, set by two bits. They are the answers to two separate questions.
 
@@ -644,7 +644,7 @@ A **datasheet** is the manufacturer's document that describes a chip. Datasheets
       kind: "timing",
       title: "Draw the clock: resting low",
       goal: "Draw SPICLK for the byte 0xA5 in the two modes whose clock rests low.",
-      refs: [{ trm: "18.3.6" }, { course: "HW2" }, { course: "L10" }],
+      refs: [{ course: "L10", slide: [39, 38] }, { course: "HW2" }, { trm: "18.3.6" }],
       brief: `
 The master sends **0xA5 = \`1010 0101\`**, top bit first. The chip select is low the whole time and SIMO is already drawn. Before the byte, SIMO still holds an old bit (drawn low). After it, SIMO keeps the last bit.
 
@@ -676,7 +676,7 @@ The SIMO row is the same for both. Only the clock moves.
       kind: "quiz",
       title: "Which mode is this?",
       goal: "Work out the clock mode and the two bytes of a logic-analyser picture, as HW2 asks.",
-      refs: [{ course: "HW2" }, { trm: "18.3.6" }, { trm: "18.3.4" }],
+      refs: [{ course: "L10", slide: 39 }, { course: "L12", slide: 41, note: "a captured transfer to decode" }, { course: "HW2" }, { trm: "18.3.6" }, { trm: "18.3.4" }],
       brief: `
 A **logic analyser** is an instrument that records the highs and lows of several wires over time. HW2 gives you its picture of an SPI transfer and asks for the bytes and the clock mode. Here is one byte of such a picture, with the names most instruments use: SS is the chip select, SCK is SPICLK, MOSI is SIMO and MISO is SOMI. \`--\` is high, \`__\` is low, and each bit time is four characters wide (two cells).
 
@@ -751,7 +751,7 @@ Use the procedure, in this order:
       mode: "write",
       title: "Start it, then come back",
       goal: "Send three words every millisecond from the timer interrupt and collect the three replies in the SPIB receive interrupt.",
-      refs: [{ course: "HW3" }, { trm: "18.2.3" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
+      refs: [{ course: "L6-7", slide: [46, 47] }, { course: "HW3" }, { trm: "18.2.3" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
       brief: `
 Three 16-bit words take 96 us at 500 kHz. Waiting for them in an empty loop wastes that time, and waiting inside an interrupt function blocks every other interrupt. The course's programs work in two halves instead (HW3 has you build the same pattern):
 
@@ -897,7 +897,7 @@ __interrupt void SPIB_isr(void)
       mode: "debug",
       title: "One word short",
       goal: "This program loses a word in every transfer and never lets go of the chip select. Find and fix both mistakes.",
-      refs: [{ course: "HW3" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
+      refs: [{ course: "L6-7", slide: [46, 47] }, { course: "HW3" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
       brief: `
 Every millisecond this program sends **four** words in loopback: \`0x1000 + n\`, \`0x2000 + n\`, \`0x3000 + n\` and \`0x4000 + n\`, where \`n\` counts the transfers. \`SPIB_isr\` reads the four replies and counts the transfer as good when they match what was sent.
 
@@ -1048,7 +1048,7 @@ __interrupt void SPIB_isr(void)
       mode: "checkpoint",
       title: "Checkpoint: link test",
       goal: "Build a self-test that exchanges a counter over SPI every millisecond, counts errors and reports four times a second.",
-      refs: [{ course: "HW3" }, { course: "HW1" }, { trm: "18.3.7" }, { trm: "18.2.3" }],
+      refs: [{ course: "L6-7", slide: [46, 47] }, { course: "HW3" }, { course: "HW1" }, { trm: "18.3.7" }, { trm: "18.2.3" }],
       brief: `
 A link test sends known data and checks what comes back. Build one for SPIB in loopback. It uses the timer, two interrupts, the serial port and an LED from the earlier chapters.
 
@@ -1207,7 +1207,7 @@ __interrupt void SPIB_isr(void)
       tier: "practice",
       title: "Draw the clock: resting high",
       goal: "Draw SPICLK for the same byte, 0xA5, in the two modes whose clock rests high.",
-      refs: [{ trm: "18.3.6" }, { trm: "18.5.2" }, { course: "HW2" }],
+      refs: [{ course: "L10", slide: [39, 38] }, { course: "HW2" }, { trm: "18.3.6" }, { trm: "18.5.2" }],
       brief: `
 Same byte, same SIMO line as before: **0xA5 = \`1010 0101\`**. Now \`CLKPOLARITY = 1\`: the clock **rests high**, and every bit time contains one low pulse. The first edge after rest is a **falling** edge.
 
@@ -1236,7 +1236,7 @@ When you are done, compare the first row with the course's mode from "Draw the c
       tier: "practice",
       title: "Bit rate and word length",
       goal: "Work out bit rate register values, transfer times and how to send a 24-bit value.",
-      refs: [{ trm: "18.3.5" }, { trm: "18.3.4" }, { trm: "18.5.2" }, { course: "HW3" }],
+      refs: [{ course: "L10", slide: 31 }, { course: "L6-7", slide: [46, 55] }, { course: "HW3" }, { trm: "18.3.5" }, { trm: "18.3.4" }, { trm: "18.5.2" }],
       brief: `
 ## Bit rate
 The master makes SPICLK by dividing the low-speed peripheral clock **LSPCLK**, 50 MHz in the course projects:
@@ -1309,7 +1309,7 @@ With the FIFO in use you may write several words to \`SPITXBUF\` one after the o
       tier: "practice",
       title: "Twenty-four bits in three bytes",
       goal: "Send a 24-bit value as three 8-bit words and rebuild it from the three words received.",
-      refs: [{ trm: "18.3.4" }, { trm: "18.5.2" }, { course: "L10" }],
+      refs: [{ course: "L6-7", slide: [46, 47, 55] }, { trm: "18.3.4" }, { trm: "18.5.2" }],
       brief: `
 Some devices want 24 bits per transfer, more than the 16 bits one word can hold. The answer is three 8-bit words sent while the chip select stays low: on the wire they are 24 clock cycles in a row.
 
@@ -1423,7 +1423,7 @@ ${spib({ loopback: true, char: "7  " })}
       tier: "practice",
       title: "Yesterday's answer",
       goal: "Every reply this program reads belongs to an earlier question. Find out why and fix it.",
-      refs: [{ course: "HW3" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
+      refs: [{ course: "L6-7", slide: [52, 53] }, { course: "HW3" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
       brief: `
 \`ask(command)\` sends a two-word message in loopback: first the command, then a word of zeros that gives the other side time to answer. In loopback the "answer" is simply the two words coming back, and the function should return the **first** of them, the command itself.
 
@@ -1534,7 +1534,7 @@ ${spib({ loopback: true })}
       tier: "practice",
       title: "Who are you?",
       goal: "The MPU-9250 should answer 0x71 when asked who it is. Fix the two settings that stop it.",
-      refs: [{ course: "HW3" }, { trm: "18.3.6" }, { trm: "18.5.2" }],
+      refs: [{ course: "L10", slide: [38, 39] }, { course: "L12", slide: 33, note: "SPICHAR for 16-bit words" }, { course: "HW3" }, { trm: "18.3.6" }, { trm: "18.5.2" }],
       brief: `
 Time for a real device. The MPU-9250 has a register called WHO_AM_I that always holds **0x71**. Reading it is the classic first test of an SPI link: if 0x71 comes back, wiring, clock mode and word length are all right.
 
@@ -1629,7 +1629,7 @@ ${spib({ phase: 1, char: "0xF" })}
       tier: "practice",
       title: "The whole set-up, from an empty function",
       goal: "Write every line of setupSpib(): pins, chip select, clock mode, bit rate, FIFOs, and the path of the receive interrupt.",
-      refs: [{ course: "HW3" }, { trm: "18.4.2" }, { trm: "18.3.5" }, { trm: "18.3.6" }, { trm: "18.3.7" }, { trm: "3.4.5" }],
+      refs: [{ course: "L6-7", slide: [43, 44] }, { course: "HW3" }, { trm: "18.4.2" }, { trm: "18.3.5" }, { trm: "18.3.6" }, { trm: "18.3.7" }, { trm: "3.4.5" }],
       brief: `
 Until now the SPIB set-up was given. Here \`setupSpib()\` is empty and you write it, from this list. The two interrupt functions are given: every millisecond the timer sends one word, \`0xF500\`, that asks the chip on the bus (the MPU-9250, next chapter) for its identity number. If your set-up is right, \`answer\` becomes **0x0071**.
 
@@ -1700,7 +1700,7 @@ ${spib({ brr: 99, rxffil: 16 })}`,
       tier: "expert",
       title: "A set-up from its requirements",
       goal: "Set up SPIB for a different clock mode and bit rate from a list of requirements, with nothing given and no list of lines.",
-      refs: [{ course: "HW3" }, { trm: "18.3.6" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "3.4.5" }],
+      refs: [{ course: "L6-7", slide: [43, 44] }, { course: "L10", slide: [38, 31] }, { course: "HW3" }, { trm: "18.3.6" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "3.4.5" }],
       brief: `
 Same board, same chip on the bus, other settings. This time you get requirements, not lines. The timer part is given: every 2 ms \`cpu_timer0_isr\` pulls the chip select low and sends \`0xF500\`, the question "which chip are you?". The answer is 0x0071.
 
@@ -1786,7 +1786,7 @@ Remember the order: chip select and pins, reset held, settings, FIFOs, reset rel
       tier: "expert",
       title: "SPI by hand",
       goal: "Read registers of the MPU-9250 without the SPI module, by moving the clock and data pins yourself.",
-      refs: [{ trm: "18.3.6" }, { trm: "18.3.1" }, { trm: "8.3" }, { course: "L10" }],
+      refs: [{ course: "L10", slide: [35, 39] }, { trm: "18.3.6" }, { trm: "18.3.1" }, { trm: "8.3" }],
       brief: `
 An SPI master is a shift register and a clock. You can be both. This is called **bit-banging**, and writing it once shows exactly what a clock mode is.
 
@@ -1948,7 +1948,7 @@ ${START}
       tier: "expert",
       title: "No FIFO, no waiting",
       goal: "Send a six-word message without the FIFOs, one word per interrupt, and collect the six replies.",
-      refs: [{ trm: "18.3.2" }, { trm: "18.2.3" }, { trm: "18.5.2" }],
+      refs: [{ course: "L10", slide: 30, note: "SPIINT without the FIFO" }, { trm: "18.3.2" }, { trm: "18.2.3" }, { trm: "18.5.2" }],
       brief: `
 Without the FIFOs the SPI has room for one word in \`SPITXBUF\` and one in \`SPIRXBUF\`. This is how the module works after reset, and how small microcontrollers without FIFOs always work. You have to feed it word by word.
 

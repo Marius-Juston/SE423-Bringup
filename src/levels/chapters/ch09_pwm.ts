@@ -98,7 +98,7 @@ export const pwm: Chapter = {
       kind: "brief",
       title: "Power by switching",
       goal: "Understand what duty cycle is and why a digital pin can dim an LED or throttle a motor.",
-      refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "15.1" }],
+      refs: [{ course: "L6-7", slide: [58, 59] }, { course: "Lab 3" }, { trm: "15.1" }],
       brief: `
 A GPIO pin has two levels, so an LED on it is fully on or off. How do you get half brightness, or a motor at 30 % power?
 
@@ -154,7 +154,7 @@ Toggling a pin in software with \`DELAY_US\` keeps the CPU from doing anything e
       kind: "timing",
       title: "From the counter to the pin",
       goal: "Draw the EPWM12A output that a small counter and one compare value produce.",
-      refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "15.4.6" }, { trm: "15.5.4" }, { trm: "15.6.5" }],
+      refs: [{ course: "L6-7", slide: [67, 62] }, { course: "Lab 3" }, { trm: "15.4.6" }, { trm: "15.5.4" }, { trm: "15.6.5" }],
       brief: `
 A **clock** is a signal inside the chip that ticks at a fixed, known rate. A **counter** is a register that adds 1 to itself on every tick, so its value tells how much time has passed. An ePWM module builds its waveform from a counter, in three parts.
 
@@ -210,7 +210,7 @@ The pin changes **at** the event, so it is already low during the slot where the
       kind: "calc",
       title: "Period and compare values",
       goal: "Work out TBPRD for a carrier frequency and CMPA for a duty cycle.",
-      refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: [62, 72] }, { course: "Lab 3" }, { course: "HW2" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
       brief: `
 ## How fast the counter ticks
 The chip's main clock, **SYSCLK**, ticks 200 million times a second: 200 MHz. The ePWM modules get half of that, 100 MHz. A **clock divider** passes on only every 2nd, 4th ... tick, and the time base has two of them, set in the register \`TBCTL\`:
@@ -283,7 +283,7 @@ For 20 % at \`TBPRD = 5000\`: 0.20 x 5000 = 1000.
       kind: "register",
       title: "Start the counter: TBCTL",
       goal: "Change the time-base control register from its reset value to up-count, free run.",
-      refs: [{ course: "Lab 3" }, { trm: "15.15.2" }, { trm: "15.4.2" }],
+      refs: [{ course: "L6-7", slide: [71, 60] }, { course: "Lab 3" }, { trm: "15.15.2" }, { trm: "15.4.2" }],
       brief: `
 \`TBCTL\` is the time-base control register. After reset it holds \`0x0083\`. Its fields:
 
@@ -315,7 +315,7 @@ Lab 3 has you write four of them. Set the register for: **count up**, **free run
       kind: "register",
       title: "Choose the actions: AQCTLA",
       goal: "Set the action qualifier so the pin goes high at zero and low at the compare match.",
-      refs: [{ course: "Lab 3" }, { trm: "15.6.2" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: [65, 66] }, { course: "Lab 3" }, { trm: "15.6.2" }, { trm: "15.15.2" }],
       brief: `
 Each ePWM module has two output pins, A and B. \`AQCTLA\` (action qualifier control A) says what output **A** does at each event of the time base. Every event has a 2-bit field:
 
@@ -358,7 +358,7 @@ Build the course's setting: **set** the pin when the counter is zero, **clear** 
       mode: "complete",
       title: "Half brightness",
       goal: "Complete the EPWM12A set-up so LED1 is driven at 10 kHz with a 50 % duty cycle.",
-      refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.4" }, { trm: "15.6" }, { trm: "15.2" }],
+      refs: [{ course: "L6-7", slide: 71 }, { course: "Lab 3" }, { course: "HW2" }, { trm: "15.4" }, { trm: "15.6" }, { trm: "15.2" }],
       brief: `
 This is the pattern of the first exercise of Lab 3, at another carrier frequency. The first five lines are the time base from the \`TBCTL\` puzzle, plus one that starts the counter at 0. You add the numbers and the pin.
 
@@ -463,7 +463,7 @@ ${INIT}
       mode: "write",
       title: "The whole set-up, from nothing",
       goal: "Write every line of an EPWM12A set-up yourself: LED1 at 4 kHz with a 30 % duty cycle.",
-      refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.4" }, { trm: "15.6" }, { trm: "15.2" }],
+      refs: [{ course: "L6-7", slide: 71 }, { course: "Lab 3" }, { course: "HW2" }, { trm: "15.4" }, { trm: "15.6" }, { trm: "15.2" }],
       brief: `
 In the lab nobody hands you the time-base lines. Write the whole set-up once, with new numbers: LED1 at **4 kHz**, on **30 %** of the time.
 
@@ -530,7 +530,7 @@ ${MUX12}
       mode: "write",
       title: "Breathing LED",
       goal: "Ramp the brightness of LED1 up and down by changing CMPA a little every millisecond.",
-      refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.5" }],
+      refs: [{ course: "L6-7", slide: 72, note: "duty cycle follows CMPA" }, { course: "Lab 3" }, { course: "HW2" }, { trm: "15.5" }],
       brief: `
 Brightness is \`CMPA\`. Change \`CMPA\` a little at a time and LED1 fades. The PWM set-up is the one you wrote in the last level, now at 10 kHz (\`TBPRD = 5000\`).
 
@@ -621,7 +621,7 @@ ${MUX12}
       mode: "debug",
       title: "LED1 stays dark",
       goal: "Find out why a PWM that is running does not reach LED1.",
-      refs: [{ course: "Lab 3" }, { trm: "15.2" }, { trm: "8.7" }],
+      refs: [{ course: "L3", slide: [19, 23] }, { course: "Lab 3" }, { trm: "15.2" }, { trm: "8.7" }],
       brief: `
 A lab partner set up EPWM12A for 75 % brightness. The registers look right in the debugger, the counter runs, and LED1 is dark.
 
@@ -686,7 +686,7 @@ ${PWM12(5000, 3750, "10 kHz, 75 %")}
       mode: "checkpoint",
       title: "Dimmer",
       goal: "Build a dimmer: PB1 makes LED1 brighter and PB2 makes it darker, without ever leaving 0 to 100 %.",
-      refs: [{ course: "Lab 3" }, { course: "HW2" }, { course: "Lab 2" }, { trm: "15.5" }],
+      refs: [{ course: "L6-7", slide: 72, note: "duty cycle follows CMPA" }, { course: "Lab 3" }, { course: "HW2" }, { course: "Lab 2" }, { trm: "15.5" }],
       brief: `
 Put PWM together with the buttons.
 
@@ -779,7 +779,7 @@ ${BUTTONS}
       tier: "practice",
       title: "Other modes, other limits",
       goal: "Calculate periods in up-down mode and see how carrier frequency trades against resolution.",
-      refs: [{ course: "L6-7" }, { trm: "15.4.3" }, { trm: "15.4.6" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: [62, 70] }, { trm: "15.4.3" }, { trm: "15.4.6" }, { trm: "15.15.2" }],
       brief: `
 ## Count modes
 \`TBCTL.CTRMODE\` selects the shape of the counter:
@@ -851,7 +851,7 @@ Try it in the figure: switch the count to up-down and see the triangle, the doub
       tier: "practice",
       title: "PWM lab",
       goal: "Find out by experiment what the count mode, the compare value, the actions and the clock divider do to the pin.",
-      refs: [{ course: "L6-7" }, { trm: "15.4.3" }, { trm: "15.6.3" }, { trm: "15.6.5" }, { trm: "15.10.1" }],
+      refs: [{ course: "L6-7", slide: [62, 68, 69] }, { trm: "15.4.3" }, { trm: "15.6.3" }, { trm: "15.6.5" }, { trm: "15.10.1" }],
       brief: `
 So far you met the ePWM one register at a time. Here is the whole module on one time axis. Nothing in this level has to be worked out on paper: **set it up in the figure and look**.
 
@@ -929,7 +929,7 @@ For each question, build the set-up and watch the pin, the duty cycle and the fr
       tier: "practice",
       title: "The second output",
       goal: "Use EPWMxB and CMPB: a second pin on the same counter with its own duty cycle.",
-      refs: [{ course: "HW4" }, { trm: "15.5.3" }, { trm: "15.6.5" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: 67, note: "EPWMxB with CMPB on the same counter" }, { course: "HW4" }, { trm: "15.5.3" }, { trm: "15.6.5" }, { trm: "15.15.2" }],
       brief: `
 Every ePWM module has **two** pins. You used the first, **EPWM12A**. The second is **EPWM12B**, on GPIO23 for module 12. The robot's two RC servos hang on the A and B pins of one module (chapter 10).
 
@@ -1004,7 +1004,7 @@ In \`AQCTLB\`, as in \`AQCTLA\`, each field is two bits: ZRO in bits 1-0, PRD in
       tier: "practice",
       title: "A gap between two switches",
       goal: "Work out the delays of the dead-band unit that keep two transistors from conducting together.",
-      refs: [{ course: "L6-7" }, { trm: "15.7.1" }, { trm: "15.7.3" }, { trm: "15.15.2" }],
+      refs: [{ course: "L6-7", slide: 76, note: "shoot-through in an H-bridge leg" }, { trm: "15.7.1" }, { trm: "15.7.3" }, { trm: "15.15.2" }],
       brief: `
 A motor amplifier (chapter 10) has pairs of transistors in a row between the battery and ground. One connects the motor wire to the battery, the other to ground. They get opposite signals: a **complementary pair**, one on while the other is off.
 
@@ -1074,7 +1074,7 @@ The numbers below use that preset: up-down count, \`TBPRD = 1250\` (a period of 
       tier: "practice",
       title: "Three wrong lines",
       goal: "Fix a 2 kHz PWM whose frequency, polarity and compare value are all wrong.",
-      refs: [{ course: "HW2" }, { course: "Lab 3" }, { trm: "15.6.2" }, { trm: "15.15.2" }, { trm: "15.5" }],
+      refs: [{ course: "L6-7", slide: [71, 68] }, { course: "HW2" }, { course: "Lab 3" }, { trm: "15.6.2" }, { trm: "15.15.2" }, { trm: "15.5" }],
       brief: `
 This code should drive LED1 at **2 kHz** with a brightness of **25 %**, and 10 ms later of **60 %**. It has three separate bugs, each from a pitfall the handouts mention.
 
@@ -1174,7 +1174,7 @@ void set_brightness(float brightness)
       tier: "practice",
       title: "From the requirements alone",
       goal: "Write a complete PWM set-up for another module and another pin from its requirements, with no list of lines to follow.",
-      refs: [{ course: "Lab 3" }, { trm: "15.4" }, { trm: "15.4.3" }, { trm: "15.6" }, { trm: "15.15.2" }, { trm: "15.2" }],
+      refs: [{ course: "L6-7", slide: 71 }, { course: "Lab 3" }, { trm: "15.4" }, { trm: "15.4.3" }, { trm: "15.6" }, { trm: "15.15.2" }, { trm: "15.2" }],
       brief: `
 In "The whole set-up, from nothing" a list told you which lines to write. A lab gives you less: what the signal must be, and on which pin. Which registers that takes is for you to know.
 
@@ -1278,7 +1278,7 @@ ${INIT}
       tier: "expert",
       title: "A PWM module as a timer",
       goal: "Use EPWM5 with no pin at all as a 1 kHz interrupt source, through its event trigger and the PIE.",
-      refs: [{ course: "HW2" }, { trm: "15.10" }, { trm: "15.10.1" }, { trm: "3.4.5" }, { trm: "15.4.3" }],
+      refs: [{ course: "L4", slide: 33, note: "EPWMx_INT at counter zero or period" }, { course: "L8-9", slide: 20, note: "an ePWM as a timer: ETSEL and ETPS" }, { course: "HW2" }, { trm: "15.10" }, { trm: "15.10.1" }, { trm: "3.4.5" }, { trm: "15.4.3" }],
       brief: `
 **This level needs chapter 5 (interrupts).** An ePWM time base is a timer, whether or not a pin is attached. HW2 uses one this way to tell the ADC (chapter 8) when to measure. The part that turns time-base events into pulses is the **event trigger**:
 
@@ -1391,7 +1391,7 @@ __interrupt void epwm5_isr(void)
       tier: "expert",
       title: "Two outputs that never overlap",
       goal: "Make a centred, complementary pair on EPWM6A and EPWM6B with a gap between them, using up-down count, CMPA and CMPB.",
-      refs: [{ course: "L6-7" }, { trm: "15.4.6" }, { trm: "15.6.3" }, { trm: "15.6.5" }, { trm: "15.5.4" }],
+      refs: [{ course: "L6-7", slide: [69, 76] }, { trm: "15.4.6" }, { trm: "15.6.3" }, { trm: "15.6.5" }, { trm: "15.5.4" }],
       brief: `
 A half bridge is two transistors in a row between the battery and ground, with the load connected between them: the high-side one switches the load to the battery, the low-side one to ground. If both conduct at once, even for a moment, they connect the battery straight to ground, a short circuit. So the two drive signals must be opposite **with a gap** in which both are off: the **dead time**. The ePWM has a dead-band unit for this. Here you do it by hand, which shows what the unit does.
 
@@ -1505,7 +1505,7 @@ void set_duty(float d)
       tier: "expert",
       title: "Be the oscilloscope",
       goal: "Measure the high time, period and duty cycle of a signal on a pin with a free-running CPU timer.",
-      refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "3.8" }, { trm: "8.3" }],
+      refs: [{ course: "L6-7", slide: 58, note: "duty cycle = high time / period" }, { course: "Lab 3" }, { trm: "3.8" }, { trm: "8.3" }],
       brief: `
 \`start_signal()\` puts a PWM signal on GPIO22. You do not know its numbers, they change while **PB1** is held, and you may not read them out of the ePWM registers. Measure the signal the way an instrument does: from the pin.
 

@@ -19,7 +19,7 @@ export const chC: Chapter = {
       kind: "brief",
       title: "Memory is a row of numbered boxes",
       goal: "See where a variable lives, then answer three questions.",
-      refs: [{ course: "L2" }],
+      refs: [{ course: "L2", slide: 8 }],
       brief: `
 A variable has a name and a value. It also has a **place**. This chapter is about that place, because hardware is controlled through places in memory.
 
@@ -71,7 +71,7 @@ On the robot, an LED, a timer or a motor is controlled by storing a number in on
       mode: "complete",
       title: "Arrays: many boxes, one name",
       goal: "Finish a loop that adds up five readings and finds the largest one.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 A robot rarely has one reading. It has the last five distances, or 228 points from a laser scanner. One variable per value does not work. An **array** is a row of boxes under one name.
 
@@ -164,7 +164,7 @@ void main(void)
       mode: "debug",
       title: "One box too far",
       goal: "Find the two loops that leave their array, and fix them.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 An array of 4 elements has the indexes 0, 1, 2 and 3. What does C do with \`mark[4]\`?
 
@@ -256,7 +256,7 @@ void main(void)
       mode: "complete",
       title: "Characters and strings",
       goal: "Count the characters of a word by looking for the 0 that ends it.",
-      refs: [{ course: "L4" }, { course: "Lab 1" }],
+      refs: [{ course: "L4", slide: 10 }, { course: "Lab 1" }],
       brief: `
 Memory holds numbers only. So how does it hold text?
 
@@ -345,7 +345,7 @@ void main(void)
       kind: "brief",
       title: "How big is a box? Types and their sizes",
       goal: "Learn the fixed-width type names and how much memory each takes on this chip.",
-      refs: [{ course: "L2" }, { course: "L4" }, { course: "HW1" }],
+      refs: [{ course: "L4", slide: 5 }, { course: "HW1" }],
       brief: `
 A box cannot hold any number you like. On this chip one box is **16 bits**. A bit is a tiny switch that is 0 or 1; chapter 0 is about them. All you need here: 16 bits give 65536 different values, and the **type** of a variable says how many boxes it gets and how those values are used.
 
@@ -410,7 +410,7 @@ printf("%ld\\n", steps);     // %d would print a wrong number
       kind: "brief",
       title: "Pointers: a variable that holds an address",
       goal: "Follow a pointer step by step, then trace three short programs.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 Sometimes code must work on a variable it cannot name: a function that should change a variable of yours, or a line that should reach whatever box sits at a given address (a hardware register). C does this with addresses.
 
@@ -475,7 +475,7 @@ A pointer that was never given an address points nowhere useful. Using \`*p\` th
       mode: "write",
       title: "A function that changes your variable",
       goal: "Write a function that adds points to whichever score it is pointed at.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 Here is why pointers exist. When you call a function, each parameter is a **copy** of the value you passed. The function can change its copy as much as it likes. Your variable never notices.
 
@@ -568,7 +568,7 @@ void main(void)
       mode: "write",
       title: "Passing an array to a function",
       goal: "Write a function that finds the largest element of any int array.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 Arrays and pointers are close relatives. The name of an array, used without brackets, **is the address of its first element**. So when you pass an array to a function, no boxes are copied. The function receives a pointer to the first box.
 
@@ -667,7 +667,7 @@ void main(void)
       mode: "complete",
       title: "Structs: several values in one variable",
       goal: "Read and change the members of two struct variables.",
-      refs: [{ course: "L2" }, { course: "Lab 1" }],
+      refs: [{ course: "Lab 1" }],
       brief: `
 An array groups values of the same kind and numbers them. Often you want the opposite: a few **different** values that belong together, each with a name. A motor has a speed, a turn count and an on/off state. That is a **struct**.
 
@@ -770,7 +770,7 @@ void main(void)
       mode: "write",
       title: "Pointer to a struct: the arrow",
       goal: "Write a function that fills any tank, given a pointer to it.",
-      refs: [{ course: "L2" }, { course: "Lab 1" }],
+      refs: [{ course: "Lab 1" }],
       brief: `
 A function that works on any motor or any tank needs to be told which one. As with \`addBonus\`, you pass an address, and the function gets a pointer: this time a pointer to a struct.
 
@@ -883,7 +883,7 @@ void main(void)
       kind: "brief",
       title: "A register is a variable the hardware shares",
       goal: "See how a struct placed at a fixed address becomes the handle on a piece of hardware.",
-      refs: [{ course: "L2" }, { trm: "3.6.1" }, { trm: "8.9" }],
+      refs: [{ course: "L2", slide: [8, 10] }, { trm: "3.6.1" }, { trm: "8.9" }],
       brief: `
 Everything so far was about your own variables. Now the step to hardware, and it is a small one.
 
@@ -948,7 +948,7 @@ Try it in the figure: write the registers as the program, then press the push bu
       kind: "quiz",
       title: "One box, many settings: .bit and .all",
       goal: "Read the real register line from the start of the chapter, part by part.",
-      refs: [{ course: "L2" }, { trm: "3.6.1" }, { trm: "8.9" }],
+      refs: [{ course: "L2", slide: [10, 13] }, { trm: "3.6.1" }, { trm: "8.9" }],
       brief: `
 One line is still unexplained: the \`.bit.GPIO31\` in \`GpioDataRegs.GPASET.bit.GPIO31 = 1;\`.
 
@@ -1024,7 +1024,7 @@ TI declares every register this way. So read the real line from left to right: t
       kind: "quiz",
       title: "Two promises: const and volatile",
       goal: "Decide which variables need the word const, the word volatile, or neither.",
-      refs: [{ course: "L2" }, { course: "Lab 1" }],
+      refs: [{ course: "L3", slide: 22, note: "volatile in the pin mux code" }, { course: "Lab 1" }],
       brief: `
 Two words can stand in front of a type. Each one tells the compiler a fact about the variable that it cannot see by itself.
 
@@ -1106,7 +1106,7 @@ It makes no promise in the other direction: a \`volatile\` variable can still be
       mode: "debug",
       title: "A local variable that remembers",
       goal: "Find out why a counter inside a function never gets past 1, and fix it.",
-      refs: [{ course: "Lab 1" }, { course: "L2" }],
+      refs: [{ course: "Lab 1" }],
       brief: `
 A local variable is created when its function starts and thrown away when the function returns. At the next call it starts again from scratch. Usually that is what you want. A counter is the exception:
 
@@ -1215,7 +1215,7 @@ void main(void)
       mode: "debug",
       title: "When 1/2 is 0: mixing int and float",
       goal: "Fix two formulas that lose their fraction before the float ever sees it.",
-      refs: [{ course: "L4" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 You know that dividing two \`int\` values drops the fraction: \`7 / 2\` is 3. The trap is that this also happens **inside** a formula whose result is a float.
 
@@ -1325,7 +1325,7 @@ void main(void)
       mode: "complete",
       title: "Function pointers: which function to call",
       goal: "Make one variable choose which function a loop calls.",
-      refs: [{ course: "Lab 1" }, { course: "L2" }],
+      refs: [{ course: "L4", slide: 26, note: "the table of interrupt function addresses" }, { course: "Lab 1" }],
       brief: `
 A function sits in memory too, so it has an address. A **function pointer** is a variable that holds the address of a function. In plain words: a variable that stores **which function to call**.
 
@@ -1453,7 +1453,7 @@ void main(void)
       kind: "quiz",
       title: "Where the names come from: #include and headers",
       goal: "Tell a declaration from a definition, and say what #include does.",
-      refs: [{ course: "Lab 1" }, { course: "L2" }],
+      refs: [{ course: "Lab 1" }],
       brief: `
 You never wrote \`struct GPIO_DATA_REGS\`, and you never created \`GpioDataRegs\`. So why does the compiler accept the name?
 
@@ -1542,7 +1542,7 @@ In this game the course's headers are already included for you.
       mode: "checkpoint",
       title: "Checkpoint: measure a row of readings",
       goal: "Write a function that fills a struct with the smallest, largest and mean value of any array.",
-      refs: [{ course: "HW1" }, { course: "L2" }],
+      refs: [{ course: "HW1" }],
       brief: `
 This level uses the chapter's main tools together: an array, a struct, a pointer parameter and a function. There is nothing new in it.
 
@@ -1677,7 +1677,7 @@ void main(void)
       mode: "debug",
       title: "The right box for the number",
       goal: "Give two variables a type that fits their value, and print them with the matching placeholder.",
-      refs: [{ course: "L4" }, { course: "HW1" }],
+      refs: [{ course: "L4", slide: [5, 14] }, { course: "HW1" }],
       brief: `
 A wheel sensor counts 50000 ticks per run, and the robot drives 120000 millimetres in a day. This program stores both and prints them. Both come out wrong.
 
@@ -1746,7 +1746,7 @@ void main(void)
       kind: "order",
       title: "Put the pointer program in order",
       goal: "Arrange five lines so that the program prints 9 4.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 The five lines of a small program were shuffled. In the right order it prints \`9 4\`.
 
@@ -1781,7 +1781,7 @@ Work out what each line needs, then drag the lines into place. If two lines seem
       kind: "calc",
       title: "What is in the box?",
       goal: "Run a short program in your head and say what four boxes hold at the end.",
-      refs: [{ course: "L2" }, { course: "HW1" }],
+      refs: [{ course: "HW1" }],
       brief: `
 Reading code means running it in your head, one line at a time, and keeping track of the boxes. Do that for this program.
 
@@ -1824,7 +1824,7 @@ Draw the four boxes on paper and update them line by line. Then fill in the fiel
       mode: "write",
       title: "Reverse an array in place",
       goal: "Write a function that reverses the order of any int array without a second array.",
-      refs: [{ course: "HW1" }, { course: "L2" }],
+      refs: [{ course: "HW1" }],
       brief: `
 Some sensors deliver their samples newest first, and the code that uses them wants oldest first. Write \`reverse(v, n)\`: it reverses the order of the \`n\` elements that \`v\` points to.
 
@@ -1912,7 +1912,7 @@ void main(void)
       mode: "write",
       title: "A table of functions",
       goal: "Build an array of function pointers and call the right entry for each command number.",
-      refs: [{ course: "Lab 1" }, { course: "L2" }],
+      refs: [{ course: "L4", slide: 26, note: "the table of interrupt function addresses" }, { course: "Lab 1" }],
       brief: `
 The chip's interrupt table is a row of function pointers. The hardware uses an event number to pick an entry and calls it. Build the same thing yourself.
 
@@ -2039,7 +2039,7 @@ void main(void)
       mode: "write",
       title: "Lay a struct over raw memory",
       goal: "Read sensor packets out of a plain array of boxes by treating the memory as an array of structs.",
-      refs: [{ course: "L2" }, { trm: "3.6.1" }],
+      refs: [{ course: "L2", slide: 10, note: "TI's structs laid over register addresses" }, { trm: "3.6.1" }],
       brief: `
 TI places a struct over the boxes of a peripheral. You can do the same with any memory, and drivers do it all the time.
 

@@ -73,7 +73,7 @@ export const ch03: Chapter = {
       kind: "brief",
       title: "Reading a pin",
       goal: "Learn what a pin does as an input, why it needs a pull-up, and what a push button makes it read.",
-      refs: [{ course: "L3" }, { course: "Lab 2" }, { trm: "8.2" }, { trm: "8.8" }, { trm: "8.9" }],
+      refs: [{ course: "L3", slide: [10, 11, 12] }, { course: "Lab 2" }, { trm: "8.2" }, { trm: "8.8" }, { trm: "8.9" }],
       brief: `
 In chapter 2 the chip drove a pin. Now it listens. As an **input**, a pin drives nothing: the chip only **measures** the voltage that the circuit outside puts on it. The result is one bit, the pin's **level**: near 3.3 V reads **1** (high), near 0 V reads **0** (low). The 0 V point of a circuit is called **ground**, or GND.
 
@@ -165,7 +165,7 @@ The four push buttons are on GPIO157, 158 and 159 (port E, \`GPEDAT\`) and GPIO1
       kind: "wiring",
       title: "A level in both positions",
       goal: "Wire the pull-up and the push button so the pin never floats.",
-      refs: [{ course: "L3" }, { course: "Lab 2" }, { trm: "8.8" }],
+      refs: [{ course: "L3", slide: [11, 16] }, { course: "Lab 2" }, { trm: "8.8" }],
       brief: `
 The pin must have a defined level, 0 or 1, when the button is released **and** when it is pressed. It must never float.
 
@@ -242,7 +242,7 @@ Add the wires that are missing, so that the pin reads 1 while the button is rele
       kind: "register",
       title: "Enable three pull-ups",
       goal: "Set GPEPUD so the pull-ups of push buttons 1 to 3 are enabled.",
-      refs: [{ trm: "8.9" }, { trm: "8.8" }, { course: "Lab 2" }],
+      refs: [{ course: "L3", slide: [16, 21] }, { course: "Lab 2" }, { trm: "8.9" }, { trm: "8.8" }],
       brief: `
 Each pin has a pull-up built in: a large resistor to 3.3 V that holds an input at 1 when nothing else sets its level. \`GpioCtrlRegs.GPEPUD\` switches these on and off for port E, GPIO128 to GPIO159, one bit per pin. It is a pull-up **disable** register:
 
@@ -274,7 +274,7 @@ Push button 4 is on GPIO160. That pin is in port F, so its bit is in \`GPFPUD\`,
       mode: "complete",
       title: "Press to light",
       goal: "Make LED1 light while push button 1 is held down.",
-      refs: [{ course: "Lab 2" }, { course: "L3" }, { trm: "8.3" }],
+      refs: [{ course: "L3", slide: 12 }, { course: "Lab 2" }, { trm: "8.3" }],
       brief: `
 Push button 1 is on **GPIO157** (port E). LED1 is on **GPIO22** (port A) and is already set up as an output.
 
@@ -360,7 +360,7 @@ ${inp(157)}
       mode: "debug",
       title: "The LED with a mind of its own",
       goal: "LED1 flickers when nobody touches the button. Find the cause and fix it.",
-      refs: [{ trm: "8.8" }, { trm: "8.2" }, { course: "Lab 2" }],
+      refs: [{ course: "L3", slide: [10, 16] }, { course: "Lab 2" }, { trm: "8.8" }, { trm: "8.2" }],
       brief: `
 This program should light LED1 only while push button 1 is pressed. Press **Run** and watch: the LED flickers on its own.
 
@@ -434,7 +434,7 @@ ${out(22)}
       mode: "debug",
       title: "Backwards",
       goal: "LED2 is on until you press push button 2. Make it light only while the button is pressed.",
-      refs: [{ course: "Lab 2" }, { course: "L3" }],
+      refs: [{ course: "L3", slide: [11, 12] }, { course: "Lab 2" }],
       brief: `
 This program should light **LED2** (GPIO94) while **push button 2** (GPIO158) is pressed. It does the reverse: the LED is on all the time and goes dark when you press.
 
@@ -503,7 +503,7 @@ ${inp(158)}
       mode: "write",
       title: "ReadSwitches()",
       goal: "Write the Lab 2 function that packs the four push buttons into one number.",
-      refs: [{ course: "Lab 2" }, { course: "HW1" }, { trm: "8.9" }],
+      refs: [{ course: "L3", slide: 12 }, { course: "L2", slide: 20 }, { course: "Lab 2" }, { course: "HW1" }, { trm: "8.9" }],
       brief: `
 Lab 2 asks for a function \`int16_t ReadSwitches(void)\` that does one job: read the buttons. The \`(void)\` says it takes no arguments. It returns one number whose lowest four bits show the four push buttons:
 
@@ -601,7 +601,7 @@ ${inp(160)}
       mode: "checkpoint",
       title: "Buttons to LEDs",
       goal: "Show the four push buttons on LED1 to LED4: each LED lights while its button is pressed.",
-      refs: [{ course: "Lab 2" }, { course: "HW1" }, { trm: "8.3" }],
+      refs: [{ course: "L3", slide: [12, 7] }, { course: "Lab 2" }, { course: "HW1" }, { trm: "8.3" }],
       brief: `
 This is the first demonstration of Lab 2: the LEDs show the state of the push buttons, all the time.
 
@@ -841,7 +841,7 @@ ${inp(157)}
       mode: "write",
       title: "One read per port",
       goal: "Write ReadSwitches() again, this time from whole-register reads with shifts and masks.",
-      refs: [{ trm: "8.9.3" }, { trm: "8.3" }, { course: "HW1" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: [19, 20] }, { course: "HW1" }, { course: "Lab 2" }, { trm: "8.9.3" }, { trm: "8.3" }],
       brief: `
 \`GpioDataRegs.GPEDAT.bit.GPIO157\` reads the whole 32-bit register and keeps one bit. Four such reads are four looks at the pins, at four slightly different times.
 
@@ -959,7 +959,7 @@ ${SETUP_BUTTONS}
       mode: "write",
       title: "Bouncing contacts",
       goal: "Count the real presses of a push button whose contacts bounce, and ignore noise spikes.",
-      refs: [{ course: "HW4" }, { course: "Lab 2" }, { trm: "8.4.3" }],
+      refs: [{ course: "L4", slide: 32, note: "switch bounce, in the lecture notes" }, { course: "L3", slide: 21, note: "input qualification in the pin diagram" }, { course: "HW4" }, { course: "Lab 2" }, { trm: "8.4.3" }],
       brief: `
 A real push button is two pieces of metal. When they meet they **bounce**: the contact closes, opens and closes again several times before it settles. The same happens on release. HW4 warns about this for the buttons of your board. A fast loop sees every bounce as a press.
 
@@ -1083,7 +1083,7 @@ ${inp(157)}
       mode: "write",
       title: "Combination lock",
       goal: "Unlock LED5 when the push buttons are pressed in the order 3, 1, 4.",
-      refs: [{ course: "Lab 2" }, { course: "HW1" }, { trm: "8.3" }],
+      refs: [{ course: "L14", slide: 35, note: "the lock is a small state machine" }, { course: "Lab 2" }, { course: "HW1" }, { trm: "8.3" }],
       brief: `
 Build a lock with the code **PB3, PB1, PB4**. The program keeps track of how many presses of the code are right so far.
 
@@ -1242,7 +1242,7 @@ ${SETUP_BUTTONS}
       mode: "write",
       title: "Bare registers",
       goal: "Show the four push buttons on LED1 to LED4 with no GPIO helper function: registers only.",
-      refs: [{ trm: "8.9.2" }, { trm: "8.9.3" }, { trm: "8.8" }, { trm: "8.3" }, { course: "Lab 2" }],
+      refs: [{ course: "L3", slide: [21, 12] }, { course: "L2", slide: 13 }, { course: "Lab 2" }, { trm: "8.9.2" }, { trm: "8.9.3" }, { trm: "8.8" }, { trm: "8.3" }],
       brief: `
 Same job as the checkpoint: each of LED1 to LED4 is lit while its push button is pressed. This time \`GPIO_SetupPinMux\`, \`GPIO_SetupPinOptions\`, \`GPIO_ReadPin\` and \`GPIO_WritePin\` are off the table. You write the registers they would have written.
 

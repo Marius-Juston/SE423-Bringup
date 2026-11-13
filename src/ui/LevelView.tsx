@@ -5,6 +5,7 @@ import { store, useSave } from "./store";
 import { CodeBlock, Markdown } from "./Markdown";
 import { trmRef } from "./device";
 import { openExternal } from "./external";
+import { sortedCourseLinks } from "../levels/course-links";
 import { Quiz } from "./widgets/Quiz";
 import { Calc } from "./widgets/Calc";
 import { Order } from "./widgets/Order";
@@ -46,23 +47,62 @@ export function benchWidth(winW: number, taskW: number, pref: unknown): { bench:
   return { bench: clamp(num(pref, 440), BENCH_MIN, max), max: Math.max(BENCH_MIN, max) };
 }
 
+/** One reference as a link: its text, where it goes, and the long form for the tooltip and screen readers. */
+interface RefLink {
+  label: string;
+  title: string;
+  href?: string;
+}
+
+/** A level's references in reading order: lecture slides, then labs and homeworks, then the manual. */
+export function refLinks(refs: Ref[]): RefLink[] {
+  const course: RefLink[] = sortedCourseLinks(refs).map((c) => ({ label: c.label, title: c.title, href: c.href }));
+  const manual = refs.flatMap((r): RefLink[] => {
+    if (!r.trm) return [];
+    const t = trmRef(r.trm);
+    const label = `TRM §${r.trm}`;
+    return [{ label: t ? `${label} ${t.title}, p. ${t.page}` : label, title: t ? `Technical Reference Manual, section ${r.trm}: ${t.title}, page ${t.page}` : label, href: t?.url }];
+  });
+  return [...course, ...manual];
+}
+
+function RefAnchor({ link }: { link: RefLink }) {
+  if (!link.href) return <span title={link.title}>{link.label}</span>;
+  return (
+    <a href={link.href} target="_blank" rel="noreferrer" title={`${link.title}. Opens in your browser.`} aria-label={`${link.title} (opens in your browser)`} onClick={(e) => openExternal(e, link.href!)}>
+      {link.label}
+    </a>
+  );
+}
+
+/** The references as chips, under the brief. */
 export function Refs({ refs }: { refs: Ref[] }) {
   return (
-    <ul className="refs" aria-label="Sources">
-      {refs.map((r, i) => {
-        if (r.trm) {
-          const t = trmRef(r.trm);
-          return (
-            <li key={i}>
-              <a href={t?.url} target="_blank" rel="noreferrer" title="Opens the Technical Reference Manual at this page" onClick={(e) => t && openExternal(e, t.url)}>
-                TRM §{r.trm} {t ? `${t.title}, p. ${t.page}` : ""}
-              </a>
-            </li>
-          );
-        }
-        return <li key={i}>{r.course}</li>;
-      })}
+    <ul className="refs" aria-label="Where this is taught: course material and manual">
+      {refLinks(refs).map((link, i) => (
+        <li key={i}>
+          <RefAnchor link={link} />
+        </li>
+      ))}
     </ul>
+  );
+}
+
+/** The same links as one compact line, shown with the hints: where to read when a hint is not enough. */
+export function TaughtLine({ refs }: { refs: Ref[] }) {
+  const links = refLinks(refs).filter((l) => l.href);
+  if (links.length === 0) return null;
+  return (
+    <p className="tiny taught">
+      <style>{`.taught a { color: var(--info); text-decoration: underline; text-underline-offset: 2px; } .taught { line-height: 1.7; }`}</style>
+      <b>Where this is taught:</b>{" "}
+      {links.map((link, i) => (
+        <span key={i}>
+          {i > 0 && ", "}
+          <RefAnchor link={link} />
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -246,6 +286,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
             </button>
           )}
           {isCode && !passed && shown === hints.length - 1 && <p className="tiny">The last hint nearly gives the answer: a pass after it is recorded as passed with help, without stars.</p>}
+          {shown > 0 && <TaughtLine refs={level.refs} />}
         </div>
       )}
       {level.kind === "code" && (passed || shown >= hints.length) && hints.length > 0 && (

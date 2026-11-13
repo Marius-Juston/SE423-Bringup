@@ -658,7 +658,7 @@ export const ch18: Chapter = {
       kind: "brief",
       title: "Two frames and a pose",
       goal: "Learn what coordinates, the robot frame, the world frame and a pose are.",
-      refs: [{ course: "L15" }, { course: "HW4" }],
+      refs: [{ course: "L15", slide: [9, 11] }, { course: "HW4" }],
       brief: `
 A sensor on the robot says "golf ball 3 ft ahead, 1.5 ft to the right". Where is that in the room? That depends on where the robot is and which way it points. This chapter is about keeping track of both.
 
@@ -713,7 +713,7 @@ Each needs a little maths you may not have met. A short "Maths you need" level c
       kind: "calc",
       title: "Maths you need: sine and cosine",
       goal: "Split a move of a given length and direction into how far it goes along x and how far along y.",
-      refs: [{ course: "L15" }],
+      refs: [{ course: "L15", slide: [14, 26], note: "where the lecture uses r cos and r sin" }],
       brief: `
 The robot points in direction theta and drives a short distance d. How far did it move along the world's x axis, and how far along y? Every level from here on needs this answer. It is what sine and cosine are for.
 
@@ -763,7 +763,7 @@ Heading 30 degrees, the robot drives 2 ft. Across: 2 x 0.866 = 1.732 ft. Up: 2 x
       mode: "write",
       title: "Dead reckoning",
       goal: "Keep track of the robot's pose by adding up its wheel motion every millisecond.",
-      refs: [{ course: "L15" }, { course: "Lab 3" }],
+      refs: [{ course: "L15", slide: [22, 23, 26] }, { course: "Lab 3" }],
       brief: `
 **Dead reckoning** is how the robot tracks its own pose with nothing but its wheels: start from a known pose and add up every small move. It is the running sum of chapter 16 ("adding up over time"), done three times.
 
@@ -839,7 +839,7 @@ ${DRIVE}
       kind: "calc",
       title: "Maths you need: turning a point",
       goal: "Rotate a point by an angle, first as two lines of arithmetic and then as a matrix.",
-      refs: [{ course: "L15" }, { course: "HW4" }],
+      refs: [{ course: "L15", slide: [17, 18] }, { course: "HW4" }],
       brief: `
 A point is known in the robot frame: "2 ft ahead, 1 ft to the left", the point (2, 1). The robot's heading is theta. Which way is that in the room? To answer, you **rotate** the point by theta.
 
@@ -895,7 +895,7 @@ Angles are given in degrees here: set your calculator to degree mode.
       kind: "calc",
       title: "Rotate, shift, and back",
       goal: "Transform points between the robot frame and the world frame by hand, in both directions.",
-      refs: [{ course: "HW4" }, { course: "L15" }],
+      refs: [{ course: "L15", slide: [19, 18] }, { course: "HW4" }],
       brief: `
 HW4 asks for these two transforms by hand. Practise them here with other numbers.
 
@@ -955,7 +955,7 @@ Angles are given in degrees: set your calculator to degree mode. HW4 packs "rota
       kind: "calc",
       title: "Maths you need: average and spread",
       goal: "Describe a set of noisy sensor readings with two numbers: their mean and their variance.",
-      refs: [{ course: "L20-21" }, { course: "HW6" }],
+      refs: [{ course: "L20-21", slide: [41, 10] }, { course: "HW6" }],
       brief: `
 Dead reckoning drifts, so the robot needs a second opinion: a sensor that measures its position from outside. But every sensor is a little wrong, and differently each time. Ask a distance sensor the same question five times: 2.1, 1.9, 2.2, 1.8, 2.0 ft. The small random part is called **noise**. Two numbers describe such readings.
 
@@ -1001,7 +1001,7 @@ Pile up many noisy readings and they form a bell shape, the **Gaussian**: most r
       kind: "calc",
       title: "A Kalman filter with one number",
       goal: "Do one predict step and one update step of a 1-D Kalman filter by hand.",
-      refs: [{ course: "L20-21" }, { course: "HW6" }],
+      refs: [{ course: "L20-21", slide: [23, 32] }, { course: "HW6" }],
       brief: `
 Forget matrices for now. The robot drives along a line and wants one number: its position x. It has dead reckoning, which drifts, and a position sensor, which is noisy. A **Kalman filter** blends the two.
 
@@ -1049,7 +1049,7 @@ The belief is: mean 2.0 ft, variance 0.5. The robot moves u = 1.0 ft, with proce
       mode: "write",
       title: "The two functions",
       goal: "Write the predict and update functions of the 1-D Kalman filter.",
-      refs: [{ course: "L20-21" }, { course: "HW6" }],
+      refs: [{ course: "L20-21", slide: [23, 32] }, { course: "HW6" }],
       brief: `
 Turn the two steps of the previous level into two functions. The belief lives in two globals: \`kf_x\` (mean) and \`kf_p\` (variance). Keep the gain of the last update in \`kf_k\`, so you can watch it.
 
@@ -1091,7 +1091,7 @@ These are the equations HW6 writes with matrices, for one number. The filter in 
       mode: "complete",
       title: "Run it on the robot",
       goal: "Fuse the wheel speeds (1000 times a second) with noisy position fixes (100 times a second) using your two functions.",
-      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      refs: [{ course: "L20-21", slide: [16, 17] }, { course: "HW6" }],
       brief: `
 This is HW6 in one dimension. The robot drives along the x axis at about 1 ft/s. It has two sources of information, and each has a problem:
 
@@ -1185,7 +1185,7 @@ float z = 0;          // last position fix, ft`,
       kind: "calc",
       title: "Maths you need: the direction to a point",
       goal: "Work out how far away a target is, in which direction, and how far the robot must turn to face it.",
-      refs: [{ course: "L15" }],
+      refs: [{ course: "L19", slide: 8, note: "atan2 gives the direction to the next waypoint" }, { course: "L20-21", slide: 92, note: "distance and bearing from x and y" }],
       brief: `
 To drive to a point the robot needs two things: how far away it is, and in which direction. Both come from the difference between the target and the robot:
 
@@ -1229,7 +1229,7 @@ The robot's heading is theta and the direction to the target is alpha. It must t
       mode: "debug",
       title: "Move to XY: the course's xy_control",
       goal: "Repair the turn error in the function that drives the robot to a point.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      refs: [{ course: "L19", slide: [8, 10] }, { course: "L11", slide: 22, note: "the turn command of the speed controller" }, { course: "Lab 5" }],
       brief: `
 The final project hands you \`xy_control\` (file \`user_xy.c\`). You call it every millisecond with your pose and a target point, and it sets \`vref\` and \`turn\` for the speed controller. You will tune and debug around it for weeks, so know how it works.
 
@@ -1274,7 +1274,7 @@ The global \`turned\` adds up how far the robot has turned: 1.3 rad the short wa
       mode: "checkpoint",
       title: "Checkpoint: way points round a square",
       goal: "Drive round a 2 ft square with your own dead reckoning, xy_control and a list of way points.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }, { course: "L11" }],
+      refs: [{ course: "L15", slide: 26 }, { course: "L19", slide: [6, 8] }, { course: "L11", slide: 21 }, { course: "Lab 5" }],
       brief: `
 The navigation of the final project is three things you now have: a pose estimate, \`xy_control\`, and a list of **way points** (target points visited in order). Put them together.
 
@@ -1363,7 +1363,7 @@ ${BENCH}`,
       tier: "practice",
       title: "Practice: gyro bias, measure it and remove it",
       goal: "Average the gyro while the robot stands still and subtract that offset before integrating.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      refs: [{ course: "L15", slide: [33, 27] }, { course: "Lab 5" }],
       brief: `
 The robot also carries a **gyro** (gyroscope): a sensor chip that measures the turn rate directly, in rad/s. Adding its readings up gives the heading without using the wheels at all. But a gyro reads **true turn rate + bias + noise**. The bias is a small constant: the reading when the robot is not turning at all. This one reads about 0.05 rad/s at rest. Integrate that for 7 seconds and the heading is off by 0.35 rad (20 degrees) although the robot never moved.
 
@@ -1473,7 +1473,7 @@ uint32_t numTimer0calls = 0;`,
       tier: "practice",
       title: "Practice: rotate() and body_to_world()",
       goal: "Complete a rotation function and use it to transform a point from the robot frame to the world frame.",
-      refs: [{ course: "HW4" }, { course: "L15" }],
+      refs: [{ course: "L15", slide: [18, 19] }, { course: "HW4" }],
       brief: `
 Put the two formulas into two functions. A C function returns one value, and a point has two, so the results come back through **pointers**: the caller passes the addresses of two floats and the function writes to them with \`*xw = ...\`.
 
@@ -1582,7 +1582,7 @@ void main(void)
       tier: "practice",
       title: "Practice: world_to_body()",
       goal: "Write the inverse transform: where is a point of the room, seen from the robot?",
-      refs: [{ course: "HW4" }, { course: "L15" }],
+      refs: [{ course: "L19", slide: 9, note: "world to robot frame: subtract, then rotate back" }, { course: "L15", slide: 19 }, { course: "HW4" }],
       brief: `
 The robot knows a point in world coordinates and wants to know: is it ahead of me or behind, on my left or on my right? That is the inverse transform.
 
@@ -1688,7 +1688,7 @@ void main(void)
       tier: "practice",
       title: "Practice: one matrix for rotate and shift",
       goal: "Multiply a matrix by a list of numbers, and read HW4's homogeneous transformation as rotate, then shift.",
-      refs: [{ course: "HW4" }, { course: "L15" }],
+      refs: [{ course: "L15", slide: [18, 19] }, { course: "HW4" }],
       brief: `
 HW4 and Lecture 15 write transforms as matrices. A **matrix** is a table of numbers. A **vector** is a list of numbers written as a column, such as a point (x, y).
 
@@ -1744,7 +1744,7 @@ Robot at (4, 1), heading 90 degrees (cos = 0, sin = 1). T = [0 -1 4; 1 0 1; 0 0 
       tier: "practice",
       title: "Practice: degrees, radians and a heading that keeps growing",
       goal: "Fix a dead-reckoning function that mixes degrees with radians and never wraps its heading.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      refs: [{ course: "L15", slide: [32, 26], note: "gyro heading, then cos and sin of it in radians" }, { course: "Lab 5" }],
       brief: `
 This robot takes its heading from the gyro, the sensor that measures the turn rate. Like the course's gyro code, it works in **degrees**: the rate is converted to degrees per second and integrated into \`angle_deg\`. The robot drives a little more than three quarters of a circle to the left.
 
@@ -1844,7 +1844,7 @@ float angle_deg = 0;  // heading, degrees`,
       tier: "practice",
       title: "Practice: rectangle or trapezoid",
       goal: "Make dead reckoning accurate at a slow sample rate by replacing the rectangle rule with the trapezoid rule.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      refs: [{ course: "L15", slide: [27, 26] }, { course: "Lab 5" }],
       brief: `
 To save processor time, someone slowed the dead-reckoning interrupt from 1 ms to **20 ms**. The code is the dead reckoning you wrote, with the new time step \`DT = 0.02\`. The position estimate is now off by 0.015 ft after one short drive, twenty times more than before, and it gets worse with every turn.
 
@@ -1971,7 +1971,7 @@ uint32_t numTimer0calls = 0;`,
       tier: "practice",
       title: "Practice: complementary filter",
       goal: "Blend the gyro heading with the encoder heading so the result does not drift when the gyro's bias changes.",
-      refs: [{ course: "L15" }],
+      refs: [{ course: "L15", slide: [38, 37] }],
       brief: `
 The start-up calibration of the practice level "Gyro bias" removes the bias the gyro has at start-up. In this run the bias **changes after 3 seconds** (sensors warm up). The gyro heading \`theta_gyro\` starts to drift again, and no start-up calibration can help.
 
@@ -2087,7 +2087,7 @@ uint32_t numTimer0calls = 0;`,
       tier: "practice",
       title: "Practice: a landmark resets the drift",
       goal: "Correct a dead-reckoned position from one sighting of a landmark whose place in the room is known.",
-      refs: [{ course: "L15" }],
+      refs: [{ course: "L15", slide: [40, 19] }],
       brief: `
 Dead reckoning drifts. A **landmark** is something the robot can recognise and whose world position is known in advance: a corner of the course, a tag on the wall, the wall itself. One sighting tells the robot where it really is.
 
@@ -2129,7 +2129,7 @@ A wall lies along the world line y = 10 ft. The robot faces it squarely (heading
       tier: "practice",
       title: "Practice: pure pursuit",
       goal: "Compute the steering command that carries the robot on an arc to a point further along a planned path.",
-      refs: [{ course: "L19" }, { course: "L15" }],
+      refs: [{ course: "L19", slide: [15, 14, 9] }],
       brief: `
 A path planner (chapter 19) hands the robot a path as a list of points. Driving to each one and stopping to turn, as move-to-XY does, is slow and jerky. Lecture 19 names a smoother way: **pure pursuit**. The robot chases a point on the path a fixed distance ahead of it, the **look-ahead point**. As the robot moves, that point moves along the path, so the robot never reaches it and never stops.
 
@@ -2166,7 +2166,7 @@ The robot is at **(1, 1) ft, heading 90 degrees**, driving at V = 1 ft/s. Its wh
       tier: "practice",
       title: "Practice: keep the interrupt short",
       goal: "Move the trigonometry of dead reckoning out of the interrupt function into the main loop, behind a flag.",
-      refs: [{ course: "L15" }, { course: "L11" }, { course: "Lab 5" }],
+      refs: [{ course: "L14", slide: 31, note: "only time-critical work in the 1 ms interrupt" }, { course: "L15", slide: 26 }, { course: "Lab 5" }],
       brief: `
 The dead reckoning of the level "Dead reckoning" works. It also calls \`cos\` and \`sin\` inside the interrupt function, a thousand times a second. Drop that habit before the program grows.
 
@@ -2261,7 +2261,7 @@ ${DRIVE}
       tier: "practice",
       title: "Practice: three states, the predict step by hand",
       goal: "Name the matrices of the robot's three-state Kalman filter and do one predict step by hand.",
-      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      refs: [{ course: "L20-21", slide: [37, 46, 75] }, { course: "HW6" }],
       brief: `
 The robot's real filter (HW6 and the final project) estimates three numbers at once: x, y and the heading theta. The two steps stay, and the single numbers become matrices (practice level "One matrix for rotate and shift"). This level is about what each entry means.
 
@@ -2312,7 +2312,7 @@ State (2.0, 1.0, 0.5236): heading 30 degrees. V = 2 ft/s, omega = 0.5 rad/s, dt 
       tier: "practice",
       title: "Practice: three states, the predict function",
       goal: "Write the predict step for the state (x, y, heading) with the input matrix B, and read the given covariance step.",
-      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      refs: [{ course: "L20-21", slide: [46, 75] }, { course: "HW6" }],
       brief: `
 Write the predict step of the previous level in C. The state is the array \`xhat[3]\`: x, y, heading. P, Q and B are **two-dimensional arrays**: \`float P[3][3]\` is a table of 3 rows and 3 columns, and \`P[1][2]\` is its entry in row 1, column 2, both counted from 0.
 
@@ -2365,7 +2365,7 @@ The course code calls a small matrix library for the product (\`Matrix3x2_Mult\`
       tier: "practice",
       title: "Practice: three states, the update by hand",
       goal: "Name the matrices of the update step (H, R, S, K) and do one update by hand with diagonal matrices.",
-      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      refs: [{ course: "L20-21", slide: [50, 52, 54] }, { course: "HW6" }],
       brief: `
 The update uses the position fix: two numbers, z = (zx, zy). The bench measures no heading. The course's OptiTrack does: there z has three numbers and H is the 3 x 3 identity. The steps are the same.
 
@@ -2418,7 +2418,7 @@ The state after the predict step two levels back: (2.1732, 1.1, 0.5736), P diago
       tier: "practice",
       title: "Practice: three states, the update function",
       goal: "Write the measurement update for a position fix: residual, S, gain, state and covariance, with every matrix product written out.",
-      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      refs: [{ course: "L20-21", slide: [52, 54, 57] }, { course: "HW6" }],
       brief: `
 Write the update for any P, not only a diagonal one. The six steps are numbered in the code, and step 3 is given. With H = [1 0 0; 0 1 0] every product with H only picks rows or columns. So no general matrix multiply is needed: single floats and short loops do it.
 
@@ -2482,7 +2482,7 @@ The course code does these steps with 3 x 3 library calls (\`Matrix3x3_Invert\`,
       tier: "expert",
       title: "Expert: go to a point",
       goal: "Drive the robot to a target position: turn to face it, drive there, stop, within 7.5 seconds.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }, { course: "HW4" }],
+      refs: [{ course: "L15", slide: 26 }, { course: "L19", slide: [8, 7] }, { course: "Lab 5" }, { course: "HW4" }],
       brief: `
 The robot stands at **(1, 1) ft with heading 2.8 rad**. Drive it to the target **(-1.0, -1.5) ft** and stop there, in at most 7.5 s.
 
@@ -2603,7 +2603,7 @@ uint32_t numTimer0calls = 0;`,
       tier: "expert",
       title: "Expert: a Kalman filter with two states",
       goal: "Estimate position and velocity from position fixes alone, with the matrix equations written out by hand.",
-      refs: [{ course: "L20-21" }, { course: "HW6" }],
+      refs: [{ course: "L20-21", slide: [69, 70, 73] }, { course: "HW6" }],
       brief: `
 Now there are no wheel speeds. The only sensor is the position fix, 100 times a second, off by about 0.1 ft each time. Estimate **two** things from it: the position and the **velocity**. Dividing the difference of two fixes by 0.01 s would give a velocity that is off by more than 10 ft/s. The filter does far better.
 
@@ -2739,7 +2739,7 @@ void kf2_update(float z, float r)
       tier: "expert",
       title: "Expert: the robot's three-state filter",
       goal: "Write the whole three-state Kalman filter and run it on the robot, so the pose estimate beats both dead reckoning and the raw fixes.",
-      refs: [{ course: "HW6" }, { course: "L20-21" }, { course: "L15" }],
+      refs: [{ course: "L20-21", slide: [57, 75] }, { course: "L15", slide: 26 }, { course: "HW6" }],
       brief: `
 Run the filter of HW6 on the bench: state (x, y, heading), predict from the wheels, update from the position fix. You write both functions and the wiring. Do the practice levels "Three states" first.
 

@@ -136,7 +136,7 @@ export const ch05: Chapter = {
       kind: "brief",
       title: "Let the hardware call you",
       goal: "Learn what an interrupt is and what an interrupt function looks like, then answer three questions.",
-      refs: [{ course: "L4" }, { trm: "3.4.1" }],
+      refs: [{ course: "L4", slide: [23, 26] }, { trm: "3.4.1" }],
       brief: `
 So far your code asked the hardware the same question over and over: "has the time passed yet?" That is **polling**, and while the CPU is asking it does nothing else.
 
@@ -193,7 +193,7 @@ On the robot this is what keeps a motor controller running exactly every millise
       kind: "brief",
       title: "Six gates and a table",
       goal: "Follow an interrupt request from the timer to your function, then answer three questions.",
-      refs: [{ course: "L4" }, { trm: "3.4.1" }, { trm: "3.4.2" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
+      refs: [{ course: "L4", slide: [25, 29, 26] }, { trm: "3.4.1" }, { trm: "3.4.2" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
       brief: `
 A request does not reach your function by itself. It passes a chain of gates, and after reset every gate is closed.
 
@@ -257,7 +257,7 @@ Try it in the figure: press **Timer 0 reaches zero**, see where the request stop
       kind: "order",
       title: "Follow the request",
       goal: "Put the steps of one timer 0 interrupt in order, from the timer to your function.",
-      refs: [{ trm: "3.4.3" }, { course: "L4" }],
+      refs: [{ course: "L4", slide: [24, 25, 26] }, { trm: "3.4.3" }],
       brief: `
 Timer 0 has just counted down to zero. Its interrupt is fully enabled and \`cpu_timer0_isr\` is in the vector table.
 
@@ -289,7 +289,7 @@ One step is new: on the way in, the CPU itself sets INTM. That is why an interru
       kind: "order",
       title: "Switching it on",
       goal: "Put the steps that enable a timer 0 interrupt in the order the reference manual gives.",
-      refs: [{ trm: "3.4.4" }, { course: "L4" }, { course: "HW2" }],
+      refs: [{ course: "L4", slide: [26, 29] }, { course: "HW2" }, { trm: "3.4.4" }],
       brief: `
 After reset no interrupt is enabled: every \`PIEIER\` bit and \`IER\` are 0 and \`INTM\` is set. Your code has to open each gate.
 
@@ -330,7 +330,7 @@ Order the steps the way the manual lists them.
       kind: "quiz",
       title: "Reading the PIE table",
       goal: "Use the PIE channel table to find the group, channel, IER mask and PIEACK constant of an interrupt.",
-      refs: [{ trm: "3.4.5" }, { trm: "3.4.6" }, { trm: "3.4.4" }, { course: "L4" }],
+      refs: [{ course: "L4", slide: 28 }, { trm: "3.4.5" }, { trm: "3.4.6" }, { trm: "3.4.4" }],
       brief: `
 Table 3-2 of the reference manual lists every PIE interrupt. Each row is a group, each column a channel. The names are peripherals, most of which you meet in later chapters (ADC, EPWM, SPI, SCI). Here you only need to find a name and read off its numbers. A few rows, shortened:
 
@@ -418,7 +418,7 @@ When several requests wait at the same time, the **lowest number wins**: the low
       mode: "complete",
       title: "Your first interrupt",
       goal: "Connect cpu_timer0_isr to timer 0 and open the gates so LED1 blinks.",
-      refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "3.4.4" }],
+      refs: [{ course: "L4", slide: [26, 29] }, { course: "Lab 1" }, { trm: "3.4.4" }],
       brief: `
 This program is nearly the course starter code. Timer 0 is set up to request an interrupt every **100 ms**, and \`cpu_timer0_isr\` toggles LED1 and acknowledges group 1. The \`while(1)\` loop is empty: the blinking will happen entirely in the interrupt function.
 
@@ -537,7 +537,7 @@ __interrupt void cpu_timer0_isr(void)
       mode: "debug",
       title: "Once and never again",
       goal: "LED1 changes once and then stays that way. Find out why and fix it.",
-      refs: [{ trm: "3.4.4" }, { trm: "3.4.3" }, { course: "L4" }],
+      refs: [{ course: "L4", slide: 25, note: "the PIE acknowledge, in the lecture notes" }, { trm: "3.4.4" }, { trm: "3.4.3" }],
       brief: `
 Timer 0 should toggle LED1 every 50 ms. Run the program: the LED comes on after 50 ms and then never changes. The test report says how many times the function ran.
 
@@ -650,7 +650,7 @@ __interrupt void cpu_timer0_isr(void)
       mode: "debug",
       title: "One works, one does not",
       goal: "The blue LED blinks but LED1 stays dark. Find the closed gate.",
-      refs: [{ course: "HW2" }, { course: "Lab 1" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
+      refs: [{ course: "L4", slide: [29, 30] }, { course: "HW2" }, { course: "Lab 1" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
       brief: `
 Two timers, two interrupt functions:
 
@@ -782,7 +782,7 @@ __interrupt void cpu_timer1_isr(void)
       mode: "write",
       title: "Two timers, two rhythms",
       goal: "Blink the blue LED from timer 2 and toggle LED1 on every 3rd timer 0 interrupt.",
-      refs: [{ course: "Lab 1" }, { course: "HW2" }, { trm: "3.4.4" }],
+      refs: [{ course: "L4", slide: [25, 29] }, { course: "Lab 1" }, { course: "HW2" }, { trm: "3.4.4" }],
       brief: `
 Lab 1 asks for exactly this kind of code.
 
@@ -920,7 +920,7 @@ __interrupt void cpu_timer2_isr(void)
       mode: "complete",
       title: "An interrupt you ask for",
       goal: "Post a software interrupt from the timer 0 function and write the function it runs.",
-      refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
+      refs: [{ course: "L4", slide: [27, 29] }, { course: "Lab 1" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
       brief: `
 A timer function must stay short. Work that takes longer needs another place, where it can run soon without holding the timer up.
 
@@ -1063,7 +1063,7 @@ __interrupt void SWI_isr(void)
       mode: "complete",
       title: "Leave the slow work to main",
       goal: "Raise a flag in an interrupt function and do the work in the while (1) loop.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { course: "L4" }],
+      refs: [{ course: "L4", slide: 12, note: "never print inside a fast interrupt function" }, { course: "Lab 1" }, { course: "Lab 2" }],
       brief: `
 Some work is slow. Printing one line of text takes several milliseconds. Inside an interrupt function that would hold up every other interrupt, so the starter code never does slow work there.
 
@@ -1196,7 +1196,7 @@ __interrupt void cpu_timer1_isr(void)
       mode: "checkpoint",
       title: "Three functions and a flag",
       goal: "Run two timers, post a software interrupt from one of them, and hand a job to main with a flag.",
-      refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { course: "L4" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
+      refs: [{ course: "L4", slide: [29, 27] }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
       brief: `
 This is the structure of the starter code you will use all semester, built by you from the last four levels: two timers, the software interrupt and the flag.
 
@@ -1377,7 +1377,7 @@ __interrupt void cpu_timer1_isr(void)
       mode: "debug",
       title: "The jump to nowhere",
       goal: "The program stops at the first interrupt. Read the messages and fix the vector.",
-      refs: [{ trm: "3.4.6" }, { trm: "3.4.4" }, { course: "L4" }, { course: "Lab 2" }],
+      refs: [{ course: "L2", slide: 12 }, { course: "L4", slide: 26 }, { course: "Lab 2" }, { trm: "3.4.6" }, { trm: "3.4.4" }],
       brief: `
 In this program every gate is open, and that is the problem: the interrupt fires, and the CPU jumps to the wrong place.
 
@@ -1476,7 +1476,7 @@ __interrupt void cpu_timer0_isr(void)
       kind: "quiz",
       title: "A pin that interrupts",
       goal: "Read the set-up of an external interrupt, the kind HW4 uses for push buttons.",
-      refs: [{ course: "HW4" }, { trm: "3.15.6" }, { trm: "9.1" }, { trm: "3.4.5" }],
+      refs: [{ course: "L4", slide: [32, 28] }, { course: "HW4" }, { trm: "3.15.6" }, { trm: "9.1" }, { trm: "3.4.5" }],
       brief: `
 A timer is not the only thing that can interrupt the CPU. A pin can too. An **external interrupt** (XINT) fires when the level on a GPIO pin changes. A **falling edge** is a change from 1 to 0, a rising edge a change from 0 to 1. HW4 uses it for push buttons. Later a sensor chip uses it to say "I have new data".
 
@@ -1535,7 +1535,7 @@ The simulator does not model XINT yet, so this level is questions only.
       tier: "practice",
       title: "A button that interrupts",
       goal: "Make each press of PB3 run an interrupt function, with no polling in main.",
-      refs: [{ course: "HW4" }, { trm: "3.4.5" }],
+      refs: [{ course: "L4", slide: 32 }, { course: "HW4" }, { trm: "3.4.5" }],
       brief: `
 So far a timer asked for the interrupt. A **pin** can ask too: that is an external interrupt, XINT. HW4 uses XINT1 and XINT2 on push buttons.
 
@@ -1670,7 +1670,7 @@ __interrupt void xint1_isr(void)
       mode: "debug",
       title: "The clock that runs slow",
       goal: "This millisecond clock loses time. Find where the ticks go and get all of them back.",
-      refs: [{ course: "L4" }, { course: "Lab 1" }, { trm: "3.4.2" }, { trm: "3.4.3" }],
+      refs: [{ course: "L4", slide: 27, note: "move long work out of the timer function" }, { course: "Lab 1" }, { trm: "3.4.2" }, { trm: "3.4.3" }],
       brief: `
 Timer 0 interrupts every 1 ms and \`cpu_timer0_isr\` counts the milliseconds in \`ms\`. LED1 toggles every 50 counts, so it should blink with a 100 ms period. Every 10th call the function also reads a slow sensor. \`read_slow_sensor()\` stands for that: it takes about 2.5 ms.
 
@@ -1789,7 +1789,7 @@ __interrupt void cpu_timer0_isr(void)
       mode: "write",
       title: "Dimming by hand",
       goal: "Dim LED1 with a timer interrupt: 30 % brightness normally, 80 % while PB1 is held.",
-      refs: [{ course: "L4" }, { course: "Lab 1" }, { trm: "3.8" }, { trm: "3.4.4" }],
+      refs: [{ course: "L6-7", slide: [58, 59] }, { course: "L4", slide: 30, note: "the timer interrupt as a regular tick" }, { course: "Lab 1" }, { trm: "3.8" }, { trm: "3.4.4" }],
       brief: `
 An LED that is switched on and off faster than the eye can follow looks dimmer. The share of the time it is on is the **duty cycle**. Later in the course the ePWM peripheral does this in hardware. Here you do it with a timer interrupt, which shows what the hardware will do for you.
 
@@ -1910,7 +1910,7 @@ __interrupt void cpu_timer0_isr(void)
       mode: "write",
       title: "One press, one count",
       goal: "Count the presses of a bouncing button exactly, and toggle LED1 once per press.",
-      refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "8.4" }, { trm: "3.8" }],
+      refs: [{ course: "L4", slide: 32, note: "switch bounce, in the lecture notes" }, { course: "Lab 1" }, { trm: "8.4" }, { trm: "3.8" }],
       brief: `
 A push button is two pieces of metal. When they meet they **bounce**: the contact closes, opens and closes again a few times before it settles. The same happens when they part. Code that reacts to every change of the pin counts one press as several.
 
@@ -2049,7 +2049,7 @@ __interrupt void cpu_timer0_isr(void)
       mode: "write",
       title: "Three jobs, three priorities",
       goal: "Make a 1 ms tick, a 5 ms calculation and a 3 ms log job share the CPU so that each one runs when it must.",
-      refs: [{ trm: "3.4.3" }, { trm: "3.4.4" }, { trm: "3.4.5" }, { course: "L4" }, { course: "Lab 1" }],
+      refs: [{ course: "L4", slide: [28, 27] }, { course: "Lab 1" }, { trm: "3.4.3" }, { trm: "3.4.4" }, { trm: "3.4.5" }],
       brief: `
 The program has three interrupt functions. Each one works alone. Together they fail: run it and compare the call counts with the list below.
 
@@ -2161,7 +2161,7 @@ __interrupt void cpu_timer2_isr(void)
       mode: "write",
       title: "A serial port made of one pin",
       goal: "Send text at 9600 baud on GPIO0 with nothing but a timer interrupt: one bit per interrupt.",
-      refs: [{ course: "HW1" }, { course: "L4" }, { trm: "19.6" }, { trm: "3.8" }, { trm: "3.4.4" }],
+      refs: [{ course: "L4", slide: [17, 18] }, { course: "HW1" }, { trm: "19.6" }, { trm: "3.8" }, { trm: "3.4.4" }],
       brief: `
 The chip has four serial ports, and they are all in use. You need a fifth, on **GPIO0**. Build the transmitter yourself. A logic analyser on the pin decodes what you send.
 
