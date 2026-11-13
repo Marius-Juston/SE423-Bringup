@@ -152,7 +152,7 @@ function MemoryMap() {
             ...cells,
             <span key={`al${row}`} className="mm-lab">{reg.words === 2 ? (row ? `${hex(addr + 1, 4)} high word` : `${hex(addr, 4)} low word`) : hex(addr, 4)}</span>,
             ...bits.map((b) => (
-              <button key={b} className={`mm-bit${nib(b)}`} aria-pressed={((value >>> b) & 1) === 1} aria-label={`bit ${b}${fieldAt(b) ? `, ${fieldAt(b)!.name}` : ""}`} onClick={() => flip(b)}>
+              <button key={b} className={`mm-bit${nib(b)}`} aria-pressed={((value >>> b) & 1) === 1} aria-label={`${(value >>> b) & 1}, bit ${b}${fieldAt(b) ? `, ${fieldAt(b)!.name}` : ""}`} onClick={() => flip(b)}>
                 {(value >>> b) & 1}
               </button>
             )),

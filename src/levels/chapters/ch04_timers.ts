@@ -194,6 +194,8 @@ Example: with the prescaler at 199, a tick is 200 clock cycles. \`PRD\` then cou
 - \`TIF\` (bit 15): the flag. The timer sets it when the counter reaches 0. You clear it by **writing 1** to it. Writing 0 does nothing.
 - \`FREE\` and \`SOFT\` (bits 11 and 10) only matter when a debugger pauses the program. Leave them at 0.
 
+In the figure, open **More controls** to stop the timer (TSS), reload it (TRB) and clear its flag (TIF).
+
 {{figure:timer-sawtooth}}
 
 Try it in the figure: stop the timer with **TSS = 1, stopped**, press **+1 clock cycle** to see that it no longer counts, then press **write TRB = 1** and see where the counter starts again.

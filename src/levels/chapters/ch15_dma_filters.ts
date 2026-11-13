@@ -761,7 +761,7 @@ Taking samples at a steady pace is **sampling**. The pace has two names, and eac
 
 What the voltage did between two samples, the chip never knows.
 
-The figure opens on a harder case that a later level explains. First set **Signal** to 100 Hz and **Sampling** to 2000 Hz. The curve is the voltage. The dots are the samples: all the chip has.
+The curve is the voltage. The dots are the samples: all the chip has.
 
 {{figure:sampling-alias}}
 
@@ -822,7 +822,7 @@ Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms: that is the sampling rate. \`tb_s
       brief: `
 The smoothest signal there is goes up and down like a swing: a **sine wave**. A whistle, the hum of a motor and the voltage of a wall socket are sine waves. In this chapter a sine wave is also called a **tone**.
 
-Set the figure to a Signal of 100 Hz and a Sampling of 2000 Hz again (its opening case is for the next level).
+The figure opens on a Signal of 100 Hz sampled at 2000 Hz.
 
 {{figure:sampling-alias}}
 
@@ -865,7 +865,7 @@ A slow tone gets many samples per period, a fast one few. The next level asks ho
       goal: "Find out how few samples per period are enough, and what the samples show when there are fewer.",
       refs: [{ course: "L8-9" }, { course: "HW3" }, { trm: "5.4" }],
       brief: `
-How few samples per period are enough? Try it. In the figure, leave Sampling at 1000 Hz, pull Signal down to 100 Hz and then raise it slowly.
+How few samples per period are enough? Try it. In the figure, set Sampling to 1000 Hz, leave Signal at 100 Hz and then raise it slowly.
 
 {{figure:sampling-alias}}
 
@@ -1553,6 +1553,8 @@ Sample 0 is taken 0.05 period after a rising edge. Count on from there and keep 
 - sample 3: 2.75, which is 0.75 ...
 
 Mark every sample that is high. Then look at the pattern you drew: what is the frequency of *that* square wave?
+
+In the figure, set Signal to 900 Hz and Sampling to 1000 Hz to see the same thing happen.
 
 {{figure:sampling-alias}}
 

@@ -948,6 +948,8 @@ printf("Done\\n");
 
 It looks like an \`if\`, with one difference. After the block has run, the program jumps **back up** and asks the condition again. As long as the answer is true, the block runs once more. When it is false, the program carries on after the block. This prints 1, 2, 3, Done.
 
+In the figure, choose **while**.
+
 {{figure:c-flow}}
 
 Try it in the figure: choose "while" and step through it. Count how many times the condition is asked.
@@ -1038,6 +1040,8 @@ Between the round brackets are three parts, separated by semicolons:
 3. \`i++\` is the **step**. It runs after every pass.
 
 This prints 1, 2, 3. The counting variable is very often called \`i\`.
+
+In the figure, choose **for**.
 
 {{figure:c-flow}}
 

@@ -1864,7 +1864,7 @@ v_old = v;
 
 For x and y, the thing being integrated is the speed along each axis, so average the **products**: this step's \`v * cos(theta_new)\` and the previous step's \`v_old * cos(theta)\`.
 
-Try it in the figure: pick a 100 ms time step on a tight turn and switch between the two rules.
+Try it in the figure: open **More controls**, pick a 100 ms time step on a tight turn and switch between the two rules.
 
 {{figure:dead-reckoning}}
 
