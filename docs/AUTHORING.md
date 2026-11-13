@@ -83,6 +83,24 @@ the student's own saved code from that level, so a chapter can grow one
 program step by step (the capstone does this). Write the brief so it works
 either way: say exactly what to add and where, not "fill in the TODO".
 
+## Writing for a complete beginner
+Assume the student has never programmed and never held a wire. They start
+with the primer chapters A (electricity), B (C from zero) and C (C for
+hardware). After those, every later chapter may rely only on what an
+earlier level taught. So:
+- A word is explained the first time it appears, in one plain sentence, in
+  the place it appears. Add it to a glossary file as well: any file
+  `src/levels/glossary/<name>.ts` exporting `glossary: GlossaryEntry[]`
+  (type in `src/levels/types.ts`) is picked up by the Handbook.
+- A C construct, a symbol or a piece of maths is shown with a tiny worked
+  example before the student has to use it.
+- One new idea per level. If a level needs two, split it.
+- Say why before how: what goes wrong on the robot without this.
+- Code the student did not write is either explained line by line once, or
+  marked clearly as "given, explained in chapter N".
+- `printf` output goes to a console; check it with the `console` check
+  kind (`includes`, `equals` or `matches`).
+
 ## Accuracy
 - Facts must agree with the Technical Reference Manual. Where a slide or
   handout differs, follow the TRM and say so in one line.

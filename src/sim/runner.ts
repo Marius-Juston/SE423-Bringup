@@ -26,6 +26,8 @@ export type Check = { label: string; hint?: string } & (
   /** Exactly one of two LEDs is lit, sampled across [from, to] ms. */
   | { kind: "opposite"; a: string; b: string; from: number; to: number }
   | { kind: "serial"; port?: number; includes?: string; equals?: string; matches?: string }
+  /** Text printed with printf (the console, not the serial port). */
+  | { kind: "console"; includes?: string; equals?: string; matches?: string }
   /** Time between the starts of consecutive printed lines. */
   | { kind: "serial-period"; port?: number; periodMs: number; tolPct?: number }
   | { kind: "lcd"; line: 1 | 2; matches: string }
@@ -248,6 +250,16 @@ export function runProgram(spec: RunSpec): RunResult {
         else if (c.matches !== undefined) pass = new RegExp(c.matches).test(text);
         const shown = JSON.stringify(text.length > 80 ? text.slice(0, 80) + "…" : text);
         detail = text.length ? `The terminal received ${shown}.` : "Nothing was received on the serial terminal.";
+        break;
+      }
+      case "console": {
+        const text = b.console;
+        if (c.equals !== undefined) pass = text === c.equals;
+        else if (c.includes !== undefined) pass = text.includes(c.includes);
+        else if (c.matches !== undefined) pass = new RegExp(c.matches).test(text);
+        const shown = JSON.stringify(text.length > 120 ? text.slice(0, 120) + "..." : text);
+        detail = text.length ? `The program printed ${shown}.` : "The program printed nothing.";
+        if (!pass && c.equals !== undefined) detail += ` Expected exactly ${JSON.stringify(c.equals)}.`;
         break;
       }
       case "serial-period": {

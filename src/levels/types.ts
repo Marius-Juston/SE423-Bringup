@@ -156,7 +156,10 @@ export type Level = BriefLevel | QuizLevel | CalcLevel | RegisterLevel | TimingL
 
 export interface Chapter {
   id: string;
+  /** Order on the map. Primer chapters use negative numbers. */
   number: number;
+  /** Shown instead of the number (primer chapters are "A", "B", "C"). */
+  label?: string;
   title: string;
   /** One line shown on the map. */
   blurb: string;
@@ -182,3 +185,15 @@ export const KIND_LABEL: Record<string, string> = {
 };
 
 export const kindOf = (l: Level): string => (l.kind === "code" ? l.mode : l.kind);
+
+/** What to show as a chapter's number. */
+export const chapterLabel = (c: { number: number; label?: string }): string => c.label ?? String(c.number);
+
+/** A term explained in plain words, for the Handbook glossary. */
+export interface GlossaryEntry {
+  term: string;
+  /** One or two plain sentences a complete beginner can follow. */
+  meaning: string;
+  /** Level id where the term is first taught, if any. */
+  level?: string;
+}
