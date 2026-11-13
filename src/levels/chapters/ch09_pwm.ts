@@ -24,7 +24,7 @@ const PWM12 = (tbprd: number, cmpa: number, note: string) => `    // EPWM12A on 
     EPwm12Regs.CMPA.bit.CMPA = ${cmpa};
     EPwm12Regs.AQCTLA.bit.CAU = 1;       // clear the pin when the counter reaches CMPA
     EPwm12Regs.AQCTLA.bit.ZRO = 2;       // set the pin when the counter is zero
-    EPwm12Regs.TBPHS.bit.TBPHS = 0;`;
+    EPwm12Regs.TBPHS.bit.TBPHS = 0;      // phase: not used`;
 
 const MUX12 = `    GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5);  // GPIO22 becomes EPWM12A
     EALLOW;
@@ -100,27 +100,27 @@ export const pwm: Chapter = {
       goal: "Understand what duty cycle is and why a digital pin can dim an LED or throttle a motor.",
       refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "15.1" }],
       brief: `
-A GPIO pin has two levels: 0 V and 3.3 V. An LED on it is either fully on or off. So how do you get half brightness, or a motor at 30 % power?
+A GPIO pin has two levels, so an LED on it is fully on or off. How do you get half brightness, or a motor at 30 % power?
 
 ## Switch fast and vary the on-time
-**Pulse width modulation (PWM)** switches the pin on and off at a fixed rate and changes how long it stays on in each cycle.
+**Pulse width modulation (PWM)** switches the pin at a fixed rate and changes how long it stays high in each cycle.
 
-- The **period** is the time of one on-plus-off cycle. Its inverse is the **carrier frequency**.
-- The **duty cycle** is the fraction of the period the pin is high: \`duty = high time / period\`.
+- The **period** is the time of one cycle. Cycles per second is the **carrier frequency**, 1 / period: a period of 100 us is 10 kHz.
+- The **duty cycle** is the fraction of the period the pin is high: \`duty = high time / period\`. High for 25 us of every 100 us is 25 %.
 - The **average voltage** is the duty cycle times the high level: 25 % of 3.3 V is 0.825 V.
 
-At 25 % the waveform is a row of narrow pulses, at 75 % a row of wide pulses with narrow gaps. The pulses come at the same rate in both cases. Try it in the figure: move the duty cycle, then switch slowly and fast, and press Play to see when the LED stops blinking and starts dimming.
+One high stretch is a **pulse**: narrow at 25 %, wide at 75 %, at the same rate. Try it in the figure: move the duty cycle, then switch slowly and fast, and press Play to see when the LED stops blinking and starts dimming.
 
 {{figure:pwm-average}}
 
 ## Why the load sees the average
-The switching is faster than the load can follow. At 10 kHz your eye cannot see LED1 flicker, so it sees the average brightness. A motor's inductance and inertia smooth the current, so the motor feels the average voltage. The robot's motors are switched at 20 kHz, which is also above what you can hear, so they do not whine.
+The **load** is whatever the pin drives. The switching is faster than the load can follow. At 10 kHz your eye sees no flicker, only the average brightness. A motor is heavy and its coils resist fast changes of current, so it feels the average voltage. The robot's motors are switched at 20 kHz, too high to hear, so they do not whine.
 
-## Why not a real analog voltage
-A transistor that is fully on or fully off wastes almost no power. A transistor held halfway turns the rest into heat. That is why motor amplifiers switch.
+## Why not a steady in-between voltage
+A transistor that is fully on or fully off wastes almost no power. Held halfway, it turns the rest into heat. That is why the **motor amplifier**, the circuit that switches battery power to the motors, is driven with PWM.
 
 ## The ePWM peripheral
-You could toggle a pin in software, but tens of thousands of times a second that costs CPU time and jitters. The chip has 12 **ePWM** modules that make the waveform in hardware: you write a period and a compare value into registers, and the pin does the rest. On the robot, EPWM12A is on LED1 (GPIO22), and EPWM1A and EPWM2A go to the motor amplifier.
+Toggling a pin in software with \`DELAY_US\` keeps the CPU from doing anything else. The chip has 12 **ePWM** (enhanced PWM) modules that make the waveform in hardware: you write one number for the period and one for the high time into registers, and the pin does the rest. On the robot, EPWM12A is on LED1 (GPIO22), and EPWM1A and EPWM2A go to the motor amplifier.
 `,
       questions: [
         {
@@ -139,12 +139,12 @@ You could toggle a pin in software, but tens of thousands of times a second that
           prompt: "Why does a motor driven with 20 kHz PWM turn smoothly instead of jerking 20 000 times a second?",
           options: [
             "The amplifier converts the pulses into a steady voltage first",
-            "The motor's inductance and inertia are too slow to follow, so it responds to the average",
+            "The motor is too slow to follow each pulse, so it responds to the average",
             "The pulses are too small to move the motor",
             "The chip synchronises the pulses with the motor's rotation",
           ],
           answer: 1,
-          why: "The load acts as a low-pass filter. As long as the carrier is much faster than the load, only the average matters.",
+          why: "The load smooths the pulses out. Engineers say it acts as a low-pass filter: slow changes pass, fast ones are averaged away. As long as the carrier is much faster than the load, only the average matters.",
         },
       ],
       takeaway: "PWM sets an average by changing the width of pulses that repeat at a fixed frequency.",
@@ -156,10 +156,10 @@ You could toggle a pin in software, but tens of thousands of times a second that
       goal: "Draw the EPWM12A output that a small counter and one compare value produce.",
       refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "15.4.6" }, { trm: "15.5.4" }, { trm: "15.6.5" }],
       brief: `
-An ePWM module builds its waveform from three parts. Read them from the picture, not from a block diagram.
+A **clock** is a signal inside the chip that ticks at a fixed, known rate. A **counter** is a register that adds 1 to itself on every tick, so its value tells how much time has passed. An ePWM module builds its waveform from a counter, in three parts.
 
-1. **Time base.** A 16-bit counter, \`TBCTR\`, counts up one step per clock: 0, 1, 2 ... When it reaches the period register \`TBPRD\`, the next step takes it back to 0. Plotted over time this is a **sawtooth**. One tooth is one PWM period.
-2. **Counter compare.** The module compares the counter with the register \`CMPA\` all the time. The moment they are equal is an event.
+1. **Time base.** A 16-bit counter, \`TBCTR\`, counts 0, 1, 2 ... When it reaches the value in the period register \`TBPRD\`, the next tick takes it back to 0. Plotted over time this is a **sawtooth**. One tooth is one PWM period.
+2. **Counter compare.** The module compares the counter with the value in the register \`CMPA\` all the time. The moment they are equal is an **event**.
 3. **Action qualifier.** For each event you choose what the pin does: nothing, go low, go high, or toggle.
 
 The course's set-up uses two events:
@@ -212,28 +212,30 @@ The pin changes **at** the event, so it is already low during the slot where the
       goal: "Work out TBPRD for a carrier frequency and CMPA for a duty cycle.",
       refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
       brief: `
-## The counter clock
-The ePWM clock is 100 MHz (SYSCLK / 2). The time base divides it by two prescalers in \`TBCTL\`:
+## How fast the counter ticks
+The chip's main clock, **SYSCLK**, ticks 200 million times a second: 200 MHz. The ePWM modules get half of that, 100 MHz. A **clock divider** passes on only every 2nd, 4th ... tick, and the time base has two of them, set in the register \`TBCTL\`:
 
-\`TBCLK = 100 MHz / (HSPCLKDIV x CLKDIV)\`
+\`counter clock = 100 MHz / (HSPCLKDIV x CLKDIV)\`
 
-\`HSPCLKDIV\` is **/2 after reset** and the course never changes it. With \`CLKDIV = 0\` (divide by 1) the counter therefore counts at **50 MHz**: one count every **20 ns**. This is the "50 MHz clock" that Lab 3 and HW2 tell you to remember. Try it in the figure: change the two dividers and see what one count lasts, then pick a frequency and read how many counts a period needs.
+\`HSPCLKDIV\` divides by **2 after reset** and the course never changes it. \`CLKDIV\` divides by 1 after reset. So the counter clock, \`TBCLK\` in the figure, ticks at **50 MHz**. One tick, called a **count**, lasts 1 / 50 000 000 s = **20 ns**. This is the "50 MHz clock" that Lab 3 and HW2 tell you to remember. Try it in the figure: change the two dividers and see how long one count lasts, then pick a frequency and read how many counts a period needs.
 
 {{figure:pwm-clock-tree}}
 
 ## Period
-The counter runs 0, 1, ... TBPRD, which is TBPRD + 1 counts. In up-count mode:
+A period is a number of counts. This chapter drives LED1 at **10 kHz**, a period of 1 / 10 000 s = 100 us:
 
-\`PWM period = (TBPRD + 1) x 20 ns\`
+\`100 us / 20 ns = 5000 counts\` (the same as 50 MHz / 10 kHz)
 
-This chapter drives LED1 at **10 kHz**, a period of 100 us. That is 100 us / 20 ns = 5000 counts. The labs write the round number of counts into \`TBPRD\`, and so will you: \`TBPRD = 5000\`. By the formula of the reference manual that is 5001 counts, one more than intended. The difference is 0.02 %. It is still worth knowing which one is exact.
+The labs write that round number into \`TBPRD\`, and so will you: \`TBPRD = 5000\`. Strictly, the counter runs 0, 1, ... TBPRD, which is TBPRD + 1 = 5001 counts: 0.02 % too long. Nobody sees that on an LED or a motor. The first three answers below let you check it.
 
 Lab 3 asks for 20 kHz and homework 2 for 5 kHz. You work those out the same way.
 
 ## Duty cycle
 With "set at zero, clear at CMPA" the pin is high for CMPA counts:
 
-\`CMPA = duty x TBPRD\` (to within one count)
+\`CMPA = duty x TBPRD\`
+
+For 20 % at \`TBPRD = 5000\`: 0.20 x 5000 = 1000.
 `,
       fields: [
         {
@@ -246,7 +248,7 @@ With "set at zero, clear at CMPA" the pin is high for CMPA counts:
           id: "exact",
           label: "TBPRD that makes the period exactly 5000 counts",
           answer: 4999,
-          why: "The counter needs TBPRD + 1 counts for one period (it also spends one count at 0), so TBPRD = 5000 - 1.",
+          why: "The counter needs TBPRD + 1 counts for one period, because it also spends one count at 0. So TBPRD = 5000 - 1.",
         },
         {
           id: "round",
@@ -270,7 +272,7 @@ With "set at zero, clear at CMPA" the pin is high for CMPA counts:
         },
       ],
       hints: [
-        "Divide the counter clock by the frequency you want: that is the number of counts in one period.",
+        "Divide the counter clock (50 000 000 counts per second) by the frequency you want: that is the number of counts in one period.",
         "One count is 20 ns. 100 us is 5000 of them, 250 us is 12 500.",
         "Exact TBPRD is counts - 1. Frequency is 50 000 000 / (TBPRD + 1). CMPA is duty x TBPRD.",
       ],
@@ -286,10 +288,10 @@ With "set at zero, clear at CMPA" the pin is high for CMPA counts:
 \`TBCTL\` is the time-base control register. After reset it holds \`0x0083\`. Its fields:
 
 - \`CTRMODE\` (bits 1-0), the count mode: 0 = up, 1 = down, 2 = up-down, **3 = freeze**. Reset is 3, so the counter is **stopped** until you change it.
-- \`PHSEN\` (bit 2): 1 loads the counter from \`TBPHS\` on a sync pulse. The course leaves it at 0.
+- \`PHSEN\` (bit 2), phase enable: 1 lets another ePWM module restart this counter, to keep several modules in step. The course leaves it at 0.
 - \`HSPCLKDIV\` (bits 9-7): first clock divider. Reset is 1, which means /2. Leave it.
-- \`CLKDIV\` (bits 12-10): second clock divider, /1 to /128 in powers of two. 0 = /1.
-- \`FREE_SOFT\` (bits 15-14): what the counter does when the debugger halts the CPU. 0 stops it at once, 2 or 3 let it **run free**. A motor amplifier should not be left with its PWM frozen high, so the course sets free run.
+- \`CLKDIV\` (bits 12-10): second clock divider. The field holds a code, not the divisor: 0 = /1, 1 = /2, 2 = /4 ... 7 = /128.
+- \`FREE_SOFT\` (bits 15-14): what the counter does when you pause the program from the PC to look inside it (the tool for that is the **debugger**). 0 stops the counter at once, 2 or 3 let it **run free**. A motor amplifier should not be left with its PWM frozen high, so the course sets free run.
 
 Lab 3 has you write four of them. Set the register for: **count up**, **free run** (use 2), phase loading off, clock divide by 1. Two of those four are already what you want. Do not touch \`HSPCLKDIV\`.
 `,
@@ -301,7 +303,7 @@ Lab 3 has you write four of them. Set the register for: **count up**, **free run
       ],
       code: "EPwm12Regs.TBCTL.bit.CTRMODE = 0;    // count up\nEPwm12Regs.TBCTL.bit.FREE_SOFT = 2;  // free run\nEPwm12Regs.TBCTL.bit.PHSEN = 0;      // already 0 after reset\nEPwm12Regs.TBCTL.bit.CLKDIV = 0;     // already 0 after reset",
       hints: [
-        "Two fields differ from what you need: the count mode and the emulation mode.",
+        "Two fields differ from what you need: the count mode (CTRMODE) and FREE_SOFT.",
         "CTRMODE is 3 (both bits set) after reset. Up-count is 0, so clear bits 1 and 0.",
         "Clear bits 1 and 0, set bit 15. Bit 7 (HSPCLKDIV) stays set. The result is 0x8080.",
       ],
@@ -315,13 +317,13 @@ Lab 3 has you write four of them. Set the register for: **count up**, **free run
       goal: "Set the action qualifier so the pin goes high at zero and low at the compare match.",
       refs: [{ course: "Lab 3" }, { trm: "15.6.2" }, { trm: "15.15.2" }],
       brief: `
-\`AQCTLA\` says what output **A** does at each event of the time base. Every event has a 2-bit field:
+Each ePWM module has two output pins, A and B. \`AQCTLA\` (action qualifier control A) says what output **A** does at each event of the time base. Every event has a 2-bit field:
 
 - \`ZRO\` (bits 1-0): counter = 0
 - \`PRD\` (bits 3-2): counter = TBPRD
 - \`CAU\` (bits 5-4): counter = CMPA while counting **up**
 - \`CAD\` (bits 7-6): counter = CMPA while counting **down**
-- \`CBU\`, \`CBD\` (bits 11-8): the same for CMPB
+- \`CBU\`, \`CBD\` (bits 11-8): the same for \`CMPB\`, a second compare register
 
 The value in a field is the action:
 
@@ -358,12 +360,12 @@ Build the course's setting: **set** the pin when the counter is zero, **clear** 
       goal: "Complete the EPWM12A set-up so LED1 is driven at 10 kHz with a 50 % duty cycle.",
       refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.4" }, { trm: "15.6" }, { trm: "15.2" }],
       brief: `
-This is the pattern of the first exercise of Lab 3, at another carrier frequency. The time-base lines are written. You add the numbers and the pin.
+This is the pattern of the first exercise of Lab 3, at another carrier frequency. The first five lines are the time base from the \`TBCTL\` puzzle, plus one that starts the counter at 0. You add the numbers and the pin.
 
 1. **Period.** 10 kHz from the 50 MHz counter clock. Use the round number of counts, as the labs do.
 2. **Compare.** Start at a 50 % duty cycle.
-3. **Action qualifier.** Set the pin when the counter is zero, clear it when the counter reaches \`CMPA\`.
-4. **Pin mux.** GPIO22 is a plain GPIO until you say otherwise. In the pin mux table, EPWM12A is index **5** for GPIO22:
+3. **Action qualifier.** Two lines, as in the \`AQCTLA\` puzzle: set the pin when the counter is zero, clear it when the counter reaches \`CMPA\`.
+4. **Pin mux.** GPIO22 is a plain GPIO (mux position 0) until you say otherwise. The course's pin mux table lists what each position of each pin carries. For GPIO22, EPWM12A is position **5**:
 \`\`\`c
 GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5);
 \`\`\`
@@ -394,7 +396,7 @@ ${INIT}
 
     // 3. Action qualifier: set at zero, clear at CMPA
 
-    EPwm12Regs.TBPHS.bit.TBPHS = 0;
+    EPwm12Regs.TBPHS.bit.TBPHS = 0;      // phase: not used
 
     // 4. Pin mux: GPIO22 must become EPWM12A
     GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
@@ -427,7 +429,7 @@ ${INIT}
     EPwm12Regs.AQCTLA.bit.CAU = 1;
     EPwm12Regs.AQCTLA.bit.ZRO = 2;
 
-    EPwm12Regs.TBPHS.bit.TBPHS = 0;
+    EPwm12Regs.TBPHS.bit.TBPHS = 0;      // phase: not used
 
     // 4. Pin mux: GPIO22 must become EPWM12A
     GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5);
@@ -440,19 +442,87 @@ ${INIT}
 }
 `,
       checks: [
-        { kind: "blink", led: "LED1", periodMs: 0.1, tolPct: 1, label: "LED1 switches at 10 kHz", hint: "50 MHz / 10 kHz counts go into TBPRD. If nothing switches at all, check the action qualifier and the pin mux." },
-        { kind: "duty", led: "LED1", pct: 50, tolPct: 1, from: 1, label: "LED1 is on half of the time", hint: "CMPA is the number of counts the pin stays high: half of TBPRD." },
-        { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "ZRO", equals: 2, label: "The pin is set when the counter is zero" },
-        { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "CAU", equals: 1, label: "The pin is cleared at the compare match" },
-        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM12A is connected to its pin" },
+        { kind: "reg", reg: "EPwm12Regs.TBPRD", equals: 5000, label: "TBPRD holds the counts of one 10 kHz period", hint: "The counter clock is 50 MHz, not 100 MHz: 50 000 000 / 10 000 counts." },
+        { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "ZRO", equals: 2, label: "The pin is set when the counter is zero", hint: "Add EPwm12Regs.AQCTLA.bit.ZRO = 2; The action codes are 2 for set (high) and 1 for clear (low)." },
+        { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "CAU", equals: 1, label: "The pin is cleared at the compare match", hint: "Add EPwm12Regs.AQCTLA.bit.CAU = 1; If you swapped 1 and 2, LED1 is dark when it should be lit." },
+        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM12A is connected to its pin", hint: "The last argument of GPIO_SetupPinMux is still 0, plain GPIO. EPWM12A is position 5." },
+        { kind: "duty", led: "LED1", pct: 50, tolPct: 1, from: 1, label: "LED1 is on half of the time", hint: "CMPA is a number of counts, not a percentage: half of TBPRD. If LED1 is on 0 % or 100 % of the time, fix the checks above first." },
+        { kind: "blink", led: "LED1", periodMs: 0.1, tolPct: 1, label: "LED1 switches at 10 kHz", hint: "This is measured from the time between changes, so it only comes out right once the duty cycle is 50 %. Fix the checks above first." },
       ],
       inspect: ["EPwm12Regs.TBCTL", "EPwm12Regs.TBPRD", "EPwm12Regs.CMPA", "EPwm12Regs.AQCTLA"],
       hints: [
-        "Four things are missing or wrong: TBPRD, CMPA, two AQCTLA lines, and the mux index.",
-        "TBPRD = 5000 and CMPA = 2500. The action values are 2 for set and 1 for clear.",
+        "Four things are missing or wrong: TBPRD, CMPA, two AQCTLA lines, and the mux position. Run after each one and watch which check turns green.",
+        "TBPRD is 50 MHz / 10 kHz counts and CMPA is half of that. The action values are 2 for set and 1 for clear.",
         "EPwm12Regs.AQCTLA.bit.CAU = 1; EPwm12Regs.AQCTLA.bit.ZRO = 2; and GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5);",
       ],
       takeaway: "Period in TBPRD, duty in CMPA, actions in AQCTLA, and the pin mux. Leave one out and the pin stays still.",
+    },
+    {
+      id: "pwm-own",
+      kind: "code",
+      mode: "write",
+      title: "The whole set-up, from nothing",
+      goal: "Write every line of an EPWM12A set-up yourself: LED1 at 4 kHz with a 30 % duty cycle.",
+      refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.4" }, { trm: "15.6" }, { trm: "15.2" }],
+      brief: `
+In the lab nobody hands you the time-base lines. Write the whole set-up once, with new numbers: LED1 at **4 kHz**, on **30 %** of the time.
+
+Every register belongs to \`EPwm12Regs\`. This is the list to work through, and each step is something you have done in this chapter:
+
+1. \`TBCTL\`, four fields: \`CTRMODE\` count up, \`FREE_SOFT\` free run (2), \`PHSEN\` off, \`CLKDIV\` divide by 1.
+2. \`TBCTR = 0\`: start counting from zero.
+3. \`TBPRD\`: the counts of one 4 kHz period, at 20 ns per count. You worked this number out two levels ago.
+4. \`CMPA.bit.CMPA\`: 30 % of \`TBPRD\`.
+5. \`AQCTLA\`: set at zero (\`ZRO\`), clear at the compare match (\`CAU\`).
+6. \`TBPHS.bit.TBPHS = 0\`.
+7. The pin: mux position 5 for GPIO22, and its pull-up off (\`GPAPUD\`, between \`EALLOW;\` and \`EDIS;\`).
+
+Two spellings to watch: \`TBCTR\` and \`TBPRD\` are written directly (\`EPwm12Regs.TBPRD = ...\`), the others through \`.bit\`.
+
+Run often. The checks are in the order of the list, so the first red one is the next thing to fix.
+`,
+      kit: "robot",
+      durationMs: 20,
+      inspect: ["EPwm12Regs.TBCTL", "EPwm12Regs.TBPRD", "EPwm12Regs.CMPA", "EPwm12Regs.AQCTLA"],
+      starter: `void main(void)
+{
+${INIT}
+
+    // EPWM12A on LED1: 4 kHz, 30 %
+
+    while (1) {
+    }
+}
+`,
+      solution: `void main(void)
+{
+${INIT}
+
+${PWM12(12500, 3750, "4 kHz, 30 %")}
+${MUX12}
+
+    while (1) {
+    }
+}
+`,
+      checks: [
+        { kind: "reg", reg: "EPwm12Regs.TBCTL", field: "CTRMODE", equals: 0, label: "1. The counter counts up", hint: "After reset CTRMODE is 3, frozen. EPwm12Regs.TBCTL.bit.CTRMODE = 0; starts it." },
+        { kind: "reg", reg: "EPwm12Regs.TBCTL", field: "FREE_SOFT", equals: 2, label: "1. The counter runs free at a debugger halt", hint: "EPwm12Regs.TBCTL.bit.FREE_SOFT = 2;" },
+        { kind: "reg", reg: "EPwm12Regs.TBCTL", field: "CLKDIV", equals: 0, label: "1. The counter clock is 50 MHz" },
+        { kind: "reg", reg: "EPwm12Regs.TBPRD", equals: 12500, label: "3. TBPRD holds the counts of one 4 kHz period", hint: "50 000 000 counts per second / 4000 periods per second." },
+        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", equals: 3750, label: "4. CMPA is 30 % of TBPRD", hint: "CMPA is in counts: 0.30 x 12500. Write the whole number, not 0.3 and not 30." },
+        { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "ZRO", equals: 2, label: "5. The pin is set when the counter is zero", hint: "EPwm12Regs.AQCTLA.bit.ZRO = 2; (2 is set, 1 is clear)" },
+        { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "CAU", equals: 1, label: "5. The pin is cleared at the compare match", hint: "EPwm12Regs.AQCTLA.bit.CAU = 1; (2 is set, 1 is clear)" },
+        { kind: "no-diagnostic", code: "pwm-mux", label: "7. EPWM12A is connected to GPIO22", hint: "GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5);" },
+        { kind: "reg", reg: "GpioCtrlRegs.GPAPUD", field: "GPIO22", equals: 1, label: "7. The pull-up of GPIO22 is off", hint: "EALLOW; GpioCtrlRegs.GPAPUD.bit.GPIO22 = 1; EDIS;" },
+        { kind: "duty", led: "LED1", pct: 30, tolPct: 1, from: 1, label: "LED1 is on 30 % of the time", hint: "Fix the first red check above: this one follows from them. If the counter is frozen or no pin is connected, LED1 stays dark." },
+      ],
+      hints: [
+        "Open the level Half brightness next to this one: the lines are the same, only two numbers change.",
+        "TBPRD = 12500 (50 MHz / 4 kHz) and CMPA = 3750 (0.30 x 12500).",
+        "CTRMODE = 0; FREE_SOFT = 2; PHSEN = 0; CLKDIV = 0; TBCTR = 0; TBPRD = 12500; CMPA.bit.CMPA = 3750; AQCTLA.bit.CAU = 1; AQCTLA.bit.ZRO = 2; TBPHS.bit.TBPHS = 0; then GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5); and the GPAPUD line.",
+      ],
+      takeaway: "Ten register lines and one mux line: that is every PWM set-up in the labs. Only the module number, the two numbers and the pin change.",
     },
     {
       id: "pwm-ramp",
@@ -462,23 +532,24 @@ ${INIT}
       goal: "Ramp the brightness of LED1 up and down by changing CMPA a little every millisecond.",
       refs: [{ course: "Lab 3" }, { course: "HW2" }, { trm: "15.5" }],
       brief: `
-Brightness is \`CMPA\`. Change \`CMPA\` a little at a time and LED1 fades.
+Brightness is \`CMPA\`. Change \`CMPA\` a little at a time and LED1 fades. The PWM set-up is the one you wrote in the last level, now at 10 kHz (\`TBPRD = 5000\`).
 
 The \`while (1)\` loop is given: it waits 1 ms with \`DELAY_US(1000)\` and then runs your code. Once per pass:
 
 - While going up, raise \`CMPA\`. When it reaches the value in \`TBPRD\`, switch to going down.
 - While going down, lower \`CMPA\`. When it reaches 0, switch to going up.
 
-Keep the direction in the global \`int16_t updown\`: 1 means up, 0 means down. Change \`CMPA\` by **50** per pass, so one ramp takes 100 ms.
+Keep the direction in the global \`int16_t updown\`: 1 means up, 0 means down. Change \`CMPA\` by **50** per pass: 5000 / 50 = 100 passes, so one ramp takes 100 ms.
 
-The set-up is written. \`CMPA\` starts at 0 and \`updown\` at 1.
+\`CMPA\` starts at 0 and \`updown\` at 1.
 
-You can read the register the same way you write it:
+You can read a register the same way you write it:
 \`\`\`c
-if (EPwm12Regs.CMPA.bit.CMPA == EPwm12Regs.TBPRD) {
+EPwm12Regs.CMPA.bit.CMPA = EPwm12Regs.CMPA.bit.CMPA + 50;   // 50 more than now
+if (EPwm12Regs.CMPA.bit.CMPA == EPwm12Regs.TBPRD) {         // at the top?
 \`\`\`
 
-Lab 3 and HW2 ask for the same fade with a step of 1, inside the interrupt function of a CPU timer instead of a loop with a delay. You will move it there once you have done the interrupts chapter: the body stays the same.
+Lab 3 and HW2 ask for the same fade with a step of 1, in a function that a timer calls (chapters 4 and 5) instead of a loop with a delay. The body stays the same.
 `,
       kit: "robot",
       durationMs: 232,
@@ -529,12 +600,12 @@ ${MUX12}
 `,
       checks: [
         { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 20.5, equals: 1000, label: "After 20 ms CMPA is 1000", hint: "Add 50 to CMPA on every pass while updown is 1." },
-        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 80.5, equals: 4000, label: "After 80 ms CMPA is 4000" },
+        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 80.5, equals: 4000, label: "After 80 ms CMPA is 4000", hint: "The step is 50 per pass. If CMPA is far too small, check the step. If it is 0, check that you add inside the while loop, after DELAY_US." },
         { kind: "duty", led: "LED1", pct: 98, tolPct: 2.5, from: 98, to: 102, label: "LED1 is brightest around 100 ms" },
         { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 140.5, equals: 3000, label: "After 140 ms CMPA is back down to 3000", hint: "When CMPA equals TBPRD, set updown to 0 and start subtracting." },
         { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 180.5, equals: 1000, label: "After 180 ms CMPA is 1000" },
         { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 220.5, equals: 1000, label: "After 220 ms CMPA is rising again", hint: "When CMPA is 0, set updown back to 1. Without that, CMPA wraps below zero to 65486." },
-        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD" },
+        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD", hint: "The ramp ran past an end. Going up, test for CMPA == TBPRD right after adding. Going down, test for CMPA == 0 right after subtracting." },
       ],
       hints: [
         "An if on updown with two branches: one adds 50, the other subtracts 50.",
@@ -542,7 +613,7 @@ ${MUX12}
         "if (updown == 1) { CMPA = CMPA + 50; if (CMPA == TBPRD) updown = 0; } else { CMPA = CMPA - 50; if (CMPA == 0) updown = 1; } with the full register names.",
       ],
       takeaway:
-        "The PWM runs by itself. Your code only writes a new compare value now and then. A new CMPA is held in a shadow register and used from the next period on, so the pulse in progress is never cut.",
+        "The PWM runs by itself. Your code only writes a new compare value now and then. A new CMPA waits in a holding copy, the shadow register, and is used from the next period on, so the pulse in progress is never cut.",
     },
     {
       id: "pwm-debug-mux",
@@ -554,14 +625,14 @@ ${MUX12}
       brief: `
 A lab partner set up EPWM12A for 75 % brightness. The registers look right in the debugger, the counter runs, and LED1 is dark.
 
-A PWM module and its pin are two separate things. The module makes the waveform. The **pin mux** decides which signal a pin carries, and every pin offers several. The index is different for every pin, so a line copied from another PWM is usually wrong:
+A PWM module and its pin are two separate things. The module makes the waveform. The **pin mux** decides which signal a pin carries, and every pin offers several. The position is different for every pin, so a line copied from another PWM is usually wrong:
 
-- GPIO0 carries EPWM1A at index 1.
-- GPIO22 carries EPWM12A at index 5. At index 1 it is an encoder input (EQEP1S).
+- GPIO0 carries EPWM1A at position 1.
+- GPIO22 carries EPWM12A at position 5. At position 1 it belongs to a different peripheral (EQEP1S, an input of the encoder counter in chapter 11).
 
 The course's pin mux table is where you look these up.
 
-Run the code, read the message, and fix the line.
+Run the code and read the message under the editor. Then fix the line.
 `,
       kit: "robot",
       durationMs: 10,
@@ -600,14 +671,14 @@ ${PWM12(5000, 3750, "10 kHz, 75 %")}
 `,
       checks: [
         { kind: "duty", led: "LED1", pct: 75, tolPct: 1, from: 1, label: "LED1 is on 75 % of the time", hint: "The PWM registers are right. Look at what GPIO22 is connected to." },
-        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM12A is connected to its pin" },
+        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM12A is connected to its pin", hint: "GPIO22 is at mux position 1, which is not EPWM12A. The position is the last argument of GPIO_SetupPinMux." },
       ],
       hints: [
         "The module is producing a waveform. The question is whether GPIO22 is listening to it.",
-        "The third argument of GPIO_SetupPinMux is the mux index. For EPWM12A on GPIO22 the table says 5.",
+        "The third argument of GPIO_SetupPinMux is the mux position. For EPWM12A on GPIO22 the table says 5.",
         "Change the line to GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 5);",
       ],
-      takeaway: "When a peripheral's registers look right and the pin does nothing, check the pin mux. The index belongs to the pin, not to the peripheral.",
+      takeaway: "When a peripheral's registers look right and the pin does nothing, check the pin mux. The position number belongs to the pin, not to the peripheral.",
     },
     {
       id: "pwm-checkpoint",
@@ -623,7 +694,7 @@ The \`while (1)\` loop is given: it waits **10 ms** and then runs your code. Onc
 
 - While **PB1** (GPIO157) is held, raise \`CMPA\` of EPWM12 by **100**.
 - While **PB2** (GPIO158) is held, lower it by **100**.
-- Never let \`CMPA\` go above \`TBPRD\` or below 0. \`CMPA\` is unsigned: 0 minus 100 is 65436, far above the period. Check **before** you subtract.
+- Never let \`CMPA\` go above \`TBPRD\` or below 0. \`CMPA\` is unsigned (chapter 0): it has no negative values, so 0 minus 100 wraps around to 65436, far above the period. A test such as \`CMPA < 0\` is never true. Check **before** you change it: add only while \`CMPA <= TBPRD - 100\`, subtract only while \`CMPA >= 100\`.
 
 A pressed button reads 0. Both buttons are on port E: \`GpioDataRegs.GPEDAT.bit.GPIO157\`.
 
@@ -685,20 +756,20 @@ ${BUTTONS}
 }
 `,
       checks: [
-        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 300, equals: 2500, label: "PB1 held for 250 ms: CMPA is 2500", hint: "25 passes with PB1 pressed, 100 counts each." },
+        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 300, equals: 2500, label: "PB1 held for 250 ms: CMPA is 2500", hint: "25 passes with PB1 pressed, 100 counts each. If CMPA stays 0, check the button test: a pressed button reads 0, and PB1 is GpioDataRegs.GPEDAT.bit.GPIO157." },
         { kind: "duty", led: "LED1", pct: 50, tolPct: 1, from: 270, to: 300, label: "LED1 is at half brightness" },
         { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 900, equals: 5000, label: "PB1 held longer: CMPA stops at TBPRD", hint: "Only add 100 while CMPA is at most TBPRD - 100." },
         { kind: "duty", led: "LED1", pct: 100, tolPct: 1, from: 700, to: 900, label: "LED1 is fully on" },
-        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 1300, equals: 2100, label: "PB2 held for 290 ms: CMPA is 2100" },
+        { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 1300, equals: 2100, label: "PB2 held for 290 ms: CMPA is 2100", hint: "PB2 is GPIO158, also in GPEDAT. 29 passes of 100 down from 5000." },
         { kind: "reg", reg: "EPwm12Regs.CMPA", field: "CMPA", at: 1690, equals: 0, label: "PB2 held longer: CMPA stops at 0", hint: "CMPA is unsigned. Subtract only while CMPA is at least 100." },
-        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD" },
+        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD", hint: "A limit is missing or is tested too late. Test before you add or subtract, not after." },
       ],
       hints: [
         "Two separate ifs, one per button. Inside each, a second if guards the limit.",
         "Up: only if CMPA <= TBPRD - 100. Down: only if CMPA >= 100.",
         "if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) { if (EPwm12Regs.CMPA.bit.CMPA <= EPwm12Regs.TBPRD - 100) { ... + 100; } } and the mirror image for GPIO158.",
       ],
-      takeaway: "Saturate before you write to a compare register. An unsigned value that wraps does not become a small negative number: it becomes a huge one.",
+      takeaway: "Limit a value before you write it to a compare register. Stopping at a limit is called saturating. An unsigned value that wraps does not become a small negative number: it becomes a huge one.",
     },
 
     // ---------------------------------------------------------------- practice
@@ -715,7 +786,7 @@ ${BUTTONS}
 
 - **Up** (0): a sawtooth, 0 up to TBPRD, then back to 0. Period = (TBPRD + 1) counts. This is what the course uses.
 - **Down** (1): the mirror image, TBPRD down to 0. Same period.
-- **Up-down** (2): a **triangle**, 0 up to TBPRD and back down to 0. Period = **2 x TBPRD** counts. With a set on the way up and a clear on the way down, the pulse is centred in the period, which motor drives like.
+- **Up-down** (2): a **triangle**, 0 up to TBPRD and back down to 0. Period = **2 x TBPRD** counts. With a set on the way up and a clear on the way down, the pulse is centred in the period.
 - **Freeze** (3): stopped. The reset state.
 
 Try it in the figure: switch the count to up-down and see the triangle, the doubled period and the centred pulse.
@@ -723,7 +794,7 @@ Try it in the figure: switch the count to up-down and see the triangle, the doub
 {{figure:pwm-waveform}}
 
 ## Resolution
-The compare value is a whole number of counts, so a period of N counts gives N + 1 duty cycles from 0 to 100 %. A faster carrier means fewer counts per period and coarser steps. You trade frequency for resolution, because their product is fixed by the counter clock:
+**Resolution** is the smallest step you can set. The compare value is a whole number of counts, so a period of N counts gives N + 1 duty cycles from 0 to 100 %: with 5000 counts one step is 1 / 5000 = 0.02 %. A faster carrier means fewer counts per period and coarser steps. You trade frequency for resolution, because their product is fixed by the counter clock:
 
 \`counts per period = 50 MHz / carrier frequency\` (up-count)
 
@@ -787,7 +858,7 @@ This code should drive LED1 at **2 kHz** with a brightness of **25 %**, and 10 m
 
 1. **The clock divider.** \`CLKDIV\` is a code, not a number to divide by: 0 is /1, 1 is /2, 2 is /4. Read the comment and then the value.
 2. **The actions.** Set and clear are easy to swap. Draw the waveform the two lines produce and compare it with the one you want.
-3. **A float in an integer register.** Lab 3 warns about this: C cuts the fraction off when a \`float\` is assigned to an integer, it does not round. \`CMPA\` holds counts, not a fraction.
+3. **A float in an integer register.** Lab 3 warns about this: C cuts the fraction off when a \`float\` is assigned to an integer, it does not round. 0.25 becomes 0. \`CMPA\` holds counts, not a fraction.
 
 Fix all three. \`set_brightness\` must work for any brightness from 0.0 to 1.0: compute the compare value from its argument and from \`TBPRD\`.
 `,
@@ -884,7 +955,7 @@ void set_brightness(float brightness)
       goal: "Use EPWM5 with no pin at all as a 1 kHz interrupt source, through its event trigger and the PIE.",
       refs: [{ course: "HW2" }, { trm: "15.10" }, { trm: "15.10.1" }, { trm: "3.4.5" }, { trm: "15.4.3" }],
       brief: `
-This level needs the interrupts chapter. An ePWM time base is a timer, whether or not a pin is attached. HW2 uses one this way to tell the ADC when to sample. The part that turns time-base events into pulses is the **event trigger**:
+**This level needs chapter 5 (interrupts).** An ePWM time base is a timer, whether or not a pin is attached. HW2 uses one this way to tell the ADC (chapter 8) when to measure. The part that turns time-base events into pulses is the **event trigger**:
 
 - \`ETSEL\` selects the event and enables each output. For the interrupt: \`INTSEL\` (1 = counter is zero, 2 = counter equals TBPRD) and \`INTEN\`. The ADC triggers have their own fields, \`SOCASEL\` and \`SOCAEN\`.
 - \`ETPS\` is a prescaler: \`INTPRD\` = 1 passes every event, 2 every second, 3 every third. **0 passes none**, and 0 is the reset value.
@@ -897,7 +968,7 @@ No CPU timer is used in this level.
 
 - Make EPWM5 count up with a period of **1 ms**.
 - Make it interrupt on every period, in a function \`epwm5_isr\`.
-- In \`epwm5_isr\`: count the call in \`ticks\`, and toggle LED2 (GPIO94) on every 50th call.
+- In \`epwm5_isr\`: count the call in \`ticks\`, and toggle LED2 (GPIO94) on every 50th call. \`ticks % 50\` is the remainder of \`ticks / 50\`: it is 0 on every 50th call.
 
 LED2 then blinks with a period of 100 ms.
 `,
@@ -997,7 +1068,7 @@ __interrupt void epwm5_isr(void)
       goal: "Make a centred, complementary pair on EPWM6A and EPWM6B with a gap between them, using up-down count, CMPA and CMPB.",
       refs: [{ course: "L6-7" }, { trm: "15.4.6" }, { trm: "15.6.3" }, { trm: "15.6.5" }, { trm: "15.5.4" }],
       brief: `
-A half bridge has a high-side and a low-side transistor. If both conduct at once, even for a moment, they short the supply. So the two drive signals must be opposite **with a gap** in which both are off: the **dead time**. The ePWM has a dead-band unit for this. Here you do it by hand, which shows what the unit does.
+A half bridge is two transistors in a row between the battery and ground, with the load connected between them: the high-side one switches the load to the battery, the low-side one to ground. If both conduct at once, even for a moment, they connect the battery straight to ground, a short circuit. So the two drive signals must be opposite **with a gap** in which both are off: the **dead time**. The ePWM has a dead-band unit for this. Here you do it by hand, which shows what the unit does.
 
 ## The triangle
 In **up-down** mode the counter is a triangle: 0 up to TBPRD, back down to 0. One period is 2 x TBPRD counts. Each compare value is crossed twice, once going up (\`CAU\`, \`CBU\`) and once going down (\`CAD\`, \`CBD\`). One module has two outputs, A and B. They share the counter and the period, and \`AQCTLA\` and \`AQCTLB\` can each use either compare register.
@@ -1113,7 +1184,7 @@ void set_duty(float d)
       brief: `
 \`start_signal()\` puts a PWM signal on GPIO22. You do not know its numbers, they change while **PB1** is held, and you may not read them out of the ePWM registers. Measure the signal the way an instrument does: from the pin.
 
-The given part uses an interrupt (interrupts chapter). You do not have to touch it.
+**This level needs chapter 4 (CPU timers).** The given part also uses an interrupt (chapter 5). You do not have to touch it.
 
 ## Tools
 - The pin level, also while the pin belongs to a peripheral: \`GpioDataRegs.GPADAT.bit.GPIO22\`.

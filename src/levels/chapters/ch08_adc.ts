@@ -129,7 +129,7 @@ ${force}
         adca4result = AdcaResultRegs.ADCRESULT0;
 ${volts}
 
-        AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+        AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;   // clear the flag: write 1
         numSamples++;
         DELAY_US(1000);                    // one sample per millisecond
     }
@@ -173,6 +173,11 @@ ${adcPower("c")}
 
     while (1) {}
 }`;
+
+const GYRO_GLOBALS_VOLT = `__interrupt void ADCC_ISR(void);
+
+float adcC5Volt = 0;           // gyro voltage, V
+int32_t numADCCcalls = 0;`;
 
 const GYRO_GLOBALS = `__interrupt void ADCC_ISR(void);
 
@@ -233,29 +238,29 @@ export const ch08: Chapter = {
       goal: "Learn what the ADC measures, what a sample is and what 12 bits give you.",
       refs: [{ course: "L5" }, { course: "HW2" }, { trm: "11.1" }, { trm: "11.4.5" }],
       brief: `
-The **ADC** (analog-to-digital converter) measures the voltage on a pin and gives you a number. It is how the robot reads every sensor that outputs a voltage: a light sensor, a joystick, the rate gyro.
+A digital input only tells high from low. An **analog** signal is a voltage that can take any value in a range, and its exact value is the information. The **ADC** (analog-to-digital converter) measures the voltage on a pin and gives you a number. It is how the robot reads a light sensor, a joystick or its turn-rate sensor.
 
 ## A voltage on a pin
-A sensor is a circuit whose output voltage follows something physical. The homework board's photoresistor circuit gives a low voltage in the dark and a higher one in bright light. A wire carries that voltage to the pin **ADCINA4**. At every instant the pin has one voltage, somewhere between 0 V and 3 V.
+A **photoresistor** is a resistor whose resistance changes with light. In a voltage divider on the homework board it gives a low voltage in the dark and a higher one in bright light. A wire carries that voltage to the pin **ADCINA4**.
+
+The ADC compares the pin with a fixed **reference voltage**, 3.0 V on this board. That is the top of its range: it measures from 0 V to 3.0 V, not to 3.3 V.
 
 ## Sampling
-The CPU works with numbers, one at a time. So the ADC takes a **sample**: a snapshot of the voltage at one instant. A tiny capacitor is connected to the pin until it has charged to the pin's voltage, then it is disconnected. The capacitor **holds** that voltage still while it is measured, even if the pin moves on. This is called sample-and-hold.
-
-One sample tells you the voltage at one instant. To follow a changing signal you sample again and again at a steady rate, for example every millisecond.
+The ADC takes a **sample**: a snapshot of the voltage at one instant. A tiny capacitor is connected to the pin until it has charged to the pin's voltage, then it is disconnected. The capacitor **holds** that voltage still while it is measured, even if the pin moves on. This is called **sample-and-hold**. To follow a changing signal you sample again and again at a steady rate.
 
 ## What 12 bits give you
-The measurement is a 12-bit number, 0 to 4095. The range 0 V to 3.0 V is cut into 2^12 = 4096 equal steps of 3.0 V / 4096 = **0.73 mV**, and the number says which step the voltage is in:
+The measurement is a 12-bit number, 0 to 4095. The range 0 V to 3.0 V is cut into 2^12 = 4096 equal steps of 3.0 V / 4096 = **0.732 mV**. The number of bits, and the step size it gives, is the ADC's **resolution**: the smallest change it can tell apart. The number says which step the voltage is in:
 
 \`\`\`c
 ADCRESULT = 4096 * Vin / 3.0       // fraction dropped, limited to 0 ... 4095
 volts = ADCRESULT * 3.0 / 4096.0;  // and back to volts, in your code
 \`\`\`
 
-So 0 V gives 0, 1.5 V gives 2048, and anything from 2.99927 V up gives 4095. Turning a smooth value into a step number is called **quantisation**. The dropped fraction is gone: with 12 bits you cannot see a change smaller than 0.73 mV.
+So 0 V gives 0, 1.5 V gives 4096 x 1.5 / 3.0 = 2048, and anything from 2.99927 V up gives 4095. Turning a smooth value into a step number is called **quantisation**. The dropped fraction is gone.
 
 {{figure:quantise}}
 
-Try it in the figure: move the pin voltage and watch which step it lands on and how much is lost. With 3 or 4 bits the steps are easy to see.
+Try it in the figure: move the pin voltage and watch which step it lands on and how much is lost. Start with 3 or 4 bits.
 `,
       questions: [
         {
@@ -287,7 +292,7 @@ Try it in the figure: move the pin voltage and watch which step it lands on and 
           why: "The result is a whole step number. A change smaller than one step only shows if it happens to cross a step boundary.",
         },
       ],
-      takeaway: "Sample, hold, quantise. ADCRESULT = 4096 x Vin / 3.0 with the fraction dropped: 4096 steps of 0.73 mV from 0 V to 3.0 V.",
+      takeaway: "Sample, hold, quantise. ADCRESULT = 4096 x Vin / 3.0 with the fraction dropped: 4096 steps of 0.732 mV from 0 V to the 3.0 V reference.",
     },
     {
       id: "adc-sar",
@@ -296,9 +301,9 @@ Try it in the figure: move the pin voltage and watch which step it lands on and 
       goal: "Find the 8-bit result for 1.2 V the way the converter does: one bit at a time, from the top.",
       refs: [{ course: "L5" }, { trm: "11.14" }, { trm: "11.1" }],
       brief: `
-How does the converter find the number for the voltage it is holding? Inside it are a small **DAC**, which makes a voltage from a number, and a **comparator**, a circuit that only says which of two voltages is higher. With them it plays a guessing game called **successive approximation** (SAR). It is a binary search.
+How does the converter find the number for the voltage it is holding? Inside it are a small **DAC**, which makes a voltage from a number, and a **comparator**, a circuit that only says which of two voltages is higher. With them it plays a guessing game called **successive approximation** (SAR). It is a **binary search**: the way you find a number between 1 and 100 by always asking "is it at least the middle?". Every answer throws away half of what was left.
 
-In the DAC every bit is worth half of the bit above it. With a 3.0 V reference the top bit is worth 1.5 V, the next 0.75 V, then 0.375 V, and so on.
+In the DAC every bit is worth half of the bit above it. With the 3.0 V reference the top bit is worth 1.5 V, the next 0.75 V, then 0.375 V, and so on.
 
 For each bit, starting with the top one:
 
@@ -310,7 +315,7 @@ Each step halves the range the voltage can still be in. One bit per step, so 12 
 
 {{figure:sar-search}}
 
-Step through the 4-bit search in the figure first, and change the held voltage to see the answers change.
+Step through the 4-bit search in the figure first with **Next**, and change the held voltage to see the answers change.
 
 ## Your turn
 This small converter has **8 bits**. The held voltage is **1.2 V**. The first two steps:
@@ -345,7 +350,7 @@ Add the bit you are trying to what you have **kept** so far. Set all eight bits.
         "Bit 4: 1.125 + 0.1875 = 1.3125 V, too high. Bit 3: 1.125 + 0.09375 = 1.21875 V, too high. Bit 2: 1.171875 V fits.",
         "The result is 0110 0110. You can check it with 256 x 1.2 / 3.0 = 102.4.",
       ],
-      takeaway: "Successive approximation is a binary search with a DAC and a comparator: one step per bit, most significant bit first. The bits are worth 1/2, 1/4, 1/8 ... of the reference, which is where the 4096 in the formula comes from.",
+      takeaway: "Successive approximation is a binary search with a DAC and a comparator: one step per bit, top bit first. The bits are worth 1/2, 1/4, 1/8 ... of the reference, which is where the 4096 in the formula comes from.",
     },
     {
       id: "adc-soc",
@@ -355,12 +360,12 @@ Add the bit you are trying to what you have **kept** so far. Set all eight bits.
       refs: [{ course: "L5" }, { course: "HW2" }, { trm: "11.5" }, { trm: "11.5.1" }, { trm: "11.9" }],
       brief: `
 ## One converter, many pins
-The chip has four ADCs: ADCA, ADCB, ADCC and ADCD. Each is **one converter** with several input pins in front of it and a switch (the multiplexer) that connects **one** pin at a time. ADCA has the pins ADCINA0 to ADCINA5 on the course board.
+The chip has four ADCs: ADCA, ADCB, ADCC and ADCD. Each is **one converter** with several input pins in front of it and a selector switch (a multiplexer) that connects **one** pin at a time. ADCA has the pins ADCINA0 to ADCINA5.
 
-So every conversion needs three answers: **when** to convert, **which pin**, and **for how long** to sample. You give them ahead of time by filling in a **SOC**.
+So every conversion needs three answers: **when** to convert, **which pin**, and **for how long** to sample.
 
 ## A SOC is a slot
-A SOC ("start of conversion") is a **configuration slot**: one line of a to-do list. Each ADC has 16 of them, SOC0 to SOC15. Each holds three settings:
+A SOC ("start of conversion") is a **configuration slot** that holds those answers: one line of a to-do list. Each ADC has 16 of them, SOC0 to SOC15, each with three settings:
 
 - \`TRIGSEL\`: **when**. Which trigger starts it.
 - \`CHSEL\`: **which pin**. The channel number, 4 for ADCINA4.
@@ -369,21 +374,19 @@ A SOC ("start of conversion") is a **configuration slot**: one line of a to-do l
 ## The chain
 {{figure:adc-chain}}
 
-Step through the figure. It shows the lecture's example: the photoresistor on ADCINA4, SOC0, and EPWM4 as the trigger.
+Step through the figure with **Next**. It shows the example this chapter builds: the photoresistor on ADCINA4, SOC0, and EPWM5 as the trigger. An **ePWM** is a peripheral built around a counter that runs round and round. The PWM chapter uses it to make motor signals. Here it is only a steady clock.
 
-1. **The trigger** says "now". A counter inside EPWM4 sends a pulse called SOCA at a steady rate. 
+1. **The trigger** says "now". EPWM5's counter sends a pulse called SOCA once per round.
 2. **SOC0** listens for that pulse (\`TRIGSEL\`) and names the pin (\`CHSEL\`) and the sample time (\`ACQPS\`).
 3. **The converter** connects to that pin, samples, holds and works out the 12-bit number.
 4. **The result** goes to \`AdcaResultRegs.ADCRESULT0\`. The result register has the **number of the SOC**, whatever pin it measured.
-5. **The interrupt.** \`ADCINTSEL1N2.INT1SEL\` chooses **which SOC's end** sets the flag ADCINT1. The flag reaches the PIE as interrupt **ADCA1** (INT1.1), and the CPU runs your function.
+5. **The interrupt.** \`ADCINTSEL1N2.INT1SEL\` chooses **which SOC's end** sets the flag ADCINT1, and \`INT1E = 1\` switches that flag on. It reaches the PIE as interrupt **ADCA1** (INT1.1), and the CPU runs your function.
 
 ## Keep apart
 - **A SOC is not a converter.** All 16 SOCs of ADCA share the one converter and take turns.
 - **The SOC number is not the pin number.** SOC0 can measure ADCINA4.
-- **The trigger only says when.** EPWM4 measures nothing and knows no pins.
+- **The trigger only says when.** EPWM5 measures nothing and knows no pins.
 - "SOCA" is a pulse an ePWM **sends**. "SOC0" is a slot that **listens**. \`TRIGSEL\` connects them.
-
-The code levels that follow use another trigger (EPWM5) and another rate than homework 2. The pattern is the same, the numbers are yours to look up.
 `,
       questions: [
         {
@@ -434,11 +437,11 @@ The code levels that follow use another trigger (EPWM5) and another rate than ho
 Before an ePWM gets involved, pull the trigger yourself. It is the same chain with a different first link, and it shows that the trigger really is only "when".
 
 ## Power up
-The ADC is off after reset. The course's set-up is given in the code: clock divider, 12-bit mode, power on (\`ADCPWDNZ = 1\`), then **1 ms of waiting** while the analog circuits settle (the data sheet asks for 500 us). \`INTPULSEPOS = 1\` makes the flag come at the end of the conversion, not at the end of sampling.
+The ADC is off after reset. The first block of the code is the course's set-up, **given**: you will copy it unchanged into every ADC program. Line by line: \`PRESCALE = 6\` divides the 200 MHz clock by 4 for the converter, \`AdcSetMode\` chooses 12-bit results, \`INTPULSEPOS = 1\` makes the flag come at the end of the conversion, \`ADCPWDNZ = 1\` switches the power on. Then **1 ms of waiting** while the converter's circuits settle (the data sheet asks for 500 us). The three \`INT1\` lines make the end of SOC0 set the flag ADCINT1.
 
 ## Your part
 1. **SOC0, which pin:** \`CHSEL\` for ADCINA4.
-2. **SOC0, how long:** \`ACQPS\` for a sample window of 500 ns. The window is (ACQPS + 1) cycles of the 200 MHz system clock, 5 ns each.
+2. **SOC0, how long:** \`ACQPS\` for a sample window of 500 ns, the course's value. The window is (ACQPS + 1) cycles of the 200 MHz system clock, 5 ns each. Example: \`ACQPS = 19\` gives 20 x 5 ns = 100 ns.
 3. **When:** \`TRIGSEL\` stays 0, "software only". In the loop, start the conversion by writing 1 to SOC0's bit in the force register:
 \`\`\`c
 AdcaRegs.ADCSOCFRC1.bit.SOC0 = 1;
@@ -447,6 +450,7 @@ AdcaRegs.ADCSOCFRC1.bit.SOC0 = 1;
 \`\`\`c
 adcina4volts = adca4result * 3.0 / 4096.0;
 \`\`\`
+Keep the decimal points. With \`3 / 4096\` C divides whole numbers and drops the fraction: 1.2 V would read 1.
 
 The SOC registers are protected (\`EALLOW\`). The flag and force registers are not.
 
@@ -485,10 +489,17 @@ In the test the photoresistor is at 1.2 V, then at 2.4 V. On the board you can t
           min: 1.199,
           max: 1.201,
           label: "adcina4volts is 1.2 V",
-          hint: "adca4result * 3.0 / 4096.0, with the decimal points so that C computes in floating point.",
+          hint: "A whole number such as 1 means integer division: write 3.0 and 4096.0. The range is 3.0 V, not 3.3 V.",
         },
         { kind: "var", name: "adcina4volts", min: 2.399, max: 2.401, label: "and 2.4 V after the light changes" },
-        { kind: "var", name: "numSamples", min: 9, max: 12, label: "One sample per millisecond" },
+        {
+          kind: "var",
+          name: "numSamples",
+          min: 9,
+          max: 12,
+          label: "One sample per millisecond",
+          hint: "0 means the loop is stuck waiting for ADCINT1: nothing started SOC0. Force it at the top of the loop.",
+        },
         { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
       ],
       watch: ["adca4result", "adcina4volts", "numSamples"],
@@ -508,12 +519,10 @@ In the test the photoresistor is at 1.2 V, then at 2.4 V. On the board you can t
       goal: "Fill in the blanks so that EPWM5 starts SOC0 every half millisecond and ADCA_ISR gets each result.",
       refs: [{ course: "HW2" }, { trm: "11.6.1" }, { trm: "15.10" }, { trm: "11.16.2" }, { trm: "3.4.5" }],
       brief: `
-Now hand the trigger to hardware. An ePWM module is mostly a counter. Later you will use it to make motor signals. Here it is only a very regular clock: no pin, just "now" at a steady rate.
-
-Homework 2 does this with EPWM4 and its own numbers. Here it is **EPWM5**, a different event and a different rate, so every blank is yours to work out.
+Now hand the trigger to hardware: an ePWM, used only as a very regular clock. Homework 2 does this with EPWM4 and its own numbers. Here it is **EPWM5**, with a different event and rate.
 
 ## The trigger side: EPWM5
-- The counter \`TBCTR\` counts up at 50 MHz from 0 to \`TBPRD\`, then starts again at 0. One round is TBPRD + 1 counts of 20 ns.
+- The counter \`TBCTR\` counts up from 0 to \`TBPRD\`, then starts again at 0. The ePWM clock is the system clock divided by 4: 50 MHz, so one count lasts 20 ns. One round is TBPRD + 1 counts. Example: a round of 0.2 ms is 0.2 ms / 20 ns = 10000 counts, so \`TBPRD = 9999\`. \`TBPRD\` has 16 bits: 65535 at most.
 - \`ETSEL.SOCASEL\` chooses **which counter event** makes the SOCA pulse: 1 is "counter equals zero", 2 is "counter equals TBPRD".
 - \`ETPS.SOCAPRD\` chooses **how many** of those events it takes: 1 is every event, 2 every second one, 3 every third. 0 switches the pulse off.
 - \`TBCTL.CTRMODE\`: 3 freezes the counter, 0 counts up.
@@ -524,13 +533,13 @@ Homework 2 does this with EPWM4 and its own numbers. Here it is **EPWM5**, a dif
 ## The blanks
 1. \`SOCASEL\`: pulse when the counter equals **zero**.
 2. \`SOCAPRD\`: on every event.
-3. \`TBPRD\`: a round of **0.5 ms**. Counting the "+ 1" earns a star. Without it the period is 20 ns long, which passes.
+3. \`TBPRD\`: a round of **0.5 ms**. Counting the "+ 1" earns a star. Without it the round is 20 ns too long, which passes.
 4. \`CTRMODE\`: up count.
 5. \`CHSEL\`: ADCINA4.
 6. \`TRIGSEL\`: EPWM5 SOCA.
 7. \`INT1SEL\`: the SOC whose end calls \`ADCA_ISR\`. SOC0 is the only one in use.
 
-\`ADCA_ISR\` and the interrupt enables are complete. The photoresistor is at 1.2 V, then at 2.4 V.
+\`ADCA_ISR\` and the interrupt enables are complete. The other EPWM5 lines (\`TBPHS\`, \`PHSEN\`, \`CLKDIV\`, \`SOCAEN\`) are given, and the PWM chapter explains them. The photoresistor is at 1.2 V, then at 2.4 V.
 `,
       kit: "robot",
       durationMs: 12.5,
@@ -619,7 +628,7 @@ ${ISR_END}`,
           label: "SOC0 listens to EPWM5 SOCA",
           hint: "Two numbers per ePWM, SOCA first, starting with 5 for EPWM1 SOCA. Count up to EPWM5.",
         },
-        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "CHSEL", equals: 4, label: "SOC0 measures ADCINA4" },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "CHSEL", equals: 4, label: "SOC0 measures ADCINA4", hint: "The channel number is the digit at the end of the pin name." },
         {
           kind: "reg",
           reg: "AdcaRegs.ADCINTSEL1N2",
@@ -634,7 +643,7 @@ ${ISR_END}`,
           min: 20,
           max: 25,
           label: "ADCA_ISR runs once per half millisecond",
-          hint: "0.5 ms at 50 MHz is 500 us / 20 ns counts. About half as many calls means the period is 1 ms.",
+          hint: "0 times: a link before the function is broken, so fix the failing lines above first. Too few: check TBPRD. 0.5 ms is 500 us / 20 ns counts, and a value above 65535 does not fit in TBPRD.",
         },
         { kind: "var", name: "adcina4volts", at: 6.75, min: 1.199, max: 1.201, label: "adcina4volts follows the pin: 1.2 V" },
         { kind: "var", name: "adcina4volts", min: 2.399, max: 2.401, label: "and 2.4 V after the light changes" },
@@ -730,9 +739,17 @@ ${ISR_END}`,
           label: "ADCA_ISR runs on every sample, twice per millisecond",
           hint: "Never: check the vector, PIEIER1.INTx1 and IER. Once: the ADC flag or PIEACK is not cleared at the end.",
         },
-        { kind: "var", name: "adcina4volts", at: 5.75, min: 2.498, max: 2.502, label: "adcina4volts shows 2.5 V in bright light" },
+        {
+          kind: "var",
+          name: "adcina4volts",
+          at: 5.75,
+          min: 2.498,
+          max: 2.502,
+          label: "adcina4volts shows 2.5 V in bright light",
+          hint: "Read AdcaResultRegs.ADCRESULT0 into adca4result, then adcina4volts = adca4result * 3.0 / 4096.0;",
+        },
         { kind: "led", led: "LED1", at: 5.75, on: false, label: "LED1 is off in bright light" },
-        { kind: "led", led: "LED1", at: 9.75, on: true, label: "LED1 turns on in the dark (0.9 V)", hint: "Dark means a low voltage: on when adcina4volts < 1.0." },
+        { kind: "led", led: "LED1", at: 9.75, on: true, label: "LED1 turns on in the dark (0.9 V)", hint: "Dark means a low voltage: on when adcina4volts < 1.0. If you compare the raw result instead: 1.0 V is 1365, not 1000." },
         { kind: "led", led: "LED1", at: 15.75, on: false, label: "LED1 turns off again at 1.1 V", hint: "The threshold is 1.0 V. In counts that is 1365, not 1000." },
         {
           kind: "reg",
@@ -746,7 +763,7 @@ ${ISR_END}`,
       watch: ["adca4result", "adcina4volts"],
       inspect: ["AdcaRegs.ADCINTFLG", "AdcaRegs.ADCINTOVF", "PieCtrlRegs.PIEIER1"],
       hints: [
-        "Three enabling lines in main(), five steps in the function.",
+        "Start in main(): the vector at the first TODO, PIEIER1 and IER at the second. Then the five steps in the function, in the order of the list.",
         "`adcina4volts = adca4result * 3.0 / 4096.0;` then an `if` on `adcina4volts < 1.0`.",
         "The function ends with `AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;` and `PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;`",
       ],
@@ -842,39 +859,131 @@ ${ISR_END}`,
       takeaway: "Never: INT1SEL points at a SOC that does not convert (or INT1E is 0). Once: ADCINT1 was not cleared, and ADCINTOVF shows it. The converter keeps working either way.",
     },
     {
-      id: "adc-gyro",
+      id: "adc-adcc",
       kind: "code",
-      mode: "write",
-      title: "How fast is the robot turning",
-      goal: "Read the robot's rate gyro on ADCC, remove its offset, and turn the voltage into a turn rate and an angle.",
+      mode: "complete",
+      title: "Another ADC, another letter",
+      goal: "Read the robot's turn-rate sensor on ADCC: find its result register and clear the right flag.",
       refs: [{ course: "Lab 4" }, { course: "L5" }, { trm: "11.5.5" }, { trm: "11.9" }, { trm: "3.4.5" }],
       brief: `
-The robot carries a **rate gyro** (an LPR510). It is a sensor whose output voltage follows how fast the robot **turns**. It does not know the angle, only the turn rate.
-
-- At rest it outputs a constant voltage, its **offset**, about 1.2 V. The exact value differs from gyro to gyro and with temperature, so you measure it.
-- Turning one way raises the voltage, turning the other way lowers it. The course's scale is **400 degrees per second for each volt** away from the offset.
+The robot carries a **rate gyro** (an LPR510). It is a sensor whose output voltage follows how fast the robot **turns**. At rest it gives about 1.2 V. Turning one way raises the voltage, turning the other way lowers it.
 
 ## Where it is connected
 The gyro is on pin **ADCINC5**: a pin of **ADCC**, not ADCA. Everything you know carries over with a new letter: \`AdccRegs\`, \`AdccResultRegs\`, and the interrupt **ADCC1**, which is INT1.3.
 
-The set-up is given and is the course library's: four SOCs of ADCC on one trigger, for the pins ADCINC2 to ADCINC5, with the interrupt after the last one. Find in it which SOC measures ADCINC5. That tells you which result register to read.
+The set-up in \`main()\` is given. It is the course library's: **four** SOCs of ADCC on one trigger, for the pins ADCINC2 to ADCINC5, with the interrupt after the last one. Each SOC has the three lines you know.
 
-## Write ADCC_ISR
-It runs every 0.5 ms. Count the calls in \`numADCCcalls\`.
-
-1. Every call: \`adcC5Volt\` = the gyro voltage in volts.
-2. **Calls 1 to 200** (the robot must stand still): add up the voltages. On call 200, \`gyroLPR510_offset\` = the average of the 200.
-3. **After call 200:**
+## Your part, in ADCC_ISR
+1. Find in \`main()\` the SOC whose \`CHSEL\` is 5. The result register has **that SOC's number**, not the pin's. Convert it to volts in \`adcC5Volt\`:
 \`\`\`c
-// deg/s, then deg: rate x time
-gyrorate = (adcC5Volt - gyroLPR510_offset) * 400.0;
-gyroangle = gyroangle + gyrorate * 0.0005;
+adcC5Volt = AdccResultRegs.ADCRESULT?? * 3.0 / 4096.0;
 \`\`\`
-4. Clear ADCINT1 **of ADCC** and acknowledge PIE group 1.
+2. Clear ADCINT1 **of ADCC**. It is the line you know with the new letter.
 
-Why average 200 samples? Right after power-on the gyro has not settled, and every sample carries some noise. One sample is not a safe offset. The robot's code is more careful still: it waits 2 s, then averages for 2 s.
+The PIE acknowledge is given: ADCC1 is in group 1 as well.
 
-The robot's code divides by 4095 when it converts to volts. The manual's 4096 is exact, the difference is 0.02 %, and both pass.
+In the test the robot stands still (1.23 V), then turns.
+
+The robot's own code divides by 4095 here. The manual's 4096 is exact, the difference is 0.02 %, and both pass.
+`,
+      kit: "robot",
+      durationMs: 300,
+      stimuli: gyroStimuli.slice(0, 3),
+      starter: `${GYRO_GLOBALS_VOLT}
+
+${GYRO_MAIN}
+
+// adcc1 pie interrupt, every 0.5 ms
+__interrupt void ADCC_ISR(void)
+{
+    numADCCcalls++;
+
+    // TODO 1: adcC5Volt from the right result register
+
+    // TODO 2: clear the ADCC flag
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      solution: `${GYRO_GLOBALS_VOLT}
+
+${GYRO_MAIN}
+
+// adcc1 pie interrupt, every 0.5 ms
+__interrupt void ADCC_ISR(void)
+{
+    numADCCcalls++;
+
+    adcC5Volt = AdccResultRegs.ADCRESULT3 * 3.0 / 4096.0;   // SOC3 converts ADCINC5
+
+    AdccRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        {
+          kind: "isr",
+          fn: "ADCC_ISR",
+          min: 590,
+          max: 600,
+          label: "ADCC_ISR runs on every sample",
+          hint: "If it ran once: the flag of ADCC is still set. AdccRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; (Adcc, not Adca).",
+        },
+        {
+          kind: "var",
+          name: "adcC5Volt",
+          at: 50.75,
+          min: 1.228,
+          max: 1.232,
+          label: "adcC5Volt shows the gyro's 1.23 V at rest",
+          hint: "ADCINC5 is measured by SOC3, so its number is in AdccResultRegs.ADCRESULT3. Nothing converts into ADCRESULT5, and AdcaResultRegs belongs to another ADC. Exactly 1: integer division, write 3.0 and 4096.0.",
+        },
+        { kind: "var", name: "adcC5Volt", min: 1.453, max: 1.457, label: "and 1.455 V while the robot turns" },
+        {
+          kind: "no-diagnostic",
+          code: "adc",
+          label: "The ADC reports no problem",
+          hint: "A result register that no SOC fills stays at 0. Use the register with the number of the SOC that measures ADCINC5.",
+        },
+      ],
+      watch: ["adcC5Volt", "numADCCcalls"],
+      inspect: ["AdccRegs.ADCSOC3CTL", "AdccResultRegs.ADCRESULT3", "AdccRegs.ADCINTFLG"],
+      hints: [
+        "Read the comments of the SOC lines in main(): which SOC converts ADCINC5?",
+        "SOC3 does, so the number is in `AdccResultRegs.ADCRESULT3`.",
+        "`adcC5Volt = AdccResultRegs.ADCRESULT3 * 3.0 / 4096.0;` and `AdccRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;` before the PIE acknowledge.",
+      ],
+      takeaway: "Another ADC is the same chain with another letter: AdccRegs, AdccResultRegs, its own ADCINT1 flag and its own PIE channel. The result register still follows the SOC number.",
+    },
+    {
+      id: "adc-gyro",
+      kind: "code",
+      mode: "write",
+      title: "How fast is the robot turning",
+      goal: "Remove the gyro's offset, then turn its voltage into a turn rate and an angle.",
+      refs: [{ course: "Lab 4" }, { course: "L5" }, { trm: "11.5.5" }, { trm: "11.9" }],
+      continues: "adc-adcc",
+      brief: `
+\`adcC5Volt\` from the last level is a voltage. The robot wants to know how fast it turns, and how far it has turned.
+
+## Offset
+At rest the gyro outputs a constant voltage, its **offset**, about 1.2 V. The exact value differs from gyro to gyro, so the program measures it at start-up while the robot stands still. That is a **calibration**.
+
+One sample is not a safe offset. Right after power-on the gyro has not settled, and every sample carries **noise**: a small random error. The **average** of many samples is much steadier. To average 200 samples, add them up and divide the sum by 200.
+
+## Rate and angle
+The course's scale is **400 degrees per second for each volt** away from the offset. Example: 1.43 V with an offset of 1.23 V is 0.2 V x 400 = 80 deg/s.
+
+A rate times a time is an angle. \`ADCC_ISR\` runs every 0.5 ms = 0.0005 s. At 80 deg/s the robot turns 80 x 0.0005 = 0.04 degrees in that time. Add up these small pieces on every call and you have the angle turned so far.
+
+## Add to ADCC_ISR, after the adcC5Volt line
+1. **Calls 1 to 200:** add \`adcC5Volt\` to a sum. Make a new global \`float\` for it. On call 200, \`gyroLPR510_offset\` = the sum divided by \`200.0\`.
+2. **After call 200:**
+\`\`\`c
+gyrorate = (adcC5Volt - gyroLPR510_offset) * 400.0;   // deg/s
+gyroangle = gyroangle + gyrorate * 0.0005;            // deg
+\`\`\`
+
+\`numADCCcalls\` already counts the calls. The robot's real code waits 2 s, then averages for 2 s.
 `,
       kit: "robot",
       durationMs: 1200,
@@ -888,13 +997,13 @@ __interrupt void ADCC_ISR(void)
 {
     numADCCcalls++;
 
-    // TODO 1: adcC5Volt from the right result register
+    adcC5Volt = AdccResultRegs.ADCRESULT3 * 3.0 / 4096.0;   // SOC3 converts ADCINC5
 
-    // TODO 2: calls 1 to 200: add up, then set gyroLPR510_offset
+    // TODO 1: calls 1 to 200: add up, then set gyroLPR510_offset
 
-    // TODO 3: after call 200: gyrorate and gyroangle
+    // TODO 2: after call 200: gyrorate and gyroangle
 
-    // TODO 4: clear the ADCC flag
+    AdccRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 `,
@@ -940,7 +1049,7 @@ __interrupt void ADCC_ISR(void)
           min: 1.228,
           max: 1.232,
           label: "adcC5Volt shows the gyro's 1.23 V at rest",
-          hint: "ADCINC5 is measured by SOC3, so its number is in AdccResultRegs.ADCRESULT3. There is no conversion behind ADCRESULT5.",
+          hint: "ADCINC5 is measured by SOC3, so its number is in AdccResultRegs.ADCRESULT3.",
         },
         {
           kind: "var",
@@ -949,9 +1058,17 @@ __interrupt void ADCC_ISR(void)
           min: 1.2285,
           max: 1.2325,
           label: "The offset is the average of the first 200 samples",
-          hint: "The very first sample reads 1.33 V because the gyro is still settling. Add up 200 samples and divide by 200.0.",
+          hint: "Still 0: set it on call 200. Exactly 1: the sum is an integer, make it a float. 1.33: that is the first sample alone, taken while the gyro settles. Add up 200 and divide by 200.0.",
         },
-        { kind: "var", name: "gyrorate", at: 130.75, min: -1, max: 1, label: "At rest the turn rate is 0 deg/s (within 1)", hint: "Subtract the offset before you multiply by 400." },
+        {
+          kind: "var",
+          name: "gyrorate",
+          at: 130.75,
+          min: -1,
+          max: 1,
+          label: "At rest the turn rate is 0 deg/s (within 1)",
+          hint: "Subtract the offset before you multiply by 400. If the offset check above fails, fix that first.",
+        },
         { kind: "var", name: "gyrorate", at: 400.75, min: 89, max: 91, label: "Turning: 90 deg/s", hint: "(adcC5Volt - gyroLPR510_offset) * 400.0" },
         {
           kind: "var",
@@ -960,7 +1077,7 @@ __interrupt void ADCC_ISR(void)
           min: 44.3,
           max: 45.7,
           label: "Half a second at 90 deg/s: the angle is 45 degrees",
-          hint: "Add gyrorate * 0.0005 on every call after the calibration. 0.0005 s is the time between two samples.",
+          hint: "Add gyrorate * 0.0005 on every call after the calibration. 0.0005 s is the time between two samples. An angle in the thousands means the 0.0005 is missing.",
         },
         { kind: "var", name: "gyrorate", at: 900.75, min: -61, max: -59, label: "Turning back: -60 deg/s" },
         { kind: "var", name: "gyroangle", min: 29.3, max: 30.7, label: "A quarter second at -60 deg/s takes the angle back to 30 degrees" },
@@ -969,9 +1086,9 @@ __interrupt void ADCC_ISR(void)
       watch: ["adcC5Volt", "gyroLPR510_offset", "gyrorate", "gyroangle", "numADCCcalls"],
       inspect: ["AdccRegs.ADCSOC3CTL", "AdccResultRegs.ADCRESULT3", "AdccRegs.ADCINTFLG"],
       hints: [
-        "The result register has the number of the SOC. Look in main() for the SOC whose CHSEL is 5.",
-        "You need one more global for the sum. `if (numADCCcalls <= 200) { add; if (numADCCcalls == 200) offset = sum / 200.0; } else { rate and angle }`",
-        "`adcC5Volt = AdccResultRegs.ADCRESULT3 * 3.0 / 4096.0;` and the function ends with `AdccRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;` before the PIE acknowledge.",
+        "Add a global such as `float offsetsum = 0;`. The two cases are an `if (numADCCcalls <= 200) { ... } else { ... }`.",
+        "Inside the first case: `offsetsum = offsetsum + adcC5Volt;` and, `if (numADCCcalls == 200)`, set the offset to `offsetsum / 200.0`.",
+        "The `else` holds the two lines from the brief, unchanged. Both go before the flag clear.",
       ],
       takeaway: "A gyro gives a rate. The angle is the sum of rate x time, so every small offset error adds up: watch gyroangle creep while the robot stands still. That is gyro drift, and a later chapter corrects it with other sensors.",
     },
@@ -991,7 +1108,7 @@ One converter, three pins. So use three slots and let them take turns:
 - **SOC1: ADCINA3**, joystick Y.
 - **SOC2: ADCINA2**, joystick X.
 
-Give all three the **same trigger**. On each pulse all three flags are set, and the converter works through them in order: SOC0, SOC1, SOC2. The three conversions take about 2 us together.
+Each new SOC needs the same three lines as SOC0: \`CHSEL\`, \`ACQPS\` and \`TRIGSEL\`. Give all three the **same trigger**. On each pulse the converter works through them in order: SOC0, SOC1, SOC2. The three conversions take about 2 us together.
 
 You want **one** interrupt, when all three results are ready. Which SOC finishes last? Point \`INT1SEL\` at it.
 
@@ -1104,8 +1221,24 @@ ${ISR_END}
 }
 `,
       checks: [
-        { kind: "reg", reg: "AdcaRegs.ADCSOC1CTL", field: "CHSEL", equals: 3, label: "SOC1 measures ADCINA3 (joystick Y)" },
-        { kind: "reg", reg: "AdcaRegs.ADCSOC2CTL", field: "CHSEL", equals: 2, label: "SOC2 measures ADCINA2 (joystick X)" },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC1CTL", field: "CHSEL", equals: 3, label: "SOC1 measures ADCINA3 (joystick Y)", hint: "AdcaRegs.ADCSOC1CTL.bit.CHSEL = 3;" },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC2CTL", field: "CHSEL", equals: 2, label: "SOC2 measures ADCINA2 (joystick X)", hint: "AdcaRegs.ADCSOC2CTL.bit.CHSEL = 2;" },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCSOC1CTL",
+          field: "TRIGSEL",
+          equals: 13,
+          label: "SOC1 listens to EPWM5 SOCA, like SOC0",
+          hint: "With TRIGSEL = 0 a SOC never starts. Copy SOC0's TRIGSEL line for SOC1.",
+        },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCSOC2CTL",
+          field: "TRIGSEL",
+          equals: 13,
+          label: "SOC2 listens to EPWM5 SOCA too",
+          hint: "With TRIGSEL = 0 SOC2 never starts, and an interrupt that waits for its end never comes.",
+        },
         {
           kind: "reg",
           reg: "AdcaRegs.ADCINTSEL1N2",
@@ -1114,19 +1247,24 @@ ${ISR_END}
           label: "The interrupt comes after the last SOC",
           hint: "With INT1SEL = 0 the function runs while SOC1 and SOC2 are still converting, and reads their results from the previous sample.",
         },
-        { kind: "var", name: "adcina4volts", at: 5.75, min: 0.899, max: 0.901, label: "The photoresistor still reads 0.9 V" },
-        { kind: "led", led: "LED5", at: 5.75, on: true, label: "At rest: LED5" },
+        { kind: "var", name: "adcina4volts", at: 5.75, min: 0.899, max: 0.901, label: "The photoresistor still reads 0.9 V", hint: "0 means ADCA_ISR never ran: the SOC that INT1SEL names never finishes. Fix the lines above first." },
+        { kind: "led", led: "LED5", at: 5.75, on: true, label: "At rest: LED5", hint: "The last else of the chain: GpioDataRegs.GPDSET.bit.GPIO111 = 1;" },
         { kind: "var", name: "joyyvolts", at: 9.75, min: 2.198, max: 2.202, label: "joyyvolts shows 2.2 V", hint: "SOC1's result is in ADCRESULT1." },
         { kind: "led", led: "LED1", at: 9.75, on: true, label: "Y high: LED1" },
-        { kind: "led", led: "LED5", at: 9.75, on: false, label: "and LED5 is off: only one LED at a time" },
+        { kind: "led", led: "LED5", at: 9.75, on: false, label: "and LED5 is off: only one LED at a time", hint: "Turn all five LEDs off with CLEAR before the if chain turns one on." },
         { kind: "led", led: "LED2", at: 13.75, on: true, label: "Y low (0.8 V): LED2" },
         { kind: "var", name: "joyxvolts", at: 17.75, min: 2.198, max: 2.202, label: "joyxvolts shows 2.2 V", hint: "SOC2's result is in ADCRESULT2." },
         { kind: "led", led: "LED3", at: 17.75, on: true, label: "X high: LED3" },
         { kind: "led", led: "LED4", at: 21.75, on: true, label: "X low (0.8 V): LED4" },
         { kind: "led", led: "LED1", at: 25.75, on: true, label: "X low and Y high: Y is checked first, LED1" },
-        { kind: "led", led: "LED4", at: 25.75, on: false, label: "and LED4 is off" },
+        { kind: "led", led: "LED4", at: 25.75, on: false, label: "and LED4 is off", hint: "Use one if / else if chain, so that the first test that is true wins." },
         { kind: "led", led: "LED5", at: 29.75, on: true, label: "Y at 1.9 V and X at 1.1 V count as rest: LED5" },
-        { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
+        {
+          kind: "no-diagnostic",
+          code: "adc",
+          label: "The ADC reports no problem",
+          hint: "A result read too early or never filled: ADCRESULTx has the number of the SOC (not of the pin), and INT1SEL must name the last SOC. Too short a window: each SOC needs its own ACQPS = 99.",
+        },
       ],
       watch: ["adcina4volts", "joyxvolts", "joyyvolts"],
       inspect: ["AdcaRegs.ADCSOC1CTL", "AdcaRegs.ADCSOC2CTL", "AdcaRegs.ADCINTSEL1N2"],
@@ -1420,7 +1558,7 @@ Give the trial voltage of each of the first four steps, then the four bits as on
       goal: "Calculate acquisition windows, ACQPS values and the time a sequence of conversions takes.",
       refs: [{ trm: "11.5.3" }, { trm: "11.14.1" }, { trm: "11.6.3" }, { trm: "11.15.2" }, { course: "L5" }],
       brief: `
-While the capacitor is connected to the pin it has to charge to the pin's voltage. A sensor with a high output resistance charges it slowly, so it needs a longer **acquisition window**. Too short, and the capacitor still carries some of the voltage of the pin measured before: a "ghost" of the other channel.
+While the capacitor is connected to the pin it has to charge to the pin's voltage. A sensor with a large resistance in its output charges it slowly (the RC rule: a capacitor's voltage cannot jump), so it needs a longer **acquisition window**, the time the capacitor stays connected. Too short, and the capacitor still carries some of the voltage of the pin measured before: a "ghost" of the other channel.
 
 \`\`\`c
 acquisition window = (ACQPS + 1) * 5 ns      // 5 ns is one cycle of the 200 MHz system clock
@@ -1468,7 +1606,7 @@ After the window, with PRESCALE = 6, the manual's timing table says the conversi
           unit: "us",
           answer: 2.115,
           tolPct: 0.5,
-          why: "3 x 705 ns = 2115 ns. Tiny next to the 1 ms between triggers: the ADC rests 99.8% of the time.",
+          why: "3 x 705 ns = 2115 ns. Tiny next to the 0.5 ms between triggers: the ADC rests 99.6% of the time.",
         },
       ],
       hints: [
@@ -1572,7 +1710,7 @@ ${ISR_END}`,
       goal: "Average blocks of 16 samples so that a 0.4 V ripple on the photoresistor signal disappears.",
       refs: [{ trm: "11.6.2" }, { course: "L5" }, { course: "HW2" }],
       brief: `
-The room lights flicker, and the photoresistor sees it: its voltage jumps up and down by 0.2 V around the real level from one millisecond to the next. A single sample is off by 0.2 V. The average of many is not.
+The room lights flicker, and the photoresistor sees it: its voltage jumps up and down by 0.2 V around the real level from one millisecond to the next. Such a regular wobble is called **ripple**. A single sample is off by 0.2 V. The average of many is not.
 
 The chain is set up as always (EPWM5, SOC0, ADCINA4, one sample every 0.5 ms). Write \`ADCA_ISR\`:
 
@@ -1652,7 +1790,7 @@ ${ISR_END}`,
       goal: "Turn LED1 on above 2.0 V and off below 1.0 V, hold it in between, and count the times it turns on.",
       refs: [{ course: "HW2" }, { course: "L5" }, { trm: "11.9" }],
       brief: `
-A single threshold has a problem. If the light level sits right at the threshold, the smallest ripple pushes the reading above and below it, and the output flickers on and off.
+A single threshold has a problem. A **threshold** is the level at which a decision flips. If the light sits right at the threshold, the smallest ripple pushes the reading above and below it, and the output flickers on and off.
 
 The fix is two thresholds, called **hysteresis**:
 
@@ -1754,7 +1892,7 @@ In the interrupt function:
 - If both are within **0.2 V** of rest (\`fabs\` gives the absolute value), the stick counts as released: \`moved = 0\` and \`angle = 0\`.
 - Otherwise \`moved = 1\` and \`angle\` is the direction in **degrees**: 0 is +X, 90 is +Y, and it runs from -180 to 180.
 
-\`atan2(dy, dx)\` gives exactly that angle, in radians.
+\`atan2(dy, dx)\` gives exactly that angle, in **radians**: another angle unit, in which half a turn (180 degrees) is pi = 3.14159. So degrees = radians x 180.0 / PI.
 
 Why must both axes hang on the **same** trigger? If X were sampled now and Y half a millisecond later, a stick that is moving would give a direction it never pointed in.
 `,
@@ -1875,6 +2013,7 @@ ${ISR_END}
           field: "ADCINT1",
           equals: 0,
           label: "No conversion ended while ADCINT1 was still set",
+          hint: "The function ran once only: end it with AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; before the PIE acknowledge.",
         },
         {
           kind: "no-diagnostic",
@@ -2026,6 +2165,7 @@ ${ISR_END}
           field: "ADCINT1",
           equals: 0,
           label: "No conversion ended while ADCINT1 was still set",
+          hint: "The function ran once only: end it with AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; before the PIE acknowledge.",
         },
         { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
       ],

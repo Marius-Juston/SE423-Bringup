@@ -31,14 +31,18 @@ const QEP1 = qep(1, 20, 21, "A", 2, 1);
 const QEP2 = qep(2, 54, 55, "B", 2, 5);
 const QEP3 = qep(3, 6, 7, "A", 1, 5);
 
-const INIT_WHEELS = `void init_eQEPs(void) {
+const GIVEN_INIT = "// Given (Lab 3 hands you this function): one block per encoder.";
+
+const INIT_WHEELS = `${GIVEN_INIT}
+void init_eQEPs(void) {
 
 ${QEP1}
 
 ${QEP2}
 }`;
 
-const INIT_ALL = `void init_eQEPs(void) {
+const INIT_ALL = `${GIVEN_INIT}
+void init_eQEPs(void) {
 
 ${QEP1}
 
@@ -66,7 +70,9 @@ const READ_HAND = `float readEncWheel(void) {
 }`;
 
 /** main() with timer 0 calling cpu_timer0_isr every `us` microseconds. */
-const mainWith = (us: number, extra = "", loop = "    while (1) {}") => `void main(void)
+const mainWith = (us: number, extra = "", loop = "    while (1) {}") => `// Given: main() sets up the timer 0 interrupt as in chapters 4 and 5,
+// and calls init_eQEPs() once.
+void main(void)
 {
     InitSysCtrl();
     InitGpio();
@@ -146,11 +152,11 @@ float LeftVel = 0;        // speed, ft/s
 float RightVel = 0;`;
 
 const SPEED_CHECKS = [
-  { kind: "var" as const, name: "LeftVel", at: 200.5, min: 0.61, max: 0.68, label: "LeftVel is about 0.65 ft/s while the left wheel turns at 6.28 rad/s", hint: "v = (p_current - p_old) / 0.001, and p_old must still hold the angle from 1 ms ago." },
+  { kind: "var" as const, name: "LeftVel", at: 200.5, min: 0.61, max: 0.68, label: "LeftVel is about 0.65 ft/s while the left wheel turns at 6.28 rad/s", hint: "v = (p_current - p_old) / 0.001. If you see 0: the old value is saved before the speed line, so new - old is 0. Hundreds: the old value is never saved, or it is a local variable. 0.00065: the division by 0.001 is missing. 6.28: that is rad/s, multiply by (1.235/12.0)." },
   { kind: "var" as const, name: "RightVel", at: 200.5, min: 0.3, max: 0.345, label: "RightVel is about 0.32 ft/s while the right wheel turns at 3.14 rad/s" },
   { kind: "var" as const, name: "LeftVel", at: 450.5, min: -0.345, max: -0.3, label: "LeftVel is about -0.32 ft/s while the left wheel turns backwards" },
   { kind: "var" as const, name: "RightVel", at: 450.5, min: -0.01, max: 0.01, label: "RightVel is 0 while the right wheel stands still" },
-  { kind: "var" as const, name: "LeftDist", min: 0.115, max: 0.118, label: "LeftDist ends at 0.116 ft", hint: "Distance in feet is the wheel angle in radians times (1.235/12.0)." },
+  { kind: "var" as const, name: "LeftDist", min: 0.115, max: 0.118, label: "LeftDist ends at 0.116 ft", hint: "Distance in feet is the wheel angle in radians times (1.235/12.0). Keep the decimal point: 1/12 is an integer division and gives 0." },
   { kind: "var" as const, name: "RightDist", min: 0.0895, max: 0.0915, label: "RightDist ends at 0.091 ft" },
 ];
 
@@ -184,10 +190,10 @@ export const ch11: Chapter = {
       goal: "Learn how an optical encoder turns rotation into two square waves, and what the eQEP does with them.",
       refs: [{ course: "L6-7" }, { course: "Lab 3" }, { trm: "17.1" }, { trm: "17.3.1" }],
       brief: `
-A motor command tells the wheel what to do. It does not tell you what the wheel **did**. For that the robot has a sensor on each motor shaft: an **optical encoder**.
+A motor command tells the wheel what to do. It does not tell you what the wheel **did**. For that the robot has a sensor on each motor's **shaft** (the rod that turns): an **optical encoder**.
 
 ## How it works
-A disc with evenly spaced slits is fixed to the shaft, between an LED and a light sensor. When a slit passes, light reaches the sensor and its output goes high. Between slits it is low. A turning shaft gives a square wave: one period per slit. The robot's encoders have **500 slits**.
+A disc with evenly spaced slits is fixed to the shaft, between an LED and a light sensor. When a slit passes, light reaches the sensor and its output goes high. Between slits it is low. A turning shaft gives a **square wave** (high for half of each period, low for the other half): one period per slit. The robot's encoders have **500 slits**.
 
 ## One channel is not enough
 With a single sensor you can count slits, but:
@@ -195,21 +201,23 @@ With a single sensor you can count slits, but:
 - a shaft that **vibrates** on the edge of a slit gives pulse after pulse. You count motion that never happened.
 
 ## Two channels: quadrature
-A second sensor sits a quarter of a slit period away from the first. The two outputs, **A** and **B**, are the same square wave shifted by 90 degrees. This is called **quadrature**.
+A second sensor sits a quarter of a slit period away from the first. The two outputs, **A** and **B**, are the same square wave, a quarter of a period apart. A whole period counts as 360 degrees, so this is "shifted by 90 degrees", or **quadrature**.
+
+An **edge** is the moment a signal changes level: rising (low to high) or falling (high to low).
 
 - Turning one way, A changes first and B follows (**A leads B**). Turning the other way, B leads A. The order gives the **direction**.
 - One slit period has four edges: A rises, B rises, A falls, B falls. Counting every edge gives **4 counts per slit**.
 - Vibration on one edge now counts +1, -1, +1, -1. The sum stays put.
 
-Try it in the figure: turn the disc both ways and watch which channel changes first.
+Try it in the figure: press **Step** and **Back** and watch which channel changes first.
 
 {{figure:quadrature}}
 
 ## Incremental
-This encoder is **incremental**: it reports changes, and something has to add them up. The sum starts at 0 at power-on, wherever the wheel is.
+This encoder is **incremental**: it reports changes only. The count starts at 0 at power-on, wherever the wheel is.
 
 ## The eQEP counts for you
-At full speed the edges arrive more than a hundred thousand times per second, too fast to handle in C. The chip has hardware for it: the **eQEP** (enhanced quadrature encoder pulse) module. It watches A and B and keeps the count in the 32-bit register \`QPOSCNT\`. Your code just reads it.
+At full speed more than a hundred thousand edges arrive per second, too many to handle in C. The chip has hardware for it: the **eQEP** (enhanced quadrature encoder pulse) module. It watches A and B and keeps the count in the 32-bit register \`QPOSCNT\`. Your code just reads it.
 `,
       questions: [
         {
@@ -259,7 +267,7 @@ Channel B is the same square wave, shifted by one slot:
 
 Draw both. Check your drawing with this rule: in every slot exactly **one** of the two signals may differ from the slot before.
 
-Try it in the figure: step the disc forward and backward and read off which signal changes first each way.
+Try it in the figure: press **Step** and **Back** and read off which signal changes first each way.
 
 {{figure:quadrature}}
 `,
@@ -280,23 +288,30 @@ Try it in the figure: step the disc forward and backward and read off which sign
       id: "enc-math",
       kind: "calc",
       title: "Counts, radians, feet",
-      goal: "Convert encoder counts to wheel angle, distance and speed with the robot's numbers.",
+      goal: "Convert encoder counts to wheel angle and distance with the robot's numbers.",
       refs: [{ course: "Lab 3" }, { trm: "17.4.1" }],
       brief: `
-The numbers of the robot (Lab 3):
+Your code reads a count. The robot needs an angle and a distance. Three facts link them (Lab 3).
 
-- The encoder sits on the **motor** shaft and has **500 slits**. In quadrature count mode that is 4 x 500 counts per motor turn.
-- A gear head connects motor and wheel with a ratio of **20:1**: the motor turns 20 times for one turn of the wheel.
-- One turn is 2 pi radians, so the wheel angle is
+## Counts per wheel turn
+- The encoder sits on the **motor** shaft and has **500 slits**: 4 x 500 = 2000 counts per motor turn.
+- A **gear head** (a small gearbox) connects motor and wheel. Its **gear ratio** is **20:1**: the motor turns 20 times for one turn of the wheel. One wheel turn is 2000 x 20 = 40000 counts.
+
+## Radians
+The course measures angles in **radians** (rad), not degrees. One full turn is 2 pi = 6.283 rad, with pi = 3.14159. Half a turn is 3.14 rad, and 1 rad is about 57 degrees. In the code, \`PI\` is a \`#define\` for pi.
 
 \`\`\`c
 angle = count * (2*PI / (2000.0*20.0));    // radians
 \`\`\`
 
-- The wheel radius is **1.235 inches**. Rolling without slipping, the robot moves one radius for every radian the wheel turns: distance in feet = angle x 1.235 / 12.
-- Speed is the change in position divided by the time it took. The course measures it every 1 ms: speed = (new - old) / 0.001.
+Example: a count of 20000 is half a wheel turn: 20000 x 6.283 / 40000 = 3.14 rad.
 
-\`QPOSCNT\` is an unsigned 32-bit register. Counting down from 0 it continues at 0xFFFFFFFF. Store it in a **signed** 32-bit variable (\`int32_t\`) and the same bits read as -1, -2, and so on.
+## Distance
+Radians make the next step easy: a wheel that rolls without slipping moves the robot by **radius x angle**. The wheel radius is **1.235 inches**, and 12 inches are one foot:
+
+distance in feet = angle x 1.235 / 12
+
+Example: one full wheel turn is 6.283 x 1.235 / 12 = 0.647 ft.
 
 Try it in the figure: roll the wheel and follow one number through the chain, from counts to feet.
 
@@ -305,18 +320,59 @@ Try it in the figure: roll the wheel and follow one number through the chain, fr
       fields: [
         { id: "a", label: "Counts for one turn of the motor shaft", answer: 2000, why: "500 slits x 4 edges per slit = 2000." },
         { id: "b", label: "Counts for one turn of the wheel", answer: 40000, why: "The motor turns 20 times per wheel turn: 2000 x 20 = 40000." },
-        { id: "c", label: "Wheel angle for one count", unit: "microradians", answer: 157.08, tolPct: 0.5, why: "2 pi / 40000 = 0.00015708 rad = 157.08 microradians." },
-        { id: "d", label: "Wheel angle when the count is 10000", unit: "rad", answer: 1.5708, tolPct: 0.5, why: "10000 of 40000 counts is a quarter turn: pi / 2 = 1.5708 rad." },
-        { id: "e", label: "Wheel speed when the count changes by 26 in 1 ms", unit: "rad/s", answer: 4.084, tolPct: 1, why: "26 x 0.00015708 rad = 0.004084 rad in 0.001 s: 4.084 rad/s." },
-        { id: "f", label: "Robot speed at that wheel speed", unit: "ft/s", answer: 0.4203, tolPct: 1, why: "4.084 rad/s x 1.235 / 12 ft per rad = 0.4203 ft/s." },
-        { id: "g", label: "QPOSCNT reads 0xFFFFFE0C. The count as an int32_t", answer: -500, why: "0xFFFFFE0C is 2^32 - 500. Read as a signed 32-bit number that is -500: the wheel went 500 counts backwards from 0." },
+        { id: "c", label: "Wheel angle for one count (1 microradian is 0.000001 rad)", unit: "microradians", answer: 157.08, tolPct: 0.5, why: "2 pi / 40000 = 0.00015708 rad = 157.08 microradians." },
+        { id: "d", label: "Wheel angle when the count is 6000", unit: "rad", answer: 0.94248, tolPct: 0.5, why: "6000 x 2 pi / 40000 = 0.9425 rad, a little under a sixth of a turn." },
+        { id: "h", label: "Distance the robot has rolled at that angle", unit: "ft", answer: 0.097, tolPct: 1, why: "0.9425 rad x 1.235 / 12 = 0.0970 ft, a little over 1 inch." },
       ],
       hints: [
         "Work from the encoder outwards: slits, x4, gear ratio.",
-        "Radians per count is 2 pi divided by the counts per wheel turn.",
-        "For the last field: 0xFFFFFFFF is -1, so subtract the value from 0x100000000 and put a minus sign in front.",
+        "Radians per count is 2 pi (6.2832) divided by the counts per wheel turn.",
+        "Angle = count x 6.2832 / 40000. Distance = angle x 1.235 / 12.",
       ],
-      takeaway: "40000 counts per wheel turn, 157 microradians per count. One count per millisecond is already 0.157 rad/s: that is the resolution of a 1 ms speed measurement.",
+      takeaway: "40000 counts per wheel turn, 157 microradians per count, and distance = radius x angle. Every encoder number on the robot comes from these three.",
+    },
+    {
+      id: "enc-change",
+      kind: "calc",
+      title: "Speed, and counts below zero",
+      goal: "Work out a speed from two readings 1 ms apart, and read a counter that has gone backward past 0.",
+      refs: [{ course: "Lab 3" }, { trm: "17.5.1" }],
+      brief: `
+## Speed
+Speed is how far something moves per second. Your code will look at the wheel once every millisecond. So it takes the change since the last look and divides by the time between the two looks, 0.001 s:
+
+speed = (new - old) / 0.001
+
+Example: the angle was 2.000 rad and is 2.005 rad one millisecond later. The speed is 0.005 / 0.001 = 5 rad/s. Times 1.235 / 12, that is 0.515 ft/s for the robot.
+
+If the new value is smaller than the old one, the result is negative: the wheel turns backward.
+
+## Counting backward from 0
+\`QPOSCNT\` is an **unsigned** 32-bit register: it has no negative values. One count below 0 it wraps around to 0xFFFFFFFF (chapter 0).
+
+Read as a **signed** number in two's complement, those same 32 bits are -1. So copy the register into an \`int32_t\`, and backward counts read -1, -2, -3 with no extra code:
+
+\`\`\`c
+// 0xFFFFFFFF becomes -1
+int32_t raw = EQep1Regs.QPOSCNT;
+\`\`\`
+
+Example: 0xFFFFFFFD is -3, because 0x100000000 - 0xFFFFFFFD = 3.
+
+From the last level: one count is 0.00015708 rad of wheel angle.
+`,
+      fields: [
+        { id: "e", label: "Wheel speed when the count changes by 26 in 1 ms", unit: "rad/s", answer: 4.084, tolPct: 1, why: "26 x 0.00015708 rad = 0.004084 rad in 0.001 s: 4.084 rad/s." },
+        { id: "f", label: "Robot speed at that wheel speed", unit: "ft/s", answer: 0.4203, tolPct: 1, why: "4.084 rad/s x 1.235 / 12 ft per rad = 0.4203 ft/s." },
+        { id: "i", label: "Wheel speed when the count goes from 900 to 887 in 1 ms", unit: "rad/s", answer: -2.042, tolPct: 1, why: "New minus old is 887 - 900 = -13 counts. -13 x 0.00015708 / 0.001 = -2.042 rad/s: backward." },
+        { id: "g", label: "QPOSCNT reads 0xFFFFFE0C. The count as an int32_t", answer: -500, why: "0x100000000 - 0xFFFFFE0C = 0x1F4 = 500, so the signed value is -500: the wheel went 500 counts backward from 0." },
+      ],
+      hints: [
+        "Counts to radians first (x 0.00015708), then divide by 0.001 s.",
+        "Always new minus old, so a falling count gives a negative speed.",
+        "For the last field: subtract the value from 0x100000000 and put a minus sign in front. 0x1F4 is 500.",
+      ],
+      takeaway: "One count per millisecond is already 0.157 rad/s. That is the smallest step a 1 ms speed measurement can show.",
     },
     {
       id: "enc-qepctl",
@@ -329,16 +385,15 @@ Two registers decide how the eQEP counts.
 
 \`QDECCTL\` (decoder control) chooses **what** is counted with its field \`QSRC\`:
 - 0: quadrature count. Every edge of A and B, up or down by their order. This is the reset value and the mode the robot uses.
-- 1: direction count. A is a clock, B says up or down.
-- 2 and 3: count A's edges up only, or down only, to measure a frequency.
+- 1 to 3: other ways of counting that the robot does not use.
 
 \`QEPCTL\` (control) switches the counter on:
 - \`QPEN\` (bit 3): 1 enables the position counter. 0 holds the module in reset, and that is the value after power-on.
-- \`FREE_SOFT\` (bits 15-14): what the counter does when the debugger halts the program. 0 stops it at once; 2 lets it keep counting, so the position is still right when you press Resume.
-- \`PCRM\` (bits 13-12): what resets the counter. At 0 it is the encoder's index pulse, a third signal that the robot's encoders do not have connected. The course leaves it at 0.
-- \`SWI\` (bit 7): writing 1 loads \`QPOSCNT\` from \`QPOSINIT\`.
+- \`FREE_SOFT\` (bits 15-14): what the counter does while the **debugger** (the PC tool that pauses your program so you can look inside) has the program halted. 0 stops the counter at once. 2 lets it keep counting, so the position is still right when the program continues.
 
-\`init_eQEPs()\` writes \`FREE_SOFT = 2\` and then \`QPEN = 1\`. Build the resulting value.
+The other fields stay 0 in this course.
+
+\`init_eQEPs()\`, the course's set-up function, writes \`FREE_SOFT = 2\` and then \`QPEN = 1\`. Build the resulting value: click bits until both fields show their target.
 `,
       reg: "EQep1Regs.QEPCTL",
       initial: 0x0000,
@@ -362,19 +417,19 @@ Two registers decide how the eQEP counts.
       goal: "Complete the eQEP2 set-up and the scale factor so the right wheel angle is read in radians.",
       refs: [{ course: "Lab 3" }, { trm: "17.2" }, { trm: "17.4.1" }, { trm: "17.5.1" }],
       brief: `
-Lab 3 gives you \`init_eQEPs()\` complete. Here the eQEP1 block (left wheel) is complete, and the eQEP2 block (right wheel) has five \`???\` comments. Fix those lines, using eQEP1 as the model. Then fill in the scale factor of \`readEncRight()\`.
+Lab 3 gives you \`init_eQEPs()\` complete. Here the eQEP1 block (left wheel) is complete, and the eQEP2 block (right wheel) has five \`???\` comments. Fix those lines, using eQEP1 as the model. Then fill in the scale factor of \`readEncRight()\`. The rest is given: every millisecond the timer interrupt function calls the two read functions.
 
 ## What each block does
-1. **Pins.** The pull-ups are switched off (the encoder drives the lines itself) and the inputs are qualified over 6 samples to reject glitches. Then the mux hands the pins to the eQEP. The mux position is different for every pin:
+1. **Pins.** The pull-ups are switched off (the encoder drives the lines itself). \`QSEL = 2\` makes the chip accept a new level only after 6 samples in a row agree, which rejects short glitches. Then the mux hands the pins to the eQEP. The mux position depends on the pin:
 
 - EQEP1A, EQEP1B: GPIO20, GPIO21, mux **1**
 - EQEP2A, EQEP2B: GPIO54, GPIO55, mux **5**
 - EQEP3A, EQEP3B: GPIO6, GPIO7, mux **5**
 
-2. **Counter.** With \`QPEN = 0\` the module is held in reset while it is set up. \`QSRC = 0\` selects quadrature count. \`QPOSMAX\` is the largest count: one step past it the counter starts again at 0, and one step below 0 it continues at \`QPOSMAX\`. Its reset value is 0, which leaves no room to count at all, so the course sets the full 32-bit range. Last, \`QPEN = 1\` starts the counter.
+2. **Counter.** With \`QPEN = 0\` the module is held in reset while it is set up. \`QSRC = 0\` selects quadrature count. The three \`.all = 0x0\` lines switch off features the course does not use. \`QPOSMAX\` is the largest count: one step past it the counter starts again at 0. Its reset value is 0, which leaves no room to count at all, so the course sets the full 32-bit range. Last, \`QPEN = 1\` starts the counter.
 
 ## The scale factor
-\`readEncRight()\` returns the wheel angle in radians. One wheel turn is 2000 x 20 counts and 2 pi radians. Write the numbers with a decimal point so the division is done in floating point.
+\`readEncRight()\` copies the count into an \`int32_t\` and returns it times the radians per count. One wheel turn is 2000 x 20 counts and 2 pi radians. Write \`2000.0*20.0\`, with decimal points: \`2000*20\` would be worked out in 16-bit integers and wrap around (chapter 0). The minus sign in \`readEncLeft()\` is explained in the next level.
 
 The tests turn the left wheel at 4 rad/s and the right wheel at 6 rad/s for a quarter of a second.
 `,
@@ -421,11 +476,11 @@ ${READ_RIGHT}
 `,
       checks: [
         { kind: "reg", reg: "GpioCtrlRegs.GPBMUX2", field: "GPIO54", equals: 1, label: "GPIO54 is muxed to EQEP2A (mux 5)", hint: "Mux position 5 is GMUX = 1, MUX = 1. GPIO_SetupPinMux(54, GPIO_MUX_CPU1, 5) writes both." },
-        { kind: "reg", reg: "EQep2Regs.QDECCTL", field: "QSRC", equals: 0, label: "eQEP2 is in quadrature count mode" },
-        { kind: "reg", reg: "EQep2Regs.QPOSMAX", equals: 0xffffffff, label: "eQEP2 uses the full 32-bit range" },
-        { kind: "reg", reg: "EQep2Regs.QEPCTL", field: "QPEN", equals: 1, label: "eQEP2 is enabled" },
+        { kind: "reg", reg: "EQep2Regs.QDECCTL", field: "QSRC", equals: 0, label: "eQEP2 is in quadrature count mode", hint: "Quadrature count is QSRC = 0, as in the eQEP1 block." },
+        { kind: "reg", reg: "EQep2Regs.QPOSMAX", equals: 0xffffffff, label: "eQEP2 uses the full 32-bit range", hint: "Write 0xFFFFFFFF, as in the eQEP1 block. With 0 the counter has no room to count." },
+        { kind: "reg", reg: "EQep2Regs.QEPCTL", field: "QPEN", equals: 1, label: "eQEP2 is enabled", hint: "The last line of the eQEP2 block must write QPEN = 1." },
         { kind: "var", name: "LeftWheel", min: 0.99, max: 1.01, label: "LeftWheel is 1.0 rad after 0.25 s at 4 rad/s" },
-        { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel is 1.5 rad after 0.25 s at 6 rad/s", hint: "If it is 0, read the messages: they name the setting that stops the counter. If it is a wrong number, check the scale factor." },
+        { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel is 1.5 rad after 0.25 s at 6 rad/s", hint: "0 with a message under the code: the message names the setting that stops the counter. 0 with no message: the scale factor is still 0.0, or an integer division such as 1/40000 made it 0. About 30: the gear ratio of 20 is missing. Negative: 2000*20 wrapped around, write 2000.0*20.0." },
       ],
       watch: ["LeftWheel", "RightWheel"],
       inspect: ["EQep2Regs.QPOSCNT", "EQep2Regs.QEPCTL", "EQep2Regs.QDECCTL", "EQep2Regs.QPOSMAX"],
@@ -450,11 +505,11 @@ ${READ_RIGHT}
 1. Reads its counter into a **signed** 32-bit variable: \`int32_t raw = EQep1Regs.QPOSCNT;\`
 2. Returns \`raw\` times a scale factor in radians per count.
 
-Why signed: \`QPOSCNT\` is unsigned, and one count below 0 it reads 0xFFFFFFFF. Stored in an \`int32_t\`, the same bits are -1. No extra code is needed for negative angles.
+Why signed: one count below 0, \`QPOSCNT\` reads 0xFFFFFFFF. In an \`int32_t\` the same bits are -1 (last level).
 
 ## The numbers
 - eQEP1 is the left wheel, eQEP2 the right wheel: 2000 counts per motor turn, 20 motor turns per wheel turn.
-- eQEP3 is the hand wheel, a third encoder that you turn with your fingers: 4000 counts per turn, no gears.
+- eQEP3 is the hand wheel, a third encoder that you turn with your fingers: 4000 counts per turn, no gears. So its factor is 2 pi / 4000.
 
 ## The sign
 The two motors are mounted as mirror images of each other. When the robot drives forward, the right encoder counts **up** and the left encoder counts **down**. Lab 3 has you find this on the real robot by turning the wheels by hand. Both functions must return a **positive** angle for forward motion, so one scale factor is negative.
@@ -529,10 +584,10 @@ ${READ_HAND}
 ${INIT_ALL}
 `,
       checks: [
-        { kind: "var", name: "RightWheel", at: 135.5, min: 0.74, max: 0.76, label: "RightWheel is 0.75 rad halfway through the motion" },
-        { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel ends at 1.5 rad", hint: "One wheel turn is 2000.0*20.0 counts and 2*PI radians." },
-        { kind: "var", name: "LeftWheel", min: 0.99, max: 1.01, label: "LeftWheel ends at +1.0 rad", hint: "If it is -1.0, remember the left encoder counts down when the robot drives forward: negate its factor." },
-        { kind: "var", name: "Enc3_rad", min: -0.51, max: -0.49, label: "Enc3_rad ends at -0.5 rad", hint: "The hand wheel has 4000 counts per turn. A negative count must give a negative angle: read QPOSCNT into an int32_t." },
+        { kind: "var", name: "RightWheel", at: 135.5, min: 0.74, max: 0.76, label: "RightWheel is 0.75 rad halfway through the motion", hint: "0: the function still returns 0, or it divides integers (raw/40000 is 0 for less than a full turn). Multiply raw by the whole factor: raw*(2*PI/(2000.0*20.0))." },
+        { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel ends at 1.5 rad", hint: "One wheel turn is 2000.0*20.0 counts and 2*PI radians. A negative value means 2000*20 wrapped around: write the decimal points." },
+        { kind: "var", name: "LeftWheel", min: 0.99, max: 1.01, label: "LeftWheel ends at +1.0 rad", hint: "-1.0: the left encoder counts down when the robot drives forward, so negate its factor. A huge number: raw must be an int32_t, not unsigned." },
+        { kind: "var", name: "Enc3_rad", min: -0.51, max: -0.49, label: "Enc3_rad ends at -0.5 rad", hint: "-0.05: the hand wheel has no gears, its factor is 2*PI/4000.0. A huge positive number: copy QPOSCNT into an int32_t first, so a backward count reads negative." },
       ],
       watch: ["LeftWheel", "RightWheel", "Enc3_rad"],
       inspect: ["EQep1Regs.QPOSCNT", "EQep2Regs.QPOSCNT", "EQep3Regs.QPOSCNT"],
@@ -554,18 +609,20 @@ ${INIT_ALL}
 The read functions work. Now turn angles into distance and speed, inside the 1 ms interrupt function.
 
 ## Distance
-Lab 3 has you push the robot 3 feet along the floor and read the wheel angle: about 29.2 rad, so about 9.72 radians per foot. One radian is then 1 / 9.72 = 0.103 ft, which is the wheel radius, 1.235 inches. The course code writes the factor as \`(1.235/12.0)\` feet per radian. Use that:
+Distance in feet is the wheel angle in radians times \`(1.235/12.0)\`, the wheel radius in feet. Lab 3 has you check it: push the robot 3 feet along the floor and the wheel angle reads about 29.2 rad, and 29.2 x 1.235 / 12 = 3.0 ft.
 
 \`\`\`c
 LeftDist = LeftWheel * (1.235/12.0);
 \`\`\`
 
 ## Speed
-Speed is the derivative of position. A program cannot take a derivative, but it can compare the position now with the position one sample ago. This is the **backward difference**:
+Speed is the change in position divided by the time it took. The function runs every 1 ms, so it compares the position now with the position one call ago. The course calls this the **backward difference**, because it looks back one sample:
 
 \`\`\`c
 v = (p_current - p_old) / 0.001;    // 0.001 s between samples
 \`\`\`
+
+Example: 0.2000 ft one call ago, 0.2005 ft now: 0.0005 / 0.001 = 0.5 ft/s.
 
 Try it in the figure: slow the wheel down and watch the computed speed jump between a few values, because the position only moves in whole counts.
 
@@ -751,7 +808,7 @@ Put the chapter together with the timer, interrupt and serial chapters. Lab 3 pr
 - Read both wheels (the read functions are given).
 - Compute \`LeftDist\` and \`RightDist\` in feet, \`LeftVel\` and \`RightVel\` in ft/s, and \`AvgVel\`, the average of the two speeds.
 - Switch **LED1** (GPIO22) on while \`AvgVel\` is above 0.25 ft/s, and off otherwise.
-- On every 100th call, set \`UARTPrint = 1\`.
+- On every 100th call, set \`UARTPrint = 1\`. Count the calls in a global: \`numTimer0calls % 100\`, the remainder after dividing by 100, is 0 once every 100 calls.
 
 ## In the \`while (1)\` loop
 When \`UARTPrint\` is 1, clear it and print one line:
@@ -882,10 +939,10 @@ ${READ_LEFT}
 ${READ_RIGHT}
 `,
       checks: [
-        { kind: "serial-period", periodMs: 100, label: "A line is printed every 100 ms" },
-        { kind: "serial", matches: "L 0\\.\\d\\d R 0\\.\\d\\d V 0\\.5[0-3]\\r\\n", label: "While driving, the average speed prints as about 0.51 ft/s", hint: "(4 + 6) / 2 = 5 rad/s, times 1.235/12 ft per rad, is 0.51 ft/s." },
+        { kind: "serial-period", periodMs: 100, label: "A line is printed every 100 ms", hint: "Too few lines: is UARTPrint ever set, and does the text end with \\r\\n? Too many: set UARTPrint only on every 100th call, and clear it in main before printing." },
+        { kind: "serial", matches: "L 0\\.\\d\\d R 0\\.\\d\\d V 0\\.5[0-3]\\r\\n", label: "While driving, the average speed prints as about 0.51 ft/s", hint: "(4 + 6) / 2 = 5 rad/s, times 1.235/12 ft per rad, is 0.51 ft/s. If it prints 0.71, the sum needs parentheses: (LeftVel + RightVel) / 2.0." },
         { kind: "serial", matches: "L 0\\.31 R 0\\.46 V 0\\.00\\r\\n$", label: "The last line is L 0.31 R 0.46 V 0.00", hint: "Distance is angle times (1.235/12.0). A speed that is not 0 at rest means the old value is not saved after the speed is computed." },
-        { kind: "led", led: "LED1", at: 400, on: true, label: "LED1 is on while the robot drives" },
+        { kind: "led", led: "LED1", at: 400, on: true, label: "LED1 is on while the robot drives", hint: "On every call, after AvgVel is computed: GPASET for GPIO22 if AvgVel > 0.25, GPACLEAR otherwise." },
         { kind: "led", led: "LED1", at: 950, on: false, label: "LED1 is off after the robot stops" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside the interrupt function", hint: "Set UARTPrint in the interrupt function and call serial_printf in the while(1) loop." },
       ],
@@ -911,7 +968,7 @@ Written as a pair, A and B have four possible states: 00, 10, 11 and 01. While t
 
 The count goes **up** when **A leads B**: A changes first, then B follows.
 
-Try it in the figure: step the disc one quarter at a time and follow the highlighted state round the circle.
+Try it in the figure: press **Step**, one quarter of a slit at a time, and follow the highlighted state round the circle.
 
 {{figure:quadrature}}
 
@@ -929,7 +986,7 @@ Start from A = 0, B = 0 with the count at 0, and order the steps for the count g
         "After A has risen, the next change is B doing the same thing.",
         "00, 10, 11, 01, and back to 00.",
       ],
-      takeaway: "00, 10, 11, 01 is a 2-bit Gray code. Read the same list backwards and you have the sequence for counting down.",
+      takeaway: "00, 10, 11, 01 is a 2-bit Gray code: a counting order in which only one bit changes per step. Read the same list backwards and you have the sequence for counting down.",
     },
     {
       id: "enc-dead",

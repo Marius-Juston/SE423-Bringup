@@ -67,12 +67,12 @@ export const ch07: Chapter = {
       goal: "Learn what a DAC is and how its 12-bit number sets the output voltage.",
       refs: [{ course: "L5" }, { trm: "12.1" }, { trm: "12.2" }],
       brief: `
-A GPIO pin has two levels: 0 V or 3.3 V. A speaker, a motor driver input or a test signal needs a voltage **in between**, and one that can change smoothly.
+A GPIO pin is **digital**: it has two levels, 0 V or 3.3 V. A speaker, a motor driver input or a test signal needs a voltage **in between**, and one that can change smoothly. A voltage that can take any value in a range is called **analog**.
 
 A **DAC** (digital-to-analog converter) turns a number into a voltage. You write a number to a register, and a pin goes to the matching voltage and stays there until you write another number.
 
 ## The formula
-The F28379D's DAC takes a **12-bit** number, 0 to 4095. That is 2^12 = 4096 different values. The output is that fraction of a **reference voltage**, which is 3.0 V on the course boards:
+The F28379D's DAC takes a **12-bit** number, 0 to 4095. That is 2^12 = 4096 different values. The output is that fraction of a **reference voltage**: a fixed, accurate voltage that the chip uses as its yardstick. It is 3.0 V on the course boards:
 
 \`\`\`c
 Vout = DACVAL * 3.0 / 4096
@@ -82,16 +82,16 @@ Vout = DACVAL * 3.0 / 4096
 - \`DACVAL = 2048\` gives 1.5 V, exactly half
 - \`DACVAL = 4095\` gives 2.99927 V, the highest it can go
 
-One step of the number moves the output by 3.0 V / 4096 = **0.73 mV**. That step is the DAC's **resolution**. More bits would mean smaller steps.
+One step of the number moves the output by 3.0 V / 4096 = **0.732 mV**. That step is the DAC's **resolution**. More bits would mean smaller steps.
 
 {{figure:dac-staircase}}
 
-Try it in the figure: drag the number, then switch to 3 or 4 bits to see the single steps. Notice that 3.0 V itself is never reached: 4096 does not fit in 12 bits.
+Try it in the figure: drag the number, then switch to 3 or 4 bits to see the single steps.
 
 ## Inside
-The number goes to a network of resistors and switches, one switch per bit, built so that every bit adds **half as much** voltage as the bit above it. You will flip those switches yourself two levels from now.
+The number goes to a network of resistors and switches, one switch per bit. Every bit adds **half as much** voltage as the bit above it. You flip those switches yourself two levels from now.
 
-A resistor network cannot deliver current: connect a load and the voltage sags. So the chip adds an amplifier with a gain of 1 behind it, the **buffer**. That is why the manual calls it the *buffered DAC*. The formula is the ideal value. The data sheet promises it only from 0.3 V up, because the buffer cannot pull its output all the way down to 0 V. The simulator shows the ideal value.
+A resistor network cannot deliver current: connect anything that draws current and the voltage sags. So the chip puts a **buffer** behind it: a circuit that copies the voltage at its input to its output and supplies the current itself. The formula is the ideal value. The data sheet (the manufacturer's list of the chip's electrical limits) promises it only from 0.3 V up, because the buffer cannot pull its output all the way down to 0 V. The simulator shows the ideal value.
 
 ## On this chip
 There are three: **DACA**, **DACB** and **DACC**, with registers \`DacaRegs\`, \`DacbRegs\`, \`DaccRegs\`. The course library sets up DACA and DACB and gives you \`setDACA(volts)\` and \`setDACB(volts)\`. In this chapter you write them yourself.
@@ -106,7 +106,7 @@ There are three: **DACA**, **DACB** and **DACC**, with registers \`DacaRegs\`, \
         {
           prompt: "Why can the output never be exactly 3.0 V?",
           options: [
-            "The buffer loses 0.73 mV",
+            "The buffer loses 0.732 mV",
             "The largest 12-bit number is 4095, one step below 4096",
             "The reference is really 2.999 V",
             "DACVAL = 4095 is reserved",
@@ -126,12 +126,12 @@ There are three: **DACA**, **DACB** and **DACC**, with registers \`DacaRegs\`, \
           why: "A DAC holds its output. The voltage only changes when the number changes. (The last option describes PWM, a later chapter.)",
         },
       ],
-      takeaway: "Vout = DACVAL x 3.0 V / 4096. Twelve bits give 4096 steps of 0.73 mV, from 0 V to just under 3.0 V.",
+      takeaway: "Vout = DACVAL x 3.0 V / 4096. Twelve bits give 4096 steps of 0.732 mV, from 0 V to just under 3.0 V.",
     },
     {
       id: "dac-calc",
       kind: "calc",
-      title: "Volts and codes",
+      title: "Volts and numbers",
       goal: "Convert between the 12-bit DAC number and the output voltage, in both directions.",
       refs: [{ trm: "12.2" }, { course: "L5" }],
       brief: `
@@ -147,7 +147,7 @@ Going the other way, you want a voltage and need the number:
 DACVAL = Vout * 4096 / 3.0
 \`\`\`
 
-The register only holds whole numbers, so drop the fraction (C does this when it stores a \`float\` in an integer).
+The register only holds whole numbers, so drop the fraction (C does this when it stores a \`float\` in an integer). Example: 0.5 V needs 0.5 x 4096 / 3.0 = 682.67, so the register gets 682.
 
 Work out the four values. Give voltages in volts.
 `,
@@ -197,7 +197,7 @@ Work out the four values. Give voltages in volts.
       goal: "Set the switches of an 8-bit R-2R ladder so that it outputs 1.125 V.",
       refs: [{ course: "L5" }, { trm: "12.1.2" }],
       brief: `
-Here is a small R-2R ladder DAC with **8 bits** and a 3.0 V reference. Each bit is one switch. A switch that is on adds its share to the output: bit 7 adds 3.0 / 2 = **1.5 V**, and every lower bit adds half of the one before.
+This is the resistor network inside a DAC, here with **8 bits** and a 3.0 V reference. It is called an **R-2R ladder**: it is built from only two resistor values, R and 2R, drawn like the rungs of a ladder. Each bit is one switch. A switch that is on adds its share to the output: bit 7 adds 3.0 / 2 = **1.5 V**, and every lower bit adds half of the one before.
 
 {{figure:r2r-ladder}}
 
@@ -244,7 +244,7 @@ After reset the DAC is off: its output pin is not driven at all. Three registers
 
 \`DACCTL\` and \`DACOUTEN\` are **protected** registers: a write only counts between \`EALLOW;\` and \`EDIS;\`.
 
-The Lecture 5 slide comments DACREFSEL as "0 internal reference, 1 external" and waits 10 us. The manual is more exact: both references are pins, 0 is VDAC and 1 is VREFHI. The current data sheet gives the buffer up to **500 us** to power up, so wait that long.
+The buffer needs time to power up: the data sheet allows up to **500 us**, so wait that long with \`DELAY_US(500);\`. (The Lecture 5 slide calls DACREFSEL "0 internal, 1 external" and waits 10 us. Follow the manual and the data sheet.)
 
 The manual's sequence is: choose the reference, enable the output, wait for the buffer to power up, and only then expect a voltage. Order the steps.
 `,
@@ -281,7 +281,9 @@ Fill in the three lines:
 
 All three registers are written as \`DacaRegs.<REGISTER>.bit.<FIELD>\`, and for these three the field has the same name as the register, except \`DACCTL.bit.DACREFSEL\`.
 
-For the number, use \`Vout = DACVAL * 3.0 / 4096\`.
+\`DACVALS\` takes the 12-bit **number**, not volts. Work it out with \`DACVAL = Vout * 4096 / 3.0\`.
+
+The two set-up registers are protected, so the lines sit between \`EALLOW;\` and \`EDIS;\`, which are already there.
 `,
       kit: "robot",
       durationMs: 2,
@@ -315,14 +317,21 @@ For the number, use \`Vout = DACVAL * 3.0 / 4096\`.
 }
 `,
       checks: [
-        { kind: "reg", reg: "DacaRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "The reference is VREFHI (DACREFSEL = 1)" },
+        {
+          kind: "reg",
+          reg: "DacaRegs.DACCTL",
+          field: "DACREFSEL",
+          equals: 1,
+          label: "The reference is VREFHI (DACREFSEL = 1)",
+          hint: "Add DacaRegs.DACCTL.bit.DACREFSEL = 1; after EALLOW; and before EDIS;.",
+        },
         {
           kind: "reg",
           reg: "DacaRegs.DACOUTEN",
           field: "DACOUTEN",
           equals: 1,
           label: "The DAC output is enabled",
-          hint: "DacaRegs.DACOUTEN.bit.DACOUTEN = 1; connects the DAC to its pin.",
+          hint: "DacaRegs.DACOUTEN.bit.DACOUTEN = 1; connects the DAC to its pin. It must be between EALLOW; and EDIS;.",
         },
         {
           kind: "signal",
@@ -330,7 +339,7 @@ For the number, use \`Vout = DACVAL * 3.0 / 4096\`.
           equals: 1.5,
           tol: 0.001,
           label: "The DACA pin is at 1.5 V",
-          hint: "1.5 V is half of 3.0 V, so the number is half of 4096.",
+          hint: "At 0 V the output is still off (DACOUTEN) or the number is too small. DACVALS takes the 12-bit number, not volts: 1.5 V is half of 3.0 V, so write half of 4096.",
         },
       ],
       inspect: ["DacaRegs.DACCTL", "DacaRegs.DACOUTEN", "DacaRegs.DACVALS", "DacaRegs.DACVALA"],
@@ -355,7 +364,7 @@ Nobody wants to think in 12-bit numbers. The course library has a helper that ta
 setDACA(2.25);   // DACA now outputs 2.25 V
 \`\`\`
 
-Write its body. It has two jobs.
+Write its body. The parameter \`dacouta0\` (the course's name for it) is the wanted voltage in volts. The function has two jobs.
 
 ## 1. Saturate
 The DAC can only do 0 V to 3 V. If the caller asks for more, give 3 V. If the caller asks for less than 0, give 0 V. Limiting a value to its allowed range is called **saturation**.
@@ -363,9 +372,9 @@ The DAC can only do 0 V to 3 V. If the caller asks for more, give 3 V. If the ca
 This matters more than it looks. \`DACVALS\` keeps only 12 bits. Store 5000 in it and the top bit is cut off: 5000 - 4096 = 904, which is 0.66 V. Ask for more and get less.
 
 ## 2. Scale
-Turn 0 V to 3 V into 0 to 4095 and store it in \`DacaRegs.DACVALS.bit.DACVALS\`. Storing a \`float\` in the register drops the fraction.
+Turn 0 V to 3 V into 0 to 4095 and store it in \`DacaRegs.DACVALS.bit.DACVALS\`. Storing a \`float\` in the register drops the fraction. Example: 2.25 V becomes 2.25 x 4095 / 3.0 = 3071.25, stored as 3071.
 
-The course library scales with \`volts * 4095.0 / 3.0\`, so that 3.0 V lands exactly on 4095, the largest number. The manual's formula says \`volts * 4096.0 / 3.0\`, which gives 4096 for 3.0 V, one too many. The two differ by less than one step (0.73 mV). Either passes here, but with 4096 you must also limit the number to 4095.
+The course library scales with \`volts * 4095.0 / 3.0\`, so that 3.0 V lands exactly on 4095, the largest number. The manual's formula says \`volts * 4096.0 / 3.0\`, which gives 4096 for 3.0 V, one too many. The two differ by less than one step (0.732 mV). Either passes here, but with 4096 you must also limit the number to 4095.
 
 ${VALS_NOTE}
 
@@ -421,7 +430,7 @@ ${DAC_ON}
           equals: 2.25,
           tol: 0.002,
           label: "setDACA(2.25) gives 2.25 V",
-          hint: "Scale with dacouta0 * 4095.0 / 3.0 and store the result in DacaRegs.DACVALS.bit.DACVALS.",
+          hint: "At 0 V nothing useful reached DACVALS. Multiply first, then divide: dacouta0 * 4095.0 / 3.0, stored in DacaRegs.DACVALS.bit.DACVALS.",
         },
         {
           kind: "signal",
@@ -512,7 +521,14 @@ void main(void)
           label: "No write to a protected register is ignored",
           hint: "DACCTL is protected. Move EALLOW; above the DACREFSEL line.",
         },
-        { kind: "reg", reg: "DacaRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "The reference is VREFHI" },
+        {
+          kind: "reg",
+          reg: "DacaRegs.DACCTL",
+          field: "DACREFSEL",
+          equals: 1,
+          label: "The reference is VREFHI",
+          hint: "The DACREFSEL line is there, but it runs before EALLOW; so the chip ignores it.",
+        },
         {
           kind: "signal",
           name: "DACA",
@@ -616,8 +632,24 @@ __interrupt void cpu_timer0_isr(void)
 }
 `,
       checks: [
-        { kind: "signal", name: "DACA", at: 2.0, equals: 0.03, tol: 0.003, label: "0.03 V after the first interrupt" },
-        { kind: "signal", name: "DACA", at: 11.0, equals: 0.3, tol: 0.003, label: "0.30 V after 10 ms" },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 2.0,
+          equals: 0.03,
+          tol: 0.003,
+          label: "0.03 V after the first interrupt",
+          hint: "Still 0 V? Increase step before you call setDACA, and multiply by 0.03: step * 3 / 100 is integer division and gives 0.",
+        },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 11.0,
+          equals: 0.3,
+          tol: 0.003,
+          label: "0.30 V after 10 ms",
+          hint: "Each interrupt adds 1 to step and outputs step * 0.03. If the output stopped at 0.03 V, the PIEACK line at the end is missing.",
+        },
         { kind: "signal", name: "DACA", at: 51.0, equals: 1.5, tol: 0.003, label: "1.5 V after 50 ms" },
         {
           kind: "signal",
@@ -638,7 +670,14 @@ __interrupt void cpu_timer0_isr(void)
           hint: "After 3.0 V the next value is 0 V: set step to 0 and output that.",
         },
         { kind: "signal", name: "DACA", at: 112.0, equals: 0.3, tol: 0.003, label: "The second ramp climbs like the first" },
-        { kind: "isr", fn: "cpu_timer0_isr", min: 110, max: 116, label: "The interrupt runs every 1 ms" },
+        {
+          kind: "isr",
+          fn: "cpu_timer0_isr",
+          min: 110,
+          max: 116,
+          label: "The interrupt runs every 1 ms",
+          hint: "If it ran once, the function no longer ends with PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;",
+        },
       ],
       watch: ["step"],
       hints: [
@@ -654,10 +693,10 @@ __interrupt void cpu_timer0_isr(void)
       mode: "debug",
       tier: "practice",
       title: "Louder makes it quieter",
-      goal: "Fix a gain stage whose output collapses when the result goes above 3 V.",
+      goal: "Fix a program that doubles a signal and whose output collapses when the result goes above 3 V.",
       refs: [{ course: "L5" }, { trm: "12.4.2" }],
       brief: `
-This program is a small amplifier. Every millisecond the timer interrupt takes the next value of a test signal, multiplies it by a **gain of 2**, and sends it to DACA.
+This program is a small amplifier: it makes a signal bigger. Every millisecond the timer interrupt takes the next value of a test signal, multiplies it by 2 (the factor is called the **gain**), and sends it to DACA.
 
 The test signal goes 0.5 V, 1.0 V, 1.4 V, 1.6 V, 2.0 V. Times two, that is 1.0 V, 2.0 V, 2.8 V, then 3.2 V and 4.0 V. The last two are more than the DAC can do, so the output should simply stay at the top, 3.0 V.
 
@@ -750,7 +789,15 @@ __interrupt void cpu_timer0_isr(void)
           label: "1.6 V in: the output stays at the top",
           hint: "3.2 V scales to 4368, and 4368 does not fit in 12 bits: 4368 - 4096 = 272 is stored. Limit the voltage before scaling.",
         },
-        { kind: "signal", name: "DACA", at: 6.0, min: 2.995, max: 3.0, label: "2.0 V in: still at the top" },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 6.0,
+          min: 2.995,
+          max: 3.0,
+          label: "2.0 V in: still at the top",
+          hint: "Same cause: 4.0 V scales to 5460, stored as 5460 - 4096 = 1364. Add if (dacouta0 > 3.0) dacouta0 = 3.0; before the scaling line.",
+        },
       ],
       watch: ["n"],
       inspect: ["DacaRegs.DACVALS"],
@@ -850,10 +897,40 @@ ${SYNC}
 }
 `,
       checks: [
-        { kind: "reg", reg: "DacbRegs.DACOUTEN", field: "DACOUTEN", equals: 1, label: "The DACB output is enabled" },
-        { kind: "reg", reg: "DacbRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "DACB uses VREFHI" },
-        { kind: "signal", name: "DACA", at: 1.5, equals: 0.5, tol: 0.003, label: "Step 1: DACA at 0.5 V" },
-        { kind: "signal", name: "DACB", at: 1.5, equals: 2.5, tol: 0.003, label: "Step 1: DACB at 2.5 V" },
+        {
+          kind: "reg",
+          reg: "DacbRegs.DACOUTEN",
+          field: "DACOUTEN",
+          equals: 1,
+          label: "The DACB output is enabled",
+          hint: "DacbRegs.DACOUTEN.bit.DACOUTEN = 1; between EALLOW; and EDIS;. Until then DACB produces no voltage at all.",
+        },
+        {
+          kind: "reg",
+          reg: "DacbRegs.DACCTL",
+          field: "DACREFSEL",
+          equals: 1,
+          label: "DACB uses VREFHI",
+          hint: "DacbRegs.DACCTL.bit.DACREFSEL = 1; between EALLOW; and EDIS;.",
+        },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 1.5,
+          equals: 0.5,
+          tol: 0.003,
+          label: "Step 1: DACA at 0.5 V",
+          hint: "Call setDACA(v[i]); inside the for loop, before the DELAY_US line.",
+        },
+        {
+          kind: "signal",
+          name: "DACB",
+          at: 1.5,
+          equals: 2.5,
+          tol: 0.003,
+          label: "Step 1: DACB at 2.5 V",
+          hint: "\"Never produced a value\" means DACB is still off (DACOUTEN). At 0 V, setDACB is empty or is not called with 3.0 - v[i].",
+        },
         { kind: "signal", name: "DACB", at: 2.5, equals: 1.75, tol: 0.003, label: "Step 2: DACB at 1.75 V" },
         { kind: "signal", name: "DACA", at: 3.5, equals: 2.75, tol: 0.003, label: "Step 3: DACA at 2.75 V" },
         { kind: "signal", name: "DACB", at: 3.5, equals: 0.25, tol: 0.003, label: "Step 3: DACB at 0.25 V" },
@@ -881,10 +958,12 @@ Generate this on DACA:
 v(t) = 1.5 + 1.0 * sin(2 * PI * 100 * t)      // volts, t in seconds
 \`\`\`
 
-A new value goes out every **100 us** (10 kHz), so one period of 10 ms is drawn with 100 points. Timer 0 and its vector are set up for you. A given line holds the program until 1 ms after reset before the timer starts, so your set-up may take as long as it needs.
+\`sin(x)\` is the C library's sine function. It swings smoothly between -1 and +1 and repeats every time \`x\` grows by 2 x PI (about 6.28): \`x\` is an angle in **radians**, where 2 x PI is one full turn. So \`v\` swings between 0.5 V and 2.5 V around 1.5 V, 100 times a second.
+
+A new value goes out every **100 us** (10 kHz), so one period of 10 ms is drawn with 100 points. Point \`i\` is at t = i x 100 us, where the angle is 2 x PI x i / 100. Point 25, a quarter turn, gives sin = 1: 2.5 V. Timer 0 and its vector are set up for you. A given line holds the program until 1 ms after reset before the timer starts, so your set-up may take as long as it needs.
 
 ## The budget
-\`sin()\` is slow on a real microcontroller: hundreds of clock cycles. This interrupt runs ten thousand times a second. So the interrupt function may **not** call \`sin()\`: compute the 100 values once in \`main()\`, before the timer starts, and only look them up in the interrupt. (The simulator does not charge extra time for \`sin()\`. The real chip does.)
+\`sin()\` is slow on a real microcontroller: hundreds of clock cycles. This interrupt runs ten thousand times a second. So the interrupt function may **not** call \`sin()\`: compute the 100 values once in \`main()\`, before the timer starts, store them in an array (a **lookup table**), and only read the next entry in the interrupt. (The simulator does not charge extra time for \`sin()\`. The real chip does.)
 
 You get an extra star if the table already holds 12-bit DAC numbers, so that the interrupt function does no floating-point work and calls no helper: it only writes \`DACVALS\`.
 
@@ -960,7 +1039,15 @@ __interrupt void cpu_timer0_isr(void)
 }
 `,
       checks: [
-        { kind: "signal", name: "DACA", at: 3.55, equals: 2.5, tol: 0.01, label: "The peak, 2.5 V, a quarter period after the timer starts" },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 3.55,
+          equals: 2.5,
+          tol: 0.01,
+          label: "The peak, 2.5 V, a quarter period after the timer starts",
+          hint: "\"Never produced a value\" means the DAC is still off: reference, DACOUTEN, wait. Otherwise check that entry 25 of your table is 2.5 V.",
+        },
         { kind: "signal", name: "DACA", at: 6.05, equals: 1.5, tol: 0.07, label: "Back at 1.5 V after half a period" },
         { kind: "signal", name: "DACA", at: 8.55, equals: 0.5, tol: 0.01, label: "The trough, 0.5 V, at three quarters" },
         {
@@ -1092,7 +1179,15 @@ __interrupt void cpu_timer0_isr(void)
 }
 `,
       checks: [
-        { kind: "signal", name: "DACB", at: 1.075, equals: (64 * 3) / 4096, tol: 0.001, label: "64 after the first interrupt" },
+        {
+          kind: "signal",
+          name: "DACB",
+          at: 1.075,
+          equals: (64 * 3) / 4096,
+          tol: 0.001,
+          label: "64 after the first interrupt",
+          hint: "\"Never produced a value\" means DACB is still off: set DACREFSEL and DACOUTEN of DacbRegs between EALLOW; and EDIS;.",
+        },
         { kind: "signal", name: "DACB", at: 2.625, equals: (2048 * 3) / 4096, tol: 0.001, label: "2048 (1.5 V) after 32 interrupts" },
         {
           kind: "signal",
@@ -1103,7 +1198,15 @@ __interrupt void cpu_timer0_isr(void)
           label: "The peak, 4032, after 63 interrupts",
           hint: "Change direction when the number reaches 4032, before it can become 4096.",
         },
-        { kind: "signal", name: "DACB", at: 4.225, equals: (3968 * 3) / 4096, tol: 0.001, label: "3968 on the next interrupt: it turns without a spike" },
+        {
+          kind: "signal",
+          name: "DACB",
+          at: 4.225,
+          equals: (3968 * 3) / 4096,
+          tol: 0.001,
+          label: "3968 on the next interrupt: it turns without a spike",
+          hint: "0 V here means the number went on to 4096. Turn round when it is equal to 4032, not when it is above.",
+        },
         {
           kind: "signal",
           name: "DACB",
