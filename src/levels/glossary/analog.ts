@@ -16,6 +16,12 @@ export const glossary: GlossaryEntry[] = [
     level: "pwm-sawtooth",
   },
   {
+    term: "Active low",
+    meaning:
+      "A signal whose part is switched on while the pin is low. For PWM it means the low time is the time that counts.",
+    level: "pwm-lab",
+  },
+  {
     term: "ADC (analog-to-digital converter)",
     meaning:
       "The part of the chip that measures the voltage on a pin and gives your program a number.",
@@ -64,6 +70,12 @@ export const glossary: GlossaryEntry[] = [
     level: "pwm-brief",
   },
   {
+    term: "Centred pulse",
+    meaning:
+      "A pulse whose middle is the middle of the period. Up-down counting makes one: set on the way up, clear on the way down.",
+    level: "pwm-lab",
+  },
+  {
     term: "channel (ADC)",
     meaning:
       "The number of an ADC input pin. Channel 4 of ADCA is the pin ADCINA4.",
@@ -85,7 +97,7 @@ export const glossary: GlossaryEntry[] = [
     term: "CMPB, EPWMxB",
     meaning:
       "The second output of an ePWM module and its own compare register. A and B share one counter and one period, so they can differ in duty cycle but never in frequency.",
-    level: "act-servo-pair",
+    level: "pwm-second",
   },
   {
     term: "comparator",
@@ -98,6 +110,12 @@ export const glossary: GlossaryEntry[] = [
     meaning:
       "A number the ePWM module compares with its counter all the time. When they are equal, the pin can change. With the course's set-up the pin is high for CMPA counts of each period.",
     level: "pwm-sawtooth",
+  },
+  {
+    term: "Complementary pair",
+    meaning:
+      "Two signals that are opposite: one is on while the other is off. The two transistors of a half bridge are driven by such a pair.",
+    level: "pwm-deadband",
   },
   {
     term: "Control effort",
@@ -136,10 +154,22 @@ export const glossary: GlossaryEntry[] = [
     level: "dac-brief",
   },
   {
+    term: "Dead-band unit (DBCTL)",
+    meaning:
+      "The part of an ePWM module that makes a complementary pair from one signal and delays each switch-on edge, so there is dead time between them.",
+    level: "pwm-deadband",
+  },
+  {
     term: "Dead time",
     meaning:
       "A short gap in which both transistors of a pair are off, so they can never conduct at the same moment.",
     level: "pwm-x-deadtime",
+  },
+  {
+    term: "DBRED, DBFED",
+    meaning:
+      "The two delays of the dead-band unit, in counts of the counter clock: DBRED holds back rising edges, DBFED falling edges.",
+    level: "pwm-deadband",
   },
   {
     term: "Debugger",
@@ -182,6 +212,12 @@ export const glossary: GlossaryEntry[] = [
     meaning:
       "Enhanced quadrature encoder pulse module: hardware in the chip that watches channels A and B and keeps the count for you.",
     level: "enc-brief",
+  },
+  {
+    term: "Event (ePWM)",
+    meaning:
+      "A moment the counter reaches a special value: 0 (ZRO), TBPRD (PRD), CMPA (CAU going up, CAD going down) or CMPB (CBU, CBD). Actions and triggers hang on events.",
+    level: "pwm-lab",
   },
   {
     term: "Event trigger (ETSEL, ETPS)",

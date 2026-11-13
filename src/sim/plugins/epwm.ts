@@ -385,7 +385,12 @@ export class Epwm {
     const idle = m.mode === 3 || !m.ev;
     const ctr = this.counter(m, now);
     const up = this.countingUp(m, now);
+    const was = { mode: m.mode, tick: m.tick, prd: m.prd };
     if (!this.load(m, idle ? -1 : 0)) return;
+    // A write that leaves the time base alone (a new compare value, an
+    // action) must not move the cycle: re-anchoring from the whole-number
+    // counter would shift it by part of a count.
+    if (m.mode === was.mode && m.tick === was.tick && m.prd === was.prd && m.mode !== 3) return;
     if (m.mode !== 3) m.t0 = now - this.position(m, ctr, up) * m.tick;
   }
 

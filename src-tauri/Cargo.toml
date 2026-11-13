@@ -1,6 +1,6 @@
 [package]
 name = "bringup"
-version = "0.1.0"
+version = "0.2.0"
 description = "Practice game for SE 423: F28379D registers and C"
 authors = ["SE 423 course staff"]
 license = ""

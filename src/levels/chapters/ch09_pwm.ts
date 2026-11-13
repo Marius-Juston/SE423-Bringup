@@ -332,7 +332,7 @@ The value in a field is the action:
 - 2: **set**, the pin goes high
 - 3: toggle
 
-After reset the whole register is 0: no event does anything, so the pin never moves even if the counter runs. Try it in the figure: give the zero event and the compare event each of the four actions, and see what swapping set and clear does to the pin.
+After reset the whole register is 0: no event does anything, so the pin never moves even if the counter runs. Try it in the figure: open **More controls** and give the zero event and the compare event each of the four actions, and see what swapping set and clear does to the pin.
 
 {{figure:pwm-waveform}}
 
@@ -844,6 +844,228 @@ Try it in the figure: switch the count to up-down and see the triangle, the doub
         "1250, 250, 100 / 250, 50 000 000 / 1000, 50 000 000 / 65 536.",
       ],
       takeaway: "Counts per period is the resolution. Raise the carrier and you lose steps. Lower it far enough and you need CLKDIV.",
+    },
+    {
+      id: "pwm-lab",
+      kind: "quiz",
+      tier: "practice",
+      title: "PWM lab",
+      goal: "Find out by experiment what the count mode, the compare value, the actions and the clock divider do to the pin.",
+      refs: [{ course: "L6-7" }, { trm: "15.4.3" }, { trm: "15.6.3" }, { trm: "15.6.5" }, { trm: "15.10.1" }],
+      brief: `
+So far you met the ePWM one register at a time. Here is the whole module on one time axis. Nothing in this level has to be worked out on paper: **set it up in the figure and look**.
+
+{{figure:pwm-playground}}
+
+## How to use it
+- **Start from** loads a complete set-up. "LED dimmer" is the one you wrote in this chapter.
+- The picture shows the counter with \`TBPRD\`, \`CMPA\` and \`CMPB\` as dashed lines, then the two pins of the module. Dots on the counter are **events**: \`ZRO\` (counter = 0), \`PRD\` (counter = TBPRD), \`CAU\` and \`CAD\` (counter = CMPA on the way up, on the way down). A large orange dot moved a pin.
+- The controls are in groups. **Clock and period** holds the count mode, \`TBPRD\` and \`CLKDIV\`. **Compare** holds \`CMPA\`. **What each event does** is \`AQCTLA\` as a row of cells: press a cell to step through none, clear, set and toggle.
+- The sentence under the numbers says what the pins are doing and why. Read it after every change.
+- **Triggers and interrupt** can send a pulse called **SOCA** at an event of your choice. The ADC of chapter 8 can use that pulse as its "measure now" signal.
+
+Two words you need: a pulse is **centred** when its middle is the middle of the period, with equal low time before and after it. A signal is **active low** when the part it drives is on while the pin is low.
+
+For each question, build the set-up and watch the pin, the duty cycle and the frequency.
+`,
+      questions: [
+        {
+          prompt: "Start from \"LED dimmer\". Which change puts the pulse in the middle of the period instead of at its start?",
+          options: [
+            "Count down, with ZRO = set and CAU = clear",
+            "Count up, with CMPA = TBPRD / 2",
+            "Count up-down, with CAU = set, CAD = clear and ZRO = none",
+            "Count up-down, with ZRO = set and PRD = clear",
+          ],
+          answer: 2,
+          why: "On the triangle the counter passes CMPA twice, at equal distances from the peak. Setting on the way up and clearing on the way down puts the pulse around the peak. ZRO set and PRD clear gives a pulse that starts at the beginning of the period.",
+        },
+        {
+          prompt: "\"LED dimmer\" again (up count, TBPRD = 5000). Type CMPA = 6000. What does the pin do?",
+          options: ["It stays low: 0 %", "It stays high: 100 %", "It is high for 6000 counts, so the period gets longer", "It goes back to 50 %"],
+          answer: 1,
+          why: "The counter turns back at 5000 and never reaches 6000, so CAU never happens. Only the set at zero is left. The period does not change: only TBPRD sets it.",
+        },
+        {
+          prompt: "\"LED dimmer\" with CMPA = 0. The pin is set at zero and cleared at CMPA, and now both fall on count 0. What do you see?",
+          options: ["The pin stays high: the zero event wins", "A pulse one count wide", "The pin toggles every period", "The pin stays low: the compare event wins"],
+          answer: 3,
+          why: "When two events share a count, the chip acts on one of them. In up count the compare event has priority over the zero event, so the pin is cleared and never set. That is why CMPA = 0 is a clean 0 %.",
+        },
+        {
+          prompt: "A fan is on while its pin is low. It must be on for 25 % of each period. Up count, TBPRD = 5000, CMPA = 1250. Which actions do that?",
+          options: ["ZRO = clear, CAU = set", "ZRO = set, CAU = clear", "ZRO = toggle, CAU = none", "ZRO = clear, CAU = clear"],
+          answer: 0,
+          why: "The pin goes low at zero and high at CMPA: low for 1250 of the 5001 counts. The duty cycle read-out shows 75 % because it counts the high time. Swapping the two actions turns the waveform upside down.",
+        },
+        {
+          prompt: "Up count, CLKDIV = 2 and TBPRD = 31249. What is the frequency of the counter?",
+          options: ["1600 Hz", "400 Hz", "800 Hz", "200 Hz"],
+          answer: 1,
+          why: "CLKDIV = 2 divides by 4: 50 MHz / 4 = 12.5 MHz. One period is 31249 + 1 = 31250 counts, and 12 500 000 / 31 250 = 400.",
+        },
+        {
+          prompt: "Start from \"Centred, triggers ADC\" (up-down count, SOCASEL = 2). Where in the period does the SOCA pulse come?",
+          options: [
+            "At the valley of the triangle, where the counter is 0",
+            "At both edges of the pulse on the pin",
+            "At the peak of the triangle, in the middle of the pulse on the pin",
+            "At CMPA on the way up",
+          ],
+          answer: 2,
+          why: "SOCASEL = 2 selects the event counter = TBPRD, the peak. With a centred pulse that is its middle, as far as possible from both edges, where switching disturbs a measurement least.",
+        },
+      ],
+      hints: [
+        "Every answer can be read off the figure. Load the preset the question names, change only what it says, and read the sentence under the numbers.",
+        "Count mode, TBPRD and CLKDIV are in \"Clock and period\". CMPA is in \"Compare\". The actions are in \"What each event does\". SOCA is in \"Triggers and interrupt\".",
+        "Centred: up-down with CAU set and CAD clear. CMPA above TBPRD: stuck high. CMPA = 0: stuck low. Active low: clear at zero, set at CMPA. 12.5 MHz / 31250. The peak.",
+      ],
+      takeaway: "The counter makes events, the action qualifier turns events into edges, and a compare value the counter never reaches makes no event at all. When in doubt, set it up and look.",
+    },
+    {
+      id: "pwm-second",
+      kind: "calc",
+      tier: "practice",
+      title: "The second output",
+      goal: "Use EPWMxB and CMPB: a second pin on the same counter with its own duty cycle.",
+      refs: [{ course: "HW4" }, { trm: "15.5.3" }, { trm: "15.6.5" }, { trm: "15.15.2" }],
+      brief: `
+Every ePWM module has **two** pins. You used the first, **EPWM12A**. The second is **EPWM12B**, on GPIO23 for module 12. The robot's two RC servos hang on the A and B pins of one module (chapter 10).
+
+The two pins share everything in the time base: one counter, one \`TBPRD\`, one clock. So they always have the **same period**. What each pin has of its own:
+
+- its own action register: \`AQCTLA\` for pin A, \`AQCTLB\` for pin B. Same fields, same four actions.
+- a second compare register, \`CMPB\`, with its own events: \`CBU\` (counter = CMPB going up) and \`CBD\` (going down).
+
+Either action register may use either compare value. The usual choice mirrors pin A:
+
+\`\`\`c
+EPwm12Regs.CMPB.bit.CMPB = 3000;
+EPwm12Regs.AQCTLB.bit.ZRO = 2;   // set B at zero
+EPwm12Regs.AQCTLB.bit.CBU = 1;   // clear B at CMPB
+\`\`\`
+
+Pin B is then high for CMPB counts, as pin A is for CMPA counts.
+
+Because \`AQCTLB\` can use both, pin B can also start at one compare value and stop at the other: set at \`CAU\`, clear at \`CBU\`. The pulse then sits anywhere in the period.
+
+Try it in the figure: load "LED dimmer", open **What each event does** and give the \`AQCTLB\` row ZRO = set and CBU = clear. Then drag the dotted \`CMPB\` line.
+
+{{figure:pwm-playground}}
+
+In \`AQCTLB\`, as in \`AQCTLA\`, each field is two bits: ZRO in bits 1-0, PRD in 3-2, CAU in 5-4, CAD in 7-6, CBU in 9-8, CBD in 11-10. This chapter's numbers: up count, \`TBPRD = 5000\`, one count is 20 ns.
+`,
+      fields: [
+        {
+          id: "cmpb",
+          label: "CMPB for 60 % on EPWM12B (set at zero, clear at CBU)",
+          answer: 3000,
+          why: "0.60 x 5000 = 3000, the same rule as CMPA = duty x TBPRD.",
+        },
+        {
+          id: "period",
+          label: "Period of EPWM12B when EPWM12A has a period of 100 us",
+          unit: "us",
+          answer: 100,
+          why: "Both pins come from the same counter and the same TBPRD. They cannot have different periods.",
+        },
+        {
+          id: "between",
+          label: "AQCTLB: CAU = set, CBU = clear. CMPA = 1000, CMPB = 3000. Counts pin B is high in a period",
+          answer: 2000,
+          why: "High from count 1000 to count 3000: 3000 - 1000 = 2000 counts.",
+        },
+        {
+          id: "duty",
+          label: "That pulse as a duty cycle",
+          unit: "%",
+          answer: 40,
+          tolPct: 0.5,
+          why: "2000 / 5000 = 40 % (39.99 % with the exact 5001 counts).",
+        },
+        {
+          id: "reg",
+          label: "Value of AQCTLB with ZRO = 2 and CBU = 1, as a decimal number",
+          answer: 258,
+          why: "ZRO = 2 in bits 1-0 is 2. CBU = 1 in bits 9-8 is 1 x 256. 256 + 2 = 258 (0x0102).",
+        },
+      ],
+      hints: [
+        "Pin B follows the same rules as pin A, with CMPB and AQCTLB in place of CMPA and AQCTLA.",
+        "A pulse from one compare value to the other is as long as their difference. A field in bits 9-8 is worth its value times 256.",
+        "0.6 x 5000, 100, 3000 - 1000, 2000 / 5000, 256 + 2.",
+      ],
+      takeaway: "One module is one counter and two pins. A and B can differ in duty cycle and in where the pulse sits, never in period.",
+    },
+    {
+      id: "pwm-deadband",
+      kind: "calc",
+      tier: "practice",
+      title: "A gap between two switches",
+      goal: "Work out the delays of the dead-band unit that keep two transistors from conducting together.",
+      refs: [{ course: "L6-7" }, { trm: "15.7.1" }, { trm: "15.7.3" }, { trm: "15.15.2" }],
+      brief: `
+A motor amplifier (chapter 10) has pairs of transistors in a row between the battery and ground. One connects the motor wire to the battery, the other to ground. They get opposite signals: a **complementary pair**, one on while the other is off.
+
+A transistor needs a moment to switch off. If its partner switches on in that moment, both conduct and short the battery. So the "on" edge of each signal is held back a little. For that time both are off: the **dead time**.
+
+The ePWM has a **dead-band unit** for this, after the action qualifier. It takes pin A's signal and makes both pins from it:
+
+- \`DBCTL.OUT_MODE = 3\` switches both delays on.
+- \`DBRED\` is the **rising-edge delay**: pin A goes high that many counts late. It goes low on time.
+- \`DBFED\` is the **falling-edge delay** for the second signal. With \`DBCTL.POLSEL = 2\` that signal is then inverted, so pin B goes high \`DBFED\` counts after pin A went low.
+
+Both delays are counts of the counter clock: \`delay = register x 20 ns\` at 50 MHz.
+
+Try it in the figure: load "Pair with dead time", press **+** next to View to zoom in, and step through the edges. Then open **Dead band** and change the two delays.
+
+{{figure:pwm-playground}}
+
+The numbers below use that preset: up-down count, \`TBPRD = 1250\` (a period of 2500 counts), \`CMPA = 625\`, set at CAU and clear at CAD, so the signal is high for 1250 counts before the dead band. The game's simulator has no dead-band unit, so this level is paper and figure only. The expert level "Two outputs that never overlap" builds the same gap in code with CMPA and CMPB.
+`,
+      fields: [
+        {
+          id: "dbred",
+          label: "DBRED for a rising-edge delay of 1 us (one count is 20 ns)",
+          answer: 50,
+          why: "1 us / 20 ns = 50 counts.",
+        },
+        {
+          id: "high",
+          label: "Counts pin A is high per period with DBRED = 100",
+          answer: 1150,
+          why: "The rising edge comes 100 counts late and the falling edge on time: 1250 - 100 = 1150.",
+        },
+        {
+          id: "duty",
+          label: "Duty cycle of pin A with DBRED = 100",
+          unit: "%",
+          answer: 46,
+          tolPct: 0.5,
+          why: "1150 / 2500 = 46 %. The dead time is taken out of the pulse.",
+        },
+        {
+          id: "both",
+          label: "Time per period in which both pins are low, with DBRED = DBFED = 100",
+          unit: "us",
+          answer: 4,
+          why: "Two gaps per period, one at each switch-over: 2 x 100 counts x 20 ns = 4 us.",
+        },
+        {
+          id: "slow",
+          label: "Rising-edge delay with DBRED = 100 after CLKDIV is changed to 1",
+          unit: "us",
+          answer: 4,
+          why: "CLKDIV = 1 halves the counter clock to 25 MHz: one count is 40 ns, and 100 x 40 ns = 4 us. The delay is in counts, so it follows the clock.",
+        },
+      ],
+      hints: [
+        "Turn each time into counts of 20 ns, or each count into time.",
+        "Only the rising edge of pin A moves. Its high time shrinks by DBRED counts. There is one gap after each of the two switch-overs in a period.",
+        "50, 1250 - 100, 1150 / 2500, 2 x 100 x 20 ns, 100 x 40 ns.",
+      ],
+      takeaway: "The dead-band unit makes a complementary pair from one signal and delays each switch-on edge by a number of counts. The gap is paid for out of the pulse.",
     },
     {
       id: "pwm-debug-three",

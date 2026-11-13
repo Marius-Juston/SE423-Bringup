@@ -281,7 +281,7 @@ function PwmWaveform() {
           )}
         </div>
       </details>
-      <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. A CMPA above TBPRD is never reached. Drag the two dashed lines or use the sliders. Orange dots mark the events that move the pin.</figcaption>
+      <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. A CMPA above TBPRD is never reached. Drag the two dashed lines or use the sliders. Orange dots mark the events that move the pin. Both outputs, dead time and triggers are in the figure "ePWM playground".</figcaption>
     </figure>
   );
 }
