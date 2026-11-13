@@ -138,6 +138,14 @@ export interface CodeLevel extends Base {
    * of them.
    */
   bonus?: Check[];
+  /**
+   * Id of an earlier code level this one builds on. If the student has
+   * code saved for that level (and none yet for this one), this level
+   * opens with THEIR code instead of `starter`, so they keep building on
+   * their own work. `starter` must then be that earlier level's reference
+   * solution plus the new TODOs, for students who arrive without it.
+   */
+  continues?: string;
   /** Global variables shown live next to the board. */
   watch?: string[];
   /** Registers shown in the inspector by default. */

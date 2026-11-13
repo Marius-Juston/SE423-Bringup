@@ -382,7 +382,14 @@ export function runProgram(spec: RunSpec): RunResult {
       case "source": {
         const code = stripComments(spec.source);
         pass = (!c.mustMatch || new RegExp(c.mustMatch).test(code)) && (!c.mustNotMatch || !new RegExp(c.mustNotMatch).test(code));
-        detail = pass ? "Found in the code." : "Not as required in the code.";
+        const missing = !!c.mustMatch && !new RegExp(c.mustMatch).test(code);
+        detail = pass
+          ? c.mustMatch
+            ? "The code does this."
+            : "The code avoids this."
+          : missing
+            ? "The code does not do this yet."
+            : "The code still contains what this asks you to avoid.";
         break;
       }
     }

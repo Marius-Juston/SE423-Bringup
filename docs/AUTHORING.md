@@ -77,6 +77,12 @@ Write the text to match the figure and point at it, not to replace it.
   time; a polling loop that writes something on every pass is simulated
   statement by statement (about 1 to 3 million statements per second).
 
+## Building on earlier work
+A code level may set `continues: "<earlier level id>"`. It then opens with
+the student's own saved code from that level, so a chapter can grow one
+program step by step (the capstone does this). Write the brief so it works
+either way: say exactly what to add and where, not "fill in the TODO".
+
 ## Accuracy
 - Facts must agree with the Technical Reference Manual. Where a slide or
   handout differs, follow the TRM and say so in one line.
