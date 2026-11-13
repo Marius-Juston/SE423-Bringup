@@ -294,6 +294,16 @@ ${out(22)}
         { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", equals: 0, label: "Timer 0 is running" },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the waiting, not DELAY_US" },
       ],
+      bonus: [
+        {
+          kind: "blink",
+          led: "LED1",
+          periodMs: 200,
+          tolPct: 0.01,
+          label: "No drift: the blink period is 200 ms to within 0.01 %",
+          hint: "Only the timer decides the rate. Do not restart or reconfigure it inside the loop.",
+        },
+      ],
       inspect: ["CpuTimer0Regs.TIM", "CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR"],
       hints: [
         "100 ms is 100000 microseconds. The first argument is the address of the timer's variable: `&CpuTimer0`.",
@@ -374,6 +384,14 @@ ${out(22)}
           hint: "PRD = 200 x (period in microseconds) - 1.",
         },
       ],
+      bonus: [
+        {
+          kind: "max-lines",
+          max: 16,
+          label: "A one-number fix: the program is still 16 lines of code",
+          hint: "Do not add a line. One argument of one call is wrong.",
+        },
+      ],
       inspect: ["CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR"],
       hints: [
         "The LED blinks exactly 1000 times too fast. Which unit conversion is a factor of 1000?",
@@ -445,6 +463,14 @@ ${out(22)}
         { kind: "pin", pin: 22, at: 0.9, level: 0, label: "GPIO22 is still low just before the first period ends" },
         { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 199999, label: "Timer 0 is still set to 1 ms (PRD = 199999)" },
       ],
+      bonus: [
+        {
+          kind: "max-lines",
+          max: 16,
+          label: "A one-character fix: the program is still 16 lines of code",
+          hint: "Do not add a line. Change the value written to TIF.",
+        },
+      ],
       inspect: ["CpuTimer0Regs.TCR", "CpuTimer0Regs.TIM"],
       hints: [
         "The flag is set once after 1 ms and then stays set. Which line is supposed to clear it?",
@@ -499,11 +525,23 @@ ${INIT}
 ${out(22)}
 ${out(34)}
 
-    InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 200, 100000);
-    ConfigCpuTimer(&CpuTimer1, 200, 250000);
-    CpuTimer0Regs.TCR.all = 0x4000;
-    CpuTimer1Regs.TCR.all = 0x4000;
+    // Timer 0: 100 ms = 20000000 clock cycles of 5 ns
+    CpuTimer0Regs.TCR.bit.TSS = 1;     // stop
+    CpuTimer0Regs.PRD.all = 19999999;
+    CpuTimer0Regs.TPR.all = 0;         // no prescaler
+    CpuTimer0Regs.TPRH.all = 0;
+    CpuTimer0Regs.TCR.bit.TRB = 1;     // load TIM from PRD
+
+    // Timer 1: 250 ms = 50000000 clock cycles
+    CpuTimer1Regs.TCR.bit.TSS = 1;
+    CpuTimer1Regs.PRD.all = 49999999;
+    CpuTimer1Regs.TPR.all = 0;
+    CpuTimer1Regs.TPRH.all = 0;
+    CpuTimer1Regs.TCR.bit.TRB = 1;
+
+    // Start both
+    CpuTimer0Regs.TCR.bit.TSS = 0;
+    CpuTimer1Regs.TCR.bit.TSS = 0;
 
     while (1) {
         if (CpuTimer0Regs.TCR.bit.TIF == 1) {
@@ -549,6 +587,22 @@ ${out(34)}
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the waiting, not DELAY_US" },
         { kind: "no-dat-write", label: "Outputs are changed through SET, CLEAR or TOGGLE" },
       ],
+      bonus: [
+        {
+          kind: "source",
+          mustNotMatch: "ConfigCpuTimer|InitCpuTimers",
+          label: "Registers only: both timers are set up without InitCpuTimers and ConfigCpuTimer",
+          hint: "For each timer: TSS = 1, write PRD.all, clear TPR.all and TPRH.all, TRB = 1. Then TSS = 0 to start.",
+        },
+        {
+          kind: "reg",
+          reg: "CpuTimer1Regs.TCR",
+          field: "TIE",
+          equals: 0,
+          label: "Timer 1 does not ask for an interrupt (TIE = 0): the loop polls the flags",
+          hint: "ConfigCpuTimer and TCR.all = 0x4000 both set TIE. Single-bit writes to TSS and TRB leave it at 0.",
+        },
+      ],
       inspect: ["CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR", "CpuTimer1Regs.PRD", "CpuTimer1Regs.TCR"],
       hints: [
         "Write the timer 0 part first, exactly as in the earlier levels, and test it. Then copy it for timer 1 and change the names.",
@@ -556,6 +610,610 @@ ${out(34)}
         "Two separate ifs in the loop: one tests and clears `CpuTimer0Regs.TCR.bit.TIF`, the other `CpuTimer1Regs.TCR.bit.TIF`. The red LED toggles through `GPBTOGGLE`.",
       ],
       takeaway: "Each timer keeps its own time, so one loop can serve several rates. Interrupts, next, remove even the polling.",
+    },
+    {
+      id: "tmr-raw",
+      tier: "practice",
+      kind: "code",
+      mode: "write",
+      title: "By hand, with a prescaler",
+      goal: "Set up CPU Timer 1 with register writes only, prescaler included, and toggle LED2 every 50 ms.",
+      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
+      brief: `
+\`ConfigCpuTimer\` always sets the prescaler to 0. This time you write the registers yourself and use the prescaler, so no helper function: no \`InitCpuTimers\`, no \`ConfigCpuTimer\`.
+
+## The target
+- One tick of **0.1 ms**: 20000 clock cycles of 5 ns. The prescaler value is one less, 19999 = \`0x4E1F\`.
+- A period of **50 ms**: 500 ticks, so \`PRD\` = 499.
+- **LED2** (GPIO94) changes on every period: a blink period of 100 ms.
+
+The 16-bit prescaler value is split over two fields: the low byte goes in \`CpuTimer1Regs.TPR.bit.TDDR\`, the high byte in \`CpuTimer1Regs.TPRH.bit.TDDRH\`.
+
+## The order
+After reset the timers are already running, with \`PRD\` at its largest value. So:
+
+1. Stop the timer: \`TCR.bit.TSS = 1\`
+2. Write the prescaler and \`PRD.all\`
+3. Reload: \`TCR.bit.TRB = 1\` loads \`TIM\` from \`PRD\` and restarts the prescaler
+4. Start: \`TCR.bit.TSS = 0\`
+
+Then poll the flag of **Timer 1** in the loop, as before.
+`,
+      kit: "robot",
+      durationMs: 500,
+      inspect: ["CpuTimer1Regs.TPR", "CpuTimer1Regs.TPRH", "CpuTimer1Regs.PRD", "CpuTimer1Regs.TCR", "CpuTimer1Regs.TIM"],
+      starter: `void main(void)
+{
+${INIT}
+
+${out(94)}
+
+    // CPU Timer 1 by hand: stop, prescaler, PRD, reload, start
+
+    while (1) {
+        // Timer 1 flag: clear it and toggle LED2
+    }
+}
+`,
+      solution: `void main(void)
+{
+${INIT}
+
+${out(94)}
+
+    CpuTimer1Regs.TCR.bit.TSS = 1;         // stop while the settings change
+    CpuTimer1Regs.TPR.bit.TDDR = 0x1F;     // prescaler 19999 = 0x4E1F, low byte
+    CpuTimer1Regs.TPRH.bit.TDDRH = 0x4E;   // high byte: one tick is 0.1 ms
+    CpuTimer1Regs.PRD.all = 499;           // 500 ticks = 50 ms
+    CpuTimer1Regs.TCR.bit.TRB = 1;         // load TIM from PRD
+    CpuTimer1Regs.TCR.bit.TSS = 0;         // start
+
+    while (1) {
+        if (CpuTimer1Regs.TCR.bit.TIF == 1) {
+            CpuTimer1Regs.TCR.bit.TIF = 1;
+            GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;
+        }
+    }
+}
+`,
+      checks: [
+        {
+          kind: "blink",
+          led: "LED2",
+          periodMs: 100,
+          label: "LED2 blinks with a 100 ms period",
+          hint: "If nothing happens, the counter was not reloaded: without TRB it is still counting down from its reset value.",
+        },
+        { kind: "reg", reg: "CpuTimer1Regs.TPR", field: "TDDR", equals: 0x1f, label: "TDDR is 0x1F, the low byte of 19999", hint: "19999 is 0x4E1F. The low byte is 0x1F." },
+        { kind: "reg", reg: "CpuTimer1Regs.TPRH", field: "TDDRH", equals: 0x4e, label: "TDDRH is 0x4E, the high byte of 19999", hint: "The high byte of 0x4E1F goes in TPRH.bit.TDDRH." },
+        { kind: "reg", reg: "CpuTimer1Regs.PRD", equals: 499, label: "PRD is 499: 500 ticks of 0.1 ms", hint: "PRD counts ticks now, not clock cycles." },
+        { kind: "reg", reg: "CpuTimer1Regs.TCR", field: "TSS", equals: 0, label: "Timer 1 is running" },
+        { kind: "source", mustNotMatch: "ConfigCpuTimer|InitCpuTimers|DELAY_US", label: "No InitCpuTimers, ConfigCpuTimer or DELAY_US" },
+      ],
+      bonus: [
+        {
+          kind: "reg",
+          reg: "CpuTimer1Regs.TCR",
+          field: "TIE",
+          equals: 0,
+          label: "Timer 1 does not ask for an interrupt (TIE = 0): the loop polls the flag",
+          hint: "Change TCR one bit at a time, or write a whole value with bit 14 at 0.",
+        },
+      ],
+      hints: [
+        "Split 0x4E1F: `CpuTimer1Regs.TPR.bit.TDDR = 0x1F;` and `CpuTimer1Regs.TPRH.bit.TDDRH = 0x4E;`",
+        "Between stopping and starting: the two prescaler writes, `CpuTimer1Regs.PRD.all = 499;` and `CpuTimer1Regs.TCR.bit.TRB = 1;`",
+        "The loop is the one you know, with CpuTimer1Regs: test TIF, write 1 to TIF, then `GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;`",
+      ],
+      takeaway: "Stop, write the prescaler and PRD, reload, start. With a 0.1 ms tick, PRD reads in round numbers and a 32-bit counter reaches 119 hours.",
+    },
+    {
+      id: "tmr-count",
+      tier: "practice",
+      kind: "code",
+      mode: "write",
+      title: "One tick, two rhythms",
+      goal: "From a single 1 ms timer, flash LED1 briefly twice a second and toggle LED2 every 100 ms.",
+      refs: [{ trm: "3.8" }, { course: "Lab 1" }, { course: "Lab 2" }],
+      brief: `
+One timer can serve many rates. Let it tick at the fastest rate you need and **count the ticks**. Every slower rhythm is then a test on the count.
+
+Lab 1 does the same with \`CpuTimer2.InterruptCount\` and the \`%\` operator. \`a % b\` is the remainder of a divided by b, so \`ms % 100 == 0\` is true once every 100 ticks.
+
+## Your task
+Use **CPU Timer 0 only**, with a period of **1 ms**.
+
+- \`ms\` (a global \`Uint32\`) goes up by 1 on every period.
+- **LED1** (GPIO22) is a heartbeat: lit while \`ms % 500\` is less than 50, dark otherwise. That is a 50 ms flash every half second.
+- **LED2** (GPIO94) changes state every 100 ms, when \`ms % 100\` is 0.
+
+Update the LEDs only when a tick has happened. No \`DELAY_US\`.
+`,
+      kit: "robot",
+      durationMs: 1600,
+      watch: ["ms"],
+      starter: `Uint32 ms = 0;
+
+void main(void)
+{
+${INIT}
+
+${out(22)}
+${out(94)}
+
+    // Set up and start CPU Timer 0 with a period of 1 ms
+
+    while (1) {
+        // On every tick: count it, then update LED1 and LED2
+    }
+}
+`,
+      solution: `Uint32 ms = 0;
+
+void main(void)
+{
+${INIT}
+
+${out(22)}
+${out(94)}
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 200, 1000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    while (1) {
+        if (CpuTimer0Regs.TCR.bit.TIF == 1) {
+            CpuTimer0Regs.TCR.bit.TIF = 1;
+            ms++;
+
+            // Heartbeat: the first 50 ms of every 500 ms
+            if (ms % 500 < 50) {
+                GpioDataRegs.GPASET.bit.GPIO22 = 1;
+            } else {
+                GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+            }
+
+            // Every 100 ms
+            if (ms % 100 == 0) {
+                GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;
+            }
+        }
+    }
+}
+`,
+      checks: [
+        { kind: "var", name: "ms", at: 1500.5, min: 1499, max: 1501, label: "ms counts milliseconds: about 1500 after 1.5 s", hint: "Count once per flag, and clear the flag by writing 1 to it." },
+        { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 199999, label: "Timer 0 has a 1 ms period (PRD = 199999)" },
+        { kind: "led", led: "LED1", at: 520, on: true, label: "LED1 is lit at 520 ms, inside the flash" },
+        { kind: "led", led: "LED1", at: 580, on: false, label: "LED1 is dark at 580 ms", hint: "The flash is 50 ms long: lit while ms % 500 is less than 50." },
+        { kind: "led", led: "LED1", at: 1020, on: true, label: "LED1 is lit at 1020 ms, in the next flash" },
+        { kind: "led", led: "LED1", at: 1300, on: false, label: "LED1 is dark at 1300 ms" },
+        { kind: "duty", led: "LED1", pct: 10, tolPct: 0.5, from: 500, to: 1500, label: "LED1 is lit 10 % of the time" },
+        { kind: "blink", led: "LED2", periodMs: 200, label: "LED2 blinks with a 200 ms period", hint: "Toggle LED2 only on the ticks where ms % 100 is 0." },
+        { kind: "source", mustNotMatch: "CpuTimer[12]|DELAY_US", label: "Only CPU Timer 0 keeps the time" },
+        { kind: "no-dat-write", label: "Outputs are changed through SET, CLEAR or TOGGLE" },
+      ],
+      hints: [
+        "Set-up as before: `InitCpuTimers();`, `ConfigCpuTimer(&CpuTimer0, 200, 1000);`, `CpuTimer0Regs.TCR.all = 0x4000;`",
+        "Everything goes inside the flag test: clear the flag, `ms++;`, then the two LED rules.",
+        "`if (ms % 500 < 50) { SET LED1 } else { CLEAR LED1 }` and `if (ms % 100 == 0) { TOGGLE LED2 }`.",
+      ],
+      takeaway: "A tick counter turns one timer into as many rhythms as you like. It is also a clock: ms is the time since start.",
+    },
+    {
+      id: "tmr-stopwatch",
+      tier: "expert",
+      kind: "code",
+      mode: "write",
+      title: "Stopwatch",
+      goal: "Measure the time from a press of PB1 to a press of PB2 in microseconds, by reading the counter of a timer that keeps reloading.",
+      refs: [{ trm: "3.8" }, { course: "Lab 2" }, { course: "L2" }],
+      brief: `
+\`CpuTimer0Regs.TIM.all\` is the live counter. Read it twice and the difference is elapsed time, in clock cycles of 5 ns.
+
+The starter runs CPU Timer 0 with a period of **10 ms** and toggles LED1 on every flag. That heartbeat must keep running, exactly as it is.
+
+## Your task
+- A press of **push button 1** (GPIO157) starts a measurement.
+- The next press of **push button 2** (GPIO158) ends it. Store the time between the two presses in \`elapsed_us\`, in **microseconds**, accurate to 3 us.
+- It must work again and again, for times from under 1 ms to over 50 ms.
+
+## Limits
+- Use CPU Timer 0 only. Do not stop it, reload it, or write to \`TIM\` or \`PRD\`.
+- No \`DELAY_US\`.
+
+Before you write code, answer three questions on paper. Which way does \`TIM\` count? What does it do when it reaches 0? How large can a number of clock cycles get, and which C type holds it on a chip where \`int\` is 16 bits?
+
+The buttons in this level do not bounce.
+`,
+      kit: "robot",
+      durationMs: 100,
+      watch: ["elapsed_us"],
+      inspect: ["CpuTimer0Regs.TIM", "CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR"],
+      starter: `Uint32 elapsed_us = 0;
+
+void main(void)
+{
+${INIT}
+
+${out(22)}
+
+    GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
+    GPIO_SetupPinMux(158, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(158, GPIO_INPUT, GPIO_PULLUP);
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 200, 10000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    while (1) {
+        // Heartbeat: LED1 changes every 10 ms. Keep it.
+        if (CpuTimer0Regs.TCR.bit.TIF == 1) {
+            CpuTimer0Regs.TCR.bit.TIF = 1;
+            GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+        }
+
+        // Stopwatch: PB1 starts, PB2 stops, the result goes in elapsed_us
+    }
+}
+`,
+      solution: `Uint32 elapsed_us = 0;
+
+void main(void)
+{
+    Uint32 start = 0;    // TIM at the press of PB1
+    Uint32 stop = 0;     // TIM at the press of PB2
+    Uint32 reloads = 0;  // times TIM reloaded since the press of PB1
+    int16_t pb1 = 1;
+    int16_t pb2 = 1;
+    int16_t last1 = 1;
+    int16_t last2 = 1;
+
+${INIT}
+
+${out(22)}
+
+    GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
+    GPIO_SetupPinMux(158, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(158, GPIO_INPUT, GPIO_PULLUP);
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 200, 10000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    while (1) {
+        // Heartbeat: LED1 changes every 10 ms. Each flag is also one reload.
+        if (CpuTimer0Regs.TCR.bit.TIF == 1) {
+            CpuTimer0Regs.TCR.bit.TIF = 1;
+            GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+            reloads++;
+        }
+
+        pb1 = GpioDataRegs.GPEDAT.bit.GPIO157;
+        pb2 = GpioDataRegs.GPEDAT.bit.GPIO158;
+        if (pb1 == 0 && last1 == 1) {
+            start = CpuTimer0Regs.TIM.all;
+            reloads = 0;
+        }
+        if (pb2 == 0 && last2 == 1) {
+            stop = CpuTimer0Regs.TIM.all;
+            // TIM counts down, so time passed is start - stop. Every reload
+            // in between jumped TIM up by one period of 2000000 counts.
+            // One microsecond is 200 counts.
+            elapsed_us = (start + reloads * 2000000 - stop) / 200;
+        }
+        last1 = pb1;
+        last2 = pb2;
+    }
+}
+`,
+      stimuli: [
+        { at: 3, press: "PB1" },
+        { at: 4, release: "PB1" },
+        { at: 6.7, press: "PB2" },
+        { at: 7.7, release: "PB2" },
+        { at: 18.5, press: "PB1" },
+        { at: 19.5, release: "PB1" },
+        { at: 21.75, press: "PB2" },
+        { at: 22.75, release: "PB2" },
+        { at: 37.2, press: "PB1" },
+        { at: 38.2, release: "PB1" },
+        { at: 95.9, press: "PB2" },
+        { at: 96.9, release: "PB2" },
+      ],
+      checks: [
+        { kind: "var", name: "elapsed_us", at: 9, min: 3697, max: 3703, label: "3 ms to 6.7 ms, no reload in between: 3700 us", hint: "TIM counts down: the time passed is the first read minus the second, divided by 200 counts per microsecond." },
+        {
+          kind: "var",
+          name: "elapsed_us",
+          at: 24,
+          min: 3247,
+          max: 3253,
+          label: "18.5 ms to 21.75 ms, across one reload: 3250 us",
+          hint: "The counter reloaded at about 20 ms, so the second read is larger than the first. Add one full period, 2000000 counts, for every reload in between.",
+        },
+        {
+          kind: "var",
+          name: "elapsed_us",
+          at: 98,
+          min: 58697,
+          max: 58703,
+          label: "37.2 ms to 95.9 ms, across six reloads: 58700 us",
+          hint: "Count the reloads between the two presses. Do the arithmetic in Uint32: these numbers do not fit in 16 bits.",
+        },
+        { kind: "blink", led: "LED1", periodMs: 20, tolPct: 0.5, label: "The heartbeat still changes LED1 every 10 ms" },
+        { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 1999999, label: "Timer 0 still has its 10 ms period (PRD = 1999999)" },
+        {
+          kind: "source",
+          mustNotMatch: "CpuTimer[12]Regs|DELAY_US|\\bTRB\\b|TIM\\.all\\s*=[^=]|PRD\\.all\\s*=[^=]",
+          label: "Timer 0 is only read: no second timer, no reload, no write to TIM or PRD, no DELAY_US",
+        },
+      ],
+      bonus: [
+        {
+          kind: "var",
+          name: "elapsed_us",
+          at: 6.702,
+          min: 3697,
+          max: 3703,
+          label: "The result is ready within 2 microseconds of the press of PB2",
+          hint: "Read TIM as soon as the press is seen, and keep the loop free of anything slow.",
+        },
+      ],
+      hints: [
+        "Detect the two presses as falling edges. Read `CpuTimer0Regs.TIM.all` into a Uint32 at each one.",
+        "The heartbeat already sees every reload: each flag is one. Count the flags since the press of PB1.",
+        "`elapsed_us = (start + reloads * 2000000 - stop) / 200;` with all three variables Uint32. One period is 2000000 counts and one microsecond is 200.",
+      ],
+      takeaway: "A free-running counter plus a count of its reloads measures any length of time without disturbing the timer. One gap is left: a reload that lands between the flag test and the TIM read is counted late. Hardware capture units close that gap by latching the count at the edge itself.",
+    },
+    {
+      id: "tmr-lost",
+      tier: "expert",
+      kind: "code",
+      mode: "debug",
+      title: "The stopwatch that loses time",
+      goal: "ms should count milliseconds while push button 1 is not held. It hardly counts at all. Find out why and fix it.",
+      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
+      brief: `
+This stopwatch counts milliseconds in \`ms\` with CPU Timer 0. Holding **push button 1** pauses it: the program stops the timer with \`TSS\`, so the part of a millisecond already counted is kept, and starts it again on release.
+
+The loop also has other things to do. \`OtherWork()\` stands for them: it takes 0.2 ms on every pass. It has to stay, called once per pass.
+
+Run it. After 20 ms, \`ms\` should be 20. It is nowhere near.
+
+Every line looks reasonable on its own. The flag is tested and cleared the right way. The period is right. Nobody is pressing the button.
+
+Open \`TCR\` in the inspector, read how each of its bits behaves when written, and think about what a \`.bit\` write does to the **whole** register.
+
+## What must hold after your fix
+- \`ms\` counts every millisecond while the button is released.
+- While the button is held, the timer is really stopped (\`TSS\` = 1) and \`ms\` does not move.
+- No tick is lost when the button is pressed or released.
+`,
+      kit: "robot",
+      durationMs: 61,
+      watch: ["ms"],
+      inspect: ["CpuTimer0Regs.TCR", "CpuTimer0Regs.TIM"],
+      starter: `Uint32 ms = 0;   // running time in milliseconds
+
+// Stands for the other work of the loop. Takes 0.2 ms.
+void OtherWork(void)
+{
+    DELAY_US(200);
+}
+
+void main(void)
+{
+${INIT}
+
+    GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 200, 1000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    while (1) {
+        OtherWork();
+
+        // Hold push button 1 to pause the stopwatch
+        if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
+            CpuTimer0Regs.TCR.bit.TSS = 1;
+        } else {
+            CpuTimer0Regs.TCR.bit.TSS = 0;
+        }
+
+        if (CpuTimer0Regs.TCR.bit.TIF == 1) {
+            CpuTimer0Regs.TCR.bit.TIF = 1;
+            ms++;
+        }
+    }
+}
+`,
+      solution: `Uint32 ms = 0;   // running time in milliseconds
+
+// Stands for the other work of the loop. Takes 0.2 ms.
+void OtherWork(void)
+{
+    DELAY_US(200);
+}
+
+void main(void)
+{
+${INIT}
+
+    GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 200, 1000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    while (1) {
+        OtherWork();
+
+        // Hold push button 1 to pause the stopwatch.
+        // A .bit write reads all of TCR, changes one bit and writes all of
+        // it back. If TIF reads 1, a 1 is written back to TIF, and writing
+        // 1 clears the flag: the tick is lost. A whole-register write with
+        // bit 15 at 0 leaves the flag alone, because writing 0 is ignored.
+        if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
+            CpuTimer0Regs.TCR.all = 0x4010;   // TIE = 1, TSS = 1: stopped
+        } else {
+            CpuTimer0Regs.TCR.all = 0x4000;   // TIE = 1, TSS = 0: running
+        }
+
+        if (CpuTimer0Regs.TCR.bit.TIF == 1) {
+            CpuTimer0Regs.TCR.bit.TIF = 1;
+            ms++;
+        }
+    }
+}
+`,
+      stimuli: [
+        { at: 22.5, press: "PB1" },
+        { at: 42.5, release: "PB1" },
+      ],
+      checks: [
+        { kind: "var", name: "ms", at: 20.5, equals: 20, label: "Running: ms is 20 after 20.5 ms", hint: "Ticks vanish between the moment the timer sets TIF and the moment the loop tests it. Which line in between writes to TCR?" },
+        { kind: "var", name: "ms", at: 30, equals: 22, label: "Paused at 22.5 ms: ms stops at 22" },
+        { kind: "var", name: "ms", at: 42, equals: 22, label: "Still paused at 42 ms: ms is still 22" },
+        { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", at: 30, equals: 1, label: "While PB1 is held the timer is stopped (TSS = 1)", hint: "Pause by stopping the timer, so the fraction of a millisecond already counted is kept." },
+        { kind: "var", name: "ms", at: 60.8, min: 40, max: 42, label: "Running again from 42.5 ms: ms is 41 at the end (40 to 42 accepted)" },
+        { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", equals: 0, label: "After the release the timer runs again" },
+        { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 199999, label: "Timer 0 still has its 1 ms period" },
+        {
+          kind: "source",
+          mustMatch: "DELAY_US\\(200\\)[\\s\\S]*while[\\s\\S]*OtherWork\\(\\)",
+          label: "OtherWork() still takes 0.2 ms and is still called in the loop",
+        },
+      ],
+      bonus: [
+        {
+          kind: "source",
+          mustNotMatch: "TCR\\.bit\\.(TSS|TRB|TIE|FREE|SOFT)\\s*=[^=]",
+          label: "Bulletproof: no .bit write to TCR other than TIF, so no write can ever put a 1 back into TIF",
+          hint: "Moving lines around only makes the loss rare. Stop and start with whole-register writes that have bit 15 at 0: 0x4010 and 0x4000.",
+        },
+      ],
+      hints: [
+        "The timer sets TIF during OtherWork(). By the time the loop tests TIF, it is 0 again. Only one line in between touches TCR.",
+        "`CpuTimer0Regs.TCR.bit.TSS = 0;` is not a one-bit write. The CPU reads all 16 bits of TCR, changes bit 4 and writes all 16 back. TIF was read as 1, so a 1 is written to TIF. What does writing 1 to TIF do?",
+        "Write the whole register with bit 15 at 0: `CpuTimer0Regs.TCR.all = 0x4010;` to stop and `CpuTimer0Regs.TCR.all = 0x4000;` to run. A 0 written to TIF is ignored, so a waiting flag survives.",
+      ],
+      takeaway: "A .bit write is a read, a change and a write of the whole register. In a register with write-1-to-clear flags, that write hands every flag that is set its own 1 back and clears it. Write such registers whole, with 0 in the flag bits you want to keep.",
+    },
+    {
+      id: "tmr-pwm",
+      tier: "expert",
+      kind: "code",
+      mode: "write",
+      title: "Dim it",
+      goal: "Dim LED1 to 37 % brightness: switch it at 1 kHz, on for 370 us and off for 630 us, timed by a CPU timer.",
+      refs: [{ trm: "3.8" }, { course: "L2" }, { course: "Lab 2" }],
+      brief: `
+An LED that is switched on and off faster than the eye can follow looks dimmer, in proportion to the share of time it is on. That share is the **duty cycle**. This is pulse width modulation, done by hand. Later the ePWM peripheral does it in hardware.
+
+## Your task
+Drive **LED1** (GPIO22) with a period of exactly **1 ms**:
+
+- on for **370 us**
+- off for **630 us**
+
+The first on time starts when you start the timer, and the pattern repeats from there without drifting.
+
+Time it with the CPU timers and a polling loop. No \`DELAY_US\`.
+
+There is more than one way. A fast tick and a counter works. So does a timer whose period you change while it runs. Before you try the second, read in TRM 3.8 when a new \`PRD\` value reaches the counter.
+
+Check your result on the scope.
+`,
+      kit: "robot",
+      durationMs: 20,
+      inspect: ["CpuTimer0Regs.PRD", "CpuTimer0Regs.TIM", "CpuTimer0Regs.TCR"],
+      starter: `void main(void)
+{
+${INIT}
+
+${out(22)}
+
+    // Set up the timing
+
+    while (1) {
+        // LED1: on for 370 us, off for 630 us, again and again
+    }
+}
+`,
+      solution: `#define ON_COUNTS   74000    // 370 us at 5 ns per count
+#define OFF_COUNTS  126000   // 630 us
+
+void main(void)
+{
+    int16_t on = 1;
+
+${INIT}
+
+${out(22)}
+
+    InitCpuTimers();
+    // The first phase is the on time. TIM is loaded with it here.
+    ConfigCpuTimer(&CpuTimer0, 200, 370);
+    // PRD is only used at the next reload: this is the length of the
+    // phase after the one that is running.
+    CpuTimer0Regs.PRD.all = OFF_COUNTS - 1;
+
+    GpioDataRegs.GPASET.bit.GPIO22 = 1;
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    while (1) {
+        if (CpuTimer0Regs.TCR.bit.TIF == 1) {
+            CpuTimer0Regs.TCR.bit.TIF = 1;
+            // A phase just ended and TIM already holds the next one.
+            // PRD now sets the phase after that.
+            if (on == 1) {
+                GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+                CpuTimer0Regs.PRD.all = ON_COUNTS - 1;
+                on = 0;
+            } else {
+                GpioDataRegs.GPASET.bit.GPIO22 = 1;
+                CpuTimer0Regs.PRD.all = OFF_COUNTS - 1;
+                on = 1;
+            }
+        }
+    }
+}
+`,
+      checks: [
+        { kind: "duty", led: "LED1", pct: 37, tolPct: 1, from: 2, to: 18, label: "LED1 is on 37 % of the time", hint: "On for 370 us out of every 1000 us." },
+        { kind: "pin", pin: 22, at: 1.2, level: 1, label: "GPIO22 is high at 1.2 ms, early in the second period", hint: "Each period starts with the on time, and the first one starts when the timer starts." },
+        { kind: "pin", pin: 22, at: 1.7, level: 0, label: "GPIO22 is low at 1.7 ms" },
+        { kind: "pin", pin: 22, at: 5.2, level: 1, label: "GPIO22 is high at 5.2 ms" },
+        { kind: "pin", pin: 22, at: 5.7, level: 0, label: "GPIO22 is low at 5.7 ms", hint: "If this fails but the duty cycle is right, the period is not 1 ms." },
+        { kind: "pin", pin: 22, at: 12.2, level: 1, label: "GPIO22 is high at 12.2 ms" },
+        { kind: "pin", pin: 22, at: 12.7, level: 0, label: "GPIO22 is low at 12.7 ms" },
+        { kind: "pin", pin: 22, at: 19.2, level: 1, label: "GPIO22 is high at 19.2 ms: no drift", hint: "The on and off times must add up to exactly 1 ms: 200000 clock cycles." },
+        { kind: "pin", pin: 22, at: 19.7, level: 0, label: "GPIO22 is low at 19.7 ms" },
+        { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the waiting, not DELAY_US" },
+        { kind: "no-dat-write", label: "LED1 is changed through SET, CLEAR or TOGGLE" },
+      ],
+      bonus: [
+        { kind: "duty", led: "LED1", pct: 37, tolPct: 0.1, from: 2, to: 18, label: "Precise: the duty cycle is 37 % to within 0.1 %" },
+        {
+          kind: "max-steps",
+          max: 1500,
+          label: "Light on the CPU: the loop does work only twice per period (at most 1500 statements in 20 ms)",
+          hint: "A 10 us tick wakes the loop 100 times per period. Two timer events per period are enough: one at the end of the on time, one at the end of the off time.",
+        },
+      ],
+      hints: [
+        "The simple way: a 10 us tick and a counter from 0 to 99. LED on while the counter is below 37.",
+        "With one timer and two events per period: let the timer run the on time, then the off time, by changing PRD. A value written to PRD is not used at once. It is loaded into TIM at the next reload.",
+        "So at every flag the phase that just started is already in TIM, and you write PRD for the phase after it. When the on time ends: LED off, PRD = 74000 - 1. When the off time ends: LED on, PRD = 126000 - 1.",
+      ],
+      takeaway: "PRD is a waiting room: the value you write now is used from the next reload. Writing it one phase ahead gives edges timed by hardware to the clock cycle, with the CPU needed only twice per period.",
     },
   ],
 };

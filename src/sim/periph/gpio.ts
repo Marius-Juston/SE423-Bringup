@@ -17,6 +17,8 @@ export type Level = 0 | 1;
  * statement reads the new one.
  */
 const DAT_LAG_NS = 60;
+/** How often the level picked up by a floating input changes. */
+const NOISE_NS = 100_000;
 
 export interface PinChange {
   t: number;
@@ -61,7 +63,7 @@ export class Gpio {
   datWrites = new Set<string>();
   /** Floating pins whose own bit was read. */
   floatingRead = new Set<number>();
-  private rnd = 0x2f6e2b1;
+  private noiseBucket = -1;
 
   constructor(private b: Board) {
     const dev = b.dev;
@@ -218,9 +220,14 @@ export class Gpio {
       if (b.now - this.changedAt[pin] < DAT_LAG_NS && this.before[pin] >= 0) lv = this.before[pin];
       if (lv < 0) {
         // A floating input picks up noise: the value read is unpredictable.
-        this.rnd = (Math.imul(this.rnd, 1103515245) + 12345) >>> 0;
-        lv = (this.rnd >>> 16) & 1;
-        b.mem.liveReads++;
+        // The noise is modelled as a new random level every 100 us, so a
+        // program that only polls can still be skipped ahead between changes.
+        const bucket = Math.floor(b.now / NOISE_NS);
+        lv = (Math.imul(Math.imul(pin + 1, 0x9e3779b1) ^ bucket, 0x85ebca6b) >>> 15) & 1;
+        if (this.noiseBucket !== bucket) {
+          this.noiseBucket = bucket;
+          b.at((bucket + 1) * NOISE_NS, () => b.mem.writes++);
+        }
         if (single) {
           this.floatingRead.add(pin);
           b.warn(

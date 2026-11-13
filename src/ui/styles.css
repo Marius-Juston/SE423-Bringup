@@ -260,3 +260,45 @@ tr.target td:first-child { color: var(--harvest); }
   .editor-pane { min-height: 60vh; }
   .handbook { grid-template-columns: 1fr; }
 }
+
+/* ---- interactive figures ---- */
+.figure { margin: 0.9rem 0 1.1rem; padding: 0.7rem; background: #0a1730; border: 1px solid var(--border); border-radius: var(--radius); }
+.figure svg { width: 100%; display: block; }
+.figure figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
+.fig-chip { fill: rgba(255, 255, 255, 0.04); stroke: var(--border); stroke-dasharray: 4 3; }
+.fig-box { fill: var(--surface); stroke: var(--dim); stroke-width: 1; }
+.fig-box.active { stroke: var(--text); }
+.fig-box.off { opacity: 0.45; }
+.fig-box.hot { fill: #4a2a12; stroke: var(--orange); stroke-width: 2; }
+.fig-pin { fill: var(--harvest); }
+.fig-dot { fill: var(--text); }
+.fig-wire { stroke: var(--dim); stroke-width: 1.4; fill: none; }
+.fig-wire.thick { stroke-width: 2.2; stroke: var(--text); }
+.fig-wire.hot { stroke: var(--orange); stroke-width: 2.2; }
+.fig-arrowhead { fill: var(--dim); }
+.fig-label { fill: var(--text); font-size: 8.5px; font-family: var(--sans); }
+.fig-label.dim { fill: var(--dim); }
+.fig-value { fill: var(--harvest); font-size: 11px; font-family: var(--mono); font-weight: 700; }
+.fig-value.small { font-size: 8.5px; }
+.fig-trace { fill: none; stroke: var(--arches); stroke-width: 2; }
+.fig-trace.dim { stroke: var(--dim); stroke-width: 1.4; }
+.fig-trace.data { stroke: var(--harvest); }
+.fig-sample { stroke: var(--orange); stroke-width: 1; stroke-dasharray: 3 3; }
+.fig-sample-arrow { fill: none; stroke: var(--orange); stroke-width: 2; }
+.fig-why { margin: 0.5rem 0; padding: 0.4rem 0.6rem; background: var(--surface); border-left: 3px solid var(--harvest); border-radius: 0 6px 6px 0; font-size: 0.92rem; min-height: 3.2em; }
+.fig-step { background: var(--surface); border-radius: 6px; padding: 0.5rem 0.7rem; margin-top: 0.5rem; font-size: 0.92rem; }
+.fig-step p { margin: 0.25rem 0 0.4rem; }
+.fig-step pre { margin: 0; font-size: 0.82rem; }
+.fig-controls { display: grid; gap: 0.35rem; margin: 0.5rem 0; }
+.fig-controls > div { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+.fig-controls > div > span:first-child { width: 4.6rem; color: var(--dim); font-size: 0.82rem; }
+.fig-controls code { font-size: 0.75rem; margin-left: 0.3rem; }
+.fig-controls.row { display: flex; align-items: center; gap: 0.5rem; }
+.fig-opt { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.12em 0.7em; font-size: 0.82rem; }
+.fig-opt[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: #1a0a00; font-weight: 700; }
+.fig-dots { display: flex; gap: 4px; margin-left: auto; }
+.fig-dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255, 255, 255, 0.2); display: block; }
+.fig-dots i.on { background: var(--orange); }
+.fig-missing { color: var(--bad); }
+/* Briefs with a figure get a wider column. */
+.level-body:has(.figure) { grid-template-columns: minmax(380px, 560px) 1fr; }

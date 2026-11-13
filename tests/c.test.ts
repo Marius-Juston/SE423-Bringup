@@ -33,6 +33,13 @@ describe("C on a 16-bit-int machine", () => {
     expect(r.console).toBe("0 1048576");
     expect(codes(r)).toContain("shift-16");
   });
+  it("accepts 1U << 15 and flags shifts by the full width", () => {
+    const ok = run(main(`uint16_t p = 15; uint16_t v = 1U << p; printf("%x", v);`));
+    expect(ok.console).toBe("8000");
+    expect(codes(ok)).toEqual([]);
+    const bad = run(main(`uint16_t p = 32; uint32_t m = (1UL << p) - 1; printf("%lx", m);`));
+    expect(codes(bad)).toContain("shift-width");
+  });
   it("prints 32-bit values wrongly with %d, as the board does", () => {
     const r = run(main(`int32_t big = 70000; printf("%d|%ld", big, big);`));
     expect(r.console.endsWith("|70000")).toBe(false);

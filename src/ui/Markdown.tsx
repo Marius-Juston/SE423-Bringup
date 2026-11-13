@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Figure } from "./figures";
 
 /** Inline: **bold**, `code`. */
 function inline(text: string, key: number): ReactNode[] {
@@ -35,6 +36,9 @@ export function Markdown({ text }: { text: string }) {
           <code>{code.join("\n")}</code>
         </pre>,
       );
+    } else if (/^\{\{figure:[a-z0-9-]+\}\}\s*$/.test(line.trim())) {
+      blocks.push(<Figure key={k++} id={line.trim().slice(9, -2)} />);
+      i++;
     } else if (/^##\s/.test(line)) {
       blocks.push(<h3 key={k++} style={{ margin: "1em 0 0.4em" }}>{inline(line.slice(3), k)}</h3>);
       i++;
@@ -52,7 +56,7 @@ export function Markdown({ text }: { text: string }) {
       i++;
     } else {
       const para: string[] = [];
-      while (i < lines.length && lines[i].trim() !== "" && !/^(```|##\s|-\s|\d+\.\s)/.test(lines[i])) para.push(lines[i++]);
+      while (i < lines.length && lines[i].trim() !== "" && !/^(```|##\s|-\s|\d+\.\s|\{\{figure:)/.test(lines[i])) para.push(lines[i++]);
       blocks.push(<p key={k++}>{inline(para.join(" "), k)}</p>);
     }
   }

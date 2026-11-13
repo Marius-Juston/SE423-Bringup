@@ -1227,9 +1227,13 @@ export class Compiler {
       if (op === "<<") {
         get = () => {
           const s = bg();
-          return s >= bits || s < 0 ? 0 : n(ag() * 2 ** s);
+          if (s >= bits || s < 0) {
+            rt.warn(line, "shift-width", `Shifting a ${bits}-bit value by ${s} is undefined in C (the count must be 0 to ${bits - 1}). The result here is 0; on the chip it can be anything.`);
+            return 0;
+          }
+          return n(ag() * 2 ** s);
         };
-        if (a.c === 1 && t.w === 1) {
+        if (a.c === 1 && t.w === 1 && t.s) {
           const inner = get;
           get = () => {
             const s = bg();

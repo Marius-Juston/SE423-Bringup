@@ -35,6 +35,14 @@ keep them gentle and complete. Aim for 6 to 9 core levels.
 - Text uses a small Markdown subset: paragraphs, `**bold**`, `` `code` ``,
   `- ` lists, `1. ` lists, `## ` headings, and ```` ```c ```` blocks.
 
+## Interactive figures
+A brief can embed a figure by putting a directive on a line of its own:
+`{{figure:gpio-pin}}` (one pin: mux, direction, latch, pull-up, outside
+circuit), `{{figure:adc-chain}}` (trigger to SOC to converter to result to
+interrupt, step by step), `{{figure:spi-modes}}` (clock polarity and phase).
+The list is `src/levels/figures.ts`; components are in `src/ui/figures/`.
+Write the text to match the figure and point at it, not to replace it.
+
 ## Code levels
 - `kit`: "robot" (LED1-5 on GPIO22/94/95/97/111 lit when high, PB1-4 on
   GPIO157-160, LaunchPad BLUE GPIO31 / RED GPIO34 lit when LOW, plus

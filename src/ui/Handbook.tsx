@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { device, fieldsOf, hex } from "./device";
 import { KITS } from "../sim/world/kits";
+import { Figure } from "./figures";
 
-const PAGES = ["Pins on the course boards", "Formulas"] as const;
+const PAGES = ["Key diagrams", "Pins on the course boards", "Formulas"] as const;
 
 export function Handbook() {
   const dev = device();
@@ -56,7 +57,18 @@ export function Handbook() {
               <p>This register has no named fields: use it as a whole value{dev.instances.some((i) => reg.name.startsWith(i.name) && /Vect/.test(i.name)) ? " (a pointer to an interrupt function)" : ""}.</p>
             )}
           </>
-        ) : sel === PAGES[0] ? (
+        ) : sel === "Key diagrams" ? (
+          <div style={{ maxWidth: 640 }}>
+            <h1>Key diagrams</h1>
+            <p style={{ color: "var(--dim)" }}>The three pictures worth knowing by heart. Each one is interactive.</p>
+            <h2 style={{ marginTop: "1.2rem" }}>A GPIO pin</h2>
+            <Figure id="gpio-pin" />
+            <h2 style={{ marginTop: "1.2rem" }}>An ADC conversion, from trigger to interrupt</h2>
+            <Figure id="adc-chain" />
+            <h2 style={{ marginTop: "1.2rem" }}>SPI clock polarity and phase</h2>
+            <Figure id="spi-modes" />
+          </div>
+        ) : sel === "Pins on the course boards" ? (
           <>
             <h1>Pins on the course boards</h1>
             {Object.values(KITS).filter((k) => k.id !== "launchpad").map((k) => (
