@@ -217,7 +217,7 @@ function I2cBus() {
         {mode === "xfer" && (
           <>
             <div>
-              <span>Step</span>
+              <span>Next</span>
               <button className="fig-opt" disabled={s === 0} onClick={() => setStep(s - 1)}>Back</button>
               <button className="fig-opt" disabled={s === items.length - 1} onClick={() => setStep(s + 1)}>Next</button>
               <button className="fig-opt" disabled={s === items.length - 1} onClick={() => setStep(items.length - 1)}>Whole transfer</button>

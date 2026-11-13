@@ -1351,7 +1351,7 @@ export class Compiler {
       rt.warn(
         rt.line || line,
         "int16-overflow",
-        `${x} ${sym} ${y} = ${v} does not fit in a 16-bit int (-32768 to 32767), so the result wrapped around to ${n(v)}. Make one operand 32-bit (for example ${x}L), or write ${x}.0 if the result is meant to be a float.`,
+        `${x} ${sym} ${y} = ${v} does not fit in a 16-bit int (-32768 to 32767), so the result wrapped around to ${n(v)}. Make the calculation 32-bit: write a constant as ${x}L or cast a variable with (int32_t). If the result is meant to be a float, write ${x}.0.`,
       );
     };
     switch (op) {

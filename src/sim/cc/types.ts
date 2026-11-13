@@ -174,6 +174,12 @@ export function sameType(a: CType, b: CType): boolean {
 export function closest(name: string, candidates: Iterable<string>): string | undefined {
   // A one- or two-letter name is close to everything: a suggestion would only mislead.
   if (name.length < 3) return undefined;
+  const list = [...candidates].filter((c) => !c.startsWith("__"));
+  // Same letters, different capitals: C cares, and this is the most common slip.
+  const same = list.find((c) => c.toLowerCase() === name.toLowerCase());
+  if (same) return same;
+  if (name.length < 4) return undefined;
+  candidates = list;
   let best: string | undefined;
   let bestD = Math.min(3, Math.max(1, Math.floor(name.length / 3))) + 1;
   const a = name.toLowerCase();

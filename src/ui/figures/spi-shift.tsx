@@ -107,7 +107,7 @@ function SpiShift() {
         <div>
           <span>Clock</span>
           <button className="fig-opt" disabled={n === 0} onClick={() => setN(n - 1)}>Back</button>
-          <button className="fig-opt" disabled={done} onClick={() => setN(n + 1)}>Step</button>
+          <button className="fig-opt" disabled={done} onClick={() => setN(n + 1)}>Next</button>
           <button className="fig-opt" disabled={done} onClick={() => setN(8)}>all 8 clocks</button>
           <button className="fig-opt" disabled={n === 0} onClick={() => setN(0)}>Reset</button>
         </div>

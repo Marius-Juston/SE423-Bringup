@@ -133,7 +133,7 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
-          <span>Step</span>
+          <span>Next</span>
           <button className="fig-opt" disabled={s === 0} onClick={() => setStep(s - 1)}>Back</button>
           <button className="fig-opt" disabled={s >= n} onClick={() => setStep(s + 1)}>Next</button>
           <button className="fig-opt" disabled={s >= n} onClick={() => setStep(n)}>All bits</button>

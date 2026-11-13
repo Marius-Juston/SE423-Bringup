@@ -301,7 +301,7 @@ export function runProgram(spec: RunSpec): RunResult {
         }
         const exact = Number.isInteger(v) && (c.equals === undefined || Number.isInteger(c.equals));
         pass = (c.equals === undefined || (exact ? v === c.equals : Math.abs(v - c.equals) < 1e-6 * Math.max(1, Math.abs(c.equals)))) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
-        const want = c.equals !== undefined ? `${c.equals}` : `${c.min ?? "-∞"} to ${c.max ?? "∞"}`;
+        const want = c.equals !== undefined ? `${c.equals}` : c.min === undefined ? `at most ${c.max}` : c.max === undefined ? `at least ${c.min}` : `${c.min} to ${c.max}`;
         detail = `${c.name} is ${Number.isInteger(v) ? v : +v.toPrecision(7)}${pass ? "" : `, expected ${want}`}.`;
         break;
       }
@@ -314,7 +314,7 @@ export function runProgram(spec: RunSpec): RunResult {
       case "signal": {
         const v = b.output(c.name, c.at !== undefined ? c.at * MS : undefined);
         if (v === undefined) {
-          detail = `${c.name} never produced a value: nothing drove it during the test. Check that the peripheral is switched on and that its pin is selected in the pin mux.`;
+          detail = `${c.name} never produced a value during the test. Either the program never reached the code that produces it, or the peripheral is not switched on, or its pin is not selected in the pin mux.`;
           break;
         }
         pass = (c.equals === undefined || Math.abs(v - c.equals) <= (c.tol ?? 1e-9)) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
