@@ -61,7 +61,25 @@ main { overflow: auto; min-height: 0; }
 /* ---- map ---- */
 .map { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .map-intro { color: var(--dim); max-width: 60ch; margin: 0.4rem 0 1.5rem; }
-.chapters { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+.part { margin-top: 2rem; }
+.part-head { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; border-top: 2px dashed var(--border); padding-top: 0.9rem; margin-bottom: 0.9rem; }
+.part-head h2 { text-transform: uppercase; letter-spacing: 0.08em; font-size: 1rem; color: var(--harvest); }
+.part-head p { margin: 0; color: var(--dim); font-size: 0.95rem; }
+.chapters { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); align-items: start; }
+.chapter h3 { font-size: 1.15rem; }
+.chapter-stats { margin: 0; font-size: 0.8rem; color: var(--dim); font-family: var(--mono); }
+.chapter details > summary { cursor: pointer; color: var(--dim); font-size: 0.85rem; padding: 0.15rem 0; }
+.tier-head { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; margin: 0.7rem 0 0.2rem; }
+.tier-head.practice { color: var(--arches); }
+.tier-head.expert { color: var(--orange); }
+.level-row.tier-expert .mark { color: var(--orange); }
+.level-row.tier-expert.passed .mark { color: var(--ok); }
+.stars { color: var(--harvest); font-size: 0.8rem; letter-spacing: 0.05em; white-space: nowrap; }
+.stars .empty { color: rgba(255, 255, 255, 0.22); }
+.badge.tier-expert { color: var(--orange); }
+.badge.tier-practice { color: var(--arches); }
+.checks .star { color: rgba(255, 255, 255, 0.25); }
+.checks .star.on { color: var(--harvest); }
 .chapter { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
 .chapter.locked { opacity: 0.6; }
 .chapter.done { border-color: var(--ok); }

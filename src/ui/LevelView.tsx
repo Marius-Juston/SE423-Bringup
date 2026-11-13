@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { findLevel, nextLevel } from "../levels/index";
-import { KIND_LABEL, kindOf, type Ref } from "../levels/types";
+import { KIND_LABEL, kindOf, tierOf, type Ref } from "../levels/types";
 import { store, useSave } from "./store";
 import { Markdown } from "./Markdown";
 import { trmRef } from "./device";
@@ -95,6 +95,7 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
       <div className="level-head">
         <button className="btn ghost small" onClick={() => go({ name: "map" })}>← Map</button>
         <span className="badge">{KIND_LABEL[kindOf(level)]}</span>
+        {tierOf(level) !== "core" && <span className={`badge tier-${tierOf(level)}`}>{tierOf(level) === "expert" ? "◆ Expert" : "Practice"}</span>}
         <h1 style={{ fontSize: "1.15rem" }}>
           {chapter.number}.{index + 1} {level.title}
         </h1>

@@ -5,6 +5,8 @@ export interface Save {
   version: 1;
   /** Levels passed. */
   passed: Record<string, true>;
+  /** Bonus objectives earned per level (indices into the level's `bonus` list). */
+  stars: Record<string, number[]>;
   /** Hints revealed per level. */
   hints: Record<string, number>;
   /** The student's code per code level. */
@@ -13,7 +15,7 @@ export interface Save {
 }
 
 const KEY = "bringup-save-v1";
-const empty = (): Save => ({ version: 1, passed: {}, hints: {}, code: {}, unlockAll: false });
+const empty = (): Save => ({ version: 1, passed: {}, stars: {}, hints: {}, code: {}, unlockAll: false });
 
 function load(): Save {
   try {
@@ -49,6 +51,12 @@ export const store = {
   },
   pass(id: string) {
     if (!state.passed[id]) commit({ ...state, passed: { ...state.passed, [id]: true } });
+  },
+  /** Adds earned stars (they are never taken away by a later, plainer solution). */
+  star(id: string, earned: number[]) {
+    const have = state.stars[id] ?? [];
+    const merged = [...new Set([...have, ...earned])].sort((a, b) => a - b);
+    if (merged.length !== have.length) commit({ ...state, stars: { ...state.stars, [id]: merged } });
   },
   hint(id: string, n: number) {
     if ((state.hints[id] ?? 0) < n) commit({ ...state, hints: { ...state.hints, [id]: n } });

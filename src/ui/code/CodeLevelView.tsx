@@ -72,10 +72,15 @@ export function CodeLevelView({ level, onPass }: { level: CodeLevel; onPass: () 
   const stop = () => setLive(null);
   const test = () => {
     setLive(null);
-    const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks });
+    const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
     setResult(r);
     setTab("tests");
-    if (r.passed) onPass();
+    if (r.passed) {
+      onPass();
+      // Stars count only on a solution that passes the level.
+      const earned = r.bonus.map((b, i) => (b.pass ? i : -1)).filter((i) => i >= 0);
+      if (earned.length) store.star(level.id, earned);
+    }
   };
 
   const board = live?.board ?? result?.board ?? null;
@@ -235,6 +240,30 @@ export function CodeLevelView({ level, onPass }: { level: CodeLevel; onPass: () 
                 </li>
               ))}
             </ul>
+            {level.bonus && level.bonus.length > 0 && (
+              <>
+                <h3>Stars (optional)</h3>
+                <ul className="checks bonus">
+                  {level.bonus.map((b, i) => {
+                    const r = result?.bonus[i];
+                    const kept = save.stars[level.id]?.includes(i) ?? false;
+                    const now = !!r?.pass && !!result?.passed;
+                    return (
+                      <li key={i}>
+                        <span className={now || kept ? "star on" : "star"} aria-hidden="true">★</span>
+                        <span>
+                          <span className="sr-only">{now || kept ? "Earned: " : "Not earned: "}</span>
+                          {b.label}
+                          {kept && !now && result ? " (earned earlier)" : ""}
+                        </span>
+                        {r?.detail && <span className="detail">{r.detail}</span>}
+                        {r && !r.pass && r.hint && <span className="hintline">{r.hint}</span>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            )}
             {result && result.ran && (
               <>
                 <h3>Signals during the test</h3>
