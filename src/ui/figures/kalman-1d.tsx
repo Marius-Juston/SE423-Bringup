@@ -16,7 +16,7 @@ const fmt = (v: number, d = 2) => v.toFixed(d);
 const STEPS = [
   {
     title: "1. A belief",
-    text: "The robot never knows where it is. It keeps a best guess (the mean, the peak of the curve) and how unsure the guess is (the variance: a wide, low curve means unsure). Change the variance and watch the curve.",
+    text: "The robot cannot know exactly where it is. It keeps a best guess (the mean, the peak of the curve) and how unsure the guess is (the variance: a wide, low curve means unsure). Change the variance and watch the curve.",
   },
   {
     title: "2. Predict: the robot moves",
@@ -24,11 +24,11 @@ const STEPS = [
   },
   {
     title: "3. A measurement arrives",
-    text: "A sensor reports a position. It is a belief too: a best value z and a variance r that says how good the sensor is. Now there are two opinions that disagree.",
+    text: "A sensor reports a position. It is a belief too: a best value z and a variance r that says how good the sensor is. Now there are two beliefs that disagree.",
   },
   {
     title: "4. Update: combine them",
-    text: "Multiply the two curves: only places that both find likely stay likely. The result is again a bell curve. Its peak lies between the two, closer to the narrower one, and it is narrower than both.",
+    text: "Multiply the two curves: only places that both find likely stay likely. The result is again a bell curve. Its peak lies between the two, closer to the narrower one, and it is narrower than both. Next starts another round from this result.",
   },
 ];
 
@@ -70,8 +70,15 @@ function Kalman1d() {
       </g>
     );
   };
-  const trust = K > 0.75 ? "the sensor is much better than the prediction, so the estimate goes almost all the way to the measurement" : K < 0.25 ? "the prediction is much better than the sensor, so the estimate hardly moves" : K > 0.45 && K < 0.55 ? "both are equally good, so the estimate lands halfway" : K >= 0.55 ? "the sensor is the better of the two, so the estimate lands closer to the measurement" : "the prediction is the better of the two, so the estimate stays closer to it";
+  const trust = K > 0.75 ? "the sensor is much better than the prediction, so the estimate goes almost all the way to the measurement" : K < 0.25 ? "the prediction is much better than the sensor, so the estimate hardly moves" : K > 0.45 && K < 0.55 ? "both are about equally good, so the estimate lands about halfway" : K >= 0.55 ? "the sensor is the better of the two, so the estimate lands closer to the measurement" : "the prediction is the better of the two, so the estimate stays closer to it";
 
+  const reset = () => {
+    setPrior({ m: 1, p: 0.4 });
+    setStep(0);
+    setR(0.3);
+    setOff(1);
+    setRound(1);
+  };
   const next = () => {
     if (step < 3) setStep(step + 1);
     else {
@@ -85,7 +92,7 @@ function Kalman1d() {
 
   return (
     <figure className="figure kf-fig" aria-label="Step-through drawing of a one-dimensional Kalman filter">
-      <style>{`.kf-fig .kf-range{flex:1;min-width:110px;accent-color:var(--orange)}.kf-fig .kf-bel{fill:none;stroke:var(--arches);stroke-width:2.2}.kf-fig .kf-old{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:3 3}.kf-fig .kf-z{fill:none;stroke:var(--orange);stroke-width:2.2}.kf-fig .kf-post{fill:var(--harvest);fill-opacity:.25;stroke:var(--harvest);stroke-width:2.4}.kf-fig .kf-tb{fill:var(--arches)}.kf-fig .kf-tz{fill:var(--orange)}.kf-fig .kf-tp{fill:var(--harvest)}.kf-fig .kf-num{width:3rem;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}.kf-fig .kf-bar{stroke:var(--text);stroke-width:3}.kf-fig .kf-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.kf-fig .kf-lead{fill:none;stroke-width:1;stroke-dasharray:1.5 2.5}.kf-fig .kf-lead.kf-tb{stroke:var(--arches)}.kf-fig .kf-lead.kf-tz{stroke:var(--orange)}.kf-fig .kf-lead.kf-tp{stroke:var(--harvest)}.kf-fig .fig-controls>div>span:first-child{width:8.4rem}`}</style>
+      <style>{`.kf-fig .kf-range{flex:1;min-width:110px;accent-color:var(--orange)}.kf-fig .kf-bel{fill:none;stroke:var(--arches);stroke-width:2.2}.kf-fig .kf-old{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:3 3}.kf-fig .kf-z{fill:none;stroke:var(--orange);stroke-width:2.2}.kf-fig .kf-post{fill:var(--harvest);fill-opacity:.25;stroke:var(--harvest);stroke-width:2.4}.kf-fig .kf-tb{fill:var(--arches)}.kf-fig .kf-tz{fill:var(--orange)}.kf-fig .kf-tp{fill:var(--harvest)}.kf-fig .kf-num{width:3rem;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}.kf-fig .kf-bar{stroke:var(--text);stroke-width:3}.kf-fig .kf-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.kf-fig .kf-lead{fill:none;stroke-width:1;stroke-dasharray:1.5 2.5}.kf-fig .kf-lead.kf-tb{stroke:var(--arches)}.kf-fig .kf-lead.kf-tz{stroke:var(--orange)}.kf-fig .kf-lead.kf-tp{stroke:var(--harvest)}.kf-fig .fig-controls>div>span:first-child{width:8.4rem}.kf-fig .kf-next{color:var(--dim);font-size:.82rem}`}</style>
       <svg viewBox="0 0 420 206" role="img" aria-label={step === 0 ? `Belief: mean ${fmt(prior.m)} feet, variance ${fmt(prior.p)}.` : step < 3 ? `Predicted belief: mean ${fmt(pred.m)}, variance ${fmt(pred.p)}.${step === 2 ? ` Measurement ${fmt(z)}, variance ${fmt(r)}.` : ""}` : `Prediction ${fmt(pred.m)} with variance ${fmt(pred.p)}, measurement ${fmt(z)} with variance ${fmt(r)}, gain ${fmt(K)}, updated mean ${fmt(post.m)}, variance ${fmt(post.p)}.`}>
         <defs>
           <marker id="kf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
@@ -140,12 +147,12 @@ function Kalman1d() {
             ? `kf_x = kf_x + u;   // ${fmt(prior.m)} + ${fmt(U, 1)} = ${fmt(pred.m)}\nkf_p = kf_p + q;   // ${fmt(prior.p)} + ${fmt(Q, 1)} = ${fmt(pred.p)}`
             : step === 2
               ? `z = ${fmt(z)};   // what the sensor says\nr = ${fmt(r)};   // its variance`
-              : `kf_k = kf_p / (kf_p + r);\n  //  = ${fmt(pred.p)} / (${fmt(pred.p)} + ${fmt(r)}) = ${fmt(K)}\nkf_x = kf_x + kf_k * (z - kf_x);\n  //  = ${fmt(pred.m)} + ${fmt(K)} x ${z - pred.m < 0 ? `(${fmt(z - pred.m)})` : fmt(z - pred.m)} = ${fmt(post.m)}\nkf_p = (1.0 - kf_k) * kf_p;\n  //  = ${fmt(1 - K)} x ${fmt(pred.p)} = ${fmt(post.p)}`}</code></pre>
+              : `kf_k = kf_p / (kf_p + r);\n  //  = ${fmt(pred.p)} / (${fmt(pred.p)} + ${fmt(r)}) = ${fmt(K)}\nkf_x = kf_x + kf_k * (z - kf_x);\n  //  = ${fmt(pred.m)} + ${fmt(K)} * ${z - pred.m < 0 ? `(${fmt(z - pred.m)})` : fmt(z - pred.m)} = ${fmt(post.m)}\nkf_p = (1.0 - kf_k) * kf_p;\n  //  = ${fmt(1 - K)} * ${fmt(pred.p)} = ${fmt(post.p)}`}</code></pre>
       </div>
       <div className="fig-controls">
         <div>
           <span>{step === 0 ? "Belief variance" : "Predicted variance"}</span>
-          <input className="kf-range" type="range" aria-label={step === 0 ? "Variance of the belief" : "Variance of the prediction"} min={step === 0 ? 0.1 : 0.1 + Q} max={step === 0 ? 1.5 : 1.5 + Q} step={0.05} value={step === 0 ? prior.p : pred.p} onChange={(e) => setPrior({ ...prior, p: Math.round((+e.target.value - (step === 0 ? 0 : Q)) * 100) / 100 })} />
+          <input className="kf-range" type="range" aria-label={step === 0 ? "Variance of the belief" : "Variance of the prediction"} min={step === 0 ? 0.1 : 0.05 + Q} max={step === 0 ? 1.5 : 1.5 + Q} step={0.05} value={step === 0 ? prior.p : pred.p} onChange={(e) => setPrior({ ...prior, p: Math.round((+e.target.value - (step === 0 ? 0 : Q)) * 100) / 100 })} />
           <span className="kf-num">{fmt(step === 0 ? prior.p : pred.p)}</span>
         </div>
         {step >= 2 && (
@@ -164,11 +171,13 @@ function Kalman1d() {
         )}
       </div>
       <div className="fig-controls row">
-        <button className="btn small" onClick={() => setStep(step - 1)} disabled={step === 0 || (step === 1 && round > 1)}>← Back</button>
-        <button className="btn small primary" onClick={next}>{["Predict: move 1 ft →", "A measurement arrives →", "Update →", "Next round: predict again →"][step]}</button>
+        <button className="btn small" onClick={() => setStep(step - 1)} disabled={step === 0 || (step === 1 && round > 1)}>Back</button>
+        <button className="btn small primary" onClick={next} aria-label={`Next: ${["predict, the robot moves 1 foot", "a measurement arrives", "update", "next round, predict again"][step]}`}>Next</button>
+        <button className="btn small" onClick={reset} disabled={step === 0 && round === 1}>Reset</button>
+        <span className="kf-next">next: {["predict (move 1 ft)", "a measurement arrives", "update", "round " + (round + 1)][step]}</span>
         <span className="fig-dots" aria-hidden="true">{STEPS.map((_, k) => (<i key={k} className={k === step ? "on" : ""} />))}</span>
       </div>
-      <figcaption>Blue: what the robot believes. Orange: what the sensor says. Yellow: both together. The gain K = predicted variance / (predicted variance + sensor variance) says how far to trust the sensor. Run several rounds: the belief widens with every move and narrows with every measurement.</figcaption>
+      <figcaption>One round of the one-number Kalman filter as bell curves: the belief, the measurement, and the two combined. The gain K = predicted variance / (predicted variance + sensor variance) says how far the estimate moves towards the measurement. The belief widens with every move and narrows with every measurement.</figcaption>
     </figure>
   );
 }

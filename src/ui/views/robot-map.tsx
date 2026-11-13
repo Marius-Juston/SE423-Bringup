@@ -49,14 +49,17 @@ function RobotMap({ board, nowMs }: ViewProps) {
   const now = nowMs * MS;
   const truth = trail(o.get("TB_X_FT"), o.get("TB_Y_FT"), now);
   const est = trail(o.get("TB_EST_X_FT"), o.get("TB_EST_Y_FT"), now);
-  const pose = { x: at(o.get("TB_X_FT"), now) ?? 0, y: at(o.get("TB_Y_FT"), now) ?? 0, th: at(o.get("TB_THETA_RAD"), now) ?? 0 };
+  const real = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? v : 0);
+  const pose = { x: real(at(o.get("TB_X_FT"), now)), y: real(at(o.get("TB_Y_FT"), now)), th: real(at(o.get("TB_THETA_RAD"), now)) };
   const ex = at(o.get("TB_EST_X_FT"), now);
   const ey = at(o.get("TB_EST_Y_FT"), now);
   const eth = at(o.get("TB_EST_THETA_RAD"), now);
   const hasEst = ex !== undefined && ey !== undefined && Number.isFinite(ex) && Number.isFinite(ey);
 
   // Fit everything, keep feet square, never zoom in further than a 3 ft wide view.
-  const pts = [...truth, ...est.filter((p) => Math.abs(p.x) < 1e3 && Math.abs(p.y) < 1e3), { x: pose.x, y: pose.y }];
+  // An estimate that has run away (a bug in the program) is left out of the fit.
+  const near = (p: { x: number; y: number }) => Math.abs(p.x) < 1e3 && Math.abs(p.y) < 1e3;
+  const pts = [...truth.filter(near), ...est.filter(near), ...(near(pose) ? [{ x: pose.x, y: pose.y }] : [{ x: 0, y: 0 }])];
   let x0 = Math.min(...pts.map((p) => p.x)) - 0.5;
   let x1 = Math.max(...pts.map((p) => p.x)) + 0.5;
   let y0 = Math.min(...pts.map((p) => p.y)) - 0.5;
@@ -68,9 +71,11 @@ function RobotMap({ board, nowMs }: ViewProps) {
   x1 = cx + (W - 34) / 2 / k;
   y0 = cy - (H - 34) / 2 / k;
   y1 = cy + (H - 34) / 2 / k;
-  const sx = (x: number) => 30 + (x - x0) * k;
-  const sy = (y: number) => 16 + (y1 - y) * k;
-  const grid = [0.5, 1, 2, 5, 10, 20, 50].find((g) => (x1 - x0) / g <= 9) ?? 100;
+  // Kept within a sane range so a runaway estimate still gives valid coordinates.
+  const lim = (v: number) => Math.max(-1e4, Math.min(1e4, v));
+  const sx = (x: number) => lim(30 + (x - x0) * k);
+  const sy = (y: number) => lim(16 + (y1 - y) * k);
+  const grid = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500].find((g) => (x1 - x0) / g <= 9) ?? 1000;
   const ticks = (lo: number, hi: number) => {
     const out: number[] = [];
     for (let g = Math.ceil(lo / grid) * grid; g <= hi + 1e-9; g += grid) out.push(Math.abs(g) < 1e-9 ? 0 : g);
@@ -84,17 +89,17 @@ function RobotMap({ board, nowMs }: ViewProps) {
 
   return (
     <div>
-      <svg className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Top view. The robot is at x ${fmt(pose.x)}, y ${fmt(pose.y)} feet, heading ${fmt(pose.th)} radians.${hasEst ? ` The program's estimate is ${fmt(ex)}, ${fmt(ey)}, ${fmt(err, 3)} feet away.` : ""}`}>
+      <svg className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Top view, x to the right and y up, in feet. The robot is at x ${fmt(pose.x)}, y ${fmt(pose.y)} feet, heading ${fmt(pose.th)} radians (counter-clockwise from the x axis).${hasEst ? ` The program's estimate is ${fmt(ex)}, ${fmt(ey)}, ${fmt(err, 3)} feet away.` : ""}`}>
         {ticks(x0, x1).map((g) => (
           <g key={`x${g}`}>
             <line x1={sx(g)} x2={sx(g)} y1={16} y2={H - 18} stroke={g === 0 ? "var(--border-strong)" : "var(--border)"} />
-            <text x={sx(g)} y={H - 6} textAnchor="middle">{g}</text>
+            {sx(g) < W - 62 && <text x={sx(g)} y={H - 6} textAnchor="middle">{g}</text>}
           </g>
         ))}
         {ticks(y0, y1).map((g) => (
           <g key={`y${g}`}>
             <line x1={30} x2={W - 4} y1={sy(g)} y2={sy(g)} stroke={g === 0 ? "var(--border-strong)" : "var(--border)"} />
-            <text x={26} y={sy(g) + 3} textAnchor="end">{g}</text>
+            {sy(g) > 24 && <text x={26} y={sy(g) + 3} textAnchor="end">{g}</text>}
           </g>
         ))}
         <text x={W - 4} y={H - 6} textAnchor="end">x, ft</text>
@@ -103,11 +108,12 @@ function RobotMap({ board, nowMs }: ViewProps) {
         {est.length > 1 && <path d={line(est)} fill="none" stroke="var(--value)" strokeWidth={1.6} strokeDasharray="5 3" strokeLinejoin="round" />}
         <g transform={place(pose.x, pose.y, pose.th)}>
           <path d={shape} fill="var(--info)" fillOpacity={0.35} stroke="var(--info)" strokeWidth={1.6} />
+          <path d={`M0,0 H${s * 1.3}`} stroke="var(--info)" strokeWidth={1.2} />
           <rect x={-s * 0.5} y={-s - 1.5} width={s} height={3} rx={1.5} fill="var(--text)" />
           <rect x={-s * 0.5} y={s - 1.5} width={s} height={3} rx={1.5} fill="var(--text)" />
         </g>
         {hasEst && (
-          <g transform={place(ex, ey, eth ?? 0)}>
+          <g transform={place(ex, ey, eth !== undefined && Number.isFinite(eth) ? eth : 0)}>
             <path d={shape} fill="none" stroke="var(--value)" strokeWidth={1.6} strokeDasharray="3 2" />
             <path d={`M0,0 H${s * 1.3}`} stroke="var(--value)" strokeWidth={1.2} />
           </g>
@@ -123,7 +129,8 @@ function RobotMap({ board, nowMs }: ViewProps) {
       </svg>
       <p className="hint-text">
         Robot: x {fmt(pose.x)} ft, y {fmt(pose.y)} ft, heading {fmt(pose.th)} rad.
-        {hasEst ? ` Your estimate: x ${fmt(ex)}, y ${fmt(ey)}, heading ${fmt(eth)}; it is ${fmt(err, 3)} ft from the truth.` : " The program has not reported an estimate (tb_report_pose)."}
+        {" "}The pointed end is the front. Heading 0 points along +x; positive is counter-clockwise.
+        {hasEst ? ` Your estimate: x ${fmt(ex)} ft, y ${fmt(ey)} ft, heading ${fmt(eth)} rad; it is ${fmt(err, 3)} ft from the true position.` : " The program has not reported an estimate (tb_report_pose)."}
       </p>
     </div>
   );

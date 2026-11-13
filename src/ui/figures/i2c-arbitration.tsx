@@ -78,6 +78,9 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
       prev = lv;
       out.push(<text key={i} x={x(i) + CW / 2} y={y + 13} textAnchor="middle" className="fig-value small">{lv}</text>);
     }
+    // Bits a sender still intends to send, in grey (nothing after it has lost).
+    if (who !== "bus" && !(loser === who && s > lostAt))
+      for (let i = upto; i < n; i++) out.push(<text key={i} x={x(i) + CW / 2} y={y + 13} textAnchor="middle" className="fig-label dim">{bitOf(v, i)}</text>);
     return (
       <g>
         {d && <path d={d} className={`fig-trace ${who === "bus" ? "data" : ""}`} />}
@@ -93,7 +96,7 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
   };
   const cur = s - 1;
   const why = s === 0
-    ? `Both ${can ? "nodes" : "masters"} find the bus idle and start in the same instant. Each sends its ${word}, top bit first, and reads the bus back after every bit. Press "next bit".`
+    ? `Both ${can ? "nodes" : "masters"} find the bus idle and start in the same instant. Each sends its ${word}, top bit first (grey: not sent yet), and reads the bus back after every bit. Press Next.`
     : lostAt < 0
       ? s < n
         ? `Bit ${n - 1 - cur}: both send ${bitOf(A, cur)}, the bus shows ${bitOf(A, cur)}, and neither notices the other.`
@@ -101,8 +104,8 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
       : cur < lostAt
         ? `Bit ${n - 1 - cur}: both send ${bitOf(A, cur)}. The bus shows what each sent, so neither notices the other yet.`
         : cur === lostAt
-          ? `Bit ${n - 1 - cur}: ${names[loser === "A" ? 0 : 1]} sends ${one}, ${names[loser === "A" ? 1 : 0]} sends ${zero}. A 0 from anyone wins, so the bus reads 0. ${names[loser === "A" ? 0 : 1]} sent 1 but reads 0: someone else is on the bus. It has lost, stops at once and ${can ? "becomes a receiver; it will try again after this frame" : "tries again later"}.`
-          : `${names[loser === "A" ? 1 : 0]} carries on alone and never noticed anything: its bits were on the bus undamaged all along. ${s === n ? `The winner is the lower ${word}, 0x${hx(Math.min(A, B), can ? 3 : 2)}: the first bit that differs is a 0 in the smaller number.${can ? " On CAN the identifier is therefore also the priority of the message." : ""}` : ""}`;
+          ? `Bit ${n - 1 - cur}: ${names[loser === "A" ? 0 : 1]} sends ${one}, ${names[loser === "A" ? 1 : 0]} sends ${zero}. A 0 from anyone wins, so the bus reads 0. ${names[loser === "A" ? 0 : 1]} sent 1 but reads 0: someone else is on the bus. It has lost, stops immediately and ${can ? "becomes a receiver; it will try again after this frame" : "tries again later"}.`
+          : `${names[loser === "A" ? 1 : 0]} continues alone and noticed nothing: every bit it sent appeared on the bus unchanged. ${s === n ? `The winner is the lower ${word}, 0x${hx(Math.min(A, B), can ? 3 : 2)}: the first bit that differs is a 0 in the smaller number.${can ? " On CAN the identifier is therefore also the priority of the message." : ""}` : ""}`;
   return (
     <figure className="figure" aria-label="Interactive diagram of bus arbitration on I2C and CAN">
       <style>{CSS}</style>
@@ -123,7 +126,7 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
         {loser && s > lostAt && (
           <g>
             <circle cx={x(lostAt) + CW / 2} cy={rowY[loser === "A" ? 0 : 1] + 9.5} r={9} className="ia-lost" />
-            <text x={x(lostAt) + CW / 2} y={rowY[loser === "A" ? 0 : 1] + 32} textAnchor="middle" className="fig-label" style={{ fill: "var(--bad)" }}>sent 1, read 0: lost</text>
+            <text x={lostAt > n - 3 ? x(lostAt + 1) : lostAt < 1 ? x(0) : x(lostAt) + CW / 2} y={rowY[loser === "A" ? 0 : 1] + 32} textAnchor={lostAt > n - 3 ? "end" : lostAt < 1 ? "start" : "middle"} className="fig-label" style={{ fill: "var(--bad)" }}>sent 1, read 0: lost</text>
           </g>
         )}
       </svg>
@@ -131,9 +134,10 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
       <div className="fig-controls">
         <div>
           <span>Step</span>
-          <button className="fig-opt" disabled={s >= n} onClick={() => setStep(s + 1)}>next bit</button>
-          <button className="fig-opt" disabled={s >= n} onClick={() => setStep(n)}>all bits</button>
-          <button className="fig-opt" disabled={s === 0} onClick={() => setStep(0)}>start again</button>
+          <button className="fig-opt" disabled={s === 0} onClick={() => setStep(s - 1)}>Back</button>
+          <button className="fig-opt" disabled={s >= n} onClick={() => setStep(s + 1)}>Next</button>
+          <button className="fig-opt" disabled={s >= n} onClick={() => setStep(n)}>All bits</button>
+          <button className="fig-opt" disabled={s === 0} onClick={() => setStep(0)}>Reset</button>
         </div>
         <div>
           <span>Bus</span>
@@ -149,7 +153,7 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
           <button className="fig-opt" onClick={() => { setA(B); setB(A); setStep(0); }}>swap them</button>
         </div>
       </div>
-      <figcaption>A sender can only pull the bus to 0 or let go, so the bus is the AND of what everyone sends. Each sender compares what it sent with what it reads. The first one to send 1 and read 0 gives way, and the other's message goes through untouched: no collision, no lost time. The lower number always wins.</figcaption>
+      <figcaption>A sender can only pull the bus to 0 or let go, so the bus is the AND of what everyone sends. The first sender that sends 1 but reads 0 stops, and the other message continues undamaged. The lower number always wins.</figcaption>
     </figure>
   );
 }

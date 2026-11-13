@@ -92,7 +92,7 @@ function MovingAverage() {
         })}
         <path d={out} className="fig-trace data" style={{ strokeWidth: 2.2 }} />
         <circle cx={x(n)} cy={y(yn)} r="4" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.9" />
-        <text x={(wx0 + wx1) / 2} y={Y0 + 12} textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)" }}>{points > 2 ? "window: drag me" : "drag"}</text>
+        <text x={Math.max(X0 + 16, Math.min(X1 - 16, (wx0 + wx1) / 2))} y={Y0 + 12} textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)" }}>window</text>
         {/* delay */}
         {delay > 0 && (
           <>
@@ -101,8 +101,8 @@ function MovingAverage() {
             <text x={x(EDGE_UP) - dx / 2 - 4} y={y(1.5) - 2} textAnchor="end" className="fig-label">delay {delay}</text>
           </>
         )}
-        <text x={X0} y={Y0 + 12} className="fig-label dim">n = 0</text>
-        <text x={X1} y={Y0 + 12} textAnchor="end" className="fig-label dim">{N - 1}</text>
+        {(wx0 + wx1) / 2 > X0 + 62 && <text x={X0} y={Y0 + 12} className="fig-label dim">n = 0</text>}
+        {(wx0 + wx1) / 2 < X1 - 46 && <text x={X1} y={Y0 + 12} textAnchor="end" className="fig-label dim">n = {N - 1}</text>}
       </svg>
       <svg viewBox="0 0 420 122" role="img" aria-label={`The ${points} samples in the window times the coefficients ${b.map((v) => v.toFixed(3)).join(", ")} add up to ${yn.toFixed(2)}.`}>
         <text x="4" y="24" className="fig-label">samples</text>
@@ -135,8 +135,9 @@ function MovingAverage() {
       <div className="fig-controls">
         <div>
           <span>Window at</span>
-          <input type="range" min={0} max={N - 1} value={n} aria-label="Newest sample in the window" onChange={(e) => setPos(+e.target.value)} />
+          <input type="range" min={points - 1} max={N - 1} value={n} aria-label="Newest sample in the window, n" onChange={(e) => setPos(+e.target.value)} />
           <span className="mavg-num">{n}</span>
+          <code>y[{n}] = {yn.toFixed(2)}</code>
         </div>
         <div>
           <span>Points</span>
@@ -154,7 +155,7 @@ function MovingAverage() {
           <code>{tapered ? `for (i = 0; i < ${points}; i++) { yk = yk + b[i] * xk[i]; }` : points === 1 ? "yk = xk[0];" : `yk = (xk[0] + ${points > 2 ? "... + " : ""}xk[${points - 1}]) / ${points};`}</code>
         </div>
       </div>
-      <figcaption>Top: a noisy step, and the filter output. The dashed line is the signal without noise. Bottom: what happens for the one output sample marked above. Each sample in the window is multiplied by its weight and the products are added. With equal weights that is the moving average; other weights give other FIR filters with the same code.</figcaption>
+      <figcaption>Top: a noisy step, and the filter output. The dashed line is the signal without noise. Drag the orange window or use the first slider. Bottom: what happens for the one output sample marked above. Each sample in the window is multiplied by its weight and the products are added. With equal weights that is the moving average; other weights give other FIR filters with the same code.</figcaption>
     </figure>
   );
 }

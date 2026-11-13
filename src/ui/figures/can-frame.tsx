@@ -16,6 +16,7 @@ const CSS = `
 .cf-byte { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .cf-byte.dist { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
 .cf-mono { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--value); }
+.cf-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; accent-color: var(--orange); }
 `;
 
 const h2 = (v: number) => v.toString(16).toUpperCase().padStart(2, "0");
@@ -33,7 +34,7 @@ const FIELDS: Field[] = [
   { id: "ctl", name: "control", bits: 6, w: 50, text: () => "Control field: 6 bits. The last four are the DLC, the data length code: 8 here, so 8 data bytes follow. A frame can carry 0 to 8 bytes." },
   { id: "data", name: "data", bits: 64, w: 112, text: (c) => `Data field: the 8 bytes below, byte 0 first. What they mean is up to the sender's documentation. For this sensor bytes 0 and 1 are the distance, ${c.dist} mm, least significant byte first.` },
   { id: "crc", name: "CRC", bits: 16, w: 46, text: () => "CRC: a 15-bit checksum over everything before it, plus one recessive delimiter bit. Every receiver computes the same checksum and compares. A frame damaged by noise is rejected by all of them, and the sender repeats it." },
-  { id: "ack", name: "ACK", bits: 2, w: 36, text: () => "ACK slot: the sender lets go of the bus, and every node that received the frame correctly pulls it dominant. One bit is enough for the sender to know somebody heard it. If nobody does, it sends the frame again." },
+  { id: "ack", name: "ACK", bits: 2, w: 36, text: () => "ACK slot: the sender lets go of the bus, and every node that received the frame correctly pulls it dominant. One bit is enough for the sender to know that some node received it. If no node does, the sender sends the frame again. A recessive delimiter bit follows the slot." },
   { id: "eof", name: "end", bits: 7, w: 38, text: () => "End of frame: seven recessive bits. After a short gap the bus is idle and any node may start the next frame." },
 ];
 
@@ -50,7 +51,7 @@ function CanFrame() {
   const BX = 56;
   const BW = 44;
   return (
-    <figure className="figure" aria-label="Interactive diagram of a CAN data frame carrying a distance measurement">
+    <figure className="figure cf-fig" aria-label="Interactive diagram of a CAN data frame carrying a distance measurement">
       <style>{CSS}</style>
       <svg viewBox="0 0 420 170" role="img" aria-label={`CAN frame with identifier ${id} and 8 data bytes. Bytes 0 and 1 are ${h2(bytes[0])} and ${h2(bytes[1])} hexadecimal: ${dist} millimetres.`}>
         <text x={4} y={10} className="fig-label dim">sent first</text>
@@ -81,12 +82,14 @@ function CanFrame() {
         ))}
         <path d={`M${BX + 1},108 v4 h${2 * BW - 4} v-4`} className="fig-wire" style={{ stroke: "var(--accent)" }} />
         <text x={BX} y={122} className="fig-label">distance: low byte, then high byte</text>
-        <path d={`M${BX + 2 * BW + 1},108 v4 h${BW - 4} v-4`} className="fig-wire" />
-        <text x={BX + 2.5 * BW} y={133} textAnchor="middle" className="fig-label dim">status: 0 = valid</text>
+        <path d={`M${BX + 2 * BW + 1},108 v4 h${2 * BW - 4} v-4`} className="fig-wire" />
+        <text x={BX + 3 * BW} y={133} textAnchor="middle" className="fig-label dim">status (0 = valid), quality</text>
         <path d={`M${BX + 4 * BW + 1},108 v4 h${4 * BW - 4} v-4`} className="fig-wire" />
-        <text x={BX + 6 * BW} y={122} textAnchor="middle" className="fig-label dim">signal strength (32 bits)</text>
+        <text x={BX + 6 * BW} y={122} textAnchor="middle" className="fig-label dim">signal rate (32 bits)</text>
         <text x={4} y={150} className="fig-value small">dis_{sensor} = 256 * dis_raw_{sensor}[1] + dis_raw_{sensor}[0];  // 256 * {bytes[1]} + {bytes[0]} = {dist} mm</text>
-        <text x={4} y={164} className="fig-label" style={{ fill: "var(--bad)" }}>bytes the wrong way round: 256 * {bytes[0]} + {bytes[1]} = {swapped} mm</text>
+        <text x={4} y={164} className="fig-label" style={{ fill: swapped === dist ? "var(--dim)" : "var(--bad)" }}>
+          {swapped === dist ? `both bytes are equal here, so swapping them would not show: ${swapped} mm` : `✗ bytes swapped by mistake: 256 * ${bytes[0]} + ${bytes[1]} = ${swapped} mm`}
+        </text>
       </svg>
       <p className="fig-why" role="status">{f.text({ id, dist })}</p>
       <div className="fig-controls">
@@ -100,8 +103,8 @@ function CanFrame() {
           <span>Distance</span>
           <input type="range" min={0} max={4000} step={1} value={dist} aria-label="Distance the sensor measures, millimetres" onChange={(e) => setDist(+e.target.value)} />
           <code>{dist} mm = 0x{h2(bytes[1])}{h2(bytes[0])}</code>
-          <button className="fig-opt" onClick={() => setDist(255)}>255</button>
-          <button className="fig-opt" onClick={() => setDist(256)}>256</button>
+          <button className="fig-opt" aria-pressed={dist === 255} onClick={() => setDist(255)}>255 mm</button>
+          <button className="fig-opt" aria-pressed={dist === 256} onClick={() => setDist(256)}>256 mm</button>
         </div>
         <div>
           <span>Sender</span>
@@ -110,7 +113,7 @@ function CanFrame() {
           <code>identifier 0x060B01ss, ss = {sensor}</code>
         </div>
       </div>
-      <figcaption>One CAN data frame in the order it is sent (field widths are not to scale). Choose a field to see what it is for. Move the distance through 255 to 256 mm and watch byte 0 wrap to 0x00 while byte 1 becomes 0x01: the low byte comes first.</figcaption>
+      <figcaption>One extended CAN data frame in the order it is sent (field widths are not to scale). After five equal bits in a row the sender inserts one opposite bit, a stuff bit, so the receivers always have edges to time the bits from. From 255 to 256 mm byte 0 goes back to 0x00 and byte 1 becomes 0x01: the low byte comes first.</figcaption>
     </figure>
   );
 }

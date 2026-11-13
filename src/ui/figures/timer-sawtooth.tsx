@@ -15,8 +15,10 @@ interface Sim {
   tim: number[];
   /** TIF after each clock cycle. */
   tif: number[];
-  /** Clock cycles at which TIM was reloaded from PRD because it had reached 0. */
+  /** Clock cycles (indices into tim) at which TIM was reloaded from PRD because it had reached 0. */
   zeros: number[];
+  /** Clock cycles dropped from the front of the history, so it cannot grow without limit. */
+  base: number;
   psc: number;
   tss: boolean;
   note: "" | "trb" | "clear";
@@ -48,10 +50,20 @@ function step(s: Sim, prd: number, tddr: number, n = 1): Sim {
     tim.push(t);
     tif.push(f);
   }
-  return { ...s, tim, tif, zeros, psc, note: "" };
+  // Keep only what the picture can show (WINDOW cycles, plus some spare).
+  const cut = tim.length > 4 * WINDOW ? tim.length - 2 * WINDOW : 0;
+  return {
+    ...s,
+    tim: cut ? tim.slice(cut) : tim,
+    tif: cut ? tif.slice(cut) : tif,
+    zeros: cut ? zeros.map((z) => z - cut).filter((z) => z >= 0) : zeros,
+    base: s.base + cut,
+    psc,
+    note: "",
+  };
 }
 
-const fresh = (prd: number, tddr: number): Sim => step({ tim: [prd], tif: [0], zeros: [], psc: tddr, tss: false, note: "" }, prd, tddr, 46);
+const fresh = (prd: number, tddr: number): Sim => step({ tim: [prd], tif: [0], zeros: [], base: 0, psc: tddr, tss: false, note: "" }, prd, tddr, 46);
 
 function nice(ns: number): string {
   if (ns >= 1e9) return `${+(ns / 1e9).toPrecision(6)} s`;
@@ -110,6 +122,8 @@ function TimerSawtooth() {
   const zeros = sim.zeros.filter((z) => z >= from && z <= now);
   const lastTwo = zeros.slice(-2);
 
+  const countList = prd <= 3 ? Array.from({ length: prd + 1 }, (_, i) => prd - i).join(", ") : `${prd}, ${prd - 1}, ... 0`;
+  const counts = `TIM counts ${countList}: that is PRD + 1 = ${prd + 1} ticks, and each tick is ${tddr + 1} clock cycle${tddr ? "s" : ""}.`;
   const why = sim.tss
     ? `Stopped: with TSS = 1 the counter is frozen at TIM = ${tim}. The clock keeps running, the timer ignores it. Writing TSS = 0 lets it continue from ${tim}, not from PRD.`
     : sim.note === "trb"
@@ -117,8 +131,8 @@ function TimerSawtooth() {
       : sim.note === "clear"
         ? "Writing 1 to TIF cleared it. It stays 0 until the counter passes zero again."
         : tif
-          ? `TIM counts ${prd}, ${prd - 1}, ... 0: that is PRD + 1 = ${prd + 1} ticks, and each tick is ${tddr + 1} clock cycle${tddr ? "s" : ""}. One tick after 0 the timer sets TIF and loads TIM from PRD again. TIF then stays 1 until the program writes 1 to it.`
-          : `TIM counts ${prd}, ${prd - 1}, ... 0: that is PRD + 1 = ${prd + 1} ticks, and each tick is ${tddr + 1} clock cycle${tddr ? "s" : ""}. TIF is 0: the counter has not passed zero since it was cleared.`;
+          ? `${counts} One tick after 0 the timer sets TIF and loads TIM from PRD again. TIF then stays 1 until the program writes 1 to it.`
+          : `${counts} TIF is 0: the counter has not passed zero since it was cleared.`;
 
   const usNum = Number(us);
   const product = Math.floor(200 * usNum);
@@ -144,7 +158,7 @@ function TimerSawtooth() {
         <line x1={X0} x2={X1} y1={24} y2={24} className="fig-wire" strokeDasharray="3 3" style={{ strokeWidth: 0.8 }} />
         <line x1={X0} x2={X1} y1={92} y2={92} className="fig-wire" style={{ strokeWidth: 0.8 }} />
         {zeros.map((z) => (
-          <line key={z} x1={x(z)} x2={x(z)} y1={20} y2={128} className="fig-sample" />
+          <line key={z + sim.base} x1={x(z)} x2={x(z)} y1={20} y2={128} className="fig-sample" />
         ))}
         <path d={stair} className="fig-trace data" />
         {/* clock */}
@@ -153,8 +167,9 @@ function TimerSawtooth() {
           <line key={i} x1={x(from + i + 1)} x2={x(from + i + 1)} y1={98} y2={104} stroke="var(--dim)" strokeWidth={0.7} />
         ))}
         {/* flag */}
-        <text x={X0 - 5} y={116} textAnchor="end" className="fig-label">flag TIF</text>
-        <text x={X0 - 5} y={128} textAnchor="end" className="fig-value small">{tif}</text>
+        <text x={4} y={122} className="fig-label">flag TIF</text>
+        <text x={X0 - 5} y={115} textAnchor="end" className="fig-value small" style={{ fill: tif ? undefined : "var(--dim)" }}>1</text>
+        <text x={X0 - 5} y={129} textAnchor="end" className="fig-value small" style={{ fill: tif ? "var(--dim)" : undefined }}>0</text>
         {tifSegs}
         {/* now */}
         <line x1={x(now)} x2={x(now)} y1={16} y2={132} stroke="var(--text)" strokeWidth={1} />
@@ -173,8 +188,8 @@ function TimerSawtooth() {
           </g>
         )}
         <text x={4} y={163} className="fig-label dim">time</text>
-        <text x={X0} y={163} className="fig-label dim">{from * NS} ns</text>
-        <text x={X1} y={163} textAnchor="end" className="fig-label dim">{(from + WINDOW) * NS} ns</text>
+        <text x={X0} y={163} className="fig-label dim">{(sim.base + from) * NS} ns</text>
+        <text x={X1} y={163} textAnchor="end" className="fig-label dim">{(sim.base + from + WINDOW) * NS} ns</text>
       </svg>
       <div className="fig-step">
         <p className="ts-formula">
@@ -185,12 +200,12 @@ function TimerSawtooth() {
       <div className="fig-controls">
         <div>
           <span id="ts-prd">PRD</span>
-          <input type="range" min={1} max={9} value={prd} aria-labelledby="ts-prd" onChange={(e) => change(+e.target.value, tddr)} />
+          <input type="range" min={1} max={9} value={prd} aria-labelledby="ts-prd" aria-valuetext={`PRD = ${prd}`} onChange={(e) => change(+e.target.value, tddr)} />
           <code>CpuTimer0Regs.PRD.all = {prd};</code>
         </div>
         <div>
           <span id="ts-tddr">Prescaler</span>
-          <input type="range" min={0} max={3} value={tddr} aria-labelledby="ts-tddr" onChange={(e) => change(prd, +e.target.value)} />
+          <input type="range" min={0} max={3} value={tddr} aria-labelledby="ts-tddr" aria-valuetext={`TDDR = ${tddr}, divide by ${tddr + 1}`} onChange={(e) => change(prd, +e.target.value)} />
           <code>CpuTimer0Regs.TPR.bit.TDDR = {tddr};</code>
         </div>
         <div>
@@ -198,6 +213,7 @@ function TimerSawtooth() {
           <button className="fig-opt" onClick={() => setSim((s) => step(s, prd, tddr))}>+1 clock cycle</button>
           <button className="fig-opt" onClick={() => setSim((s) => step(s, prd, tddr, cyclesPerPeriod))}>+1 period</button>
           {!calm && <button className="fig-opt" aria-pressed={running} onClick={() => setRunning(!running)}>{running ? "pause" : "run"}</button>}
+          <button className="fig-opt" onClick={() => { setRunning(false); setSim(fresh(prd, tddr)); }}>Reset</button>
         </div>
         <div>
           <span>Stop</span>
@@ -261,13 +277,13 @@ function TimerSawtooth() {
         ) : (
           <pre>
             <code>
-              {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = 200 x ${us} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TSS = 0: start`}
+              {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = 200 x ${us} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
             </code>
           </pre>
         )}
       </div>
       <figcaption>
-        Small numbers so every tick is visible; a real PRD is in the hundreds of thousands. Yellow staircase: the counter. Dashed lines: the moments it passes zero, which is when TIF is set and an interrupt is requested. Changing PRD or the prescaler here restarts the picture from a reload.
+        The staircase is the counter TIM, with small numbers so that every tick is visible; a real PRD is in the hundreds of thousands or more. Dashed lines mark the moments it passes zero: TIF is set and, if TIE is 1, an interrupt is requested. Changing PRD or the prescaler here restarts the picture from a reload.
       </figcaption>
     </figure>
   );

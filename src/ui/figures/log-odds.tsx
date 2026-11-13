@@ -20,13 +20,15 @@ const AXIS = 6; // the drawn log-odds axis runs from -AXIS to +AXIS
 const prob = (l: number) => 1 - 1 / (1 + Math.exp(l));
 const f3 = (v: number) => v.toFixed(3);
 /** A probability: more digits near 0 and 1, so it never reads as exactly certain. */
-const fp = (v: number) => (v > 0.9995 || v < 0.0005 ? v.toFixed(6) : v.toFixed(3));
+const fp = (v: number) => (v > 0.9999995 ? "0.999999..." : v < 0.0000005 ? "0.000000..." : v > 0.9995 || v < 0.0005 ? v.toFixed(6) : v.toFixed(3));
 const signed = (v: number) => (v < 0 ? "- " : "+ ") + Math.abs(v).toFixed(3);
 
 function LogOdds() {
   // true = the beam ended in the cell (hit), false = it passed through.
   const [events, setEvents] = useState<boolean[]>([]);
   const [clamp, setClamp] = useState(true);
+  // The history is kept so the limit can be switched afterwards; 300 beams are plenty.
+  const add = (more: boolean[]) => setEvents((ev) => [...ev, ...more].slice(-300));
 
   let l = 0;
   let before = 0;
@@ -55,8 +57,8 @@ function LogOdds() {
   const sum = `${events.length > shown.length ? "... " : "0 "}${shown.map((h) => signed(h ? L_HIT : L_PASS)).join(" ")}`;
   const status =
     last === null
-      ? "Nothing has been measured: p = 0.5, which is log-odds 0. Send beams and watch the two bars: every beam adds the same amount of log-odds, but the probability moves less and less as it nears 0 or 1."
-      : `${last ? "The beam ended in this cell: evidence for occupied, add 1.386." : "The beam passed through this cell: evidence for free, add -0.847."} ${hits} hit${hits === 1 ? "" : "s"} and ${passes} pass-through${passes === 1 ? "" : "s"} so far give l = ${f3(l)}, p = ${fp(p)}: ${verdict}.${limited ? ` The sum would be ${f3(before + (last ? L_HIT : L_PASS))}, but the limit holds it at ${l > 0 ? "+" : "-"}${L_LIMIT.toFixed(1)}.` : ""}${toFlip ? ` It would now take ${toFlip} ${l > 0 ? "pass-through" : "hit"}${toFlip === 1 ? "" : "s"} in a row to bring it back across p = 0.5.` : ""}${!clamp && Math.abs(l) > L_LIMIT ? " Without a limit the cell becomes ever harder to change: a door that was closed for a minute stays a wall for a long time after it opens." : ""}`;
+      ? "Nothing has been measured: p = 0.5, which is log-odds 0. Send beams. Every hit adds the same amount of log-odds, but the probability moves less and less as it nears 0 or 1."
+      : `${last ? "The beam ended in this cell: evidence for occupied, add 1.386." : "The beam passed through this cell: evidence for free, add -0.847."} ${hits} hit${hits === 1 ? "" : "s"} and ${passes} pass-through${passes === 1 ? "" : "s"} so far give l = ${f3(l)}, p = ${fp(p)}: ${verdict}.${limited ? ` The sum would be ${f3(before + (last ? L_HIT : L_PASS))}, but the limit holds it at ${l > 0 ? "+" : "-"}${L_LIMIT.toFixed(1)}.` : ""}${toFlip ? ` It would now take ${toFlip} ${l > 0 ? "pass-through" : "hit"}${toFlip === 1 ? "" : "s"} in a row to bring it back across p = 0.5.` : ""}${!clamp && Math.abs(l) > L_LIMIT ? " Without a limit every further beam makes the cell harder to change: a door that was closed for a minute stays in the map as a wall long after it opens." : ""}`;
 
   return (
     <figure className="figure" aria-label="One occupancy-grid cell updated in log-odds by LIDAR beams">
@@ -73,7 +75,7 @@ function LogOdds() {
         .lodd-bar { fill: var(--orange); }
         .lodd-barneg { fill: var(--arches); }
       `}</style>
-      <svg viewBox="0 0 420 178" role="img" aria-label={`${hits} hits and ${passes} pass-throughs. Log-odds ${f3(l)}, probability occupied ${fp(p)}: ${verdict}.${limited ? " Held at the limit." : ""}`}>
+      <svg viewBox="0 0 420 178" role="img" aria-label={`${hits} hit${hits === 1 ? "" : "s"} and ${passes} pass-through${passes === 1 ? "" : "s"}. Log-odds ${f3(l)}, probability occupied ${fp(p)}: ${verdict}.${limited ? " Held at the limit." : ""}`}>
         {/* the beam and the cell */}
         <rect x="6" y="22" width="46" height="26" rx="4" className="fig-box" />
         <text x="29" y="38" textAnchor="middle" className="fig-label">LIDAR</text>
@@ -110,9 +112,9 @@ function LogOdds() {
           </g>
         ))}
         <rect x={Math.min(xl(0), xl(l))} y="103" width={Math.abs(xl(l) - xl(0))} height="6" className={l >= 0 ? "lodd-bar" : "lodd-barneg"} />
-        {clamp && [-L_LIMIT, L_LIMIT].map((v) => <line key={v} x1={xl(v)} x2={xl(v)} y1="88" y2="112" className="lodd-limit" />)}
-        {clamp && <text x={xl(L_LIMIT) + 3} y="94" className="fig-label dim">limit</text>}
-        {clamp && <text x={xl(-L_LIMIT) - 3} y="94" textAnchor="end" className="fig-label dim">limit</text>}
+        {clamp && [-L_LIMIT, L_LIMIT].map((v) => <line key={v} x1={xl(v)} x2={xl(v)} y1="97" y2="112" className="lodd-limit" />)}
+        {clamp && <text x={xl(L_LIMIT)} y="132" textAnchor="middle" className="fig-label dim">limit</text>}
+        {clamp && <text x={xl(-L_LIMIT)} y="132" textAnchor="middle" className="fig-label dim">limit</text>}
         <path d={`M${xl(l)},102 l-5,-8 h10 Z`} className="lodd-mark" />
         <text x={Math.max(X0 + 14, Math.min(X1 - 14, xl(l)))} y="90" textAnchor="middle" className="fig-value small">{off ? (l > 0 ? `${f3(l)} →` : `← ${f3(l)}`) : f3(l)}</text>
         <text x={X0} y="132" className="fig-label dim">free</text>
@@ -130,12 +132,14 @@ function LogOdds() {
       </svg>
       <div className="fig-controls">
         <div>
-          <button className="btn small primary" onClick={() => setEvents([...events, true])}>Beam hit</button>
-          <button className="btn small" onClick={() => setEvents([...events, false])}>Beam passed through</button>
-          <button className="btn small" onClick={() => setEvents([...events, ...new Array<boolean>(10).fill(true)])}>10 hits</button>
+          <span>Beam</span>
+          <button className="btn small primary" onClick={() => add([true])}>Beam hit</button>
+          <button className="btn small" onClick={() => add([false])}>Beam passed through</button>
+          <button className="btn small" onClick={() => add(new Array<boolean>(10).fill(true))}>10 hits</button>
           <button className="btn small ghost" onClick={() => setEvents([])} disabled={!events.length}>Reset</button>
         </div>
         <div>
+          <span>Limit</span>
           <button className="fig-opt" aria-pressed={clamp} onClick={() => setClamp(!clamp)}>Limit l to ±{L_LIMIT}</button>
         </div>
       </div>
@@ -145,7 +149,7 @@ function LogOdds() {
 logodds = logodds + l_sensor - L_0;   // L_0 = 0
 ${clamp ? `if (logodds > ${L_LIMIT}.0f) logodds = ${L_LIMIT}.0f;\nif (logodds < -${L_LIMIT}.0f) logodds = -${L_LIMIT}.0f;\n` : ""}p = 1 - 1 / (1 + exp(logodds));       // ${fp(p)}`}</code></pre>
       </div>
-      <figcaption>A hit says "occupied with p = 0.8" (l_sensor = +1.386), a pass-through says "occupied with p = 0.3" (l_sensor = -0.847). In log-odds, evidence simply adds. Real maps also limit l (here to ±{L_LIMIT}, p = {f3(prob(-L_LIMIT))} to {f3(prob(L_LIMIT))}) so that a cell can still change its mind when the world changes.</figcaption>
+      <figcaption>A hit says "occupied with p = 0.8" (l_sensor = +1.386), a pass-through says "occupied with p = 0.3" (l_sensor = -0.847). In log-odds, each new piece of evidence is one addition. Mapping code usually also limits l (here to ±{L_LIMIT}, p = {f3(prob(-L_LIMIT))} to {f3(prob(L_LIMIT))}) so that a few beams can still change a cell when the world changes.</figcaption>
     </figure>
   );
 }

@@ -12,12 +12,13 @@ const CSS = `
 .is-bit { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--text); }
 .is-axis { stroke: var(--dim); stroke-width: 1.2; }
 .is-bar { stroke-width: 6; stroke-linecap: butt; }
+.is-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
 `;
 
 const RANGES = [
-  { id: "gyro", label: "gyro, +-250 deg/s", fs: 250, unit: "deg/s", v: "gyroz", code: "250.0", cfg: "GYRO_CONFIG (0x1B) = 0x00" },
-  { id: "a4", label: "accelerometer, +-4 g", fs: 4, unit: "g", v: "accelz", code: "4.0", cfg: "ACCEL_CONFIG (0x1C) = 0x08" },
-  { id: "a2", label: "accelerometer, +-2 g (after reset)", fs: 2, unit: "g", v: "accelz", code: "2.0", cfg: "ACCEL_CONFIG (0x1C) = 0x00" },
+  { id: "gyro", label: "gyro, ±250 deg/s", fs: 250, unit: "deg/s", v: "gyroz", code: "250.0", cfg: "GYRO_CONFIG (0x1B) = 0x00" },
+  { id: "a4", label: "accelerometer, ±4 g", fs: 4, unit: "g", v: "accelz", code: "4.0", cfg: "ACCEL_CONFIG (0x1C) = 0x08" },
+  { id: "a2", label: "accelerometer, ±2 g (after reset)", fs: 2, unit: "g", v: "accelz", code: "2.0", cfg: "ACCEL_CONFIG (0x1C) = 0x00" },
 ];
 const h = (v: number, d: number) => v.toString(16).toUpperCase().padStart(d, "0");
 
@@ -42,10 +43,10 @@ function ImuScaling() {
     : raw === 32767 || raw === -32768
       ? `Full scale: the count cannot go further. A ${raw > 0 ? "larger" : "more negative"} ${r.unit === "g" ? "acceleration" : "turn rate"} than ${raw > 0 ? "+" : "-"}${r.fs} ${r.unit} still reads ${raw}: the sensor saturates. Choose a wider range if that happens.`
       : raw === 0
-        ? `Zero count, zero ${r.unit}. One count is ${r.fs} / 32767 = ${(r.fs / 32767).toPrecision(3)} ${r.unit}: the finer the range, the smaller the step.`
+        ? `Zero count, zero ${r.unit}. One count is ${r.fs} / 32767 = ${(r.fs / 32767).toPrecision(3)} ${r.unit}: a smaller range gives a smaller step.`
         : `${raw} counts out of 32767 is ${((Math.abs(raw) / 32767) * 100).toFixed(1)} % of full scale, ${neg ? "in the negative direction (top bit 1)" : "in the positive direction (top bit 0)"}: ${truth.toFixed(digits)} ${r.unit}.${r.id !== "gyro" && Math.abs(truth - 1) < 0.02 ? " This is 1 g, gravity on an axis that points up." : ""}`;
   return (
-    <figure className="figure" aria-label="Interactive conversion from a raw MPU-9250 count to a physical value">
+    <figure className="figure is-fig" aria-label="Interactive conversion from a raw MPU-9250 count to a physical value">
       <style>{CSS}</style>
       <svg viewBox="0 0 420 150" role="img" aria-label={`Raw count ${raw}, hexadecimal ${h(u16, 4)}, is ${value.toFixed(digits)} ${r.unit} on the ${r.label} range.`}>
         {/* the two bytes as they arrive */}
@@ -75,7 +76,7 @@ function ImuScaling() {
         <line x1={x(0)} x2={x(raw)} y1={AY} y2={AY} className="is-bar" style={{ stroke: neg ? "var(--lo)" : "var(--hi)" }} />
         <path d={`M${x(raw)},${AY - 4} l-5,-9 h10 z`} style={{ fill: "var(--value)" }} />
         <text x={Math.max(X0 + 52, Math.min(X1 - 40, x(raw)))} y={AY - 18} textAnchor="middle" className="fig-value">
-          {signed || !neg ? "" : "really "}{truth >= 0 ? "+" : ""}{truth.toFixed(digits)} {r.unit}
+          {signed || !neg ? "" : "really "}{raw === 0 ? "0" : `${truth > 0 ? "+" : ""}${truth.toFixed(digits)}`} {r.unit}
         </text>
         <text x={X0} y={144} className="fig-value small">
           {r.v} = {r.v}_raw * {r.code} / 32767.0;  // {seen} * {r.code} / 32767.0 = {value.toFixed(digits)}
@@ -105,7 +106,7 @@ function ImuScaling() {
           <code>{signed ? "int16_t" : "uint16_t"} {r.v}_raw = SpibRegs.SPIRXBUF;</code>
         </div>
       </div>
-      <figcaption>The sensor reports a signed count: -32768 to 32767 stands for minus to plus full scale of the chosen range. The same 1 g is 16384 counts on the +-2 g range and 8192 on +-4 g. The bar is orange for positive values and blue for negative ones.</figcaption>
+      <figcaption>The sensor reports a signed count: -32768 to 32767 stands for minus to plus full scale of the chosen range. The same 1 g is 16384 counts on the ±2 g range and 8192 on ±4 g. The top bit is the sign: the bar points right (orange) for positive values and left (blue) for negative ones.</figcaption>
     </figure>
   );
 }

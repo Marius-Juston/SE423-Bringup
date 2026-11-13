@@ -114,7 +114,7 @@ export function runAll(algo: Algo, walls: boolean[], start: number, goal: number
 
 const PRESETS: { name: string; rows: string[]; start: [number, number]; goal: [number, number]; note: string }[] = [
   { name: "chapter maze", rows: MAZE, start: [4, 0], goal: [0, 6], note: "The map of the BFS and A* levels: one gap in the wall, at row 2, column 3." },
-  { name: "greedy trap", rows: TRAP, start: [5, 0], goal: [0, 6], note: "The map of the heuristic level. Greedy heads straight up the left side towards the goal's row and then has to come back round the walls; A* also counts the cost so far." },
+  { name: "greedy trap", rows: TRAP, start: [5, 0], goal: [0, 6], note: "The map of the heuristic level. Greedy search goes straight towards the goal's row and then has to go back round the walls. A* also counts the cost so far." },
   { name: "walled in", rows: ["000x000", "0x0x0x0", "0x0x0x0", "0xxxxx0", "000000x", "0x0x0x0"], start: [4, 0], goal: [0, 6], note: "The chapter maze with its only gap closed, as homework 6 asks: there is no path." },
 ];
 
@@ -140,6 +140,7 @@ const CSS = `
 .sx-tag { font-size: 9px; font-weight: 700; font-family: var(--sans); fill: var(--inset); }
 .sx-tagbox { fill: var(--text); }
 .sx-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.5rem; }
+.sx-hint { color: var(--dim); font-size: 0.82rem; }
 .sx-table caption { text-align: left; color: var(--dim); font-size: 0.82rem; }
 .sx-table th, .sx-table td { text-align: left; padding: 0.15rem 0.5rem 0.15rem 0; border-bottom: 1px solid var(--border); }
 .sx-table th { white-space: nowrap; }
@@ -214,26 +215,6 @@ function SearchExplorer() {
   return (
     <figure className="figure" aria-label="Interactive grid search: breadth-first, greedy best-first and A star, one expansion at a time">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Search</span>
-          {ALGOS.map((a) => (
-            <button key={a.id} className="fig-opt" aria-pressed={algo === a.id} onClick={() => pickAlgo(a.id)}>{a.name}</button>
-          ))}
-        </div>
-        <div>
-          <span>Map</span>
-          {PRESETS.map((p, i) => (
-            <button key={p.name} className="fig-opt" aria-pressed={preset === i} onClick={() => loadPreset(i)}>{p.name}</button>
-          ))}
-        </div>
-        <div>
-          <span>A click sets</span>
-          <button className="fig-opt" aria-pressed={tool === "wall"} onClick={() => setTool("wall")}>obstacle</button>
-          <button className="fig-opt" aria-pressed={tool === "start"} onClick={() => setTool("start")}>start</button>
-          <button className="fig-opt" aria-pressed={tool === "goal"} onClick={() => setTool("goal")}>goal</button>
-        </div>
-      </div>
       <svg viewBox={`0 0 420 ${Y0 + ROWS * S + 30}`} role="group" aria-label={label}>
         {Array.from({ length: COLS }, (_, c) => (
           <text key={`c${c}`} x={X0 + c * S + S / 2} y={11} textAnchor="middle" className="fig-label dim">{c}</text>
@@ -328,6 +309,27 @@ function SearchExplorer() {
         {status}
         {!s.done && algo === "bfs" && frontier.length > 1 && <> Queue, oldest first: {frontier.map(rc).join(" ")}.</>}
       </div>
+      <div className="fig-controls">
+        <div>
+          <span>Search</span>
+          {ALGOS.map((a) => (
+            <button key={a.id} className="fig-opt" aria-pressed={algo === a.id} onClick={() => pickAlgo(a.id)}>{a.name}</button>
+          ))}
+        </div>
+        <div>
+          <span>Map</span>
+          {PRESETS.map((p, i) => (
+            <button key={p.name} className="fig-opt" aria-pressed={preset === i} onClick={() => loadPreset(i)}>{p.name}</button>
+          ))}
+        </div>
+        <div>
+          <span>Click sets</span>
+          <button className="fig-opt" aria-pressed={tool === "wall"} onClick={() => setTool("wall")}>obstacle</button>
+          <button className="fig-opt" aria-pressed={tool === "start"} onClick={() => setTool("start")}>start</button>
+          <button className="fig-opt" aria-pressed={tool === "goal"} onClick={() => setTool("goal")}>goal</button>
+          <span className="sx-hint">on the cell you click</span>
+        </div>
+      </div>
       <table className="sx-table">
         <caption>The three searches on this map, run to the end</caption>
         <thead>
@@ -354,7 +356,7 @@ function SearchExplorer() {
         </tbody>
       </table>
       <figcaption>
-        {preset >= 0 ? PRESETS[preset].note : "Your own map."} Each Step is one round of the loop: take a cell off the frontier, stop if it is the goal, otherwise mark it expanded and put its free neighbours (up, left, right, down) on the frontier. Cells are named (row, column). g is the cost so far, h the Manhattan distance to the goal, f = g + h. Only the choice of the next cell differs between the three.
+        {preset >= 0 ? PRESETS[preset].note : "Your own map."} Each Step is one round of the loop: take a cell off the frontier, stop if it is the goal, otherwise mark it expanded and put its free neighbours on the frontier. g is the cost so far, h the Manhattan distance to the goal, and f = g + h.
       </figcaption>
     </figure>
   );

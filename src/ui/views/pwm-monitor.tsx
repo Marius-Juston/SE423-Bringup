@@ -4,6 +4,10 @@ import { epwmPins } from "../../sim/plugins/epwm";
 import type { Epwm } from "../../sim/plugins/epwm";
 import type { BenchView, ViewProps } from "./types";
 
+// Frequency and duty cycle are measured from the pin's edges, the way a
+// scope would, so they show what the pin does, whatever the registers say
+// (src/sim/plugins/epwm.ts drives the pins; TRM chapter 15).
+
 /** What the course boards connect to a PWM pin. */
 const USE: Record<number, string> = { 0: "left motor", 2: "right motor", 14: "RC servo 1", 15: "RC servo 2", 16: "buzzer", 22: "LED1" };
 /** Edges looked at, counted back from the time shown. */
@@ -71,7 +75,7 @@ function PwmMonitor({ board, window: [, to] }: ViewProps) {
       {rows.map((r) => {
         const m = measure(r.tr, to * 1e6);
         const pct = m.duty * 100;
-        const text = m.hz ? `${hz(m.hz)}, ${pct.toFixed(1)} % high` : `not switching, ${m.level ? "high" : "low"}`;
+        const text = m.hz ? `${hz(m.hz)}, high ${pct.toFixed(1)} % of the time` : `not switching, steady ${m.level ? "high" : "low"}`;
         // Two periods at the measured duty, as a picture of the waveform.
         const X0 = 150;
         const P = 44;
@@ -86,8 +90,8 @@ function PwmMonitor({ board, window: [, to] }: ViewProps) {
             <rect x={250} y={6} width={144} height={9} rx={2} fill="var(--surface)" stroke="var(--border)" />
             <rect x={250} y={6} width={144 * m.duty} height={9} rx={2} fill="var(--hi)" />
             <line x1={322} x2={322} y1={4} y2={17} stroke="var(--dim)" strokeDasharray="2 2" />
-            <text x={250} y={28} style={{ fill: "var(--value)" }}>{m.hz ? hz(m.hz) : "steady"}</text>
-            <text x={394} y={28} textAnchor="end" style={{ fill: "var(--text)" }}>{pct.toFixed(1)} %</text>
+            <text x={250} y={28} style={{ fill: "var(--value)" }}>{m.hz ? hz(m.hz) : `steady ${m.level ? "high" : "low"}`}</text>
+            <text x={394} y={28} textAnchor="end" style={{ fill: "var(--text)" }}>{pct.toFixed(1)} % high</text>
           </svg>
         );
       })}

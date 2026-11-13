@@ -61,7 +61,7 @@ function SarSearch() {
   const width = cur ? cur.hi - cur.lo : VREF;
 
   let why: string;
-  if (!cur) why = `The capacitor holds ${vin.toFixed(2)} V. No bit is decided yet, so the voltage can be anywhere from 0 V to 3.0 V. Each round tries one bit, from the top bit down, and cuts that range in half.`;
+  if (!cur) why = `The capacitor holds ${vin.toFixed(2)} V. No bit is decided yet, so the voltage can be anywhere from 0 V to 3.0 V. Each round tries one bit, from the top bit down, and cuts that range in half. Press Next.`;
   else {
     const first = `Round ${step}: try bit ${cur.bit}, worth ${trim(cur.weight)} V. The DAC makes ${cur.keptBefore > 0 ? `the ${trim(cur.keptBefore)} V kept so far plus ${trim(cur.weight)} V = ` : ""}${trim(cur.trial)} V. Is ${vin.toFixed(2)} V at least ${trim(cur.trial)} V? `;
     const second = cur.yes ? `Yes: bit ${cur.bit} stays 1.` : `No, the guess was too high: bit ${cur.bit} goes back to 0 and its ${trim(cur.weight)} V is not kept.`;
@@ -117,15 +117,16 @@ function SarSearch() {
         <text x={PX + 2} y="102" className="fig-label">at least the trial?</text>
         {cur && <text x={PX + 98} y="107" textAnchor="end" className={cur.yes ? "sar-yes" : "sar-no"}>{cur.yes ? "YES" : "NO"}</text>}
         <text x={PX} y="131" className="fig-value">{cur ? `bit ${cur.bit} = ${cur.yes ? 1 : 0}` : " "}</text>
-        <text x={PX} y="143" className="fig-label dim">{cur ? (cur.yes ? "kept" : "cleared") : "press the button to start"}</text>
+        <text x={PX} y="143" className="fig-label dim">{cur ? (cur.yes ? "kept" : "cleared") : "press Next to start"}</text>
         <text x={PX} y="160" className="fig-label dim">voltage (V) is between</text>
         <text x={PX} y="172" className="fig-value small">{trim(cur ? cur.lo : 0)} and {trim(cur ? cur.hi : VREF)}</text>
         <text x={PX} y="184" className="fig-label dim">a band {width >= 0.1 ? `${trim(width)} V` : `${(width * 1000).toFixed(2)} mV`} wide</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls row">
-        <button className="btn small" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>← Back</button>
-        <button className="btn small primary" onClick={() => setStep(done ? 0 : step + 1)}>{done ? "Start again" : `Try bit ${rs[step].bit} →`}</button>
+        <button className="btn small" onClick={() => setStep(step - 1)} disabled={step === 0}>Back</button>
+        <button className="btn small primary" onClick={() => setStep(step + 1)} disabled={done} aria-label={done ? "Next" : `Next: try bit ${rs[step].bit}`}>Next</button>
+        <button className="btn small" onClick={() => setStep(0)} disabled={step === 0}>Reset</button>
         <span className="fig-dots" aria-hidden="true">{rs.map((_, k) => (<i key={k} className={k < step ? "on" : ""} />))}</span>
       </div>
       <div className="fig-controls">

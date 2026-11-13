@@ -4,11 +4,13 @@ import { useState } from "react";
 // slave's shift register form one ring through SPISIMO and SPISOMI. Both
 // shift left, most significant bit first; the bit that arrives enters at
 // bit 0. After one word the two registers have exchanged contents.
+// Wires are coloured by level (orange 1, blue 0), as in every figure; where
+// a bit came from is shown by shading and by its label (m7..m0, s7..s0).
 
 const CSS = `
 .ss-cell { stroke-width: 1.2; }
-.ss-m { fill: var(--accent-soft); stroke: var(--accent); }
-.ss-s { fill: var(--surface); stroke: var(--info); }
+.ss-m { fill: var(--faint); stroke: var(--text); }
+.ss-s { fill: var(--surface); stroke: var(--dim); stroke-dasharray: 3 2; }
 .ss-hex { display: inline-flex; align-items: center; gap: 0.15rem; font-family: var(--mono); font-size: 0.85rem; }
 .ss-lbl { color: var(--dim); font-size: 0.82rem; }
 .ss-hex input { width: 3.2em; padding: 0.1em 0.3em; }
@@ -68,7 +70,7 @@ function SpiShift() {
       </g>
     ));
   const why = n === 0
-    ? `Before the first clock. The master's top bit (${simo}) is already on SIMO and the slave's top bit (${somi}) on SOMI. Press "one clock".`
+    ? `Before the first clock. The master's top bit (${simo}) is already on SIMO and the slave's top bit (${somi}) on SOMI. Press Step for one clock.`
     : done
       ? `8 clocks: the two bytes have swapped places. The master now holds 0x${hex2(mNow)}, the slave's byte, and the slave holds 0x${hex2(sNow)}. Sending and receiving were one and the same action: every word sent is a word received.`
       : `Clock ${n} of 8. Both registers moved one place left: ${n} bit${n > 1 ? "s" : ""} of the master's byte ${n > 1 ? "are" : "is"} now in the slave, and ${n} of the slave's ${n > 1 ? "are" : "is"} in the master. Next on the wires: ${simo} on SIMO, ${somi} on SOMI.`;
@@ -84,7 +86,7 @@ function SpiShift() {
         <line x1={SX} y1={Y + 12} x2={MX + 8 * W + 5} y2={Y + 12} className="fig-wire" style={{ stroke: done ? undefined : lv(somi), strokeWidth: 2 }} />
         <polygon points={`${MX + 8 * W},${Y + 12} ${MX + 8 * W + 6},${Y + 8} ${MX + 8 * W + 6},${Y + 16}`} style={{ fill: done ? "var(--dim)" : lv(somi) }} />
         <text x={210} y={Y + 5} textAnchor="middle" className="fig-label">SOMI</text>
-        {!done && <text x={210} y={Y + 26} textAnchor="middle" className="fig-value small">{somi}</text>}
+        {!done && <text x={210} y={Y + 26} textAnchor="middle" className="fig-label">carrying {somi}</text>}
         <text x={MX} y={46} className="fig-label">master: F28379D</text>
         <text x={MX + 8 * W} y={46} textAnchor="end" className="fig-value">0x{hex2(mNow)}</text>
         <text x={SX} y={46} className="fig-label">slave: the sensor</text>
@@ -104,9 +106,10 @@ function SpiShift() {
       <div className="fig-controls">
         <div>
           <span>Clock</span>
-          <button className="fig-opt" disabled={done} onClick={() => setN(n + 1)}>one clock</button>
+          <button className="fig-opt" disabled={n === 0} onClick={() => setN(n - 1)}>Back</button>
+          <button className="fig-opt" disabled={done} onClick={() => setN(n + 1)}>Step</button>
           <button className="fig-opt" disabled={done} onClick={() => setN(8)}>all 8 clocks</button>
-          <button className="fig-opt" disabled={n === 0} onClick={() => setN(0)}>start again</button>
+          <button className="fig-opt" disabled={n === 0} onClick={() => setN(0)}>Reset</button>
         </div>
         <div>
           <span>Bytes</span>
@@ -117,7 +120,7 @@ function SpiShift() {
           <button className="fig-opt" onClick={() => { setM0(0x00); setN(0); }}>master sends zeros</button>
         </div>
       </div>
-      <figcaption>The master's shift register and the slave's are one ring of 16 bits. Each clock moves the ring one place, top bit first. Tinted cells with labels m7 to m0 came from the master, s7 to s0 from the slave. To read a byte the master must clock 8 times, so it must send something, even zeros.</figcaption>
+      <figcaption>The master's shift register and the slave's are one ring of 16 bits. Each clock moves the ring one place, top bit first. Shaded cells (m7 to m0) came from the master, dashed cells (s7 to s0) from the slave. To read a byte the master must clock 8 times, so it must send something, even zeros.</figcaption>
     </figure>
   );
 }

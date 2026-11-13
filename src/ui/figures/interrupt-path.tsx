@@ -98,6 +98,36 @@ function Symbol({ kind, value, pass }: { kind: Kind; value?: number; pass?: bool
   );
 }
 
+/** What every row needs to know about the request: which rows it has reached and where it waits. */
+interface Trace { hot: boolean[]; waitRow: number; crashed: boolean }
+
+function Row({ t, i, kind, value, pass, name, badge, children }: { t: Trace; i: number; kind: Kind; value?: number; pass?: boolean; name: string; badge?: string; children?: ReactNode }) {
+  return (
+    <li className={`ip-row ${t.hot[i] ? "hot" : ""} ${t.waitRow === i ? "wait" : ""} ${i === 0 ? "first" : i === 8 ? "last" : ""}`}>
+      <div className="ip-rail"><Symbol kind={kind} value={value} pass={pass} /></div>
+      <div className="ip-body">
+        <span className="ip-name">{name}</span>
+        {badge && <span className="ip-badge">{badge}</span>}
+        {t.waitRow === i && <span className="ip-wait">{t.crashed ? "■ stopped here" : i === 0 ? "■ no request" : "● the request waits here"}</span>}
+        {children}
+      </div>
+    </li>
+  );
+}
+
+function Zone({ children, lit, top }: { children: ReactNode; lit?: boolean; top?: boolean }) {
+  return (
+    <li className={`ip-row ip-zone ${lit ? "hot" : ""} ${top ? "top" : ""}`}>
+      <div className="ip-rail" />
+      <div>{children}</div>
+    </li>
+  );
+}
+
+function Toggle({ on, label, flip, text }: { on: boolean; label: string; flip: () => void; text: [string, string] }) {
+  return <button className="fig-opt" aria-pressed={on} aria-label={`${label}: ${on ? text[1] : text[0]}`} onClick={flip}>{on ? text[1] : text[0]}</button>;
+}
+
 function InterruptPath() {
   const [s, setS] = useState<S>(RESET);
   const set = (patch: Partial<S>) => setS((old) => settle({ ...old, ...patch, justRan: false, event: "" }));
@@ -116,6 +146,8 @@ function InterruptPath() {
     done,
   ];
 
+  const t: Trace = { hot, waitRow, crashed: s.crashed };
+  const closed = [!s.tie && "TIE", !s.pieier && "PIEIER1.7", !s.ier && "IER", !s.eint && "INTM", !s.vector && "the vector"].filter(Boolean) as string[];
   const lostNote = s.event === "lost" ? " The timer fired again while PIEIFR1.7 was still 1, which changes nothing: one flag bit cannot count two events, so that tick is lost." : "";
   const why = s.crashed
     ? "The CPU accepted the interrupt and fetched the address in PieVectTable.TIMER0_INT. Your function's address was never written there, so it jumped to the default handler, which halts the program. Write the vector, then restart the program."
@@ -135,28 +167,11 @@ function InterruptPath() {
               ? `The request left the PIE (which set PIEACK bit 1) and is latched in the CPU's IFR. It waits there: the INT1 bit of IER is 0.${lostNote}`
               : waitRow === 6
                 ? `Everything is enabled except the global switch: INTM is 1, so the CPU accepts no maskable interrupt. The request waits in IFR until EINT; runs.${lostNote}`
-                : "After reset every gate is closed. Let the timer reach zero and see how far the request gets, then open the gate that stopped it.";
-
-  const Row = ({ i, kind, value, pass, name, badge, children }: { i: number; kind: Kind; value?: number; pass?: boolean; name: string; badge?: string; children?: ReactNode }) => (
-    <li className={`ip-row ${hot[i] ? "hot" : ""} ${waitRow === i ? "wait" : ""} ${i === 0 ? "first" : i === 8 ? "last" : ""}`}>
-      <div className="ip-rail"><Symbol kind={kind} value={value} pass={pass} /></div>
-      <div className="ip-body">
-        <span className="ip-name">{name}</span>
-        {badge && <span className="ip-badge">{badge}</span>}
-        {waitRow === i && <span className="ip-wait">{s.crashed ? "■ stopped here" : i === 0 ? "■ no request" : "● the request waits here"}</span>}
-        {children}
-      </div>
-    </li>
-  );
-  const Zone = ({ children, lit }: { children: ReactNode; lit?: boolean }) => (
-    <li className={`ip-row ip-zone ${lit ? "hot" : ""} ${children === "Peripheral" ? "top" : ""}`}>
-      <div className="ip-rail" />
-      <div>{children}</div>
-    </li>
-  );
-  const Toggle = ({ on, label, flip, text }: { on: boolean; label: string; flip: () => void; text: [string, string] }) => (
-    <button className="fig-opt" aria-pressed={on} aria-label={`${label}: ${on ? text[1] : text[0]}`} onClick={flip}>{on ? text[1] : text[0]}</button>
-  );
+                : closed.length === 0
+                  ? `Everything is set up${s.ackLine ? "" : ", except that the function does not clear PIEACK"}. Let the timer reach zero${s.ackLine ? " as often as you like: the function runs every time" : " twice and watch the second request"}.`
+                  : closed.length >= 4
+                    ? "After reset the PIE and the CPU let nothing through. Let the timer reach zero and see how far the request gets, then open the gate that stopped it."
+                    : `Not set up yet: ${closed.join(", ")}. Let the timer reach zero and see how far the request gets.`;
 
   return (
     <figure className="figure ip-fig" aria-label="Interactive diagram of the path of a timer interrupt request through the PIE and the CPU">
@@ -170,10 +185,10 @@ function InterruptPath() {
         .ip-fig .ip-row.last .ip-rail::before { bottom: 50%; }
         .ip-fig .ip-zone.top .ip-rail::before { display: none; }
         .ip-fig .ip-rail svg { position: relative; width: 40px; height: 28px; }
-        .ip-fig .ip-bar { stroke: var(--bad); stroke-width: 4; stroke-linecap: round; }
+        .ip-fig .ip-bar { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
         .ip-fig .ip-bar.open { stroke: var(--ok); }
         .ip-fig .ip-body { padding: 0.28rem 0.45rem; margin: 2px 0; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 0.15rem 0.5rem; align-items: center; min-height: 2.3rem; border: 2px solid transparent; }
-        .ip-fig .ip-row.wait .ip-body { background: var(--accent-soft, rgba(255, 95, 5, 0.16)); border-color: var(--orange); }
+        .ip-fig .ip-row.wait .ip-body { background: var(--accent-soft); border-color: var(--orange); }
         .ip-fig .ip-name { font-weight: 700; font-size: 0.9rem; }
         .ip-fig .ip-badge { font-family: var(--mono); font-size: 0.78rem; color: var(--harvest); font-weight: 700; }
         .ip-fig .ip-wait { font-weight: 700; font-size: 0.82rem; }
@@ -181,28 +196,27 @@ function InterruptPath() {
         .ip-fig .ip-body code { font-size: 0.75rem; overflow-wrap: anywhere; }
         .ip-fig .ip-zone > div:last-child { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; color: var(--dim); padding: 0.5rem 0.45rem 0.1rem; border-top: 1px dashed var(--border); margin-top: 0.25rem; }
         .ip-fig .ip-zone.top > div:last-child { border-top: 0; margin-top: 0; padding-top: 0; }
-                .ip-fig .ip-side .ip-rail svg { height: 100%; min-height: 28px; }
+        .ip-fig .ip-side .ip-rail svg { height: 100%; min-height: 28px; }
         .ip-fig .ip-side p { margin: 2px 0; padding: 0.28rem 0.45rem; font-size: 0.8rem; color: var(--dim); border: 1px dashed var(--border); border-radius: 6px; }
         .ip-fig .ip-side b { color: var(--text); }
-        .ip-fig .ip-fire { background: var(--orange); border-color: var(--orange); color: var(--accent-ink, #1a0a00); font-weight: 700; }
-        .ip-fig .ip-fire:disabled { opacity: 0.5; }
+        .ip-fig .ip-fire { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
       `}</style>
       <ol>
-        <Zone>Peripheral</Zone>
-        <Row i={0} kind="source" name="CPU Timer 0 counts down to zero">
-          <button className="fig-opt ip-fire" disabled={s.crashed} onClick={() => setS(fire)}>Timer 0 reaches zero</button>
+        <Zone top>Peripheral</Zone>
+        <Row t={t} i={0} kind="source" name="CPU Timer 0 counts down to zero">
+          <button className="fig-opt ip-fire" aria-disabled={s.crashed} onClick={() => setS(fire)}>Timer 0 reaches zero</button>
           <Toggle on={s.tie} label="TIE" flip={() => set({ tie: !s.tie })} text={["TIE = 0: does not ask", "TIE = 1: asks"]} />
-          <code>CpuTimer0Regs.TCR.all = 0x4000;</code>
+          <code>CpuTimer0Regs.TCR.all = {s.tie ? "0x4000" : "0x0000"};</code>
         </Row>
         <Zone lit={hot[1]}>PIE, group 1 (shared by 16 channels)</Zone>
-        <Row i={1} kind="latch" value={s.pieifr} name="PIEIFR1.7" badge="flag">
+        <Row t={t} i={1} kind="latch" value={s.pieifr} name="PIEIFR1.7" badge="flag">
           <span className="ip-note">Set by the timer's request. Cleared by the CPU itself when it fetches the vector.</span>
         </Row>
-        <Row i={2} kind="gate" pass={s.pieier} name="PIEIER1.7" badge="enable">
+        <Row t={t} i={2} kind="gate" pass={s.pieier} name="PIEIER1.7" badge="enable">
           <Toggle on={s.pieier} label="PIEIER1.7" flip={() => set({ pieier: !s.pieier })} text={["0: blocks", "1: lets it through"]} />
           <code>PieCtrlRegs.PIEIER1.bit.INTx7 = {s.pieier ? 1 : 0};</code>
         </Row>
-        <Row i={3} kind="gate" pass={!s.pieack} name="PIEACK bit 1" badge={s.pieack ? "= 1: group 1 blocked" : "= 0: lets it through"}>
+        <Row t={t} i={3} kind="gate" pass={!s.pieack} name="PIEACK bit 1" badge={s.pieack ? "= 1: group 1 blocked" : "= 0: lets it through"}>
           <Toggle on={s.ackLine} label="PIEACK line" flip={() => setS((o) => ({ ...o, ackLine: !o.ackLine }))} text={["function does not clear it", "function clears it"]} />
           <code>{s.ackLine ? "" : "// missing: "}PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;</code>
           <span className="ip-note">The PIE sets this bit itself when a request passes. Only your code clears it, by writing 1, as the last line of the function.</span>
@@ -218,22 +232,22 @@ function InterruptPath() {
             <b>CPU Timer 1</b> is wired straight to <b>INT13</b> and <b>CPU Timer 2</b> to <b>INT14</b>. They join here and skip the PIE: no PIEIER bit, no PIEACK. They still need <code>IER |= M_INT13;</code> or <code>M_INT14</code>, and <code>EINT;</code>.
           </p>
         </li>
-        <Row i={4} kind="latch" value={s.ifr} name="IFR, bit INT1" badge="flag">
+        <Row t={t} i={4} kind="latch" value={s.ifr} name="IFR, bit INT1" badge="flag">
           <span className="ip-note">Set when the PIE passes a group 1 request on. Cleared by the CPU itself when it accepts the interrupt.</span>
         </Row>
-        <Row i={5} kind="gate" pass={s.ier} name="IER, bit INT1" badge="enable">
+        <Row t={t} i={5} kind="gate" pass={s.ier} name="IER, bit INT1" badge="enable">
           <Toggle on={s.ier} label="IER" flip={() => set({ ier: !s.ier })} text={["0: blocks", "1: lets it through"]} />
           <code>{s.ier ? "IER |= M_INT1;" : "// missing: IER |= M_INT1;"}</code>
         </Row>
-        <Row i={6} kind="gate" pass={s.eint} name="INTM" badge={s.eint ? "= 0: lets it through" : "= 1: all interrupts blocked"}>
-          <Toggle on={s.eint} label="INTM" flip={() => set({ eint: !s.eint })} text={["DINT", "EINT"]} />
+        <Row t={t} i={6} kind="gate" pass={s.eint} name="INTM" badge="global switch">
+          <Toggle on={s.eint} label="INTM" flip={() => set({ eint: !s.eint })} text={["1: blocks every interrupt", "0: lets it through"]} />
           <code>{s.eint ? "EINT;" : "DINT;"}</code>
         </Row>
-        <Row i={7} kind="box" pass={hot[7]} name="Vector table: where to jump?" badge={s.vector ? "&cpu_timer0_isr" : "default handler"}>
+        <Row t={t} i={7} kind="box" pass={hot[7]} name="Vector table: where to jump?" badge={s.vector ? "&cpu_timer0_isr" : "default handler"}>
           <Toggle on={s.vector} label="Vector" flip={() => set({ vector: !s.vector })} text={["not written", "written"]} />
           <code>EALLOW; PieVectTable.TIMER0_INT = &amp;cpu_timer0_isr; EDIS;</code>
         </Row>
-        <Row i={8} kind="box" pass={hot[8]} name="cpu_timer0_isr() runs" badge={`ran ${s.runs} time${s.runs === 1 ? "" : "s"}`}>
+        <Row t={t} i={8} kind="box" pass={hot[8]} name="cpu_timer0_isr() runs" badge={`ran ${s.runs} time${s.runs === 1 ? "" : "s"}`}>
           <span className="ip-note">While it runs, INTM is 1 and the INT1 bit of IER is 0; both come back when it returns.</span>
         </Row>
       </ol>
@@ -241,12 +255,12 @@ function InterruptPath() {
       <div className="fig-controls">
         <div>
           <span>Program</span>
-          <button className="fig-opt" onClick={() => setS((o) => ({ ...o, pieifr: 0, pieack: 0, ifr: 0, runs: 0, crashed: false, justRan: false, event: "" }))}>restart program</button>
-          <button className="fig-opt" onClick={() => setS(RESET)}>close every gate</button>
+          <button className="fig-opt" onClick={() => setS((o) => ({ ...o, pieifr: 0, pieack: 0, ifr: 0, runs: 0, crashed: false, justRan: false, event: "" }))}>Restart program</button>
+          <button className="fig-opt" onClick={() => setS(RESET)}>Reset</button>
         </div>
       </div>
       <figcaption>
-        A flag remembers a request; an enable decides whether it may pass. The orange line shows how far the request has come. Timer 0 is PIE group 1, channel 7, so every name here ends in 1 or 1.7; another interrupt uses the same path with its own numbers.
+        A flag remembers a request; an enable decides whether it may pass. The thick orange line shows how far the request has come. "Restart program" keeps your settings; "Reset" also undoes them. Timer 0 is PIE group 1, channel 7, so every name here ends in 1 or 1.7; another interrupt uses the same path with its own numbers.
       </figcaption>
     </figure>
   );

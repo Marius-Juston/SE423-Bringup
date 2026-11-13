@@ -25,7 +25,7 @@ const CSS = `
 const group = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+$)/g, " ");
 const trim = (n: number, d: number) => n.toFixed(d).replace(/\.?0+$/, "");
 const hz = (f: number) => (f >= 1e6 ? `${trim(f / 1e6, 3)} MHz` : f >= 1e3 ? `${trim(f / 1e3, 2)} kHz` : `${trim(f, 1)} Hz`);
-const time = (ns: number) => (ns >= 1e6 ? `${trim(ns / 1e6, 2)} ms` : ns >= 1e3 ? `${trim(ns / 1e3, 2)} us` : `${trim(ns, 2)} ns`);
+const time = (ns: number) => (ns >= 1e6 ? `${trim(ns / 1e6, 2)} ms` : ns >= 1e3 ? `${trim(ns / 1e3, 2)} µs` : `${trim(ns, 2)} ns`);
 
 function PwmClockTree() {
   const [hsp, setHsp] = useState(1);
@@ -60,8 +60,26 @@ function PwmClockTree() {
   // Counts axis, logarithmic from 10 to 10 million.
   const AX0 = 22;
   const AX1 = 404;
-  const AY = 126;
+  const AY = 136;
   const lx = (c: number) => AX0 + ((Math.log10(Math.max(10, Math.min(1e7, c))) - 1) / 6) * (AX1 - AX0);
+
+  // Marks on the axis. Labels that would overlap go one row higher.
+  const rowEnd: number[] = [];
+  const marks = WANT.map(([wf, name], i) => {
+    const c = tbclk / wf;
+    const off = c < 10 || c > 1e7;
+    const label = off ? `${name} (${c < 10 ? "under 10" : "over 10 million"})` : name;
+    const w = label.length * 5.2 + 6;
+    const mx = lx(c);
+    const tx = Math.max(AX0, Math.min(AX1 - w, mx - w / 2));
+    return { name, label, on: i === wi, off, x: mx, tx, w, row: 0 };
+  });
+  for (const m of [...marks].sort((a, b) => a.tx - b.tx)) {
+    let row = 0;
+    while (rowEnd[row] !== undefined && rowEnd[row] > m.tx) row++;
+    rowEnd[row] = m.tx + m.w;
+    m.row = row;
+  }
 
   let why: string;
   if (!fits) {
@@ -69,12 +87,12 @@ function PwmClockTree() {
     why = `${fname} at ${hz(tbclk)} would need ${group(prd)} counts in one period, but TBPRD is a 16-bit register: 65 535 at most. Slow the counter down. ${need !== undefined ? `CLKDIV = ${need} (/${1 << need}) leaves ${group(mid / (1 << need) / f)} counts, which fits.` : "Even /128 is not enough with this HSPCLKDIV."}`;
   } else if (!useful) why = `The counter now ticks only every ${time(tickNs)}, slower than the ${fname} you want. There is no TBPRD for that: divide the clock less.`;
   else
-    why = `One count lasts ${time(tickNs)}. A period of ${time(1e9 / f)} (${fname}) is ${hz(tbclk)} / ${fname} = ${group(prd)} counts, so the course writes TBPRD = ${prd}${Number.isInteger(counts) ? ` (${prd - 1} would be exact)` : ""}. CMPA is a whole number of counts: the duty cycle moves in ${group(prd)} steps of ${trim(stepPct, stepPct < 0.01 ? 4 : 2)} %.${prd < 500 ? " That is coarse: a faster carrier costs resolution." : ""}${hsp !== 1 ? " The course never touches HSPCLKDIV: it stays /2 from reset." : ""}`;
+    why = `One count lasts ${time(tickNs)}. A period of ${time(1e9 / f)} (${fname}) is ${hz(tbclk)} / ${fname} = ${group(prd)} counts, so TBPRD = ${prd}${Number.isInteger(counts) ? ` (a period is TBPRD + 1 counts, so ${prd - 1} would be exact; the course writes the round number)` : ""}. CMPA is a whole number of counts: the duty cycle moves in ${group(prd)} steps of ${trim(stepPct, stepPct < 0.01 ? 4 : 2)} %.${prd < 500 ? " That is coarse: a faster carrier costs resolution." : ""}${hsp !== 1 ? " The course never touches HSPCLKDIV: it stays /2 from reset." : ""}`;
 
   return (
     <figure className="figure pwmc" aria-label="Interactive ePWM clock tree: from the system clock to the counter clock, the period register and the duty resolution">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 158" role="img" aria-label={`System clock 200 megahertz, divided by 2, by ${HSP[hsp]} and by ${1 << clk}: counter clock ${hz(tbclk)}, one count every ${time(tickNs)}. ${fname} needs ${group(prd)} counts per period${fits ? "" : ", which does not fit in the 16-bit period register"}.`}>
+      <svg viewBox="0 0 420 168" role="img" aria-label={`System clock 200 megahertz, divided by 2, by ${HSP[hsp]} and by ${1 << clk}: counter clock ${hz(tbclk)}, one count every ${time(tickNs)}. ${fname} needs ${group(prd)} counts per period${fits ? "" : ", which does not fit in the 16-bit period register"}.`}>
         <defs>
           <marker id="pwmc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />
@@ -107,7 +125,7 @@ function PwmClockTree() {
         <text x={bx(3) + BW / 2} y="54" textAnchor="middle" className="fig-label dim">1 count = {time(tickNs)}</text>
 
         {/* counts per period */}
-        <text x={AX0} y="76" className="fig-label">Counts in one period = TBCLK / frequency = number of duty steps</text>
+        <text x={AX0} y="72" className="fig-label">Counts in one period = TBCLK / frequency = number of duty steps</text>
         <rect x={lx(65535)} y={AY - 30} width={AX1 - lx(65535)} height="30" fill="var(--bad)" fillOpacity="0.12" />
         <line x1={lx(65535)} x2={lx(65535)} y1={AY - 30} y2={AY} stroke="var(--bad)" strokeDasharray="3 3" />
         <text x={AX1} y={AY + 26} textAnchor="end" className="fig-label" style={{ fill: "var(--bad)" }}>more than 65 535 counts do not fit in TBPRD</text>
@@ -118,18 +136,13 @@ function PwmClockTree() {
             <text x={lx(10 ** e)} y={AY + 14} textAnchor={e === 1 ? "start" : e === 7 ? "end" : "middle"} className="fig-label dim">{["10", "100", "1 000", "10 000", "100 000", "1 million", "10 million"][e - 1]}</text>
           </g>
         ))}
-        {WANT.map(([wf, name], i) => {
-          const c = tbclk / wf;
-          const on = i === wi;
-          const off = c < 10 || c > 1e7;
-          return (
-            <g key={name} opacity={off ? 0.4 : 1}>
-              <line x1={lx(c)} x2={lx(c)} y1={AY} y2={AY - (on ? 18 : 10)} stroke={on ? "var(--accent)" : "var(--dim)"} strokeWidth={on ? 2.2 : 1.2} />
-              <circle cx={lx(c)} cy={AY} r={on ? 4 : 2.5} fill={on ? "var(--accent)" : "var(--dim)"} />
-              <text x={lx(c)} y={AY - (on ? 21 : 13) - (i % 2 && !on ? 9 : 0)} textAnchor={lx(c) > AX1 - 20 ? "end" : lx(c) < AX0 + 20 ? "start" : "middle"} className={on ? "fig-value small" : "fig-label dim"}>{name}</text>
-            </g>
-          );
-        })}
+        {marks.map((m) => (
+          <g key={m.name} opacity={m.off ? 0.75 : 1}>
+            <line x1={m.x} x2={m.x} y1={AY} y2={AY - 8} stroke={m.on ? "var(--accent)" : "var(--dim)"} strokeWidth={m.on ? 2.2 : 1.2} />
+            <circle cx={m.x} cy={AY} r={m.on ? 4 : 2.5} fill={m.on ? "var(--accent)" : "var(--dim)"} />
+            <text x={m.tx} y={AY - 11 - m.row * 11} className={m.on ? "fig-value small" : "fig-label dim"}>{m.label}</text>
+          </g>
+        ))}
       </svg>
       <div className="pwmc-read">
         <div>Counter clock<b>{hz(tbclk)}</b>100 MHz / ({HSP[hsp]} x {1 << clk})</div>

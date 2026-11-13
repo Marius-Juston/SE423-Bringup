@@ -38,7 +38,7 @@ function SpiBus() {
     ? `Bus conflict: the ${sel.map((s) => s.name).join(" and the ")} are selected together, so ${sel.length === 2 ? "both" : "all"} drive SOMI. Where one sends 1 and another 0 the outputs fight, and the word the master reads is garbage. Only one chip select may be low at a time.`
     : none
       ? "No chip select is low. Every slave ignores the clock and lets go of SOMI. Nothing drives the line, the pull-up holds it high, and a transfer reads all 1s: 0xFFFF. Seeing 0xFFFF usually means the chip select is not low."
-      : `Only the ${sel[0].name} is selected (${sel[0].cs} low). It alone follows the clock and drives SOMI, so the master reads ${sel[0].what}, ${hex4(read)}. The other${count > 2 ? "s have" : " has"} let go of SOMI.`;
+      : `Only the ${sel[0].name} is selected (${sel[0].cs} low). It alone follows the clock and drives SOMI, so the master reads ${sel[0].what}, ${hex4(read)}. The other${count > 2 ? "s have" : " has"} let go of SOMI. Keep the chip select low until the last word of the transfer has arrived, then set it high again.`;
   return (
     <figure className="figure" aria-label="Interactive wiring diagram of one SPI master and several slaves">
       <style>{CSS}</style>

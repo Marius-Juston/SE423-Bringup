@@ -4,12 +4,15 @@ import { useState } from "react";
 // Transmit data must be written left-justified (the top bits of SPITXBUF
 // are the ones sent, most significant first). SPIDAT shifts left, so the
 // received bits end up right-justified in SPIRXBUF, with whatever was left
-// of the transmitted word above them.
+// of the transmitted word above them. Orange cells are the bits that
+// travel (out of the top of SPITXBUF, into the bottom of SPIRXBUF); dashed
+// grey cells do not.
 
 const CSS = `
 .sj-cell { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .sj-cell.sent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; }
-.sj-cell.got { fill: var(--surface); stroke: var(--info); stroke-width: 1.6; }
+.sj-cell.got { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; }
+.sj-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
 .sj-cell.junk { stroke-dasharray: 2 2; }
 .sj-bit { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--value); }
 .sj-bit.off { fill: var(--dim); font-weight: 400; }
@@ -64,13 +67,14 @@ function SpiJustify() {
     ));
   const digits = Math.ceil(n / 4);
   const shiftText = n === 16 ? "" : ` << ${16 - n}`;
+  const bitsN = n === 1 ? "1 bit" : `${n} bits`;
   const why = n === 16
     ? "With 16-bit words the whole register is sent and the whole register is received: nothing to shift, nothing to mask. This is the course's setting for the MPU-9250."
     : ok
-      ? `Right: 0x${hex(value, digits)} sits in the top ${n} bits of SPITXBUF, and those are the bits that go out. The ${n} bits that come back land in the bottom of SPIRXBUF. The ${16 - n} bits above them are leftovers of the word you wrote, so mask them off.`
-      : `Wrong: the ${n} bits sent are the top ${n} of SPITXBUF, 0x${hex(sent, digits)}, not your value 0x${hex(value, digits)}, which sits at the bottom and never reaches the wire. Shift it up first: 0x${hex(value, digits)} << ${16 - n}.`;
+      ? `Right: 0x${hex(value, digits)} sits in the top ${bitsN} of SPITXBUF, and ${n === 1 ? "that is the bit that goes" : "those are the bits that go"} out. The ${bitsN} that ${n === 1 ? "comes" : "come"} back ${n === 1 ? "lands" : "land"} at the bottom of SPIRXBUF. The ${16 - n === 1 ? "bit above is a leftover" : `${16 - n} bits above are leftovers`} of the word you wrote, so mask ${16 - n === 1 ? "it" : "them"} off.`
+      : `Wrong: what is sent is the top ${bitsN} of SPITXBUF, 0x${hex(sent, digits)}, not your value 0x${hex(value, digits)}, which sits at the bottom and never reaches the wire. Shift it up first: 0x${hex(value, digits)} << ${16 - n}.`;
   return (
-    <figure className="figure" aria-label="Interactive diagram of SPI word length and justification">
+    <figure className="figure sj-fig" aria-label="Interactive diagram of SPI word length and justification">
       <style>{CSS}</style>
       <svg viewBox="0 0 420 176" role="img" aria-label={`${n}-bit words. SPITXBUF holds 0x${hex(written, 4)}; the bits sent are 0x${hex(sent, digits)}. SPIRXBUF holds 0x${hex(rxbuf, 4)}; the received bits are 0x${hex(input, digits)}.`}>
         <text x={X0} y={10} className="fig-label dim">bit 15</text>
@@ -78,17 +82,17 @@ function SpiJustify() {
         <text x={4} y={27} className="fig-label">SPITXBUF</text>
         <text x={4} y={38} className="fig-value small">0x{hex(written, 4)}</text>
         {row(written, 14, (i) => (i < n ? "sent" : "junk"))}
-        <text x={X0 + (n * W) / 2} y={45} textAnchor="middle" className="fig-label" style={{ fill: "var(--accent)" }}>{n < 4 ? `top ${n}` : `top ${n} bits go out`}</text>
+        <text x={X0 + (n * W) / 2} y={45} textAnchor="middle" className="fig-label" style={{ fill: "var(--accent)" }}>{n < 4 ? `top ${n}` : n === 16 ? "all 16 bits go out" : `top ${n} bits go out`}</text>
         {n < 16 && n <= 12 && <text x={X0 + n * W + ((16 - n) * W) / 2} y={45} textAnchor="middle" className="fig-label dim">{16 - n < 4 ? "" : "never sent"}</text>}
         {/* wire */}
         <text x={4} y={68} className="fig-label">SIMO, out</text>
-        <path d={`M${X0},${72} H${X0 + n * W - 1.5}`} className="fig-wire" style={{ stroke: "var(--accent)", strokeWidth: 2 }} />
+        <path d={`M${X0},${72} H${X0 + n * W - 1.5}`} className="fig-wire thick" />
         {Array.from({ length: n }, (_, i) => (
           <text key={i} x={X0 + i * W + (W - 1.5) / 2} y={66} textAnchor="middle" className="sj-bit">{(sent >> (n - 1 - i)) & 1}</text>
         ))}
-        <text x={X0 + n * W + 4} y={68} className="fig-value small">{n <= 12 ? `= 0x${hex(sent, digits)}, first bit on the left` : ""}</text>
+        <text x={X0 + n * W + 4} y={68} className="fig-value small">{n <= 10 ? `= 0x${hex(sent, digits)}, first bit on the left` : n <= 13 ? `= 0x${hex(sent, digits)}` : ""}</text>
         <text x={4} y={100} className="fig-label">SOMI, in</text>
-        <path d={`M${X0 + (16 - n) * W},${104} H${X0 + 16 * W - 1.5}`} className="fig-wire" style={{ stroke: "var(--info)", strokeWidth: 2 }} />
+        <path d={`M${X0 + (16 - n) * W},${104} H${X0 + 16 * W - 1.5}`} className="fig-wire thick" />
         {Array.from({ length: n }, (_, i) => (
           <text key={i} x={X0 + (16 - n + i) * W + (W - 1.5) / 2} y={98} textAnchor="middle" className="sj-bit">{(input >> (n - 1 - i)) & 1}</text>
         ))}
@@ -96,7 +100,7 @@ function SpiJustify() {
         <text x={4} y={127} className="fig-label">SPIRXBUF</text>
         <text x={4} y={138} className="fig-value small">0x{hex(rxbuf, 4)}</text>
         {row(rxbuf, 114, (i) => (i >= 16 - n ? "got" : "junk"))}
-        <text x={X0 + (16 - n) * W + (n * W) / 2} y={146} textAnchor="middle" className="fig-label" style={{ fill: "var(--info)" }}>{n < 5 ? `${n} in` : `bottom ${n} bits came in`}</text>
+        <text x={X0 + (16 - n) * W + (n * W) / 2} y={146} textAnchor="middle" className="fig-label" style={{ fill: "var(--accent)" }}>{n < 5 ? `${n} in` : n === 16 ? "all 16 bits came in" : `bottom ${n} bits came in`}</text>
         {n <= 11 && <text x={X0 + ((16 - n) * W) / 2} y={146} textAnchor="middle" className="fig-label dim">leftovers</text>}
         <text x={X0} y={168} className="fig-value small">
           {n === 16 ? `rx = SpibRegs.SPIRXBUF;  // 0x${hex(rxbuf, 4)}` : `rx = SpibRegs.SPIRXBUF & 0x${hex(mask, 4)};  // 0x${hex(input, digits)}, without the mask: 0x${hex(rxbuf, 4)}`}
@@ -109,7 +113,7 @@ function SpiJustify() {
           <input type="range" min={1} max={16} value={n} aria-label="Bits per word" onChange={(e) => setN(+e.target.value)} />
           <button className="fig-opt" aria-pressed={n === 8} onClick={() => setN(8)}>8 bits</button>
           <button className="fig-opt" aria-pressed={n === 16} onClick={() => setN(16)}>16 bits</button>
-          <code>SpibRegs.SPICCR.bit.SPICHAR = {n - 1};  // {n} bits</code>
+          <code>SpibRegs.SPICCR.bit.SPICHAR = {n - 1};  // {bitsN}</code>
         </div>
         <div>
           <span>You write</span>
@@ -124,7 +128,7 @@ function SpiJustify() {
           <HexIn label="Value the device answers, hexadecimal" value={reply} digits={4} set={setReply} />
         </div>
       </div>
-      <figcaption>SPICHAR sets how many bits one word has. Out: the top bits of SPITXBUF (left-justified), top bit first. In: the bits arrive at the bottom of SPIRXBUF (right-justified). Tinted cells are the ones that travel; dashed cells do not.</figcaption>
+      <figcaption>SPICHAR sets how many bits one word has. Out: the top bits of SPITXBUF (left-justified), top bit first. In: the bits arrive at the bottom of SPIRXBUF (right-justified). Orange cells are the bits that travel; dashed cells do not.</figcaption>
     </figure>
   );
 }

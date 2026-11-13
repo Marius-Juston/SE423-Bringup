@@ -1,16 +1,27 @@
+// One ADC conversion from trigger to interrupt. TRM chapter 11: SOC
+// configuration 11.5 (ADCSOCxCTL: TRIGSEL Table 11-32, 0Bh = ePWM4 ADCSOCA;
+// CHSEL; ACQPS, window = ACQPS + 1 SYSCLK cycles), result formula 11.4.5,
+// interrupts 11.9 (ADCINTSEL1N2.INT1SEL / INT1E). The ePWM pulse: TRM 15.10,
+// ETSEL.SOCASEL = 2 (counter equals period), ETPS.SOCAPRD = 1 (first event),
+// ETSEL.SOCAEN. Same numbers as the level's code (ch08) and
+// src/sim/plugins/adc.ts + epwm.ts.
 import { useState } from "react";
+
+const CSS = `
+.adcch pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+`;
 
 const STEPS: { title: string; text: string; code: string; hot: string[] }[] = [
   {
     title: "Idle",
-    text: "Nothing happens until a trigger arrives. SOC0 is a configuration slot, not a converter: it holds three answers. When? (TRIGSEL) Which pin? (CHSEL) How long to sample? (ACQPS)",
-    code: "AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 11;  // when: ePWM4 SOCA\nAdcaRegs.ADCSOC0CTL.bit.CHSEL = 4;     // which pin: ADCINA4\nAdcaRegs.ADCSOC0CTL.bit.ACQPS = 99;    // how long: 100 SYSCLK cycles",
+    text: "Nothing happens until a trigger arrives. SOC0 is a configuration slot, not a converter: it holds three answers. When? (TRIGSEL) Which pin? (CHSEL) How long to sample? (ACQPS) Press Next to fire the trigger.",
+    code: "// when: ePWM4 SOCA\nAdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 11;\n// which pin: ADCINA4\nAdcaRegs.ADCSOC0CTL.bit.CHSEL = 4;\n// how long: 100 SYSCLK cycles\nAdcaRegs.ADCSOC0CTL.bit.ACQPS = 99;",
     hot: [],
   },
   {
     title: "1. The trigger fires",
     text: "ePWM4's counter reaches the point chosen in ETSEL and it sends one pulse on its SOCA line. The ePWM is used here only as a precise clock: the pulse says when, nothing more. A CPU timer or a software write can pulse the same way.",
-    code: "EPwm4Regs.ETSEL.bit.SOCASEL = 2;  // pulse when the counter equals the period\nEPwm4Regs.ETPS.bit.SOCAPRD = 1;   // on every such event\nEPwm4Regs.ETSEL.bit.SOCAEN = 1;   // enable the SOCA pulse",
+    code: "// pulse when the counter equals the period\nEPwm4Regs.ETSEL.bit.SOCASEL = 2;\n// on every such event\nEPwm4Regs.ETPS.bit.SOCAPRD = 1;\n// enable the SOCA pulse\nEPwm4Regs.ETSEL.bit.SOCAEN = 1;",
     hot: ["trig", "w-trig"],
   },
   {
@@ -46,7 +57,7 @@ const STEPS: { title: string; text: string; code: string; hot: string[] }[] = [
   {
     title: "7. The interrupt",
     text: "INT1SEL names the SOC whose end of conversion raises ADCINT1. Point it at the last SOC of your sequence. ADCINT1 goes through the PIE (group 1, channel 1) to your interrupt function, which must clear the flag and acknowledge the group.",
-    code: "AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0;  // end of SOC0 sets ADCINT1\nAdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;\n// in the interrupt function:\nAdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;\nPieCtrlRegs.PIEACK.all = PIEACK_GROUP1;",
+    code: "// the end of SOC0 sets ADCINT1\nAdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0;\nAdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;\n// in the interrupt function:\nAdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;\nPieCtrlRegs.PIEACK.all = PIEACK_GROUP1;",
     hot: ["int", "w-int"],
   },
 ];
@@ -57,16 +68,17 @@ function AdcChain() {
   const s = STEPS[i];
   const on = (id: string) => (s.hot.includes(id) ? "hot" : "");
   return (
-    <figure className="figure" aria-label="Step-through diagram of an ADC conversion from trigger to interrupt">
+    <figure className="figure adcch" aria-label="Step-through diagram of an ADC conversion from trigger to interrupt">
+      <style>{CSS}</style>
       <svg viewBox="0 0 420 190" role="img" aria-label={`${s.title}. ${s.text}`}>
         {/* triggers */}
         <text x="42" y="14" textAnchor="middle" className="fig-label dim">WHEN</text>
         <rect x="6" y="20" width="72" height="26" rx="4" className={`fig-box ${on("trig")}`} />
         <text x="42" y="31" textAnchor="middle" className="fig-label">ePWM4</text>
         <text x="42" y="42" textAnchor="middle" className="fig-label dim">SOCA pulse</text>
-        <rect x="6" y="52" width="72" height="18" rx="4" className="fig-box off" />
+        <rect x="6" y="52" width="72" height="18" rx="4" className="fig-box" strokeDasharray="3 2" />
         <text x="42" y="64" textAnchor="middle" className="fig-label dim">CPU timer</text>
-        <rect x="6" y="74" width="72" height="18" rx="4" className="fig-box off" />
+        <rect x="6" y="74" width="72" height="18" rx="4" className="fig-box" strokeDasharray="3 2" />
         <text x="42" y="86" textAnchor="middle" className="fig-label dim">software</text>
         <path d="M78 33 H104" className={`fig-wire arrow ${on("w-trig")}`} markerEnd="url(#fig-arrow)" />
         {/* SOC slots */}
@@ -76,9 +88,9 @@ function AdcChain() {
         <text x="146" y="44" textAnchor="middle" className="fig-value small">TRIGSEL 11</text>
         <text x="146" y="55" textAnchor="middle" className="fig-value small">CHSEL 4</text>
         <text x="146" y="66" textAnchor="middle" className="fig-value small">ACQPS 99</text>
-        <rect x="106" y="74" width="80" height="14" rx="3" className="fig-box off" />
+        <rect x="106" y="74" width="80" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
         <text x="146" y="84" textAnchor="middle" className="fig-label dim">SOC1</text>
-        <rect x="106" y="91" width="80" height="14" rx="3" className="fig-box off" />
+        <rect x="106" y="91" width="80" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
         <text x="146" y="101" textAnchor="middle" className="fig-label dim">SOC2 ... SOC15</text>
         {/* pins */}
         <text x="42" y="124" textAnchor="middle" className="fig-label dim">WHICH PIN</text>
@@ -104,7 +116,7 @@ function AdcChain() {
         <rect x="294" y="20" width="72" height="38" rx="4" className={`fig-box ${on("res")}`} />
         <text x="330" y="35" textAnchor="middle" className="fig-label">ADCRESULT0</text>
         <text x="330" y="48" textAnchor="middle" className="fig-value small">{i >= 6 ? "1638" : "----"}</text>
-        <rect x="294" y="62" width="72" height="14" rx="3" className="fig-box off" />
+        <rect x="294" y="62" width="72" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
         <text x="330" y="72" textAnchor="middle" className="fig-label dim">ADCRESULT1 ...</text>
         <path d="M330 76 V118" className={`fig-wire arrow ${on("w-int")}`} markerEnd="url(#fig-arrow)" />
         {/* interrupt */}
@@ -125,11 +137,12 @@ function AdcChain() {
         <pre><code>{s.code}</code></pre>
       </div>
       <div className="fig-controls row">
-        <button className="btn small" onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0}>← Back</button>
-        <button className="btn small primary" onClick={() => setI(i === STEPS.length - 1 ? 0 : i + 1)}>{i === 0 ? "Fire the trigger" : i === STEPS.length - 1 ? "Start again" : "Next step →"}</button>
+        <button className="btn small" onClick={() => setI(i - 1)} disabled={i === 0}>Back</button>
+        <button className="btn small primary" onClick={() => setI(i + 1)} disabled={i === STEPS.length - 1}>Next</button>
+        <button className="btn small" onClick={() => setI(0)} disabled={i === 0}>Reset</button>
         <span className="fig-dots" aria-hidden="true">{STEPS.map((_, k) => (<i key={k} className={k === i ? "on" : ""} />))}</span>
       </div>
-      <figcaption>One conversion, from trigger to interrupt. Example: ePWM4 triggers SOC0, which measures pin ADCINA4 (here 1.2 V, giving 1638).</figcaption>
+      <figcaption>One conversion, from trigger to interrupt. In this example ePWM4 triggers SOC0, which measures pin ADCINA4. The pin is at 1.2 V, so the result is 4096 x 1.2 / 3.0 = 1638. Dashed boxes are the triggers, slots and results this example does not use.</figcaption>
     </figure>
   );
 }

@@ -53,7 +53,8 @@ function SpiModes() {
         </div>
       </div>
       <svg viewBox="0 0 420 150" role="img" aria-label={`Clock rests ${idle ? "high" : "low"}. Data is read on each ${sampleRises ? "rising" : "falling"} edge and changes on each ${sampleRises ? "falling" : "rising"} edge.`}>
-        <text x="4" y="16" className="fig-label">chip select</text>
+        <text x="4" y="13" className="fig-label">chip select</text>
+        <text x="4" y="24" className="fig-label dim">stays low</text>
         <path d={`M${X0 - 2},8 H${X0 + 6} V20 H${x(17) + 8} V8 H${x(17) + 26}`} className="fig-trace dim" />
         <text x="4" y={CLK + 15} className="fig-label">SPICLK</text>
         <text x="4" y={CLK + 26} className="fig-label dim">rests {idle ? "high" : "low"}</text>
@@ -77,7 +78,7 @@ function SpiModes() {
           <strong>Two questions settle the mode.</strong> 1. Where does the clock rest while nothing is sent? <strong>{idle ? "High" : "Low"}</strong>, so CLKPOLARITY = {pol}. 2. On which edge is the data read? The <strong>{sampleOnFirst ? "first" : "second"}</strong> edge of each cycle, a <strong>{sampleRises ? "rising" : "falling"}</strong> edge; the data changes on the other edge, where nobody is looking. So CLK_PHASE = {phase}.
         </p>
         <p>
-          The manual calls this <strong>{NAMES[n][0]}</strong>. Device datasheets usually call it <strong>{NAMES[n][1]}</strong>. Careful: CLK_PHASE = 1 corresponds to CPHA 0, the two are opposite.
+          The manual calls this <strong>{NAMES[n][0]}</strong>. Device datasheets usually call it <strong>{NAMES[n][1]}</strong>. Careful: CLK_PHASE = 1 corresponds to CPHA 0, the two are opposite.{n === 1 ? " This is the setting the course uses for the MPU-9250 and the DAN28027." : ""}
         </p>
       </div>
       <figcaption>The same byte in any of the four clocking schemes: only the relation between clock edges and data moves. To read a diagram, find the clock's resting level first, then see where the data line changes; it is read on the other edge.</figcaption>

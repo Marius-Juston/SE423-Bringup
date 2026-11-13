@@ -14,6 +14,7 @@ const CSS = `
 .sf-word { font-family: var(--mono); font-size: 8.5px; fill: var(--text); letter-spacing: -0.2px; }
 .sf-mark { stroke: var(--value); stroke-width: 2; }
 .sf-num { font-family: var(--mono); font-weight: 700; }
+.sf-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
 `;
 
 const h4 = (v: number) => v.toString(16).toUpperCase().padStart(4, "0");
@@ -41,7 +42,8 @@ function SpiFifo() {
           note = "txfull";
           break;
         }
-        tx = [...tx, 0x1000 + next++];
+        tx = [...tx, 0x1000 + next];
+        next = (next % 0xfff) + 1;
       }
       return { ...p, tx, next, note };
     });
@@ -88,16 +90,16 @@ function SpiFifo() {
           : irq && s.tx.length
             ? `RXFFST (${s.rx.length}) has reached RXFFIL (${ffil}), so the interrupt fires now, but ${s.tx.length} word${s.tx.length > 1 ? "s are" : " is"} still on the way out. An interrupt function that reads all the words of the message now finds the FIFO empty on its last reads. RXFFIL must equal the number of words sent.`
             : irq
-              ? `RXFFST (${s.rx.length}) >= RXFFIL (${ffil}): RXFFINT is set and SPIB_RX is requested. The interrupt function should read ${s.rx.length === ffil ? `${ffil} word${ffil > 1 ? "s" : ""}` : `all ${s.rx.length} words: ${s.rx.length - ffil} more than RXFFIL arrived, and words left behind are first in line next time`}. If it clears the flag without reading, the interrupt fires again at once.`
+              ? `RXFFST (${s.rx.length}) >= RXFFIL (${ffil}): RXFFINT is set and the SPIB receive interrupt is requested. The interrupt function should read ${s.rx.length === ffil ? `${ffil} word${ffil > 1 ? "s" : ""}` : `all ${s.rx.length} words: ${s.rx.length - ffil} more than RXFFIL arrived, and words left behind are first in line next time`}. If it clears the flag without reading, the interrupt fires again at once.`
               : s.rx.length
-                ? `${s.rx.length} word${s.rx.length > 1 ? "s are" : " is"} waiting, fewer than RXFFIL (${ffil}), so no interrupt${s.tx.length ? " yet" : ": if the message is over, these words stay here and the next read returns 0x" + h4(s.rx[0]) + ", an answer from an earlier message"}.`
+                ? `${s.rx.length} word${s.rx.length > 1 ? "s are" : " is"} waiting, fewer than RXFFIL (${ffil}), so no interrupt${s.tx.length ? " yet" : ": if the message is over, " + (s.rx.length > 1 ? "these words stay" : "this word stays") + " here and the next read returns 0x" + h4(s.rx[0]) + ", an answer from an earlier message"}.`
                 : s.tx.length
                   ? `${s.tx.length} word${s.tx.length > 1 ? "s are" : " is"} queued. The shifter sends them one after the other, oldest first; for each one sent, one word arrives in the receive FIFO.`
                   : s.note === "read"
                     ? "Both FIFOs are empty: everything that was sent has been read out. This is how every transfer should end."
                     : "Both FIFOs are empty. Write some words to SPITXBUF, clock them out, and watch RXFFST climb to the RXFFIL mark.";
   return (
-    <figure className="figure" aria-label="Interactive diagram of the SPI transmit and receive FIFOs">
+    <figure className="figure sf-fig" aria-label="Interactive diagram of the SPI transmit and receive FIFOs">
       <style>{CSS}</style>
       <svg viewBox="0 0 420 172" role="img" aria-label={`Transmit FIFO holds ${s.tx.length} words, receive FIFO holds ${s.rx.length} words, RXFFIL is ${ffil}, receive interrupt ${irq ? "requested" : "not requested"}.`}>
         <text x={X0} y={12} className="fig-label">transmit FIFO: words written to SPITXBUF wait here</text>
@@ -120,7 +122,7 @@ function SpiFifo() {
         <text x={Math.max(X0 + 48, markX + (markX > 300 ? -3 : 3))} y={RY + 33} textAnchor={markX > 300 ? "end" : "start"} className="fig-value small">RXFFIL = {ffil}</text>
         <text x={X0} y={RY + 48} className="fig-label">receive FIFO: RXFFST = <tspan className="sf-num" style={{ fill: "var(--value)" }}>{s.rx.length}</tspan></text>
         <text x={404} y={RY + 48} textAnchor="end" className="fig-label" style={{ fill: irq ? "var(--accent)" : "var(--dim)", fontWeight: irq ? 700 : 400 }}>
-          {irq ? "RXFFST >= RXFFIL: interrupt SPIB_RX" : "RXFFST < RXFFIL: no interrupt"}
+          {irq ? "RXFFST >= RXFFIL: receive interrupt" : "RXFFST < RXFFIL: no interrupt"}
         </text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
@@ -136,7 +138,7 @@ function SpiFifo() {
           <span>Bus</span>
           <button className="fig-opt" disabled={!s.tx.length} onClick={() => shift(false)}>clock out one word</button>
           <button className="fig-opt" disabled={!s.tx.length} onClick={() => shift(true)}>clock out all</button>
-          <button className="fig-opt" onClick={() => setS(START)}>empty both</button>
+          <button className="fig-opt" disabled={s === START} onClick={() => setS(START)}>Reset</button>
         </div>
         <div>
           <span>RXFFIL</span>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 // The lost update of chapter 20 (lecture 13; levels thr-lost-update and
-// thr-race): `counter += 1` is three machine steps, read, add, write, and
+// thr-race): `counter += 1` can compile to three machine steps, read, add, write, and
 // another thread or an interrupt can run between them. On the F28379D the
 // critical section is DINT ... EINT: DINT sets the CPU's interrupt mask
 // INTM, a request that arrives meanwhile keeps its flag and is served
@@ -135,7 +135,7 @@ function fire(m: Model): Model {
     ...r,
     msg: between
       ? `The interrupt runs all three of its steps between two steps of main(): counter is ${r.counter}. main() still has the old ${m.reg[0]} in its register.`
-      : `The interrupt runs its three steps while main() is not in the middle of its own: counter is ${r.counter}. This time the timing was kind.`,
+      : `The interrupt runs its three steps while main() is not in the middle of its own: counter is ${r.counter}. Nothing was lost this time, because the interrupt did not come between main()'s read and write.`,
   };
 }
 
@@ -258,7 +258,7 @@ function LostUpdate() {
           {allDone ? (
             lost ? (
               <>
-                <strong>Lost update: counter is {m.counter}, not {START + 2}.</strong> Both sides read {START}, so both wrote {START + 1}. Nothing crashed and nothing was reported. Reset and turn on the {guardName} to see what stops it.
+                <strong>Lost update: counter is {m.counter}, not {START + 2}.</strong> Both sides read {START}, so both wrote {START + 1}. Nothing crashed and nothing was reported. Reset and turn on {m.mode === "threads" ? "the mutex" : "DINT / EINT"} to see what prevents it.
               </>
             ) : m.guard ? (
               <>
@@ -280,7 +280,7 @@ function LostUpdate() {
         </ol>
       </div>
       <figcaption>
-        <code>counter += 1;</code> is three machine steps. You are the scheduler: choose who runs next. {m.mode === "irq" ? "An interrupt function cannot be paused by main(), so it always runs its three steps in one go, but it can start between any two steps of main()." : "Two threads on the Raspberry Pi can be paused between any two steps."}
+        <code>counter += 1;</code> can become three machine steps: read, add, write. You choose who runs next. {m.mode === "irq" ? "main() cannot pause an interrupt function, so the interrupt always runs its three steps together, but it can start between any two steps of main()." : "Two threads on the Raspberry Pi can be paused between any two steps."}
       </figcaption>
     </figure>
   );

@@ -88,25 +88,25 @@ function RingBuffer() {
   let code: string;
   const wrapped = (from: number) => (from === BUF_SIZE - 1 ? " The index wrapped from slot 7 back to slot 0: that is what % BUF_SIZE does." : "");
   if (r.last === "put") {
-    status = `The interrupt stored sample ${w.v} in slot ${w.head} and moved head to ${r.head}.${wrapped(w.head)} ${full ? (lockFree ? "The slot after head is now tail: the buffer is full with 7 samples, one slot stays free." : "count is 8: the buffer is full.") : `${r.count} sample${r.count === 1 ? "" : "s"} wait for main.`}`;
+    status = `The interrupt stored sample ${w.v} in slot ${w.head} and moved head to ${r.head}.${wrapped(w.head)} ${full ? (lockFree ? "The slot after head is now tail: the buffer is full with 7 samples, one slot stays free." : "count is 8: the buffer is full.") : `${r.count} sample${r.count === 1 ? " waits" : "s wait"} for main.`}`;
     code = lockFree
       ? `// buf_put(${w.v}), called by the interrupt
-next = (head + 1) % BUF_SIZE;  // (${w.head} + 1) % 8 = ${r.head}
+next = (head + 1) % BUF_SIZE;  // (${w.head}+1) % 8 = ${r.head}
 if (next == tail) return 0;    // ${r.head} == ${w.tail}? no
-buf[head] = v;                 // buf[${w.head}] = ${w.v}, data first
-head = next;                   // head = ${r.head}, index last
+buf[head] = v;                 // buf[${w.head}] = ${w.v}
+head = next;                   // ${r.head}, after data
 return 1;`
       : `// buf_put(${w.v}), called by the interrupt
 if (count == BUF_SIZE) return 0;  // ${w.count} == 8? no
 buf[head] = v;                    // buf[${w.head}] = ${w.v}
-head = (head + 1) % BUF_SIZE;     // (${w.head} + 1) % 8 = ${r.head}
-count++;                          // count = ${r.count}
+head = (head + 1) % BUF_SIZE;     // ${r.head}
+count++;                          // ${r.count}
 return 1;`;
   } else if (r.last === "full") {
     status = `Full: buf_put returned 0 and sample ${w.v} was dropped (${r.dropped} dropped so far). ${lockFree ? `Storing it in the free slot ${w.head} would make head equal to tail, which means empty: all 7 waiting samples would seem to vanish.` : `Storing it anyway would overwrite slot ${w.head}, the oldest sample, which main has not read yet.`} Main must take samples out faster, or the buffer must be larger.`;
     code = lockFree
       ? `// buf_put(${w.v}), called by the interrupt
-next = (head + 1) % BUF_SIZE;  // (${w.head} + 1) % 8 = ${next(w.head)}
+next = (head + 1) % BUF_SIZE;  // (${w.head}+1) % 8 = ${next(w.head)}
 if (next == tail) return 0;    // ${next(w.head)} == ${w.tail}: full`
       : `// buf_put(${w.v}), called by the interrupt
 if (count == BUF_SIZE) return 0;  // ${w.count} == 8: full`;
@@ -115,15 +115,18 @@ if (count == BUF_SIZE) return 0;  // ${w.count} == 8: full`;
     code = lockFree
       ? `// buf_get(&x), called by main: no DINT, no EINT
 if (tail == head) return 0;    // ${w.tail} == ${w.head}? no
-*v = buf[tail];                // x = ${r.got}, data first
-tail = (tail + 1) % BUF_SIZE;  // tail = ${r.tail}, index last
+*v = buf[tail];                // x = ${r.got}
+tail = (tail + 1) % BUF_SIZE;  // ${r.tail}, after data
 return 1;`
       : `// buf_get(&x), called by main
-DINT;                             // count is shared
-if (count == 0) { EINT; return 0; }  // ${w.count} == 0? no
-*v = buf[tail];                   // x = buf[${w.tail}] = ${r.got}
-tail = (tail + 1) % BUF_SIZE;     // (${w.tail} + 1) % 8 = ${r.tail}
-count--;                          // count = ${r.count}
+DINT;                          // count is shared
+if (count == 0) {              // ${w.count} == 0? no
+    EINT;
+    return 0;
+}
+*v = buf[tail];                // x = buf[${w.tail}] = ${r.got}
+tail = (tail + 1) % BUF_SIZE;  // ${r.tail}
+count--;                       // ${r.count}
 EINT;
 return 1;`;
   } else if (r.last === "empty") {
@@ -133,15 +136,17 @@ return 1;`;
 if (tail == head) return 0;    // ${w.tail} == ${w.head}: empty`
       : `// buf_get(&x), called by main
 DINT;
-// count is 0: empty. EINT on this path too
-if (count == 0) { EINT; return 0; }`;
+if (count == 0) {   // 0 == 0: empty
+    EINT;           // EINT on this path too
+    return 0;
+}`;
   } else {
     status = lockFree
       ? "No count: empty is head == tail, and full is when the slot after head is tail, so one slot always stays free and 8 slots hold 7 samples. Only the interrupt writes head, only main writes tail."
-      : "The buffer is empty: head and tail point at the same slot and count is 0. Press Put a few times, then Get, and watch tail chase head around the ring.";
+      : "The buffer is empty: head and tail point at the same slot and count is 0. Press Put a few times, then Get: tail follows head around the ring.";
     code = lockFree
-      ? "uint16_t buf[BUF_SIZE];  // BUF_SIZE is 8\nuint16_t head = 0;       // only the interrupt writes it\nuint16_t tail = 0;       // only main writes it"
-      : "uint16_t buf[BUF_SIZE];  // BUF_SIZE is 8\nuint16_t head = 0;       // the producer writes here next\nuint16_t tail = 0;       // the consumer reads here next\nuint16_t count = 0;      // samples in the buffer";
+      ? "uint16_t buf[BUF_SIZE];  // BUF_SIZE is 8\nuint16_t head = 0;       // interrupt writes it\nuint16_t tail = 0;       // main writes it"
+      : "uint16_t buf[BUF_SIZE];  // BUF_SIZE is 8\nuint16_t head = 0;       // next slot to write\nuint16_t tail = 0;       // next slot to read\nuint16_t count = 0;      // samples waiting";
   }
 
   const rows: [string, string][] = [
@@ -204,7 +209,7 @@ if (count == 0) { EINT; return 0; }`;
         <pre><code>{code}</code></pre>
       </div>
       <figcaption>
-        The interrupt produces samples 1, 2, 3, ... and puts each one at head. Main takes them out at tail, in the same order. Both indexes only move forward and wrap from slot 7 to slot 0. Fill the buffer to see a sample dropped, and empty it to see buf_get return 0.
+        The interrupt puts samples 1, 2, 3, ... in at head. Main takes them out at tail, in the same order. Both indexes only move forward and wrap from slot 7 to slot 0.
       </figcaption>
     </figure>
   );

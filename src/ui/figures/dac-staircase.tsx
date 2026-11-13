@@ -1,6 +1,6 @@
 // The DAC's transfer curve, TRM section 12.1.2 (block diagram) and 12.4.2
 // (DACVALS is a 12-bit field): DACOUT = DACVALA * DACREF / 4096. With the
-// course's 3.0 V reference, one step is 3.0 V / 4096 = 0.73 mV. A number
+// course's 3.0 V reference, one step is 3.0 V / 4096 = 0.732 mV. A number
 // that does not fit in the field loses its upper bits: the output wraps.
 import { useState } from "react";
 
@@ -11,6 +11,7 @@ const CSS = `
 .dacst .dacst-bits { font-family: var(--mono); letter-spacing: 0.05em; }
 .dacst .dacst-bits s { color: var(--bad); }
 .dacst .dacst-bits b { color: var(--harvest); }
+.dacst .dacst-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
 `;
 
 function DacStaircase() {
@@ -42,13 +43,22 @@ function DacStaircase() {
   const mx = x(asked + (bits <= 4 ? 0.5 : 0));
   const my = y(vout);
   const fmtV = (v: number) => `${v.toFixed(bits <= 4 ? 4 : 5).replace(/0+$/, "").replace(/\.$/, "")} V`;
+  // Value label: beside the marker, moved off the axis labels, the top labels and the wrap line.
+  const vText = fmtV(vout);
+  const vW = vText.length * 6.7;
+  const xL = x(levels);
+  let vEnd = mx >= 110;
+  if (vEnd && mx - 7 - vW < xL + 2 && mx - 7 > xL - 2 && mx + 8 + vW < X1) vEnd = false;
+  if (!vEnd && mx + 8 < xL - 2 && mx + 8 + vW > xL - 2) vEnd = true;
+  const vX = vEnd ? mx - 7 : mx + 8;
+  const vY = my < Y1 + 16 ? my + 16 : my - 7;
   const bin = asked.toString(2).padStart(bits + 1, "0");
   const setBitsKeep = (b: number) => {
     setAsked(Math.min((2 << b) - 1, Math.round((asked / (xMax + 1)) * (2 << b))));
     setBits(b);
   };
   const why = !over
-    ? `${asked} fits in ${bits} bits. The output is ${asked} steps of ${bits === 12 ? "0.73 mV" : fmtV(lsb)}: ${asked} x 3.0 / ${levels} = ${fmtV(vout)}.${asked === top ? " This is the top: 3.0 V itself is never reached." : ""}`
+    ? `${asked} fits in ${bits} bits. The output is ${asked} steps of ${bits === 12 ? "0.732 mV" : fmtV(lsb)}: ${asked} x 3.0 / ${levels} = ${fmtV(vout)}.${asked === top ? " This is the top: 3.0 V itself is never reached." : ""}`
     : limit
       ? `${asked} does not fit in ${bits} bits, but the code limits it to ${top} first. The output stays at the top, ${fmtV(vout)}, which is the closest the DAC can get.`
       : `${asked} needs ${bits + 1} bits. The register keeps only the lower ${bits}: the top bit, worth ${levels}, is lost. ${asked} - ${levels} = ${kept}, so the output falls to ${fmtV(vout)} instead of staying at the top.`;
@@ -82,7 +92,7 @@ function DacStaircase() {
         <line x1={mx} x2={mx} y1={Y0} y2={my} className="fig-sample" />
         <line x1={X0} x2={mx} y1={my} y2={my} className="fig-sample" />
         <circle cx={mx} cy={my} r="4" fill="var(--orange)" stroke="var(--text)" strokeWidth="1" />
-        <text x={mx < 110 ? mx + 8 : mx - 7} y={mx < 110 ? my + 14 : my - 6} textAnchor={mx < 110 ? "start" : "end"} className="fig-value">{fmtV(vout)}</text>
+        <text x={vX} y={vY} textAnchor={vEnd ? "end" : "start"} className="fig-value dacst-halo">{vText}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -91,13 +101,13 @@ function DacStaircase() {
           <button className="fig-opt" aria-pressed={bits === 3} onClick={() => setBitsKeep(3)}>3 bits</button>
           <button className="fig-opt" aria-pressed={bits === 4} onClick={() => setBitsKeep(4)}>4 bits</button>
           <button className="fig-opt" aria-pressed={bits === 12} onClick={() => setBitsKeep(12)}>12 bits (the chip)</button>
-          <code>one step = 3.0 V / {levels} = {bits === 12 ? "0.73 mV" : fmtV(lsb)}</code>
+          <code>one step = 3.0 V / {levels} = {bits === 12 ? "0.732 mV" : fmtV(lsb)}</code>
         </div>
         <div>
           <span>Number</span>
           <input type="range" min={0} max={xMax} value={asked} aria-label="Number written to the DAC" onChange={(e) => setAsked(+e.target.value)} />
           <span className="dacst-num">{asked}</span>
-          {bits === 12 && <button className="fig-opt" title="3.2 V x 4095 / 3.0 = 4368" onClick={() => setAsked(4368)}>ask for 3.2 V (4368)</button>}
+          {bits === 12 && <button className="fig-opt" aria-label="Ask for 3.2 volts: 3.2 x 4095 / 3.0 = 4368" onClick={() => setAsked(4368)}>ask for 3.2 V (4368)</button>}
         </div>
         <div>
           <span>Too big?</span>
@@ -107,14 +117,14 @@ function DacStaircase() {
         </div>
         <div>
           <span>In binary</span>
-          <span className="dacst-bits" aria-label={`${asked} in binary is ${bin}; the register keeps ${kept}`}>
+          <span className="dacst-bits" role="img" aria-label={`${asked} in binary is ${bin}; the register keeps ${kept}`}>
             {over && !limit ? <s>{bin[0]}</s> : <span style={{ color: "var(--dim)" }}>{bin[0]}</span>}
             <b>{limit && over ? top.toString(2) : bin.slice(1)}</b>
           </span>
           <code>kept: {kept} = {fmtV(vout)}</code>
         </div>
       </div>
-      <figcaption>Each number is one step on a staircase from 0 V to just under 3.0 V. With 12 bits the 4096 steps are too fine to see. Past the last step the register drops the bit that does not fit and the staircase starts again from 0 V.</figcaption>
+      <figcaption>Vout = number x 3.0 V / 4096: each number is one step on a staircase from 0 V to just under 3.0 V. With 12 bits the 4096 steps are too fine to see. Past the last step, DACVALS drops the bit that does not fit and the staircase starts again from 0 V.</figcaption>
     </figure>
   );
 }

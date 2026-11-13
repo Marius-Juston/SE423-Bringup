@@ -27,7 +27,12 @@ interface Rx {
 function BaudMismatch() {
   const [err, setErr] = useState(3);
   const [text, setText] = useState("UA");
-  const codes = [...(text + "UA")].slice(0, 2).map((c) => c.charCodeAt(0) & 0xff);
+  // One character typed: it is sent twice. Nothing typed: "UA".
+  const codes = [...(text ? text + text : "UA")].slice(0, 2).map((c) => c.charCodeAt(0) & 0xff);
+  // What init_serialSCIA(115200) really produces with LSPCLK = 50 MHz (TRM 19.12).
+  const brr = Math.floor(50e6 / (BAUD * 8) - 1);
+  const realBaud = 50e6 / ((brr + 1) * 8);
+  const brrErr = (realBaud / BAUD - 1) * 100;
 
   // Sender: time in sender bit times, 0 = first start edge.
   const frameStart = [0, 10 + GAP];
@@ -77,10 +82,10 @@ function BaudMismatch() {
     err === 0
       ? "Both clocks agree: every sample lands exactly in the middle of its bit."
       : bad.length === 0 && firstMiss < 0
-        ? `The receiver's clock is ${Math.abs(err)} % ${dir}, so every sample lands a little ${err > 0 ? "earlier" : "later"} than the one before. By the stop bit it is off by ${drift.toFixed(2)} of a bit, still inside the right bit, so both characters are read correctly. The next start edge starts the timing afresh: the error never grows beyond one character.`
+        ? `The receiver's clock is ${Math.abs(err)} % ${dir}, so every sample lands a little ${err > 0 ? "earlier" : "later"} than the one before. By the stop bit it is off by ${drift.toFixed(2)} of a bit, still inside the right bit, so both characters are read correctly. The next start edge starts the timing again, so the error never grows beyond one character.`
         : bad.length === 0
-          ? `The receiver's clock is ${Math.abs(err)} % ${dir}. Its sample for ${slipName} already lands in the neighbouring bit. These characters happen to read correctly because the neighbouring bit has the same value; other data will not.`
-          : `The receiver's clock is ${Math.abs(err)} % ${dir}. The samples slide ${err > 0 ? "earlier" : "later"} by ${(Math.abs(r - 1) * 100).toFixed(1)} % of a bit each time, and by ${slipName} they land in the wrong bit: the receiver reads ${rx.map((q) => hex(q.value) + (q.framing ? " with a framing error" : "")).join(" and ")} instead of ${codes.map(hex).join(" and ")}. The limit is about 5 %: 9.5 bits x 5 % is half a bit.`;
+          ? `The receiver's clock is ${Math.abs(err)} % ${dir}. Its sample for ${slipName} already lands in the neighbouring bit. These characters are still read correctly, but only because the neighbouring bit has the same value. Other data will be read wrong.`
+          : `The receiver's clock is ${Math.abs(err)} % ${dir}. The samples slide ${err > 0 ? "earlier" : "later"} by ${(Math.abs(r - 1) * 100).toFixed(1)} % of a bit each time, and at ${slipName} they land in the wrong bit: the receiver reads ${rx.map((q) => hex(q.value) + (q.framing ? " with a framing error" : "")).join(" and ")} instead of ${codes.map(hex).join(" and ")}. The limit is about 5 %: 9.5 bits x 5 % is half a bit.`;
 
   const X0 = 30;
   const X1 = 416;
@@ -105,7 +110,7 @@ function BaudMismatch() {
     <figure className="figure bm-fig" aria-label="Interactive diagram of a receiver sampling a serial line with a different baud rate">
       <style>{`
         .bm-fig .bm-cell { fill: var(--surface); stroke: var(--dim); stroke-width: 0.7; }
-        .bm-fig .bm-cell.bad { fill: var(--bad-soft, rgba(255, 138, 115, 0.2)); stroke: var(--bad); stroke-width: 1.4; }
+        .bm-fig .bm-cell.bad { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.4; }
         .bm-fig .bm-tick { stroke: var(--text); stroke-width: 0.9; }
         .bm-fig .bm-tick.bad { stroke: var(--bad); stroke-width: 1.6; }
         .bm-fig .bm-res { font-size: 8.5px; font-family: var(--mono); font-weight: 700; fill: var(--ok); }
@@ -152,7 +157,7 @@ function BaudMismatch() {
         ))}
         <text x={4} y={76} className="fig-label">rx</text>
         <text x={4} y={119} className="fig-label">Receiver: {rxBaud} baud. Each box is one of its bit times, read in the middle.</text>
-        <text x={4} y={131} className="fig-label dim">Drift at the stop bit: 9.5 bits x {(Math.abs(r - 1) * 100).toFixed(1)} % = {drift.toFixed(2)} bit (must stay under 0.5)</text>
+        <text x={4} y={131} className="fig-label dim">Stop bit sample: 9.5 receiver bits, each {(Math.abs(r - 1) * 100).toFixed(1)} % too {err >= 0 ? "short" : "long"} = {drift.toFixed(2)} bit off (limit 0.5)</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -163,10 +168,11 @@ function BaudMismatch() {
         </div>
         <div>
           <span>Try</span>
-          <button className="fig-opt" aria-pressed={err === 0.5} onClick={() => setErr(0.5)}>+0.5 %: a typical rounding error</button>
+          <button className="fig-opt" aria-pressed={err === 0.5} onClick={() => setErr(0.5)}>+0.5 %</button>
           <button className="fig-opt" aria-pressed={err === 3} onClick={() => setErr(3)}>+3 %</button>
           <button className="fig-opt" aria-pressed={err === 6} onClick={() => setErr(6)}>+6 %</button>
           <button className="fig-opt" aria-pressed={err === -8} onClick={() => setErr(-8)}>-8 %</button>
+          <code>BRR = {brr}: {Math.round(realBaud)} baud, +{brrErr.toFixed(2)} %</code>
         </div>
         <div>
           <span id="bm-c">Characters</span>
@@ -174,7 +180,7 @@ function BaudMismatch() {
         </div>
       </div>
       <figcaption>
-        There is no clock wire, so the receiver measures time from the falling edge of each start bit with its own clock. S is the start bit, 0 to 7 the data bits, P the stop bit. A red box is a sample taken in the wrong bit. The real SCI takes three samples around the middle of each bit and uses the majority.
+        There is no clock wire, so the receiver measures time from the falling edge of each start bit with its own clock (S start bit, 0 to 7 data bits, P stop bit). A red box marked ✗ is a sample taken in the wrong bit. The two clocks may differ by about 5 % before that happens.
       </figcaption>
     </figure>
   );

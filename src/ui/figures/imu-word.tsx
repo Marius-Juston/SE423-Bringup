@@ -7,12 +7,13 @@ import { useState } from "react";
 // course's 16-bit words (TRM 18.3.4, SPICHAR = 15) the first word is
 // address byte + first data byte, every later word two data bytes.
 // ACCEL_XOUT_H 0x3B .. GYRO_ZOUT_L 0x48, high byte first; WHO_AM_I 0x75
-// reads 0x71.
+// reads 0x71. Registers 0x3A to 0x60 and 0x75 are read-only. The address
+// is 7 bits, so a burst here never runs past 0x7F.
 
 const CSS = `
 .iw-cell { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .iw-cell.rw { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
-.iw-cell.addr { stroke: var(--info); stroke-width: 1.4; }
+.iw-cell.addr { stroke: var(--text); stroke-width: 1.2; }
 .iw-cell.data { stroke: var(--value); stroke-width: 1.4; }
 .iw-bit { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--text); }
 .iw-byte { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
@@ -21,6 +22,8 @@ const CSS = `
 .iw-byte.none { stroke-dasharray: 1 2; opacity: 0.7; }
 .iw-hex { display: inline-flex; align-items: center; gap: 0.15rem; font-family: var(--mono); font-size: 0.85rem; }
 .iw-hex input { width: 2.6em; padding: 0.1em 0.3em; }
+.iw-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
+.iw-n { font-family: var(--mono); color: var(--value); font-size: 0.85rem; min-width: 1.2em; }
 `;
 
 const NAMES: Record<number, string> = {
@@ -34,9 +37,9 @@ const NAMES: Record<number, string> = {
 const REGS: [number, string][] = [
   [0x75, "0x75 WHO_AM_I"],
   [0x47, "0x47 gyro Z high"],
-  [0x46, "0x46: one earlier"],
+  [0x46, "0x46: one before gyro Z"],
   [0x3b, "0x3B accel X high"],
-  [0x3a, "0x3A: one earlier"],
+  [0x3a, "0x3A: one before accel X"],
   [0x1c, "0x1C ACCEL_CONFIG"],
 ];
 const h2 = (v: number) => v.toString(16).toUpperCase().padStart(2, "0");
@@ -45,6 +48,9 @@ const name = (a: number) => NAMES[a & 0x7f] ?? `register 0x${h2(a & 0x7f)}`;
 /** A measurement's high byte sits at an odd address from 0x3B to 0x47. */
 const isHigh = (a: number) => a >= 0x3b && a <= 0x47 && (a & 1) === 1;
 const isTemp = (a: number) => a === 0x41 || a === 0x42;
+const readOnly = (a: number) => (a >= 0x3a && a <= 0x60) || a === 0x75;
+/** Most words a burst from this register can have before the 7-bit address runs out. */
+const maxWords = (a: number) => Math.min(8, Math.floor((0x7f - a) / 2) + 1);
 
 /** Building MPU-9250 words: read bit, address, data, and what comes back in which word. */
 function ImuWord() {
@@ -52,7 +58,8 @@ function ImuWord() {
   const [reg, setReg] = useState(0x75);
   const [data, setData] = useState(0x08);
   const [txt, setTxt] = useState("08");
-  const [words, setWords] = useState(1);
+  const [wordsWanted, setWords] = useState(1);
+  const words = Math.min(wordsWanted, maxWords(reg));
   const first = ((read ? 0x80 : 0) | reg) << 8 | (read ? 0 : data);
   const X0 = 62;
   const W = 21.5;
@@ -69,13 +76,15 @@ function ImuWord() {
   const splits = rows.filter((r) => r.split || (r.k === 0 && isHigh(reg) && !isTemp(reg)));
   const temps = rows.some((r) => (r.a !== null && isTemp(r.a)) || isTemp(r.b));
   const why = !read
-    ? `Write: bit 15 is 0, then the address 0x${h2(reg)}, then the value. The MPU-9250 stores 0x${h2(data)} in ${name(reg)}${words > 1 ? ` and the following data bytes in the registers up to 0x${h2(lastReg)}, counting the address up by itself` : ""}. Words still come back while you send (they mean nothing): read them out of the FIFO and throw them away.`
+    ? readOnly(reg)
+      ? `Write: bit 15 is 0, then the address 0x${h2(reg)}, then the value. But ${name(reg)} is read-only: the MPU-9250 ignores the value. Writes are for the configuration registers, such as 0x1C ACCEL_CONFIG.`
+      : `Write: bit 15 is 0, then the address 0x${h2(reg)}, then the value. The MPU-9250 stores 0x${h2(data)} in ${name(reg)}.${words > 1 ? ` The address counts up by itself, so every later word writes two more registers, up to 0x${h2(lastReg)}. Each of those words must hold the two values its registers need: a zero would clear a register.` : ""} Words still come back while you send. They mean nothing: read them out of the FIFO and throw them away.`
     : words === 1
-      ? `Read: bit 15 is 1. While the top byte goes out the device is still listening to the address, so the top byte of the reply means nothing. During the bottom byte it answers: the value of ${name(reg)} is the low byte of the SAME word${reg === 0x75 ? ", 0x0071" : ""}. Keep it with & 0x00FF.`
+      ? `Read: bit 15 is 1. While the top byte goes out the device is still listening to the address, so the top byte of the reply means nothing. During the bottom byte it answers: the value of ${name(reg)} is the low byte of the same word${reg === 0x75 ? ", 0x71" : ""}. Keep it with & 0x00FF.`
       : splits.length && !wholes.length
         ? `Each reading is split over two words here: its high byte is the low byte of one word and its low byte the high byte of the next. Start the read one register earlier and every reading fills exactly one word.`
         : wholes.length
-          ? `Burst read of ${2 * words - 1} registers, 0x${h2(reg)} to 0x${h2(lastReg)}, in ${words} words. The first word is thrown away. ${wholes.length === 1 ? "The tinted word is" : "The tinted words are"} one complete signed 16-bit reading each, high byte on top.${temps ? " The temperature sits between accelerometer and gyro: its word must be skipped when you index the results." : ""}`
+          ? `Burst read of ${2 * words - 1} registers, 0x${h2(reg)} to 0x${h2(lastReg)}, in ${words} words. The first word is thrown away. ${wholes.length === 1 ? "The tinted word is one complete signed 16-bit reading" : "Each tinted word is one complete signed 16-bit reading"}, high byte on top.${temps ? " The temperature sits between accelerometer and gyro: its word must be skipped when you index the results." : ""}`
           : `Burst read: after the address byte the master keeps clocking zeros and the device answers with the registers 0x${h2(reg)} to 0x${h2(lastReg)}, counting the address up by itself.`;
   const byteBox = (x: number, y: number, a: number | null, tint: boolean) => (
     <g>
@@ -87,7 +96,7 @@ function ImuWord() {
   );
   const RY = 86;
   return (
-    <figure className="figure" aria-label="Interactive builder for MPU-9250 SPI words">
+    <figure className="figure iw-fig" aria-label="Interactive builder for MPU-9250 SPI words">
       <style>{CSS}</style>
       <svg viewBox={`0 0 420 ${RY + 14 + words * 18 + 4}`} role="img" aria-label={`${read ? "Read" : "Write"} register 0x${h2(reg)}: the first word is 0x${h4(first)}, ${words} word${words > 1 ? "s" : ""} in the transfer.`}>
         <text x={4} y={25} className="fig-label">first word</text>
@@ -101,7 +110,7 @@ function ImuWord() {
         <text x={X0} y={10} className="fig-label dim">bit 15</text>
         <text x={X0 + 16 * W - 1.5} y={10} textAnchor="end" className="fig-label dim">bit 0</text>
         <path d={`M${X0 + 1},35 v4 h${W - 3.5} v-4`} className="fig-wire" style={{ stroke: "var(--accent)" }} />
-        <path d={`M${X0 + W + 1},35 v4 h${7 * W - 3.5} v-4`} className="fig-wire" style={{ stroke: "var(--info)" }} />
+        <path d={`M${X0 + W + 1},35 v4 h${7 * W - 3.5} v-4`} className="fig-wire" style={{ stroke: "var(--text)" }} />
         <path d={`M${X0 + 8 * W + 1},35 v4 h${8 * W - 3.5} v-4`} className="fig-wire" style={{ stroke: "var(--value)" }} />
         <text x={X0} y={50} className="fig-label">{read ? "1 = read" : "0 = write"}</text>
         <text x={X0 + 4.5 * W} y={50} textAnchor="middle" className="fig-label">address 0x{h2(reg)}</text>
@@ -117,12 +126,12 @@ function ImuWord() {
           return (
             <g key={r.k}>
               <text x={10} y={y + 10.5} className="fig-label">{r.k + 1}</text>
-              <text x={34} y={y + 10.5} className="fig-value small">0x{h4(r.k === 0 ? first : 0)}</text>
+              <text x={34} y={y + 10.5} className="fig-value small">{r.k === 0 || read ? `0x${h4(r.k === 0 ? first : 0)}` : "2 values"}</text>
               {byteBox(86, y, r.a, read && r.whole)}
               {byteBox(216, y, r.b, read && (r.whole || (r.k === 0 && words === 1)))}
               {read && r.whole && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent)" }}>= {name(r.a!).replace(" high", "")}</text>}
               {read && r.a !== null && isTemp(r.a) && isTemp(r.b) && <text x={348} y={y + 10.5} className="fig-label dim">skip this word</text>}
-              {read && r.k === 0 && words > 1 && <text x={348} y={y + 10.5} className="fig-label dim">{isHigh(reg) && !isTemp(reg) ? "half a reading" : "throw away"}</text>}
+              {read && r.k === 0 && words > 1 && <text x={348} y={y + 10.5} className="fig-label dim">{isHigh(reg) && !isTemp(reg) ? "half a reading" : wholes.length ? "throw away" : "& 0x00FF"}</text>}
               {read && r.k === 0 && words === 1 && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent)" }}>& 0x00FF</text>}
             </g>
           );
@@ -157,14 +166,18 @@ function ImuWord() {
         </div>
         <div>
           <span>Words</span>
-          <input type="range" min={1} max={8} value={words} aria-label="Number of 16-bit words in the transfer" onChange={(e) => setWords(+e.target.value)} />
-          <button className="fig-opt" aria-pressed={reg === 0x46 && words === 2 && read} onClick={() => { setRead(true); setReg(0x46); setWords(2); }}>gyro Z read</button>
+          <input type="range" min={1} max={maxWords(reg)} value={words} aria-label="Number of 16-bit words in the transfer" onChange={(e) => setWords(+e.target.value)} />
+          <span className="iw-n">{words}</span>
+        </div>
+        <div>
+          <span>Examples</span>
+          <button className="fig-opt" aria-pressed={reg === 0x46 && words === 2 && read} onClick={() => { setRead(true); setReg(0x46); setWords(2); }}>read gyro Z</button>
           <button className="fig-opt" aria-pressed={reg === 0x3a && words === 8 && read} onClick={() => { setRead(true); setReg(0x3a); setWords(8); }}>the course's full read</button>
         </div>
         <div>
           <span>In C</span>
           <code>
-            SpibRegs.SPITXBUF = {read ? `(0x8000 | 0x${h4(reg << 8)})` : `0x${h4(first)}`};{words > 1 ? `  // then ${words - 1} x SPITXBUF = 0x0000;  RXFFIL = ${words}` : "  // RXFFIL = 1"}
+            SpibRegs.SPITXBUF = {read ? `(0x8000 | 0x${h4(reg << 8)})` : `0x${h4(first)}`};{words > 1 ? (read ? `  // then ${words - 1} x SPITXBUF = 0x0000;  RXFFIL = ${words}` : `  // then ${words - 1} more words of values;  RXFFIL = ${words}`) : "  // RXFFIL = 1"}
           </code>
         </div>
       </div>

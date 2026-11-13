@@ -17,10 +17,10 @@ const CSS = `
 button.mo-cell { border-color: var(--dim); border-style: dashed; }
 button.mo-cell[aria-pressed="true"] { background: var(--harvest); border-color: var(--harvest); border-style: solid; color: var(--bg); }
 .mo-cell.inv { opacity: 0.8; }
-.mo-cell.hit { background: var(--accent-soft, rgba(255, 95, 5, 0.16)); border: 2px solid var(--orange); color: var(--text); }
+.mo-cell.hit { background: var(--accent-soft); border: 2px solid var(--orange); color: var(--text); }
 .mo-rule { grid-column: 1 / -1; border-top: 2px solid var(--dim); height: 0; }
 .mo-mark { text-align: center; font-size: 0.7rem; line-height: 1; color: var(--orange); height: 0.8rem; }
-.mo-code { display: block; margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-size: 0.85rem; white-space: pre-wrap; }
+.mo-code { display: block; margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.85rem; white-space: pre-wrap; }
 .mo-n { font-family: var(--mono); font-weight: 700; color: var(--harvest); min-width: 1.4em; text-align: center; display: inline-block; }
 `;
 
@@ -76,11 +76,10 @@ function MaskOps() {
         </div>
         <div>
           <span>Mask</span>
-          <code style={{ marginLeft: 0 }}>1 &lt;&lt;</code>
-          <button className="fig-opt" aria-label="shift one place less" onClick={() => shift(-1)}>-</button>
-          <span className="mo-n">{single ? pos : "?"}</span>
-          <button className="fig-opt" aria-label="shift one place more" onClick={() => shift(1)}>+</button>
-          <code>{single ? `= ${m}: a single 1 in bit ${pos}` : `mask = ${m}: not a single bit`}</code>
+          <button className="fig-opt" aria-label="shift the 1 one place right, to a lower bit" aria-disabled={single && pos === 0} onClick={() => shift(-1)}>-</button>
+          <span className="mo-n" aria-hidden="true">{single ? pos : "?"}</span>
+          <button className="fig-opt" aria-label="shift the 1 one place left, to a higher bit" aria-disabled={single && pos === 15} onClick={() => shift(1)}>+</button>
+          <code>{single ? `(1 << ${pos}) = ${m}` : mask === 0 ? `${m}: no bit chosen` : `${m}: more than one bit`}</code>
         </div>
       </div>
       <div className="mo-grid" role="group" aria-label={`x is ${hex4(x)}, mask is ${m}, result is ${hex4(result)}`}>
@@ -110,19 +109,19 @@ function MaskOps() {
       </div>
       <code className="mo-code">
         {stmt}
-        {single ? `      // the same: ${alt}` : ""}
         {"\n"}
+        {single ? `${alt}   // the same\n` : ""}
         {op === "test" ? `// x & mask = ${hex4(result)}: the test is ${result ? "true" : "false"}` : `// x: ${hex4(x)} -> ${hex4(result)}   (${opName} with ${hex4(operand)})`}
       </code>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
           <span>Then</span>
-          <button className="fig-opt" disabled={op === "test" || result === x} onClick={() => setX(result)}>run it: x = result</button>
-          <button className="fig-opt" disabled={x === START} onClick={() => setX(START)}>x back to {hex4(START)}</button>
+          <button className="fig-opt" aria-disabled={op === "test" || result === x} onClick={() => op !== "test" && setX(result)}>run it: x = result</button>
+          <button className="fig-opt" aria-disabled={x === START} onClick={() => setX(START)}>Reset x to {hex4(START)}</button>
         </div>
       </div>
-      <figcaption>Click bits of the mask (the dashed row), or build a one-bit mask with the shift. The mask's 1 bits choose which bits of x are worked on; every other bit of x always comes through unchanged.</figcaption>
+      <figcaption>The mask's 1 bits choose which bits of x are worked on; every other bit of x comes through unchanged. Click bits of the mask (the dashed row), or build a one-bit mask with the shift.</figcaption>
     </figure>
   );
 }

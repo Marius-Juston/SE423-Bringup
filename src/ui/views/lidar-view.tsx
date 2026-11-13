@@ -1,4 +1,5 @@
 import { FT_PER_MM, G_CLUSTER, G_START, LIDAR_POINTS, MAX_MM, MIN_MM, ROOMS, scan, stepAngle } from "../../sim/plugins/lidar";
+import type { ReactElement } from "react";
 import type { BenchView, ViewProps } from "./types";
 
 // Top view of the simulated LIDAR's world (src/sim/plugins/lidar.ts): the
@@ -16,16 +17,36 @@ const NAMED = [
 ];
 const f1 = (v: number) => v.toFixed(1);
 
+interface Drawing {
+  key: string;
+  body: ReactElement;
+}
+// The picture only changes when a test moves the robot: keep the last one.
+let lastDrawing: Drawing | undefined;
+
 function LidarView({ board }: ViewProps) {
-  const roomNo = Math.round(board.inputs.get("LIDAR_ROOM") ?? 0);
-  const room = ROOMS[roomNo] ?? ROOMS[0];
-  const x = board.inputs.get("LIDAR_X_FT") ?? room.start[0];
-  const y = board.inputs.get("LIDAR_Y_FT") ?? room.start[1];
-  const theta = board.inputs.get("LIDAR_THETA_RAD") ?? room.start[2];
-  const offset = board.inputs.get("LIDAR_OFFSET_FT") ?? 0;
+  const inp = (name: string, fallback: number) => {
+    const v = board.inputs.get(name);
+    return v !== undefined && Number.isFinite(v) ? v : fallback;
+  };
+  const wanted = Math.round(inp("LIDAR_ROOM", 0));
+  const roomNo = ROOMS[wanted] ? wanted : 0;
+  const room = ROOMS[roomNo];
+  const x = inp("LIDAR_X_FT", room.start[0]);
+  const y = inp("LIDAR_Y_FT", room.start[1]);
+  const theta = inp("LIDAR_THETA_RAD", room.start[2]);
+  const offset = inp("LIDAR_OFFSET_FT", 0);
+  const scans = board.output("LIDAR_SCANS");
+  const key = [roomNo, x, y, theta, offset, scans].join(",");
+  if (lastDrawing?.key !== key) lastDrawing = { key, body: draw(roomNo, x, y, theta, offset, scans) };
+  return lastDrawing.body;
+}
+
+function draw(roomNo: number, x: number, y: number, theta: number, offset: number, scans: number | undefined): ReactElement {
+  const room = ROOMS[roomNo];
   const sx = x + offset * Math.cos(theta);
   const sy = y + offset * Math.sin(theta);
-  const mm = scan({ room: ROOMS[roomNo] ? roomNo : 0, x, y, theta, offset });
+  const mm = scan({ room: roomNo, x, y, theta, offset });
 
   // Window in feet: the room, but never further than the sensor can see.
   const xs = room.walls.flatMap((w) => [w[0], w[2]]);
@@ -61,7 +82,6 @@ function LidarView({ board }: ViewProps) {
     } else misses += seg;
   }
   const ft = (i: number) => (mm[i] >= MIN_MM ? `${(mm[i] * FT_PER_MM).toFixed(2)} ft` : mm[i] === 0 ? "no echo" : "too close");
-  const scans = board.output("LIDAR_SCANS");
   const deg = (theta * 180) / Math.PI;
   const r = Math.max(5, 0.35 * s);
   return (
@@ -83,7 +103,7 @@ function LidarView({ board }: ViewProps) {
       <svg
         viewBox={`0 0 ${W} ${f1(H)}`}
         role="img"
-        aria-label={`Top view of the LIDAR in room ${roomNo}, ${room.name}. Robot at x ${x.toFixed(2)} feet, y ${y.toFixed(2)} feet, heading ${deg.toFixed(0)} degrees. Front ${ft(113)}, right ${ft(28)}, left ${ft(199)}.`}
+        aria-label={`Top view of the LIDAR in room ${roomNo}, ${room.name}, x to the right and y up. Robot at x ${x.toFixed(2)} feet, y ${y.toFixed(2)} feet, heading ${theta.toFixed(2)} radians (${deg.toFixed(0)} degrees, counter-clockwise from the x axis). Distance straight ahead ${ft(113)}, to the right ${ft(28)}, to the left ${ft(199)}.`}
       >
         <path d={misses} className="lview-miss" />
         <path d={hits} className="lview-hit" />
@@ -107,12 +127,13 @@ function LidarView({ board }: ViewProps) {
       </svg>
       <p className="lview-info">
         <span>Room {roomNo}: {room.name}</span>
-        <span>pose <b>({x.toFixed(2)}, {y.toFixed(2)}) ft, {deg.toFixed(0)}°</b></span>
+        <span>pose <b>({x.toFixed(2)}, {y.toFixed(2)}) ft, {theta.toFixed(2)} rad ({deg.toFixed(0)}°)</b></span>
         <span>front [113] <b>{ft(113)}</b></span>
         <span>right [28] <b>{ft(28)}</b></span>
         <span>left [199] <b>{ft(199)}</b></span>
         {scans !== undefined && <span>scans sent <b>{scans}</b></span>}
       </p>
+      <p className="lview-info">Thin lines: the 228 rays of one scan, point [0] on the right, [227] on the left. Dots: where a ray hits. Dashed: nothing within {REACH_FT.toFixed(1)} ft, the sensor reports 0.</p>
     </div>
   );
 }

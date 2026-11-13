@@ -28,7 +28,7 @@ function LidarEncoding() {
   const row = decode ? ROW_CHAR - step : step;
   const reached = (r: number) => (decode ? r >= row : r <= row);
   const cls = (r: number) => (r === row ? "hot" : reached(r) ? "" : "off");
-  const dim = (r: number) => (reached(r) ? undefined : 0.4);
+  const dim = (r: number) => (reached(r) ? undefined : 0.55);
   const STEPS = decode
     ? [
         {
@@ -60,7 +60,7 @@ function LidarEncoding() {
         },
         {
           title: "2. Twelve bits",
-          text: `4095 is 2^12 - 1, so every reading fits in 12 bits: ${bin6(hi)} ${bin6(lo)}.`,
+          text: `The largest reading, 4095, is 2^12 - 1, so every reading fits in 12 bits. This one is ${bin6(hi)} ${bin6(lo)}.`,
           code: `// ${mm} = 0x${mm.toString(16).toUpperCase().padStart(3, "0")}`,
         },
         {
@@ -96,26 +96,6 @@ function LidarEncoding() {
         .lenc-head { fill: var(--dim); }
         .lenc-head-hot { fill: var(--orange); }
       `}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Distance</span>
-          <label className="lenc-slider">
-            <input type="range" min={0} max={MAX_MM} step={1} value={mm} onChange={(e) => setMm(+e.target.value)} aria-label="Distance in millimetres, 0 to 4095" />
-            <output>{mm} mm</output>
-          </label>
-        </div>
-        <div>
-          <span>Try</span>
-          {PRESETS.map((p) => (
-            <button key={p} className="fig-opt" aria-pressed={mm === p} onClick={() => setMm(p)}>{p} mm</button>
-          ))}
-        </div>
-        <div>
-          <span>Direction</span>
-          <button className="fig-opt" aria-pressed={decode} onClick={() => { setDecode(true); setStep(0); }}>decode (your code)</button>
-          <button className="fig-opt" aria-pressed={!decode} onClick={() => { setDecode(false); setStep(0); }}>encode (the sensor)</button>
-        </div>
-      </div>
       <svg viewBox="0 0 420 196" role="img" aria-label={`${mm} millimetres is the 12 bits ${bin6(hi)} ${bin6(lo)}: high half ${hi}, low half ${lo}. With 0x30 added they are the characters ${chars[0]} and ${chars[1]}. ${s.title}.`}>
         <defs>
           <marker id="lenc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
@@ -176,17 +156,38 @@ function LidarEncoding() {
           <text x={LX} y="191" textAnchor="middle" className="fig-label dim">sent second</text>
         </g>
       </svg>
+      <div className="fig-controls">
+        <div>
+          <span>Distance</span>
+          <label className="lenc-slider">
+            <input type="range" min={0} max={MAX_MM} step={1} value={mm} onChange={(e) => setMm(+e.target.value)} aria-label="Distance in millimetres, 0 to 4095" />
+            <output>{mm} mm</output>
+          </label>
+        </div>
+        <div>
+          <span>Try</span>
+          {PRESETS.map((p) => (
+            <button key={p} className="fig-opt" aria-pressed={mm === p} onClick={() => setMm(p)}>{p} mm</button>
+          ))}
+        </div>
+        <div>
+          <span>Direction</span>
+          <button className="fig-opt" aria-pressed={decode} onClick={() => { setDecode(true); setStep(0); }}>decode (your code)</button>
+          <button className="fig-opt" aria-pressed={!decode} onClick={() => { setDecode(false); setStep(0); }}>encode (the sensor)</button>
+        </div>
+      </div>
       <div className="fig-step" role="status">
         <strong>{s.title}</strong>
         <p>{s.text}</p>
         <pre><code>{s.code}</code></pre>
       </div>
       <div className="fig-controls row">
-        <button className="btn small" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>← Back</button>
-        <button className="btn small primary" onClick={() => setStep(step === 3 ? 0 : step + 1)}>{step === 3 ? "Start again" : "Next step →"}</button>
+        <button className="btn small" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Back</button>
+        <button className="btn small primary" onClick={() => setStep(step + 1)} disabled={step === 3}>Next</button>
+        <button className="btn small" onClick={() => setStep(0)} disabled={step === 0}>Reset</button>
         <span className="fig-dots" aria-hidden="true">{STEPS.map((_, k) => (<i key={k} className={k === step ? "on" : ""} />))}</span>
       </div>
-      <figcaption>One reading on the wire is two printable characters. Decoding goes up the picture, encoding goes down. Move the slider and watch which character changes: the second one counts millimetres, the first one counts steps of 64 mm.</figcaption>
+      <figcaption>One reading on the wire is two printable characters. Decoding goes up the picture, encoding goes down. The second character counts millimetres, the first one counts steps of 64 mm.</figcaption>
     </figure>
   );
 }

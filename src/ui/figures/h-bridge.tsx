@@ -4,7 +4,11 @@
 // pin low the other, so 50 % duty is zero average voltage, 100 % full
 // voltage one way and 0 % full voltage the other way. The control effort
 // u = -10..10 is saturated and mapped to CMPA = (u + 10) x TBPRD / 20 with
-// TBPRD = 2500 (20 kHz; TRM 15.4.3, 15.5).
+// TBPRD = 2500 (20 kHz; TRM 15.4.3, 15.5). EPWM1A is the left motor, where
+// a duty cycle above 50 % drives the robot forward; the right motor is
+// mounted mirrored, so the course calls setEPWM2A(-u). In PWM mode the
+// drawing shows one half of the period at a time (never all four switches
+// closed: that would be shoot-through).
 import { useState } from "react";
 
 const TBPRD = 2500;
@@ -36,7 +40,8 @@ function HBridge() {
   const [pwm, setPwm] = useState(false);
   const [sw, setSw] = useState([true, false, false, true]);
   const [u, setU] = useState(5);
-  const [s1, s2, s3, s4] = pwm ? [true, true, true, true] : sw;
+  const [high, setHigh] = useState(true);
+  const [s1, s2, s3, s4] = pwm ? [high, !high, !high, high] : sw;
   const toggle = (i: number) => {
     setPwm(false);
     setSw(sw.map((v, k) => (k === i ? !v : v)));
@@ -58,19 +63,17 @@ function HBridge() {
   const dir = pwm ? Math.sign(net) : fwd ? 1 : rev ? -1 : 0;
   const mag = pwm ? Math.abs(net) : dir ? 1 : 0;
 
-  const hi = (share: number): Paint => ({ c: "var(--hi)", w: pwm ? 1.2 + 2.6 * share : 2.8 });
-  const lo = (share: number): Paint => ({ c: "var(--lo)", w: pwm ? 1.2 + 2.6 * share : 2.8 });
+  const hi: Paint = { c: "var(--hi)", w: 2.8 };
+  const lo: Paint = { c: "var(--lo)", w: 2.8 };
+  // Which way the battery is connected across the motor in the state drawn.
+  const flow = pwm ? (high ? 1 : -1) : fwd ? 1 : rev ? -1 : 0;
   const bad: Paint = { c: "var(--bad)", w: 3.4 };
   const P: Record<string, Paint> = { tl: IDLE, tr: IDLE, bl: IDLE, br: IDLE, s1: IDLE, s2: IDLE, s3: IDLE, s4: IDLE, m: IDLE };
-  if (pwm) {
-    P.tl = P.s1 = P.s4 = P.br = hi(duty);
-    P.tr = P.s3 = P.s2 = P.bl = lo(1 - duty);
-    P.m = { c: net > 0 ? "var(--hi)" : net < 0 ? "var(--lo)" : "var(--dim)", w: 1.4 + 1.6 * mag };
-  } else if (short) {
+  if (short) {
     if (shortL) P.tl = P.s1 = P.s2 = P.bl = bad;
     if (shortR) P.tr = P.s3 = P.s4 = P.br = bad;
-  } else if (fwd) P.tl = P.s1 = P.s4 = P.br = P.m = hi(1);
-  else if (rev) P.tr = P.s3 = P.s2 = P.bl = P.m = lo(1);
+  } else if (flow > 0) P.tl = P.s1 = P.s4 = P.br = P.m = hi;
+  else if (flow < 0) P.tr = P.s3 = P.s2 = P.bl = P.m = lo;
 
   const leg = (x: number, y0: number, closed: boolean, p: Paint, inward: number) => {
     const a = y0 + 22;
@@ -104,9 +107,9 @@ function HBridge() {
     why =
       net === 0
         ? `${first}u = 0 is a 50 % duty cycle: the motor gets full voltage forward and full voltage backward for equal times, 20 000 times a second. The average is zero and the motor stands still, although the pin is switching the whole time.`
-        : `${first}Duty ${pct(duty)}: in every 50 us period the pin is high for ${pct(duty)} (S1 and S4 closed, forward) and low for ${pct(1 - duty)} (S3 and S2 closed, backward). The motor feels the difference, ${net > 0 ? "+" : "-"}${pct(Math.abs(net))} of the battery voltage: ${Math.abs(net) === 1 ? "full power" : "part power"} ${net > 0 ? "forward" : "backward"}.`;
+        : `${first}Duty ${pct(duty)}: in every 50 µs period the pin is high for ${pct(duty)} (S1 and S4 closed, forward) and low for ${pct(1 - duty)} (S3 and S2 closed, backward). The motor feels the difference, ${net > 0 ? "+" : "-"}${pct(Math.abs(net))} of the battery voltage: ${Math.abs(net) === 1 ? "full power" : "part power"} ${net > 0 ? "forward" : "backward"}. The drawing shows the part with the pin ${high ? "high" : "low"}.`;
   } else if (short)
-    why = `Shoot-through: ${shortL ? "S1 and S2" : "S3 and S4"} are closed together, so the battery is connected straight to ground through two switches. Nothing limits that current: the transistors burn. The amplifier's logic never allows this state.`;
+    why = `Shoot-through: ${shortL && shortR ? "S1 and S2 are closed together, and so are S3 and S4. Each pair connects the battery" : `${shortL ? "S1 and S2" : "S3 and S4"} are closed together, so the battery is connected`} straight to ground through two switches. Nothing limits that current: the transistors burn. The amplifier's logic never allows this state.`;
   else if (fwd) why = "S1 and S4 closed: current flows from the battery through S1, into terminal A, through the motor, out of B and through S4 to ground. The motor turns forward.";
   else if (rev) why = "S3 and S2 closed, the other diagonal: current enters the motor at B and leaves at A. Same battery, opposite voltage on the motor: it turns backward.";
   else if (brake) why = `Both motor terminals are tied to ${s1 && s3 ? "the battery" : "ground"}: no voltage across the motor, and its own generated current is short-circuited, which brakes it.`;
@@ -130,7 +133,7 @@ function HBridge() {
           <button className="fig-opt" aria-pressed={pwm} onClick={() => setPwm(true)}>one PWM pin, as on the robot</button>
         </div>
       </div>
-      <svg viewBox={pwm ? "0 0 420 190" : "30 0 300 190"} role="img" aria-label={pwm ? `PWM drive, control effort ${u}, duty cycle ${pct(duty)}: motor ${state}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
+      <svg viewBox={pwm ? "0 0 420 190" : "30 0 300 190"} role="img" aria-label={pwm ? `PWM drive, control effort ${u}, duty cycle ${pct(duty)}: motor ${state}. Drawn: the part of the period with the pin ${high ? "high, S1 and S4 closed" : "low, S3 and S2 closed"}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
         <text x={CX} y="12" textAnchor="middle" className="fig-label">battery +</text>
         <text x={CX} y="184" textAnchor="middle" className="fig-label">ground</text>
         {line(`M${CX},${TOP} H${LX}`, P.tl)}
@@ -142,16 +145,16 @@ function HBridge() {
         {leg(RX, TOP, s3, P.s3, -1)}
         {leg(RX, MID, s4, P.s4, -1)}
         {line(`M${LX},${MID} H${CX - 18} M${CX + 18},${MID} H${RX}`, P.m)}
-        {dir !== 0 && (
+        {flow !== 0 && (
           <>
-            <Head x={dir > 0 ? LX + 22 : LX + 16} y={MID} deg={dir > 0 ? 0 : 180} c={P.m.c} />
-            <Head x={dir > 0 ? RX - 16 : RX - 22} y={MID} deg={dir > 0 ? 0 : 180} c={P.m.c} />
+            <Head x={flow > 0 ? LX + 22 : LX + 16} y={MID} deg={flow > 0 ? 0 : 180} c={P.m.c} />
+            <Head x={flow > 0 ? RX - 16 : RX - 22} y={MID} deg={flow > 0 ? 0 : 180} c={P.m.c} />
           </>
         )}
-        {(fwd || shortL) && <Head x={LX} y={TOP + 14} deg={90} c={P.s1.c} />}
-        {(fwd || shortR) && <Head x={RX} y={BOT - 8} deg={90} c={P.s4.c} />}
-        {(rev || shortR) && <Head x={RX} y={TOP + 14} deg={90} c={P.s3.c} />}
-        {(rev || shortL) && <Head x={LX} y={BOT - 8} deg={90} c={P.s2.c} />}
+        {(flow > 0 || shortL) && <Head x={LX} y={TOP + 14} deg={90} c={P.s1.c} />}
+        {(flow > 0 || shortR) && <Head x={RX} y={BOT - 8} deg={90} c={P.s4.c} />}
+        {(flow < 0 || shortR) && <Head x={RX} y={TOP + 14} deg={90} c={P.s3.c} />}
+        {(flow < 0 || shortL) && <Head x={LX} y={BOT - 8} deg={90} c={P.s2.c} />}
         <circle cx={LX} cy={MID} r="2.6" className="fig-dot" />
         <circle cx={RX} cy={MID} r="2.6" className="fig-dot" />
         <circle cx={CX} cy={MID} r="18" className="fig-box" />
@@ -169,8 +172,8 @@ function HBridge() {
           return (
             <g key={n}>
               <text x={i < 2 ? x - 9 : x + 9} y={y + 11} textAnchor={i < 2 ? "end" : "start"} className="fig-label" style={{ fontWeight: 700 }}>{n}</text>
-              <text x={i < 2 ? x - 9 : x + 9} y={y + 22} textAnchor={i < 2 ? "end" : "start"} className="fig-label dim">{pwm ? (i === 0 || i === 3 ? "pin high" : "pin low") : sw[i] ? "closed" : "open"}</text>
-              <rect x={x - 40} y={y - 8} width="80" height="42" className="hbr-sw" onClick={() => toggle(i)}><title>Click to open or close {n}</title></rect>
+              <text x={i < 2 ? x - 9 : x + 9} y={y + 22} textAnchor={i < 2 ? "end" : "start"} className="fig-label dim">{[s1, s2, s3, s4][i] ? "closed" : "open"}</text>
+              {!pwm && <rect x={x - 40} y={y - 8} width="80" height="42" className="hbr-sw" onClick={() => toggle(i)}><title>Click to open or close {n}</title></rect>}
             </g>
           );
         })}
@@ -185,11 +188,11 @@ function HBridge() {
             <text x="318" y="34" className="fig-label">pin high {pct(duty)}</text>
             <rect x="318" y="38" width="96" height="7" rx="2" className="fig-box" />
             <rect x="318" y="38" width={96 * duty} height="7" rx="2" fill="var(--hi)" />
-            <text x="318" y="56" className="fig-label dim">S1 + S4: forward</text>
+            <text x="318" y="56" className="fig-label dim">S1 + S4 closed: forward</text>
             <text x="318" y="78" className="fig-label">pin low {pct(1 - duty)}</text>
             <rect x="318" y="82" width="96" height="7" rx="2" className="fig-box" />
             <rect x="318" y="82" width={96 * (1 - duty)} height="7" rx="2" fill="var(--lo)" />
-            <text x="318" y="100" className="fig-label dim">S3 + S2: backward</text>
+            <text x="318" y="100" className="fig-label dim">S3 + S2 closed: backward</text>
             <text x="318" y="126" className="fig-label">average on the motor</text>
             <text x="318" y="140" className="fig-value">{net > 0 ? "+" : net < 0 ? "-" : ""}{pct(Math.abs(net))}</text>
             <text x="318" y="151" className="fig-label dim">of the battery voltage</text>
@@ -208,15 +211,22 @@ function HBridge() {
         </div>
       ) : (
         <>
-          <svg viewBox="0 0 420 116" role="img" aria-label={`Transfer line of setEPWM2A: control effort ${u} gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
+          <div className="fig-controls">
+            <div>
+              <span>Draw</span>
+              <button className="fig-opt" aria-pressed={high} onClick={() => setHigh(true)}>pin high, {pct(duty)} of the time</button>
+              <button className="fig-opt" aria-pressed={!high} onClick={() => setHigh(false)}>pin low, {pct(1 - duty)}</button>
+            </div>
+          </div>
+          <svg viewBox="0 0 420 116" role="img" aria-label={`Transfer line of setEPWM1A: control effort ${u} gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
             <rect x={X0} y={Y1} width={tx(-10) - X0} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
             <rect x={tx(10)} y={Y1} width={X1 - tx(10)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
             <text x={(X0 + tx(-10)) / 2} y={Y1 + 12} textAnchor="middle" className="fig-label dim">saturated</text>
             <text x={(X1 + tx(10)) / 2} y={Y0 - 6} textAnchor="middle" className="fig-label dim">saturated</text>
             {[0, 1250, 2500].map((c, i) => (
               <g key={c}>
-                <line x1={X0 - 3} x2={X1} y1={ty(c)} y2={ty(c)} stroke="var(--border)" />
-                <text x={X0 - 5} y={ty(c) + 3} textAnchor="end" className="fig-label">{c}</text>
+                <line x1={X0 - 6} x2={X1} y1={ty(c)} y2={ty(c)} stroke="var(--border)" />
+                <text x={X0 - 8} y={ty(c) + 3} textAnchor="end" className="fig-label">{c}</text>
                 <text x={X1 + 5} y={ty(c) + 3} className="fig-label dim">{["0 %: full backward", "50 %: stopped", "100 %: full forward"][i]}</text>
               </g>
             ))}
@@ -241,13 +251,13 @@ function HBridge() {
               <button className="fig-opt" onClick={() => setU(0)}>stop (0)</button>
             </div>
           </div>
-          <pre><code>{`setEPWM2A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// CMPA = (${us} + 10) * 2500 / 20.0 = ${cmpa}   (${pct(duty)})`}</code></pre>
+          <pre><code>{`setEPWM1A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// CMPA = (${us} + 10) * 2500 / 20.0 = ${cmpa}   (${pct(duty)})`}</code></pre>
         </>
       )}
       <figcaption>
         {pwm
-          ? "The robot's amplifier takes one PWM signal as its direction input and works the four switches itself. The duty cycle is a signed command centred on 50 %: a stopped motor is a pin switching at exactly half."
-          : "Click the switches (or the buttons) to connect the motor to the battery either way round. The two diagonals are the two directions; two closed switches in the same leg are the one state that must never happen."}
+          ? "The robot's amplifier takes one PWM signal as its direction input and works the four switches itself, one diagonal at a time. The duty cycle is a signed command centred on 50 %: a stopped motor is a pin switching at exactly half. The right motor is mounted mirrored, so the course calls setEPWM2A(-u)."
+          : "Four switches connect the motor to the battery either way round. The two diagonals are the two directions. Two closed switches in the same leg short the battery: the one state that must never happen."}
       </figcaption>
     </figure>
   );

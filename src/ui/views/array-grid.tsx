@@ -1,3 +1,4 @@
+import { memo, type ReactNode } from "react";
 import type { Board } from "../../sim/board";
 import type { CType } from "../../sim/cc/types";
 import type { BenchView, ViewProps } from "./types";
@@ -83,13 +84,21 @@ function gridsOf(board: Board): Grid[] {
 }
 
 const CELL = 20;
-/** Heat-map steps, dark to light; the value is also written in the cell when it fits. */
-const HEAT = ["#1d3a6b", "#2f5f9e", "#3f8fb5", "#6fb58f", "#c9b33e", "#fcb316"];
-const fmt = (v: number) => (Number.isInteger(v) ? String(v) : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(Math.abs(v) >= 10 ? 1 : 2));
+/**
+ * Heat-map steps from the smallest value (the panel background) to the
+ * largest (the theme's blue), as the share of blue in each step. The value
+ * is also written in the cell when it fits, so colour is never the only cue.
+ * Steps 0 to 3 carry text in the normal text colour, 4 and 5 in the
+ * background colour: both pairs keep their contrast in the light and the
+ * dark theme because they are built from the theme's own tokens.
+ */
+const HEAT = [0, 12, 24, 36, 85, 100];
+const heat = (k: number) => `color-mix(in srgb, var(--info) ${HEAT[k]}%, var(--inset))`;
+const fmt = (v: number) => (!Number.isFinite(v) ? (Number.isNaN(v) ? "NaN" : v > 0 ? "inf" : "-inf") : Math.abs(v) >= 1e6 ? v.toExponential(1) : Number.isInteger(v) ? String(v) : Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(Math.abs(v) >= 10 ? 1 : 2));
 const rectPath = (cells: number[], cols: number, inset = 0) =>
   cells.map((i) => `M${(i % cols) * CELL + inset},${Math.floor(i / cols) * CELL + inset}h${CELL - 2 * inset}v${CELL - 2 * inset}h${-(CELL - 2 * inset)}z`).join("");
 
-function Frame({ rows, cols, label, children }: { rows: number; cols: number; label: string; children: React.ReactNode }) {
+function Frame({ rows, cols, label, children }: { rows: number; cols: number; label: string; children: ReactNode }) {
   const w = cols * CELL;
   const h = rows * CELL;
   let lines = "";
@@ -105,16 +114,26 @@ function Frame({ rows, cols, label, children }: { rows: number; cols: number; la
   );
 }
 
-function OneGrid({ grid, data }: { grid: Grid; data: number[] }) {
+/** Same grid and the same numbers as last frame: nothing to draw again. */
+const sameData = (a: number[], b: number[]) => a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+
+const OneGrid = memo(function OneGrid({ grid, data }: { grid: Grid; data: number[] }) {
   const { rows, cols } = grid;
   const n = rows * cols;
   const vals = data.slice(0, n);
+  // Smallest and largest of the real numbers; NaN and infinity (a float
+  // array of a program with a bug) are drawn as marked cells of their own.
   let lo = Infinity;
   let hi = -Infinity;
-  for (const v of vals) {
-    if (v < lo) lo = v;
-    if (v > hi) hi = v;
-  }
+  const odd: number[] = [];
+  vals.forEach((v, i) => {
+    if (!Number.isFinite(v)) odd.push(i);
+    else {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  });
+  if (lo > hi) lo = hi = 0;
   const decl = `${grid.name}[${grid.flat ?? `${rows}][${cols}`}]`;
   const texts = (label: (v: number, i: number) => string | null, cls: (v: number) => string) =>
     n > 400
@@ -131,7 +150,7 @@ function OneGrid({ grid, data }: { grid: Grid; data: number[] }) {
   if (printable) {
     const walls = vals.flatMap((v, i) => (v === 120 || v === 88 || v === 35 ? [i] : []));
     return (
-      <figure className="agrid-item">
+      <figure className="agrid-item" style={itemStyle(cols)}>
         <figcaption><code>{decl}</code> <span>{rows} x {cols}, {walls.length} obstacle{walls.length === 1 ? "" : "s"}</span></figcaption>
         <Frame rows={rows} cols={cols} label={`${grid.name}: character map of ${rows} rows by ${cols} columns, ${walls.length} obstacle cells`}>
           <path d={rectPath(walls, cols)} className="agrid-wall" />
@@ -144,7 +163,7 @@ function OneGrid({ grid, data }: { grid: Grid; data: number[] }) {
   if (lo >= 0 && hi <= 1 && vals.every((v) => v === 0 || v === 1)) {
     const on = vals.flatMap((v, i) => (v === 1 ? [i] : []));
     return (
-      <figure className="agrid-item">
+      <figure className="agrid-item" style={itemStyle(cols)}>
         <figcaption><code>{decl}</code> <span>{rows} x {cols} mask, {on.length} set</span></figcaption>
         <Frame rows={rows} cols={cols} label={`${grid.name}: mask of ${rows} rows by ${cols} columns, ${on.length} cells are 1`}>
           <path d={rectPath(on, cols, 1)} className="agrid-on" />
@@ -156,33 +175,40 @@ function OneGrid({ grid, data }: { grid: Grid; data: number[] }) {
   const span = hi - lo || 1;
   const level = (v: number) => Math.min(HEAT.length - 1, Math.floor(((v - lo) / span) * HEAT.length));
   const groups: number[][] = HEAT.map(() => []);
-  vals.forEach((v, i) => groups[level(v)].push(i));
+  vals.forEach((v, i) => {
+    if (Number.isFinite(v)) groups[level(v)].push(i);
+  });
+  const oddNote = odd.length ? `, ${odd.length} cell${odd.length === 1 ? " is" : "s are"} not a number` : "";
   return (
-    <figure className="agrid-item">
-      <figcaption><code>{decl}</code> <span>{rows} x {cols}, {fmt(lo)} to {fmt(hi)}</span></figcaption>
-      <Frame rows={rows} cols={cols} label={`${grid.name}: ${rows} rows by ${cols} columns, values from ${fmt(lo)} to ${fmt(hi)}`}>
-        {groups.map((cells, k) => (cells.length ? <path key={k} d={rectPath(cells, cols)} style={{ fill: HEAT[k] }} /> : null))}
-        {texts((v) => fmt(v), (v) => (level(v) >= 3 ? "dark" : "light"))}
+    <figure className="agrid-item" style={itemStyle(cols)}>
+      <figcaption><code>{decl}</code> <span>{rows} x {cols}, {fmt(lo)} (faint) to {fmt(hi)} (strong){oddNote}</span></figcaption>
+      <Frame rows={rows} cols={cols} label={`${grid.name}: ${rows} rows by ${cols} columns, values from ${fmt(lo)} to ${fmt(hi)}${oddNote}`}>
+        {groups.map((cells, k) => (cells.length ? <path key={k} d={rectPath(cells, cols)} style={{ fill: heat(k) }} /> : null))}
+        {odd.length > 0 && <path d={rectPath(odd, cols, 1.5)} className="agrid-odd" />}
+        {texts((v) => fmt(v), (v) => (!Number.isFinite(v) ? "" : level(v) >= 4 ? "strong" : ""))}
       </Frame>
     </figure>
   );
-}
+}, (a, b) => a.grid === b.grid && sameData(a.data, b.data));
 
-function Picture({ rows, cols, r, g, b }: { rows: number; cols: number; r: number[]; g: number[]; b: number[] }) {
+/** Wide grids take a row of their own, so their cells stay large enough to read. */
+const itemStyle = (cols: number) => (cols > 8 ? { flexBasis: "100%", maxWidth: `${cols * 30}px` } : undefined);
+
+const Picture = memo(function Picture({ rows, cols, r, g, b }: { rows: number; cols: number; r: number[]; g: number[]; b: number[] }) {
   // Channels above 1 are taken as 0..255, otherwise as 0..1.
-  const top = Math.max(...r, ...g, ...b) > 1 ? 1 : 255;
-  const c = (v: number) => Math.max(0, Math.min(255, Math.round(v * top)));
+  const top = [r, g, b].some((ch) => ch.some((v) => v > 1)) ? 1 : 255;
+  const c = (v: number) => (Number.isFinite(v) ? Math.max(0, Math.min(255, Math.round(v * top))) : 0);
   return (
-    <figure className="agrid-item">
+    <figure className="agrid-item" style={itemStyle(cols)}>
       <figcaption><code>img_r, img_g, img_b</code> <span>{rows} x {cols} as one colour picture</span></figcaption>
-      <Frame rows={rows} cols={cols} label={`The colour image stored in img_r, img_g and img_b, ${rows} rows by ${cols} columns`}>
+      <Frame rows={rows} cols={cols} label={`The colour image stored in img_r, img_g and img_b, ${rows} rows by ${cols} columns; cell (row, column) is element row times ${cols} plus column`}>
         {Array.from({ length: rows * cols }, (_, i) => (
           <rect key={i} x={(i % cols) * CELL} y={Math.floor(i / cols) * CELL} width={CELL} height={CELL} style={{ fill: `rgb(${c(r[i])},${c(g[i])},${c(b[i])})` }} />
         ))}
       </Frame>
     </figure>
   );
-}
+}, (a, b) => a.rows === b.rows && a.cols === b.cols && sameData(a.r, b.r) && sameData(a.g, b.g) && sameData(a.b, b.b));
 
 function ArrayGrid({ board }: ViewProps) {
   const grids = gridsOf(board);
@@ -207,8 +233,8 @@ function ArrayGrid({ board }: ViewProps) {
         .agrid-wall { fill: var(--dim); }
         .agrid-num { font-family: var(--mono); font-size: 9.5px; fill: var(--text); }
         .agrid-num.on-wall { fill: var(--bg); font-weight: 700; }
-        .agrid-num.light { fill: #ffffff; }
-        .agrid-num.dark { fill: #10203a; font-weight: 700; }
+        .agrid-num.strong { fill: var(--bg); font-weight: 700; }
+        .agrid-odd { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1; stroke-dasharray: 3 2; }
         .agrid-more { flex-basis: 100%; }
       `}</style>
       {picture && <Picture rows={picture.rows} cols={picture.cols} r={read("img_r")} g={read("img_g")} b={read("img_b")} />}

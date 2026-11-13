@@ -64,21 +64,21 @@ function PingPong() {
   let code = "";
   if (t === 0) {
     title = "Before the first trigger";
-    text = "Both buffers are empty. InitDma() put ping's address in the shadow register. Every trigger from now on copies one sample; press the button to send one.";
+    text = "Both buffers are empty. InitDma() put ping's address in the shadow register. Every trigger from now on copies one sample. Press Next to send one.";
     code = "// in InitDma()\nDmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)ping;";
   } else if (isrNow) {
     title = `Trigger ${t}: a transfer starts, DMA_ISR runs`;
     const start = `The DMA takes the address waiting in the shadow register (${NAMES[dest]}) and stores sample ${t} in ${NAMES[dest]}[0]. Because a transfer has started, it interrupts the CPU. DMA_ISR writes ${NAMES[other]}'s address to the shadow register: that is for the transfer after this one, the running one is not disturbed. `;
     if (bug) {
       const old = last.values.slice(1).filter((x) => x !== null).length;
-      text = start + `Then the bug: it raises the flag of ${NAMES[dest]}, the buffer that has just been started. main reads ${NAMES[dest]} while the DMA is filling it: sample ${t} at the front, then ${old ? `samples ${span(last.values.slice(1))}, which are two buffers old` : "empty places"}. The numbers look plausible, which is what makes this hard to spot.`;
-      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n${NAMES[dest]}Ready = 1;      // BUG: ${NAMES[dest]} has only just been started`;
+      text = start + `Then the bug: it raises the flag of ${NAMES[dest]}, the buffer that has just been started. main reads ${NAMES[dest]} while the DMA is filling it: sample ${t} at the front, then ${old ? `samples ${span(last.values.slice(1))}, which are two buffers old` : "empty places"}. The numbers look reasonable, so this mistake is hard to notice.`;
+      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n// BUG: ${NAMES[dest]} has only just been started\n${NAMES[dest]}Ready = 1;`;
     } else if (j === 0) {
       text = start + "No buffer is complete yet, so no flag is raised this first time.";
-      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\nif (DMAcount > 0) { ${NAMES[other]}Ready = 1; }   // not the first time`;
+      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n// not the first time: ${NAMES[other]} is still empty\nif (DMAcount > 0) { ${NAMES[other]}Ready = 1; }`;
     } else {
       text = start + `Then it raises the flag of ${NAMES[other]}: that buffer was completed one sample ago (samples ${span(last.values)}) and the DMA will not touch it for the next ${SIZE} samples. main processes ${NAMES[other]}.`;
-      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n${NAMES[other]}Ready = 1;      // ${NAMES[other]} was completed one sample ago`;
+      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n// ${NAMES[other]} was completed one sample ago\n${NAMES[other]}Ready = 1;`;
     }
   } else {
     title = `Trigger ${t}: one sample copied`;
@@ -149,8 +149,8 @@ function PingPong() {
           <g key={k}>
             <rect x={tx(k * SIZE)} y="142" width={SIZE * TW - 1} height="14" rx="2" className={`fig-box ${k * SIZE < t ? "" : "off"}`} />
             <text x={tx(k * SIZE) + (SIZE * TW) / 2} y="152.5" textAnchor="middle" className="fig-label">{NAMES[k % 2]}</text>
-            <line x1={tx(k * SIZE) + TW} x2={tx(k * SIZE) + TW} y1="136" y2="158" stroke="var(--orange)" strokeWidth="1.2" opacity={k * SIZE < t ? 1 : 0.4} />
-            <text x={tx(k * SIZE) + TW + 2} y="139" className="fig-label" style={{ fill: "var(--orange)", opacity: k * SIZE < t ? 1 : 0.5 }}>DMA_ISR</text>
+            <line x1={tx(k * SIZE) + TW} x2={tx(k * SIZE) + TW} y1="136" y2="158" stroke={k * SIZE < t ? "var(--orange)" : "var(--dim)"} strokeWidth="1.2" strokeDasharray={k * SIZE < t ? undefined : "2 2"} />
+            <text x={tx(k * SIZE) + TW + 2} y="139" className={`fig-label ${k * SIZE < t ? "" : "dim"}`} style={k * SIZE < t ? { fill: "var(--orange)" } : undefined}>DMA_ISR</text>
           </g>
         ))}
         {reads.map((r, i) => {
@@ -171,9 +171,10 @@ function PingPong() {
         {code && <pre><code>{code}</code></pre>}
       </div>
       <div className="fig-controls row">
-        <button className="btn small" onClick={() => setT(Math.max(0, t - 1))} disabled={t === 0}>← Back</button>
-        <button className="btn small primary" onClick={() => setT(t >= T_MAX ? 0 : t + 1)}>{t >= T_MAX ? "Start again" : "Next sample →"}</button>
-        <button className="btn small" onClick={() => setT(nextSwap)} disabled={t >= T_MAX}>To the next swap ⇥</button>
+        <button className="btn small" onClick={() => setT(Math.max(0, t - 1))} disabled={t === 0}>Back</button>
+        <button className="btn small primary" onClick={() => setT(Math.min(T_MAX, t + 1))} disabled={t >= T_MAX} aria-label="Next sample">Next</button>
+        <button className="btn small" onClick={() => setT(nextSwap)} disabled={t >= T_MAX}>To the next swap</button>
+        <button className="btn small" onClick={() => setT(0)} disabled={t === 0}>Reset</button>
       </div>
       <div className="fig-controls">
         <div>
@@ -182,7 +183,7 @@ function PingPong() {
           <button className="fig-opt" aria-pressed={bug} onClick={() => setBug(true)}>the buffer just started (bug)</button>
         </div>
       </div>
-      <figcaption>Two buffers, 8 samples each here (1024 in the course project). Numbers are sample numbers; grey numbers are old samples waiting to be overwritten. The interrupt comes when a transfer starts, so the buffer to read is the one the DMA has just left, never the one it has just entered.</figcaption>
+      <figcaption>Two buffers, 8 samples each here (1024 in the course project). Numbers are sample numbers; grey numbers are old samples that will be overwritten. The interrupt comes when a transfer starts, so main must read the buffer the DMA has just finished, never the one it has just started.</figcaption>
     </figure>
   );
 }

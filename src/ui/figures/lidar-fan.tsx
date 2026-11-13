@@ -68,28 +68,6 @@ function LidarFan() {
         .lfan-robot { fill: var(--surface); stroke: var(--text); stroke-width: 1.4; }
         .lfan-nose { fill: var(--text); }
       `}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Point i</span>
-          <label className="lfan-slider">
-            <input type="range" min={0} max={LIDAR_POINTS - 1} step={1} value={i} onChange={(e) => setI(+e.target.value)} aria-label="Index of the point in the scan, 0 to 227" />
-            <output>i = {i}</output>
-          </label>
-        </div>
-        <div>
-          <span>Jump to</span>
-          <button className="fig-opt" aria-pressed={i === 0} onClick={() => setI(0)}>first (0)</button>
-          {MARKS.map((m) => (
-            <button key={m.i} className="fig-opt" aria-pressed={i === m.i} onClick={() => setI(m.i)}>{m.name} ({m.i})</button>
-          ))}
-          <button className="fig-opt" aria-pressed={i === LIDAR_POINTS - 1} onClick={() => setI(LIDAR_POINTS - 1)}>last ({LIDAR_POINTS - 1})</button>
-        </div>
-        <div>
-          <span>Rays</span>
-          <button className="fig-opt" aria-pressed={!room} onClick={() => setRoom(false)}>directions only</button>
-          <button className="fig-opt" aria-pressed={room} onClick={() => setRoom(true)}>in a room</button>
-        </div>
-      </div>
       <svg
         ref={svg}
         viewBox="0 0 420 250"
@@ -148,6 +126,28 @@ function LidarFan() {
         <text x="414" y="14" textAnchor="end" className="fig-label dim">seen from above</text>
         <text x="414" y="25" textAnchor="end" className="fig-label dim">− right, + left</text>
       </svg>
+      <div className="fig-controls">
+        <div>
+          <span>Point i</span>
+          <label className="lfan-slider">
+            <input type="range" min={0} max={LIDAR_POINTS - 1} step={1} value={i} onChange={(e) => setI(+e.target.value)} aria-label="Index of the point in the scan, 0 to 227" />
+            <output>i = {i}</output>
+          </label>
+        </div>
+        <div>
+          <span>Jump to</span>
+          <button className="fig-opt" aria-pressed={i === 0} onClick={() => setI(0)}>first 0</button>
+          {MARKS.map((m) => (
+            <button key={m.i} className="fig-opt" aria-pressed={i === m.i} onClick={() => setI(m.i)}>{m.name} {m.i}</button>
+          ))}
+          <button className="fig-opt" aria-pressed={i === LIDAR_POINTS - 1} onClick={() => setI(LIDAR_POINTS - 1)}>last {LIDAR_POINTS - 1}</button>
+        </div>
+        <div>
+          <span>Rays</span>
+          <button className="fig-opt" aria-pressed={!room} onClick={() => setRoom(false)}>directions only</button>
+          <button className="fig-opt" aria-pressed={room} onClick={() => setRoom(true)}>in a room</button>
+        </div>
+      </div>
       <div className="fig-step" role="status">
         <p>
           Point <strong>{i}</strong> is step 3 × {i} + 44 = <strong>{step}</strong> of the mirror. Step {FRONT_STEP} looks straight ahead, so this point looks {Math.abs(deg) < 0.6 ? "almost straight ahead: " : ""}<strong>{Math.abs(deg).toFixed(2)}°</strong> {deg < 0 ? "to the right (a negative angle)" : "to the left (a positive angle)"}.
@@ -156,7 +156,7 @@ function LidarFan() {
         </p>
         <pre><code>{`angle = (3*${i} + 44)*0.3515625 - 135;  // ${deg.toFixed(2)}`}</code></pre>
       </div>
-      <figcaption>One scan: 228 points, 1.05° apart, counted from the far right (i = 0) round to the far left (i = 227). Drag in the picture or use the slider to pick a point. Nothing is measured in the 120° behind the robot.</figcaption>
+      <figcaption>One scan seen from above: 228 points, 1.05° apart, counted from the far right (i = 0) round to the far left (i = 227). Nothing is measured in the 120° behind the robot. You can also drag in the picture to pick a point.</figcaption>
     </figure>
   );
 }

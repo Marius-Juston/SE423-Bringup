@@ -81,9 +81,9 @@ function HslPicker() {
   const hiIdx = grey ? -1 : c.branch;
   const loIdx = grey ? -1 : chan.indexOf(c.lo);
   const BRANCH = [
-    { when: "R largest", f: "H = 60 x (G - B) / d" },
-    { when: "G largest", f: "H = 60 x ((B - R) / d + 2)" },
-    { when: "B largest", f: "H = 60 x ((R - G) / d + 4)" },
+    { when: "R largest", f: "H = 60 × (G - B) / d" },
+    { when: "G largest", f: "H = 60 × ((B - R) / d + 2)" },
+    { when: "B largest", f: "H = 60 × ((R - G) / d + 4)" },
   ];
   const set = (i: number, v: number) => setBase(base.map((x, k) => (k === i ? v : x)) as [number, number, number]);
 
@@ -97,8 +97,8 @@ function HslPicker() {
   const status = grey
     ? `All three channels are equal, so d = 0: there is no colour. H and S are set to 0 by convention, and the function returns before it would divide by d.${shadow ? " The shadow only lowered L." : ""}`
     : shadow
-      ? `The shadow multiplied every channel by ${SHADOW}: R ${base[0]} to ${px[0]}, G ${base[1]} to ${px[1]}, B ${base[2]} to ${px[2]}. The lightness fell from ${f2(lit.l)} to ${f2(c.l)}. The hue ${lit.branch < 0 ? "stays undefined" : `went from ${f1(lit.h)} to ${f1(c.h)}`}: the differences between channels and d shrink by the same factor, so their ratio does not move${lit.branch >= 0 && f1(lit.h) !== f1(c.h) ? " (the small change comes from rounding the pixel to whole numbers)" : ""}.`
-      : `${names[c.branch]} is the largest channel, so the ${["first", "second", "third"][c.branch]} hue formula applies${c.raw < 0 ? `. It gives ${f1(c.raw)}, a negative angle: add 360 to get ${f1(c.h)}. Red sits on both sides of the 0 / 360 seam` : ""}. Press Shadow: R, G and B all change, the hue does not.`;
+      ? `The shadow multiplied every channel by ${SHADOW}: R ${base[0]} to ${px[0]}, G ${base[1]} to ${px[1]}, B ${base[2]} to ${px[2]}. The lightness fell from ${f2(lit.l)} to ${f2(c.l)}. The hue ${lit.branch < 0 ? "stays undefined" : f1(lit.h) === f1(c.h) ? `stays at ${f1(c.h)}` : `went from ${f1(lit.h)} to ${f1(c.h)}`}: the differences between channels and d shrink by the same factor, so their ratio does not move${lit.branch >= 0 && f1(lit.h) !== f1(c.h) ? " (the small change comes from rounding the pixel to whole numbers)" : ""}.`
+      : `${names[c.branch]} is the largest channel, so the ${["first", "second", "third"][c.branch]} hue formula applies${c.raw < 0 ? `. It gives ${f1(c.raw)}, a negative angle: add 360 to get ${f1(c.h)}. Red lies on both sides of the 0 / 360 seam, so a red mask needs "hue above 340 OR hue below 20"` : ""}. Press Shadow: R, G and B all change, the hue does not.`;
 
   const [mx, my] = polar(c.h, 40);
   const [m0x, m0y] = polar(c.h, 30);
@@ -116,26 +116,6 @@ function HslPicker() {
         .hslp-marker { stroke: var(--text); stroke-width: 2; fill: none; }
         .hslp-seam { stroke: var(--text); stroke-width: 1.2; stroke-dasharray: 2 2; }
       `}</style>
-      <div className="fig-controls">
-        {names.map((n, i) => (
-          <div key={n} className="hslp-row">
-            <span><label htmlFor={`hslp-${n}`} aria-label={`${n} in the light, 0 to 255`}>{n} (lit)</label></span>
-            <input id={`hslp-${n}`} type="range" min={0} max={255} value={base[i]} onChange={(e) => set(i, +e.target.value)} />
-            <output>{base[i]}</output>
-          </div>
-        ))}
-        <div>
-          <span>Pixel</span>
-          {PRESETS.map((p) => (
-            <button key={p.name} className="fig-opt" aria-pressed={p.rgb.every((v, i) => v === base[i])} onClick={() => setBase(p.rgb)}>{p.name}</button>
-          ))}
-        </div>
-        <div>
-          <span>Light</span>
-          <button className="fig-opt" aria-pressed={shadow} onClick={() => setShadow(!shadow)}>Shadow</button>
-          <code>rgb_to_hsl({px[0]}, {px[1]}, {px[2]}, &amp;h, &amp;s, &amp;l);</code>
-        </div>
-      </div>
       <svg viewBox="0 0 420 172" role="img" aria-label={`Pixel R ${px[0]}, G ${px[1]}, B ${px[2]}${shadow ? " in shadow" : ""}. Hue ${f1(c.h)} degrees, saturation ${f2(c.s)}, lightness ${f2(c.l)}. ${maskWhy}`}>
         {/* swatch */}
         <rect x="6" y="8" width="50" height="50" rx="4" className="hslp-swatch" style={{ fill: `rgb(${px[0]},${px[1]},${px[2]})` }} />
@@ -200,13 +180,34 @@ function HslPicker() {
             <text x={CX} y={CY - 2} textAnchor="middle" className="fig-value">H {f1(c.h)}</text>
           </>
         )}
-        <text x={CX} y="150" textAnchor="middle" className="fig-label dim">yellow arc: mask window,</text>
+        <text x={CX} y="150" textAnchor="middle" className="fig-label dim">outer arc: mask window,</text>
         <text x={CX} y="161" textAnchor="middle" className="fig-label dim">hue {H_MIN} to {H_MAX}{inMask ? ": pixel is in" : ": pixel is out"}</text>
       </svg>
+      <div className="fig-controls">
+        {names.map((n, i) => (
+          <div key={n} className="hslp-row">
+            <span><label htmlFor={`hslp-${n}`} aria-label={`${n} in the light, 0 to 255`}>{n} (lit)</label></span>
+            <input id={`hslp-${n}`} type="range" min={0} max={255} value={base[i]} onChange={(e) => set(i, +e.target.value)} />
+            <output>{base[i]}</output>
+          </div>
+        ))}
+        <div>
+          <span>Pixel</span>
+          {PRESETS.map((p) => (
+            <button key={p.name} className="fig-opt" aria-pressed={p.rgb.every((v, i) => v === base[i])} onClick={() => setBase(p.rgb)}>{p.name}</button>
+          ))}
+        </div>
+        <div>
+          <span>Light</span>
+          <button className="fig-opt" aria-pressed={!shadow} onClick={() => setShadow(false)}>Lit</button>
+          <button className="fig-opt" aria-pressed={shadow} onClick={() => setShadow(true)}>Shadow</button>
+          <code>rgb_to_hsl({px[0]}, {px[1]}, {px[2]}, &amp;h, &amp;s, &amp;l);</code>
+        </div>
+      </div>
       <div className="fig-why" role="status">
         {status} {maskWhy}
       </div>
-      <figcaption>Hue is an angle on a circle that closes at red. A shadow scales R, G and B together: lightness drops, hue stays, which is why the mask thresholds on hue (and asks for enough saturation, because pale and grey pixels have no reliable hue).</figcaption>
+      <figcaption>One pixel converted from RGB to hue, saturation and lightness. A shadow scales R, G and B together: the lightness drops and the hue stays, so the mask tests the hue. It also asks for enough saturation, because pale and grey pixels have no reliable hue.</figcaption>
     </figure>
   );
 }

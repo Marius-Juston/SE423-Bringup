@@ -126,7 +126,8 @@ function StateMachine() {
   const setHyst = (h: boolean) => setM(start(h));
   const noisyStep = () =>
     setM((p) => {
-      if (p.noisy < 0 || p.noisy >= NOISY.length) {
+      if (p.noisy >= NOISY.length) return p;
+      if (p.noisy < 0) {
         // Start the run of level sens-chatter: in FOLLOW, wall 2 ft to the right.
         const first: Model = { ...p, scans: [], n: 0, changes: 0, noisy: 1 };
         const e = evaluate(first, NOISY[0], 2, "FOLLOW");
@@ -155,9 +156,10 @@ function StateMachine() {
   // Top view of the robot: front is up, the wall on the right.
   const RX = 44;
   const RY = 262;
-  const FT = 11;
-  const wallY = RY - last.front * FT;
-  const wallX = RX + last.right * FT;
+  const FT = 9.5;
+  // Distances are drawn from the edge of the robot, so 0.5 ft is still a visible gap.
+  const wallY = RY - 7 - last.front * FT;
+  const wallX = RX + 7 + last.right * FT;
   const wallLost = last.right > WALL_LOST;
 
   // Strip chart of the front reading.
@@ -185,6 +187,7 @@ function StateMachine() {
         .fsm-fig .fsm-cell.turn { fill: var(--accent-soft); stroke: var(--orange); stroke-width: 1.6; }
         .fsm-fig .fsm-nose { fill: var(--inset); }
         .fsm-fig .fsm-hot { fill: var(--orange); }
+        .fsm-fig .fsm-note { color: var(--dim); font-size: 0.82rem; }
       `}</style>
       <svg viewBox="0 0 420 292" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} times.`}>
         <defs>
@@ -217,8 +220,8 @@ function StateMachine() {
 
         {/* the robot seen from above */}
         <text x="4" y="182" className="fig-label dim">SEEN FROM ABOVE (feet)</text>
-        <line x1={RX - 30} x2={RX + 76} y1={wallY} y2={wallY} className="fsm-wall" />
-        <line x1={wallX} x2={wallX} y1={RY - 60} y2={RY + 5} className={`fsm-wall ${wallLost ? "lost" : ""}`} />
+        <line x1={RX - 30} x2={wallLost ? RX + 76 : wallX} y1={wallY} y2={wallY} className="fsm-wall" />
+        <line x1={wallX} x2={wallX} y1={wallY} y2={RY + 8} className={`fsm-wall ${wallLost ? "lost" : ""}`} />
         <line x1={RX} x2={RX} y1={RY - 7} y2={wallY + 3} className="fig-sample" />
         <line x1={RX + 7} x2={wallX - 3} y1={RY} y2={RY} className="fig-sample" />
         <circle cx={RX} cy={RY} r="6" className="fsm-robot" />
@@ -275,14 +278,16 @@ function StateMachine() {
         </p>
         <pre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(" { ", " {\n        ").replace(" }", "\n    }")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></pre>
       </div>
-      <div className="fig-controls row">
-        <button className="btn small primary" onClick={noisyStep}>
-          {!playing ? "Noisy wall: first scan" : noisyDone ? "Noisy wall: start again" : `Noisy wall: next scan (${m.noisy + 1} of ${NOISY.length})`}
-        </button>
-        <button className="btn small" onClick={() => setM(start(m.hyst))}>Reset</button>
+      <div className="fig-controls">
+        <div>
+          <span>Noisy wall</span>
+          <button className="btn small primary" onClick={noisyStep} disabled={noisyDone} aria-label="Next scan of the noisy wall">Next</button>
+          <button className="btn small" onClick={() => setM(start(m.hyst))} disabled={m.n === 1 && !playing}>Reset</button>
+          <span className="fsm-note">{playing ? `scan ${m.noisy} of ${NOISY.length}` : `${NOISY.length} scans`}: front {NOISY.join(", ")} ft, starting in FOLLOW</span>
+        </div>
       </div>
       <figcaption>
-        Every move of a slider is one scan, and one scan makes at most one transition. The noisy wall replays readings that hover around 1.5 ft (4, 1.47, 1.53, 1.46, 1.52, 1.48, then 3.5 once the turn is done), starting in FOLLOW: step through it with one threshold, then with two.
+        Each scan (each slider move, or Next) makes at most one transition. With one threshold, a front reading that moves around 1.5 ft changes the state on every scan. A second, higher threshold for leaving the turn stops that.
       </figcaption>
     </figure>
   );

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-// EALLOW protection (TRM section 3.6.1 and the "EALLOW-protected" notes in
+// EALLOW protection (TRM section 3.6.1.2, Table 3-5, and the "EALLOW-protected" notes in
 // the register tables): a write to a protected register only lands between
 // EALLOW; and EDIS;. Anywhere else it is ignored without any error.
 // Protected here: GpioCtrlRegs (pin configuration), PieVectTable (interrupt
@@ -18,7 +18,7 @@ const TARGETS: Target[] = [
 interface Line { text: string; note: string; ok: boolean | null }
 
 const CSS = `
-.el-prog { margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-family: var(--mono); font-size: 0.8rem; list-style: none; min-height: 4.6em; }
+.el-prog { margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-family: var(--mono); font-size: 0.8rem; list-style: none; min-height: 4.6em; }
 .el-prog li { display: flex; flex-wrap: wrap; gap: 0 0.8em; }
 .el-prog .ok { color: var(--ok); }
 .el-prog .bad { color: var(--bad); font-weight: 700; }
@@ -26,6 +26,9 @@ const CSS = `
 .el-run { font-family: var(--mono); background: var(--surface); border: 1px solid var(--dim); border-radius: 6px; padding: 0.2em 0.7em; font-size: 0.82rem; }
 .el-gate { fill: var(--surface); stroke: var(--dim); stroke-width: 1.4; }
 .el-shackle { fill: none; stroke-width: 3; stroke-linecap: round; }
+.el-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.2rem 1rem; margin: 0.3rem 0 0.5rem; font-size: 0.8rem; color: var(--dim); }
+.el-list div { margin: 0; }
+.el-list b { display: block; color: var(--text); }
 `;
 
 function EallowLock() {
@@ -69,7 +72,7 @@ function EallowLock() {
           ? `Written. EALLOW; had opened the lock, so the write went through. Run EDIS; next: a lock left open would let a stray write through later.`
           : `Written. ${t.reg} is not protected: its writes always land, whether the lock is open or closed.`
         : t.protect
-          ? `${t.reg} (${t.what}) is protected. The lock is ${open ? "open: a write will land now" : "closed: a write now would be ignored. Run EALLOW; first"}.`
+          ? `${t.reg} (${t.what}) is protected. The lock is ${open ? "open: a write will land now" : "closed: a write now would be ignored. Run EALLOW; first"}. Run the three lines below in any order.`
           : `${t.reg} (${t.what}) is not protected: the lock does not apply to it. Registers you write all the time while the program runs are left unprotected.`;
   // padlock: body at (LX, 58); the shackle lifts when open
   const LX = 186;
@@ -84,7 +87,7 @@ function EallowLock() {
           ))}
         </div>
       </div>
-      <svg viewBox="0 0 400 150" role="img" aria-label={`The lock is ${open ? "open" : "closed"}. ${t.reg} is ${t.protect ? "protected" : "not protected"} and holds ${done ? t.after : t.before}.${last === "ignored" ? " The last write was ignored." : last === "landed" ? " The last write landed." : ""}`}>
+      <svg viewBox="0 0 400 104" role="img" aria-label={`The lock is ${open ? "open" : "closed"}. ${t.reg} is ${t.protect ? "protected" : "not protected"} and holds ${done ? t.after : t.before}.${last === "ignored" ? " The last write was ignored." : last === "landed" ? " The last write landed." : ""}`}>
         {/* CPU */}
         <rect x="8" y="38" width="96" height="52" rx="5" className="fig-box" />
         <text x="56" y="54" textAnchor="middle" className="fig-label">your program</text>
@@ -102,15 +105,15 @@ function EallowLock() {
         {/* lock, drawn only for protected registers */}
         {t.protect ? (
           <g>
-            <path d={open ? `M${LX - 8},50 V38 a8,8 0 0 1 16,0 V41` : `M${LX - 8},52 V44 a8,8 0 0 1 16,0 V52`} className="el-shackle" style={{ stroke: open ? "var(--ok)" : "var(--orange)" }} />
-            <rect x={LX - 13} y="51" width="26" height="24" rx="4" className="el-gate" style={{ stroke: open ? "var(--ok)" : "var(--orange)" }} />
+            <path d={open ? `M${LX - 8},50 V38 a8,8 0 0 1 16,0 V41` : `M${LX - 8},52 V44 a8,8 0 0 1 16,0 V52`} className="el-shackle" style={{ stroke: open ? "var(--ok)" : "var(--text)" }} />
+            <rect x={LX - 13} y="51" width="26" height="24" rx="4" className="el-gate" style={{ stroke: open ? "var(--ok)" : "var(--text)" }} />
             <circle cx={LX} cy="61" r="2.6" className="fig-dot" />
             <line x1={LX} y1="61" x2={LX} y2="68" className="fig-wire thick" />
-            <text x={LX} y="24" textAnchor="middle" className="fig-value" style={{ fill: open ? "var(--ok)" : "var(--orange)" }}>{open ? "OPEN" : "LOCKED"}</text>
+            <text x={LX} y="24" textAnchor="middle" className="fig-value" style={{ fill: open ? "var(--ok)" : "var(--text)" }}>{open ? "OPEN" : "LOCKED"}</text>
             <text x={LX} y="93" textAnchor="middle" className="fig-label dim">{open ? "after EALLOW;" : "after EDIS; or reset"}</text>
           </g>
         ) : (
-          <text x={LX} y="52" textAnchor="middle" className="fig-label dim">no lock on this register</text>
+          <text x="197" y="81" textAnchor="middle" className="fig-label dim">no lock on this register</text>
         )}
         {/* register */}
         <rect x="290" y="30" width="104" height="68" rx="5" className={`fig-box ${last === "landed" ? "hot" : "active"}`} />
@@ -120,22 +123,18 @@ function EallowLock() {
         {(done ? t.after : t.before).split(" (").map((part, i) => (
           <text key={i} x="342" y={81 + i * 11} textAnchor="middle" className="fig-value small">{i ? `(${part}` : part}</text>
         ))}
-        {/* which registers */}
-        <text x="8" y="114" className="fig-label">Protected (need EALLOW):</text>
-        <text x="8" y="126" className="fig-label dim">GpioCtrlRegs: pin mux, direction, pull-ups</text>
-        <text x="8" y="137" className="fig-label dim">PieVectTable: interrupt vectors</text>
-        <text x="8" y="148" className="fig-label dim">ClkCfgRegs, CpuSysRegs, WdRegs: clocks, watchdog</text>
-        <text x="236" y="114" className="fig-label">Not protected:</text>
-        <text x="236" y="126" className="fig-label dim">GpioDataRegs: pin levels</text>
-        <text x="236" y="137" className="fig-label dim">CpuTimer0Regs: timer settings</text>
       </svg>
+      <div className="el-list">
+        <div><b>Protected (need EALLOW)</b>GpioCtrlRegs (pin mux, direction, pull-ups), PieVectTable (interrupt vectors), ClkCfgRegs and CpuSysRegs (clocks), WdRegs (watchdog)</div>
+        <div><b>Not protected</b>GpioDataRegs (pin levels), CpuTimer0Regs (timer settings), PieCtrlRegs (interrupt enables)</div>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Run a line</span>
           <button className="el-run" onClick={eallow}>EALLOW;</button>
-          <button className="el-run" aria-label="write the register" onClick={write}>{t.stmt}</button>
+          <button className="el-run" onClick={write}>{t.stmt}</button>
           <button className="el-run" onClick={edis}>EDIS;</button>
-          <button className="fig-opt" onClick={reset}>start over</button>
+          <button className="fig-opt" aria-disabled={lines.length === 0 && !open} onClick={reset}>Reset</button>
         </div>
       </div>
       <ol className="el-prog" aria-label="The lines you have run">
@@ -148,7 +147,7 @@ function EallowLock() {
         ))}
       </ol>
       <p className="fig-why" role="status">{why}</p>
-      <figcaption>Run the three lines in any order. A protected register only takes a write while the lock is open, and a write that hits the closed lock disappears silently: on the real chip the only sign is that the hardware does not do what the code says.</figcaption>
+      <figcaption>A protected register only takes a write between EALLOW; and EDIS;. A write that meets the closed lock is dropped without any error: on the real chip the only sign is that the hardware does not do what the code says.</figcaption>
     </figure>
   );
 }

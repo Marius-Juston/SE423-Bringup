@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 //   blob = 4-connected group of mask pixels; blobs under MIN_AREA are noise
 //   M00 = number of pixels, M10 = sum of columns, M01 = sum of rows
 //   cx = M10 / M00, cy = M01 / M00
-//   turn = KP_TURN * (CENTRE_COL - cx);   KP_TURN 0.5, CENTRE_COL 6.0
+//   turn = KP_TURN * (cx - CENTRE_COL);   KP_TURN 0.5, CENTRE_COL 6.0
+//   positive = turn right, as the course's PIcontrol takes it (target right of centre)
 // The starting mask is the one of the level "Blobs and the area filter".
 
 const ROWS = 8;
@@ -88,7 +89,7 @@ function BlobCentroid() {
   const used = filter ? best : all.m00 > 0 ? all : null;
   const cx = used ? used.m10 / used.m00 : 0;
   const cy = used ? used.m01 / used.m00 : 0;
-  const turn = used ? KP_TURN * (CENTRE_COL - cx) : 0;
+  const turn = used ? KP_TURN * (cx - CENTRE_COL) : 0;
   const noise = blobs.filter((b) => b.m00 < minArea);
   const noisePixels = noise.reduce((n, b) => n + b.m00, 0);
 
@@ -133,14 +134,14 @@ function BlobCentroid() {
   const y = (row: number) => OY + (row + 0.5) * S;
   const gridW = COLS * S;
   const gridH = ROWS * S;
-  const dir = turn < -0.005 ? "turn right" : turn > 0.005 ? "turn left" : "straight on";
+  const dir = turn > 0.005 ? "turn right" : turn < -0.005 ? "turn left" : "straight on";
   const status = !used
     ? filter && all.m00 > 0
-      ? `No blob has ${minArea} pixels or more, so there is no target: M00 is 0. The code must not divide by it, and turn stays 0.`
+      ? `No blob has ${minArea} pixels or more, so there is no target. M00 is 0: the code must not divide by it, and turn stays 0.`
       : "The mask is empty: M00 is 0. The code must not divide by it, and turn stays 0. Paint some pixels."
     : filter
       ? `${blobs.length} blob${blobs.length === 1 ? "" : "s"} in the mask. ${noise.length ? `${noise.length} of them (${noisePixels} pixel${noisePixels === 1 ? "" : "s"}) ${noise.length === 1 ? "is" : "are"} smaller than MIN_AREA = ${minArea} and ${noise.length === 1 ? "is" : "are"} thrown away as noise. ` : ""}The largest blob has ${used.m00} pixels; its centroid is at column ${f2(cx)}, row ${f2(cy)}, ${Math.abs(CENTRE_COL - cx) < 0.005 ? "exactly at the image centre" : `${f2(Math.abs(CENTRE_COL - cx))} columns ${cx > CENTRE_COL ? "right" : "left"} of the image centre`}: ${dir}.`
-      : `Area filter off: all ${all.m00} mask pixels are summed as if they were one object. ${best ? `The centroid lands at column ${f2(cx)}, row ${f2(cy)}; the largest blob alone is at column ${f2(best.m10 / best.m00)}, row ${f2(best.m01 / best.m00)} (pale ring). Every stray pixel pulls the result towards itself.` : ""}`;
+      : `Area filter off: all ${all.m00} mask pixels are summed as if they were one object. ${best ? `The centroid lands at column ${f2(cx)}, row ${f2(cy)}; the largest blob alone is at column ${f2(best.m10 / best.m00)}, row ${f2(best.m01 / best.m00)} (ring). Every stray pixel pulls the centroid towards itself.` : ""}`;
 
   return (
     <figure className="figure" aria-label="Paintable pixel mask with blobs, moments, centroid and steering command">
@@ -163,24 +164,10 @@ function BlobCentroid() {
         .blobc-steerhead { fill: var(--harvest); }
         .blobc-row input[type=range] { accent-color: var(--orange); flex: 1 1 6rem; min-width: 5rem; padding: 0; }
       `}</style>
-      <div className="fig-controls">
-        <div className="blobc-row">
-          <span><label htmlFor="blobc-min">MIN_AREA</label></span>
-          <input id="blobc-min" type="range" min={1} max={12} value={minArea} disabled={!filter} onChange={(e) => setMinArea(+e.target.value)} />
-          <code>#define MIN_AREA {minArea}</code>
-        </div>
-        <div>
-          <span>Area filter</span>
-          <button className="fig-opt" aria-pressed={filter} onClick={() => setFilter(true)}>Filter on</button>
-          <button className="fig-opt" aria-pressed={!filter} onClick={() => setFilter(false)}>Filter off</button>
-          <button className="btn small" onClick={() => setMask(new Array(ROWS * COLS).fill(false))}>Clear</button>
-          <button className="btn small" onClick={() => setMask(startMask())}>Example</button>
-        </div>
-      </div>
       <svg
         ref={svg}
         className="blobc-grid"
-        viewBox="0 0 420 232"
+        viewBox="0 0 420 238"
         role="application"
         tabIndex={0}
         aria-label={`Mask of ${ROWS} rows by ${COLS} columns, ${all.m00} pixels set in ${blobs.length} blobs. ${used ? `Centroid at column ${f2(cx)}, row ${f2(cy)}, turn ${f2(turn)}, ${dir}.` : "No target."} Arrow keys move the cursor (now row ${Math.floor(cursor / COLS)}, column ${cursor % COLS}, ${mask[cursor] ? "set" : "clear"}), space toggles the pixel.`}
@@ -235,7 +222,7 @@ function BlobCentroid() {
           </>
         )}
         <text x={x(CENTRE_COL) + (cx > CENTRE_COL ? -4 : 4)} y={OY + gridH + 11} textAnchor={cx > CENTRE_COL ? "end" : "start"} className="fig-label dim">image centre, column {CENTRE_COL.toFixed(1)}</text>
-        {used && <text x={x(cx) + (cx > CENTRE_COL ? 4 : -4)} y={OY + gridH + 28} textAnchor={cx > CENTRE_COL ? "start" : "end"} className="fig-label">{dir}</text>}
+        {used && <text x={Math.max(OX + 20, Math.min(OX + gridW - 20, (x(cx) + x(CENTRE_COL)) / 2))} y={OY + gridH + 28} textAnchor="middle" className="fig-label">{dir}</text>}
         {/* numbers */}
         <text x="310" y="26" className="fig-label dim">{filter ? "LARGEST BLOB" : "ALL MASK PIXELS"}</text>
         <text x="310" y="44" className="fig-label">M00 (pixels)</text>
@@ -248,15 +235,32 @@ function BlobCentroid() {
         <text x="414" y="134" textAnchor="end" className="fig-value">{used ? f2(cx) : "none"}</text>
         <text x="310" y="150" className="fig-label">cy = M01 / M00</text>
         <text x="414" y="162" textAnchor="end" className="fig-value">{used ? f2(cy) : "none"}</text>
-        <text x="310" y="184" className="fig-label">turn</text>
+        <text x="310" y="184" className="fig-label">turn command</text>
         <text x="414" y="184" textAnchor="end" className="fig-value">{f2(turn)}</text>
-        <text x="414" y="197" textAnchor="end" className="fig-label dim">{used ? (turn < -0.005 ? "negative: right" : turn > 0.005 ? "positive: left" : "zero: straight") : "no target"}</text>
+        <text x="414" y="197" textAnchor="end" className="fig-label dim">{used ? (turn > 0.005 ? "positive: right" : turn < -0.005 ? "negative: left" : "zero: straight") : "no target"}</text>
       </svg>
+      <div className="fig-controls">
+        <div className="blobc-row">
+          <span><label htmlFor="blobc-min">MIN_AREA</label></span>
+          <input id="blobc-min" type="range" min={1} max={12} value={minArea} disabled={!filter} onChange={(e) => setMinArea(+e.target.value)} />
+          <code>#define MIN_AREA {minArea}</code>
+        </div>
+        <div>
+          <span>Area filter</span>
+          <button className="fig-opt" aria-pressed={filter} onClick={() => setFilter(true)}>on</button>
+          <button className="fig-opt" aria-pressed={!filter} onClick={() => setFilter(false)}>off</button>
+        </div>
+        <div>
+          <span>Mask</span>
+          <button className="btn small" onClick={() => setMask(new Array(ROWS * COLS).fill(false))}>Clear</button>
+          <button className="btn small" onClick={() => { setMask(startMask()); setMinArea(4); setFilter(true); }}>Reset</button>
+        </div>
+      </div>
       <div className="fig-step" role="status">
         <p>{status}</p>
-        <pre><code>{used ? `cx = ${used.m10} / ${used.m00}.0;   // ${f2(cx)}\n// ${KP_TURN} * (${CENTRE_COL.toFixed(1)} - ${f2(cx)}) = ${f2(turn)}\nturn = KP_TURN * (CENTRE_COL - cx);` : "if (m00 > 0) { cx = m10 / m00; ... } else { turn = 0; }"}</code></pre>
+        <pre><code>{used ? `cx = ${used.m10} / ${used.m00}.0;   // ${f2(cx)}\n// ${KP_TURN} * (${f2(cx)} - ${CENTRE_COL.toFixed(1)}) = ${f2(turn)}\nturn = KP_TURN * (cx - CENTRE_COL);` : "if (m00 > 0) { cx = m10 / m00; ... } else { turn = 0; }"}</code></pre>
       </div>
-      <figcaption>Click or drag on the grid to paint pixels (keyboard: arrow keys and space). Numbers in the grid are blob areas; dashed pixels are blobs below MIN_AREA. Pixels that touch only at a corner are separate blobs. The cross-hair is the centroid, the arrow the steering command.</figcaption>
+      <figcaption>A mask you can paint: click or drag on the grid, or use the arrow keys and space. The number in a blob is its area, and dashed pixels belong to blobs below MIN_AREA; pixels that touch only at a corner are separate blobs. The cross-hair is the centroid of the largest blob, and the arrow shows which way the robot turns to face it.</figcaption>
     </figure>
   );
 }

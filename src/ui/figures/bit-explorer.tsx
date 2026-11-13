@@ -15,7 +15,8 @@ const CSS = `
 .bx-num { text-align: center; font-family: var(--mono); font-size: 0.7rem; color: var(--dim); }
 .bx-w { justify-self: center; writing-mode: vertical-rl; font-family: var(--mono); font-size: 0.7rem; line-height: 1; color: var(--dim); height: 3.2rem; }
 .bx-w.on { color: var(--harvest); font-weight: 700; }
-.bx-w.neg { color: var(--orange); font-weight: 700; }
+.bx-w.neg { color: var(--text); font-weight: 700; }
+.bx-w.neg.on { color: var(--harvest); }
 .bx-out { display: grid; grid-template-columns: auto 1fr; gap: 0.1rem 0.7rem; margin: 0.6rem 0 0; font-size: 0.88rem; }
 .bx-out dt { color: var(--dim); }
 .bx-out dd { margin: 0; font-family: var(--mono); font-weight: 700; color: var(--harvest); overflow-wrap: anywhere; }
@@ -75,7 +76,7 @@ function BitExplorer() {
         ))}
         <span className="bx-row">weight</span>
         {BITS.map((n) => (
-          <span key={n} className={`bx-w ${n % 4 === 3 && n !== 15 ? "bx-nib" : ""} ${weight(n) < 0 ? "neg" : bit(n) ? "on" : ""}`}>{weight(n)}</span>
+          <span key={n} className={`bx-w ${n % 4 === 3 && n !== 15 ? "bx-nib" : ""} ${weight(n) < 0 ? "neg" : ""} ${bit(n) ? "on" : ""}`}>{weight(n)}</span>
         ))}
       </div>
       <dl className="bx-out">
@@ -98,7 +99,7 @@ function BitExplorer() {
           <button className="fig-opt" onClick={() => setV(0)}>all 0</button>
         </div>
       </div>
-      <figcaption>Click a bit to flip it. One hex digit is always four bits, so a 16-bit word is four hex digits. To negate a number in two's complement, flip every bit and add 1: load 5, press both buttons and read -5 (0xFFFB).</figcaption>
+      <figcaption>One 16-bit word, the size of an int on this chip. Click a bit to flip it. One hex digit is always four bits, so the word is four hex digits. To negate a number in two's complement, flip every bit and add 1: load 5, press both buttons and read -5 (0xFFFB).</figcaption>
     </figure>
   );
 }

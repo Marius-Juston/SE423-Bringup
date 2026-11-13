@@ -2,13 +2,13 @@
 // 15.4.3: up count TPWM = (TBPRD + 1) x TTBCLK, up-down TPWM = 2 x TBPRD x
 // TTBCLK), counter compare 15.5, action qualifier 15.6 (AQCTLA actions
 // 0 nothing, 1 clear, 2 set, 3 toggle; event priorities Tables 15-4 and
-// 15-6). TBCLK is 50 MHz here: EPWMCLK 100 MHz, HSPCLKDIV /2 (reset),
+// 15-6; a compare value above the period, Table 15-7). TBCLK is 50 MHz here: EPWMCLK 100 MHz, HSPCLKDIV /2 (reset),
 // CLKDIV /1. The waveform is computed the way src/sim/plugins/epwm.ts does.
 import { useRef, useState } from "react";
 import type { PointerEvent as RPointerEvent } from "react";
 
 const TICK_NS = 20;
-/** Ticks drawn: 200 us. */
+/** Ticks drawn: 200 µs. */
 const TW = 10000;
 const CMAX = 5000;
 const PMIN = 500;
@@ -36,7 +36,10 @@ function cyclePoints(upDown: boolean, prd: number, cmpa: number, zro: number, ca
   const at = new Map<number, string[]>();
   const add = (ev: string, p: number) => at.set(p, [...(at.get(p) ?? []), ev]);
   add("ZRO", 0);
-  if (!upDown) add("CAU", cmpa);
+  // Table 15-7: in up count a compare value above the period never matches.
+  if (!upDown) {
+    if (cmpa <= prd) add("CAU", cmpa);
+  }
   else {
     add("CAU", cmpa < prd ? cmpa : prd);
     add("CAD", cmpa >= prd ? prd : cmpa === 0 ? 0 : 2 * prd - cmpa);
@@ -64,9 +67,8 @@ function PwmWaveform() {
   const setPrd = (v: number) => {
     const p = Math.max(PMIN, Math.min(CMAX, Math.round(v / 50) * 50));
     setPrdRaw(p);
-    if (cmpa > p) setCmpaRaw(p);
   };
-  const setCmpa = (v: number) => setCmpaRaw(Math.max(0, Math.min(prd, Math.round(v / 25) * 25)));
+  const setCmpa = (v: number) => setCmpaRaw(Math.max(0, Math.min(CMAX, Math.round(v / 25) * 25)));
   const setMode = (ud: boolean) => {
     setUpDown(ud);
     // The usual actions of each mode: a pulse from zero in up count, a centred pulse in up-down.
@@ -170,7 +172,21 @@ function PwmWaveform() {
   const swapped = !upDown && zro === 1 && cau === 2;
   const centred = upDown && cau === 2 && cad === 1 && zro === 0;
   let why: string;
-  if (!moving) why = `The pin stays ${level ? "high" : "low"}. ${zro || cau || (upDown && cad) ? (cmpa === 0 && !upDown && cau ? "With CMPA = 0 both events fall on the same count, and the compare event has priority over the zero event." : "Nothing ever moves it the other way: one event must set the pin and another must clear it.") : "No event has an action, so the counter runs and the pin never moves. This is the state after reset."}`;
+  const anyAction = zro || cau || (upDown && cad);
+  if (!moving) {
+    const reason = !anyAction
+      ? "No event has an action, so the counter runs and the pin never moves. This is the state after reset."
+      : !upDown && cau && cmpa > prd
+        ? `CMPA = ${cmpa} is above TBPRD = ${prd}: the counter turns back before it gets there, so the compare event never happens. Only the zero event acts on the pin.${zro === 2 && cau === 1 ? " That is a duty cycle of 100 %." : ""}`
+        : !upDown && cau && cmpa === 0
+          ? "With CMPA = 0 both events fall on the same count, and the compare event has priority over the zero event."
+          : upDown && (cau || cad) && cmpa >= prd
+            ? "CMPA is at or above TBPRD, so both compare events fall on the peak of the triangle. There the event on the way down has priority, and the one on the way up is ignored."
+            : upDown && (cau || cad) && cmpa === 0
+              ? "With CMPA = 0 both compare events fall on the zero count. There the event on the way up has priority, and the one on the way down is ignored."
+              : "Nothing ever moves it the other way: one event must set the pin and another must clear it.";
+    why = `The pin stays ${level ? "high" : "low"}. ${reason}`;
+  }
   else if (standard) why = `The pin goes high when the counter is 0 and low when it reaches CMPA = ${cmpa}. It is high for ${cmpa} of the ${len} counts in a period: ${pct} %. A bigger CMPA is a wider pulse; TBPRD only sets how often the pulses come.`;
   else if (swapped) why = `Swapped actions, upside-down waveform: the pin is low from zero to CMPA and high for the rest of the period, ${pct} % instead of ${((cmpa / len) * 100).toFixed(2).replace(/\.?0+$/, "")} %. Raising CMPA now makes the LED dimmer.`;
   else if (centred) why = `The pin goes high at CMPA on the way up and low at CMPA on the way down, so the pulse sits around the peak of the triangle, centred in the period. A smaller CMPA is a wider pulse: ${pct} % here. One period is 2 x TBPRD = ${len} counts.`;
@@ -202,7 +218,7 @@ function PwmWaveform() {
         <text x={X1 - 2} y={y(prd) - 4} textAnchor="end" className="fig-value small pwmw-halo" style={{ fill: "var(--info)" }}>TBPRD = {prd}</text>
         {/* CMPA */}
         <line x1={X0} x2={X1} y1={y(cmpa)} y2={y(cmpa)} stroke="var(--value)" strokeWidth="1.4" strokeDasharray="6 3" />
-        <text x={X0 + 12} y={y(cmpa) - 4} className="fig-value small pwmw-halo">CMPA = {cmpa}</text>
+        <text x={X0 + 12} y={y(cmpa) > Y0 - 14 ? y(cmpa) + 11 : y(cmpa) - 4} className="fig-value small pwmw-halo">CMPA = {cmpa}</text>
         {marks.map((m, i) => (
           <circle key={i} cx={x(m.t)} cy={y(m.c)} r={m.ev ? 2.6 : 1.6} fill={m.ev ? "var(--accent)" : "var(--dim)"} />
         ))}
@@ -216,11 +232,11 @@ function PwmWaveform() {
         <path d={fill} fill="var(--accent-soft)" />
         <path d={pin} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         {[0, 50, 100, 150, 200].map((us) => (
-          <text key={us} x={x(us * 50)} y="190" textAnchor={us === 0 ? "start" : us === 200 ? "end" : "middle"} className="fig-label dim">{us === 0 ? "0" : `${us} us`}</text>
+          <text key={us} x={x(us * 50)} y="190" textAnchor={us === 0 ? "start" : us === 200 ? "end" : "middle"} className="fig-label dim">{us === 0 ? "0" : `${us} µs`}</text>
         ))}
       </svg>
       <div className="pwmw-read">
-        <div>Period<b>{periodUs.toFixed(2)} us</b>{upDown ? `2 x ${prd}` : `(${prd} + 1)`} x 20 ns</div>
+        <div>Period<b>{periodUs.toFixed(2)} µs</b>{upDown ? `2 x ${prd}` : `(${prd} + 1)`} x 20 ns</div>
         <div>{halved ? "Pin frequency" : "Frequency"}<b>{group(halved ? freq / 2 : freq)} Hz</b>{halved ? "half the counter's" : "1 / period"}</div>
         <div>Duty cycle<b>{moving ? `${pct} %` : level ? "100 %" : "0 %"}</b>{moving ? `average ${(duty * 3.3).toFixed(2)} V` : "the pin does not switch"}</div>
       </div>
@@ -239,7 +255,7 @@ function PwmWaveform() {
         </div>
         <div>
           <span>Compare</span>
-          <input type="range" min={0} max={prd} step={25} value={cmpa} aria-label="CMPA, the compare register" onChange={(e) => setCmpa(+e.target.value)} />
+          <input type="range" min={0} max={CMAX} step={25} value={cmpa} aria-label="CMPA, the compare register" onChange={(e) => setCmpa(+e.target.value)} />
           <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa};</code>
         </div>
         <div>
@@ -260,7 +276,7 @@ function PwmWaveform() {
           </div>
         )}
       </div>
-      <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. Drag the two dashed lines or use the sliders. Orange dots are the events that move the pin.</figcaption>
+      <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. A CMPA above TBPRD is never reached. Drag the two dashed lines or use the sliders. Orange dots mark the events that move the pin.</figcaption>
     </figure>
   );
 }

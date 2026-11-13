@@ -73,6 +73,8 @@ function PiTuner() {
     for (let k = 0; k < tail.length; k++) if (Math.abs(tail[k] - rEnd) > 0.05) last = k;
     return last + 1;
   })();
+  const cameBack = back < tail.length;
+  const backText = cameBack ? `${back} ms` : "not within 2 s";
   const satMs = sim.raw.filter((x) => Math.abs(x) > MAX_EFFORT).length;
   const iAtDrop = scenario === "windup" ? sim.integ[1998] / (ki || 1) : 0;
   const ringing = tail.slice(-200).some((x) => Math.abs(x - sim.final) > 0.02);
@@ -91,17 +93,17 @@ function PiTuner() {
 
   let why: string;
   if (scenario === "step") {
-    if (ringing) why = "The loop never settles: these gains are too much for a controller that only acts once per millisecond. Lower Kp.";
+    if (ringing) why = "The speed is still swinging after 1 s: the loop has not settled. Lower the gains.";
     else if (ki === 0)
       why = kp * 1 <= COULOMB
-        ? `Kp x error is only ${fmt(kp, 1)}, less than the ${COULOMB} the wheel needs to start. It never moves.`
-        : `P only: the wheel stops at ${fmt(sim.final, 3)} ft/s, ${fmt(sse, 3)} short. There the effort Kp x error = ${fmt(kp * sse, 2)} is exactly what that speed needs (4 v + 0.8). More Kp shrinks the error; only an integral removes it.`;
+        ? `Kp × error is only ${fmt(kp, 1)}, less than the ${COULOMB} the wheel needs to start. It never moves.`
+        : `P only: the wheel stops at ${fmt(sim.final, 3)} ft/s, ${fmt(sse, 3)} short. There the effort Kp × error = ${fmt(kp * sse, 2)} is exactly what that speed needs (4 v + 0.8). More Kp shrinks the error; only an integral removes it.`;
     else if (Math.abs(sse) > 0.01) why = `The integral is still filling: after 1 s the error is ${fmt(sse, 3)} ft/s. Raise Ki.`;
     else if (overshoot > 0.05) why = `No error left, but the speed overshoots to ${fmt(peak, 2)} ft/s: the integral was still large when the wheel arrived. Lower Ki or raise Kp (try Ki / Kp near 1 / ${TAU} = ${(1 / TAU).toFixed(0)}).`;
     else why = `PI: no error left${overshoot > 0.005 ? `, overshoot ${fmt(overshoot * 100, 0)} %` : " and no overshoot"}. At the end the error is 0, so the whole effort of ${fmt(sim.u[n - 1], 1)} comes from the integral part.${rise >= 0 ? ` 0.9 ft/s is reached after ${rise} ms.` : ""}`;
-  } else if (ki === 0) why = "Windup is the integral's problem: without Ki there is nothing to wind up. Raise Ki.";
-  else if (!clamp) why = `The wheel cannot reach 3 ft/s, so for 2 s the error stays and the integral keeps adding it up: to ${fmt(iAtDrop, 2)}, where ${fmt((rEnd / GAIN + COULOMB) / ki, 3)} is all it needs at 1 ft/s. After the reference drops, the wheel takes ${back} ms to come down to 1 ft/s, because the integral must first unwind. Switch the clamping on.`;
-  else why = `Clamping: while the effort is at the limit the integral is not updated, so it stays at ${fmt(iAtDrop, 3)}. When the reference drops, the wheel follows in ${back} ms.`;
+  } else if (ki === 0) why = "Only the integral can wind up. With Ki = 0 there is no integral. Raise Ki.";
+  else if (!clamp) why = `The wheel cannot reach 3 ft/s, so for 2 s the error stays and the integral keeps adding it up: to ${fmt(iAtDrop, 2)}, where ${fmt((rEnd / GAIN + COULOMB) / ki, 3)} is all it needs at 1 ft/s. After the reference drops, ${cameBack ? `the wheel takes ${back} ms to come down to 1 ft/s` : "the wheel is still not back at 1 ft/s 2 s later"}, because the integral must first unwind. Switch the clamping on.`;
+  else why = `Clamping: while the effort is at the limit the integral is not updated, so it stays at ${fmt(iAtDrop, 3)}. When the reference drops, ${cameBack ? `the wheel follows in ${back} ms` : "the wheel still does not reach 1 ft/s within 2 s: these gains are too weak"}.`;
 
   const chips: [string, string][] =
     scenario === "step"
@@ -113,7 +115,7 @@ function PiTuner() {
         ]
       : [
           ["integral at 2 s", fmt(iAtDrop, 3)],
-          ["back at 1 ft/s after", `${back} ms`],
+          ["back at 1 ft/s after", backText],
           ["effort at the limit", `${satMs} ms`],
         ];
 
@@ -136,7 +138,7 @@ function PiTuner() {
         <path d={`M${X0 + 50} 131 h14`} className="pt-u" />
         <text x={X0 + 74} y={134} className="fig-label dim">asked for</text>
         <path d={`M${X0 + 114} 131 h14`} className="pt-raw" />
-        <text x={X0 + 138} y={134} className="fig-label dim">integral part Ki x I</text>
+        <text x={X0 + 138} y={134} className="fig-label dim">integral part Ki × I</text>
         <path d={`M${X0 + 212} 131 h14`} className="pt-int" />
         <rect x={X0} y={yU(13)} width={X1 - X0} height={yU(10) - yU(13)} className="pt-sat" />
         <rect x={X0} y={yU(-10)} width={X1 - X0} height={yU(-13) - yU(-10)} className="pt-sat" />
@@ -197,7 +199,7 @@ function PiTuner() {
       <div className="fig-step">
         <pre><code>{clamp ? "eLeft = vref - vLeft;\nuLeft = Kp*eLeft + Ki*(ILeft + eLeft*0.001);\nif (uLeft > 10.0) uLeft = 10.0;        // saturated:\nelse if (uLeft < -10.0) uLeft = -10.0; // ILeft kept\nelse ILeft = ILeft + eLeft*0.001;" : `eLeft = vref - vLeft;\n${ki === 0 ? "uLeft = Kp*eLeft;" : "ILeft = ILeft + eLeft*0.001;\nuLeft = Kp*eLeft + Ki*ILeft;"}\nif (uLeft > 10.0) uLeft = 10.0;\nif (uLeft < -10.0) uLeft = -10.0;`}</code></pre>
       </div>
-      <figcaption>The same wheel as the test bench in the code levels: it needs 0.8 of effort to start, gains 0.25 ft/s per unit above that, with a 60 ms time constant, and the effort is limited to ±10.</figcaption>
+      <figcaption>The wheel of the test bench in the code levels, with the controller run once per millisecond. The wheel needs an effort of 0.8 to start and gains 0.25 ft/s per unit above that, with a 60 ms time constant. The effort is limited to ±10.</figcaption>
     </figure>
   );
 }

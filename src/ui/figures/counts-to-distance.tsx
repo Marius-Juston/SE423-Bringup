@@ -113,6 +113,7 @@ function CountsToDistance() {
         <div>
           <span>Roll</span>
           <input className="cd-range" type="range" aria-label="Distance rolled, in counts" min={-5000} max={50000} step={50} value={fwd} onChange={(e) => setFwd(+e.target.value)} />
+          <code>QPOSCNT = {raw}</code>
         </div>
         <div>
           <span>Wheel</span>
@@ -123,7 +124,7 @@ function CountsToDistance() {
       <div className="fig-why" role="status">
         {fwd === 0
           ? "At 0 counts nothing has moved. Roll the wheel."
-          : `The wheel rolled ${fwd < 0 ? "backward" : "forward"} ${fmt(Math.abs(feet), 3)} ft: the yellow line on the floor is as long as the piece of tyre that touched it, angle x radius. ${left ? `The left motor is mounted mirrored, so its counter went ${fwd > 0 ? "down" : "up"}: QPOSCNT ${raw < 0 ? `reads ${hex}, which is ${raw} once it is stored in an int32_t` : `reads ${raw}`}. The minus sign in the scale factor makes forward positive again.` : fwd < 0 ? `Below zero the unsigned register reads ${hex}; stored in an int32_t the same bits are ${raw}.` : `One count is 2π / 40000 = 0.000157 rad of the wheel, or ${(RADIUS_FT * ((2 * Math.PI) / 40000) * 12 * 25.4 * 1000).toFixed(0)} thousandths of a millimetre on the floor.`}`}
+          : `The wheel rolled ${fwd < 0 ? "backward" : "forward"} ${fmt(Math.abs(feet), 3)} ft: the thick line on the floor is as long as the piece of tyre that touched it, angle x radius. ${left ? `The left motor is mounted mirrored, so its counter went ${fwd > 0 ? "down" : "up"}: QPOSCNT ${raw < 0 ? `reads ${hex}, which is ${raw} once it is stored in an int32_t` : `reads ${raw}`}. The minus sign in the scale factor makes forward positive again.` : fwd < 0 ? `Below zero the unsigned register reads ${hex}; stored in an int32_t the same bits are ${raw}.` : `One count is 2π / 40000 = 0.000157 rad of the wheel, or ${(RADIUS_FT * ((2 * Math.PI) / 40000) * 12 * 25.4 * 1000).toFixed(0)} thousandths of a millimetre on the floor.`}`}
       </div>
       <div className="fig-step">
         <pre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`.padEnd(36) + `// ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`.padEnd(36) + `// ${fmt(angle, 4)} rad`, "dist  = angle*(1.235/12.0);".padEnd(36) + `// ${fmt(feet, 4)} ft`].join("\n")}</code></pre>

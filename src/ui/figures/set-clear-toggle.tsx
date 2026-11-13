@@ -42,7 +42,7 @@ const SAFE: Frame[] = [
 ];
 
 const CSS = `
-.sc-code { margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-family: var(--mono); font-size: 0.8rem; list-style: none; }
+.sc-code { margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-family: var(--mono); font-size: 0.8rem; list-style: none; }
 .sc-code li { padding-left: 1.3em; position: relative; overflow-wrap: anywhere; }
 .sc-code li.cur { color: var(--harvest); font-weight: 700; }
 .sc-code li.cur::before { content: "\\25B6"; position: absolute; left: 0; }
@@ -102,7 +102,7 @@ function SetClearToggle() {
           <button className="fig-opt" aria-pressed={mode === "safe"} onClick={() => begin("safe")}>through GPASET and GPACLEAR</button>
         </div>
       </div>
-      <svg viewBox="0 0 400 176" role="img" aria-label={`GPIO22: latch ${f.l22}, pin ${volts(f.p22)}. GPIO31: latch ${f.l31}, pin ${volts(f.p31)}.${f.stale ? " The CPU's copy of GPIO22 is stale." : ""}`}>
+      <svg viewBox="0 0 400 176" role="img" aria-label={`GPIO22: latch ${f.l22}, pin ${volts(f.p22)}${lag22 ? ", still changing" : ""}, LED1 ${f.p22 ? "lit" : "dark"}. GPIO31: latch ${f.l31}, pin ${volts(f.p31)}${lag31 ? ", still changing" : ""}.${f.copy ? ` The CPU's copy of GPADAT holds ${f.copy.c22} for bit 22 and ${f.copy.c31} for bit 31.` : ""}${f.stale ? " The copy of bit 22 is stale." : ""}`}>
         <text x="62" y="12" textAnchor="middle" className="fig-label dim">CPU's copy of GPADAT</text>
         <text x="197" y="12" textAnchor="middle" className="fig-label dim">output latch</text>
         <text x="308" y="12" textAnchor="middle" className="fig-label dim">pin</text>
@@ -149,15 +149,16 @@ function SetClearToggle() {
       <p className="fig-why" role="status">{f.text}</p>
       {mode !== "free" && (
         <div className="fig-controls row">
-          <button className="fig-opt" disabled={step === 0} onClick={() => setStep(step - 1)}>back</button>
-          <button className="fig-opt" disabled={step === frames.length - 1} onClick={() => setStep(step + 1)}>next step</button>
-          <button className="fig-opt" disabled={step === 0} onClick={() => setStep(0)}>restart</button>
-          <span className="fig-dots" aria-label={`step ${step + 1} of ${frames.length}`}>
+          {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus at the last step */}
+          <button className="fig-opt" aria-disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>Back</button>
+          <button className="fig-opt" aria-disabled={step === frames.length - 1} onClick={() => setStep(Math.min(frames.length - 1, step + 1))}>Next</button>
+          <button className="fig-opt" aria-disabled={step === 0} onClick={() => setStep(0)}>Reset</button>
+          <span className="fig-dots" role="img" aria-label={`step ${step + 1} of ${frames.length}`}>
             {frames.map((_, i) => <i key={i} className={i <= step ? "on" : ""} />)}
           </span>
         </div>
       )}
-      <figcaption>Two pins of port A. SET, CLEAR and TOGGLE change only the bits you write as 1. A .bit write to GPADAT reads the whole port from the pins, changes one bit and writes all 32 back, so a pin that was still on its way gets its old level again. Step through both versions of the same two lines.</figcaption>
+      <figcaption>Two pins of port A. SET, CLEAR and TOGGLE change only the bits you write as 1. A .bit write to GPADAT reads the whole port from the pins, changes one bit and writes all 32 bits back, so a pin that had not reached its new level yet gets its old level again.</figcaption>
     </figure>
   );
 }

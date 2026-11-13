@@ -3,19 +3,22 @@ import { useState } from "react";
 // A 16-bit int holds -32768 to 32767 and wraps around (course L4, HW1; on
 // the C28x compiler int is 16 bits and long is 32). Arithmetic between two
 // ints is done in 16 bits whatever the result is stored in; if one operand
-// is long, C converts the other to long and works in 32 bits.
+// is long, C converts the other to long and works in 32 bits. The code
+// uses variables, not literals: on a 16-bit-int compiler the literal 32768
+// is already a long, so "-32768 - 1" written with literals would not wrap.
+// (Signed overflow is formally undefined in C; the C28x wraps.)
 
 type Op = "+" | "-" | "*";
 
 const CSS = `
 .io-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .io-row label { color: var(--dim); font-size: 0.82rem; width: 4.6rem; }
-.io-row input[type="number"] { width: 5.6rem; font-family: var(--mono); font-size: 0.85rem; background: var(--bg); color: var(--harvest); border: 1px solid var(--dim); border-radius: 4px; padding: 0.1em 0.3em; }
+.io-row input[type="number"] { width: 5.6rem; font-family: var(--mono); font-size: 0.85rem; background: var(--inset); color: var(--harvest); border: 1px solid var(--dim); border-radius: 4px; padding: 0.1em 0.3em; }
 .io-row input[type="range"] { flex: 1; min-width: 7rem; accent-color: var(--orange); }
-.io-code { display: block; margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-size: 0.85rem; white-space: pre-wrap; }
+.io-code { display: block; margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.85rem; white-space: pre-wrap; }
 .io-ring { fill: none; stroke: var(--dim); stroke-width: 7; opacity: 0.45; }
 .io-path { fill: none; stroke: var(--harvest); stroke-width: 2; }
-.io-seam { stroke: var(--bad); stroke-width: 2.5; }
+.io-seam { stroke: var(--text); stroke-width: 2.5; }
 .io-big { fill: var(--harvest); font-family: var(--mono); font-weight: 700; font-size: 15px; }
 .io-bad { fill: var(--bad); }
 .io-ok { fill: var(--ok); }
@@ -64,19 +67,18 @@ function Int16Overflow() {
   const [tx, ty] = pt(truth, R0 - (Math.abs(shownSpan) / 65536) * 9);
   const [ex, ey] = pt(truth, R);
   const hex = "0x" + (wrapped & 0xffff).toString(16).toUpperCase().padStart(4, "0");
-  const bText = b < 0 ? `(${b})` : String(b);
-  const expr = `${a} ${op} ${bText}`;
+  const expr = `${a} ${op} ${b < 0 ? `(${b})` : b}`;
   const lapText = `${Math.abs(laps)} x 65536`;
   const why = long
-    ? `One operand is a long, so C converts the other to long as well and does the arithmetic in 32 bits (about plus or minus 2 billion). ${truth} fits${overflow ? "; in 16 bits it would not" : ""}.`
+    ? `b is a long, so C converts a to long as well and does the arithmetic in 32 bits (about plus or minus 2 billion). ${truth} fits${overflow ? "; in 16 bits it would not" : ""}.`
     : overflow
       ? `${expr} should be ${truth}, which is ${truth > 0 ? "above 32767" : "below -32768"}. The count runs off one end of the 16-bit range and comes back in at the other${Math.abs(laps) > 1 ? `, ${Math.abs(laps)} times` : ""}: the chip keeps ${truth} ${laps > 0 ? "-" : "+"} ${lapText} = ${wrapped}. No error, no warning. Storing the result in a 32-bit variable does not help: the damage is done before the assignment.`
       : `${expr} = ${truth} fits between -32768 and 32767, so 16-bit arithmetic gives the right answer.`;
   const num = (label: string, v: number, set: (v: number) => void) => (
     <div className="io-row">
-      <label htmlFor={`io-${label}`}>{label}</label>
-      <input id={`io-${label}`} type="number" min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
-      <input type="range" aria-label={`${label}, slider`} min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
+      <label htmlFor={`io-${label.slice(-1)}`}>{label}</label>
+      <input id={`io-${label.slice(-1)}`} type="number" min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
+      <input type="range" aria-label={`${label.slice(-1)}, slider`} min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
     </div>
   );
   return (
@@ -92,7 +94,7 @@ function Int16Overflow() {
         <line x1={CX} y1={CY + R - 9} x2={CX} y2={CY + R + 9} className="io-seam" />
         <text x={CX + 5} y={CY + R + 17} className="fig-value small">32767</text>
         <text x={CX - 5} y={CY + R + 17} textAnchor="end" className="fig-value small">-32768</text>
-        <text x={CX} y={CY + R + 27} textAnchor="middle" className="fig-label io-bad">the two ends meet here</text>
+        <text x={CX} y={CY + R + 27} textAnchor="middle" className="fig-label">the two ends meet here</text>
         <text x={CX + 56} y={CY - 58} className="fig-label dim">positive</text>
         <text x={CX - 56} y={CY - 58} textAnchor="end" className="fig-label dim">negative</text>
         {/* the walk */}
@@ -116,31 +118,31 @@ function Int16Overflow() {
         <text x="216" y="189" className="fig-label dim">Large dot: where the result lands.</text>
       </svg>
       <code className="io-code">
-        {`int32_t r = ${a} ${op} ${bText}${long ? "L" : ""};   // ${long ? "int and long: done in 32 bits" : "int and int: done in 16 bits"}\n// r = ${stored}`}
+        {`int  a = ${a};\n${long ? "long" : "int "} b = ${b};\nlong r = a ${op} b;   // ${long ? "int and long: 32 bits" : "int and int: 16 bits"}\n// r is ${stored}`}
       </code>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
-        {num("First int", a, setA)}
+        {num("int a", a, setA)}
         <div>
           <span>Operation</span>
           <button className="fig-opt" aria-pressed={op === "+"} onClick={() => setOp("+")}>add +</button>
           <button className="fig-opt" aria-pressed={op === "-"} onClick={() => setOp("-")}>subtract -</button>
           <button className="fig-opt" aria-pressed={op === "*"} onClick={() => setOp("*")}>multiply *</button>
         </div>
-        {num("Second", b, setB)}
+        {num(long ? "long b" : "int b", b, setB)}
         <div>
-          <span>Second is</span>
-          <button className="fig-opt" aria-pressed={!long} onClick={() => setLong(false)}>an int</button>
-          <button className="fig-opt" aria-pressed={long} onClick={() => setLong(true)}>a long (L)</button>
+          <span>Type of b</span>
+          <button className="fig-opt" aria-pressed={!long} onClick={() => setLong(false)}>int, 16 bits</button>
+          <button className="fig-opt" aria-pressed={long} onClick={() => setLong(true)}>long, 32 bits</button>
         </div>
         <div>
           <span>Examples</span>
           {PRESETS.map(([name, pa, po, pb]) => (
-            <button key={name} className="fig-opt" onClick={() => { setA(pa); setOp(po); setB(pb); }}>{name}</button>
+            <button key={name} className="fig-opt" aria-pressed={a === pa && op === po && b === pb} onClick={() => { setA(pa); setOp(po); setB(pb); }}>{name}</button>
           ))}
         </div>
       </div>
-      <figcaption>The 16-bit values form a circle, not a line: one step past 32767 is -32768. The line walks from the starting value to the true result, one lap further in each time round; every time it passes the mark at the bottom, the stored number is off by another 65536.</figcaption>
+      <figcaption>The 16-bit values form a circle, not a line: one step past 32767 is -32768. The line walks from the starting value to the true result, one lap further in each time round; every time it passes the mark at the bottom, the 16-bit result is off by another 65536.</figcaption>
     </figure>
   );
 }

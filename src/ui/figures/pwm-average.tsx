@@ -1,6 +1,6 @@
 // Why PWM works: a load that is slower than the switching sees the average,
 // duty x 3.3 V (TRM 15.1 introduction; Lab 3 exercise 1 dims LED1 this
-// way). The "slow load" is a first-order low-pass filter with a 30 ms time
+// way; duty = CMPA / (TBPRD + 1) with ZRO set and CAU clear, 15.6). The "slow load" is a first-order low-pass filter with a 30 ms time
 // constant, about what the eye does with a flickering light.
 import { useEffect, useMemo, useState } from "react";
 
@@ -18,6 +18,7 @@ const N = 2000;
 
 const CSS = `
 .pwma input[type=range] { flex: 1 1 7rem; min-width: 5rem; padding: 0; accent-color: var(--accent); }
+.pwma-note { color: var(--dim); font-size: 0.82rem; }
 .pwma-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
 `;
 
@@ -26,6 +27,7 @@ function PwmAverage() {
   const [fi, setFi] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [phase, setPhase] = useState(0);
+  const [still] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
   const duty = pct / 100;
   const f = FREQS[fi][0];
   const periods = f * WIN;
@@ -49,8 +51,7 @@ function PwmAverage() {
   }, [f, duty]);
 
   useEffect(() => {
-    if (!playing) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    if (!playing || still) return;
     let raf = 0;
     const t0 = performance.now();
     const tick = (t: number) => {
@@ -59,7 +60,7 @@ function PwmAverage() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing]);
+  }, [playing, still]);
 
   const X0 = 46;
   const X1 = 318;
@@ -100,7 +101,7 @@ function PwmAverage() {
     duty === 0 || duty === 1
       ? `At ${pct} % the pin never switches: it is simply ${duty ? "high, 3.3 V" : "low, 0 V"}.`
       : f <= 5
-        ? `At ${FREQS[fi][1]} the LED has time to go fully on and fully off: you see it blink, not dim. The slow load follows the pin (it swings by ${ripple.toFixed(1)} V).${playing ? "" : " Press Play to watch."}`
+        ? `At ${FREQS[fi][1]} the LED has time to go fully on and fully off: you see it blink, not dim. The slow load follows the pin (it swings by ${ripple.toFixed(1)} V).${playing || still ? "" : " Press Play to watch."}`
         : f <= 20
           ? `At 20 Hz the LED flickers: the slow load no longer reaches 0 V or 3.3 V, but it still swings by ${ripple.toFixed(1)} V around the average.`
           : f <= 1000
@@ -110,10 +111,10 @@ function PwmAverage() {
   return (
     <figure className="figure pwma" aria-label="Interactive figure: a PWM waveform, its average and what a slow load sees">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 152" role="img" aria-label={`Duty cycle ${pct} percent at ${FREQS[fi][1]}. Average ${avgV} volts. ${flickers ? "The LED visibly flickers." : "The LED looks steady."}`}>
+      <svg viewBox="0 0 420 152" role="img" aria-label={`Duty cycle ${pct} percent at ${FREQS[fi][1]}. Average ${avgV} volts. ${flickers ? "The LED visibly flickers." : "The LED looks steady."} The slow load swings by ${ripple.toFixed(2)} volts.`}>
         <text x="4" y={(PH + PL) / 2 + 3} className="fig-label">the pin</text>
-        <text x={X0 - 4} y={PH + 3} textAnchor="end" className="fig-label dim" style={{ fontSize: 7.5 }}>3.3 V</text>
-        <text x={X0 - 4} y={PL + 3} textAnchor="end" className="fig-label dim" style={{ fontSize: 7.5 }}>0 V</text>
+        <text x={X0 - 4} y={PH + 3} textAnchor="end" className="fig-label dim">3.3 V</text>
+        <text x={X0 - 4} y={PL + 3} textAnchor="end" className="fig-label dim">0 V</text>
         {drawn || duty === 0 || duty === 1 ? (
           <>
             <path d={fill} fill="var(--accent-soft)" />
@@ -154,7 +155,8 @@ function PwmAverage() {
         <div>
           <span>Duty cycle</span>
           <input type="range" min={0} max={100} step={5} value={pct} aria-label="Duty cycle in percent" onChange={(e) => setPct(+e.target.value)} />
-          <code>CMPA = {cmpa}; // {pct} % of TBPRD = 2500</code>
+          <span className="pwma-note" style={{ color: "var(--value)", fontFamily: "var(--mono)", minWidth: "2.8em", textAlign: "right" }}>{pct} %</span>
+          <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa}; // {pct} % of 2500</code>
         </div>
         <div>
           <span>Switching</span>
@@ -164,8 +166,8 @@ function PwmAverage() {
         </div>
         <div>
           <span>Real time</span>
-          <button className="btn small primary" aria-pressed={playing} onClick={() => setPlaying(!playing)}>{playing ? "Stop" : "Play"}</button>
-          <code>the picture is one second long</code>
+          <button className="btn small primary" aria-pressed={playing} disabled={still} onClick={() => setPlaying(!playing)}>{playing ? "Stop" : "Play"}</button>
+          <span className="pwma-note">{still ? "off: your system asks for reduced motion" : "the picture is one second long; Play runs it at real speed"}</span>
         </div>
       </div>
       <figcaption>The pin only ever outputs 0 V or 3.3 V. Switched slowly, the LED blinks. Switched faster than the load can follow, the same waveform is a steady {avgV} V: the duty cycle has become a voltage.</figcaption>

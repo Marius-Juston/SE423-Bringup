@@ -60,7 +60,7 @@ function SamplingAlias() {
   return (
     <figure className="figure alias" aria-label="Interactive sampling and aliasing diagram">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 196" role="img" aria-label={`A ${f} hertz sine sampled ${fs} times per second. Nyquist frequency ${nyq} hertz. The samples show ${aliased ? `${fa} hertz, an alias` : "the real signal"}.`}>
+      <svg viewBox="0 0 420 204" role="img" aria-label={`A ${f} hertz sine sampled ${fs} times per second. Nyquist frequency ${nyq} hertz. The samples show ${aliased ? `${fa} hertz, an alias` : "the real signal"}.`}>
         <text x={X0} y="12" className="fig-label" style={{ fill: "var(--arches)" }}>real signal: {f} Hz</text>
         <text x={X1} y="12" textAnchor="end" className="fig-label" style={{ fill: "var(--harvest)" }}>{aliased ? `what the samples show: ${fa} Hz` : "the samples show the same signal"}</text>
         <line x1={X0} x2={X1} y1={MID} y2={MID} stroke="var(--border)" />
@@ -81,7 +81,7 @@ function SamplingAlias() {
         {[0, 500, 1000, 1500, 2000].map((hz) => (
           <g key={hz}>
             <line x1={fx(hz)} x2={fx(hz)} y1={FY} y2={FY + 3} className="fig-wire" />
-            <text x={fx(hz)} y={FY + 13} textAnchor="middle" className="fig-label dim">{hz}{hz === 2000 ? " Hz" : ""}</text>
+            <text x={hz === 2000 ? fx(hz) + 8 : fx(hz)} y={FY + 13} textAnchor={hz === 2000 ? "end" : "middle"} className="fig-label dim">{hz}{hz === 2000 ? " Hz" : ""}</text>
           </g>
         ))}
         <line x1={fx(nyq)} x2={fx(nyq)} y1={FY - 30} y2={FY} stroke="var(--text)" strokeWidth="1.4" strokeDasharray="3 2" />
@@ -92,13 +92,13 @@ function SamplingAlias() {
           <path d={`M${fx(f)},${FY - 5} Q${(fx(f) + fx(fa)) / 2},${FY - 26} ${fx(fa) + (fa < f ? 3 : -3)},${FY - 6}`} fill="none" stroke="var(--harvest)" strokeWidth="1.4" strokeDasharray="3 2" markerEnd="url(#alias-arrow)" />
         )}
         <circle cx={fx(f)} cy={FY} r="4.2" fill="var(--arches)" stroke="var(--text)" strokeWidth="0.8" />
-        <text x={fx(f) + 7} y={FY + 26} className="fig-label" style={{ fill: "var(--arches)" }}>real: {f} Hz</text>
+        <text x={fx(f) + (fx(f) > 330 ? -3 : 7)} y={FY + 26} textAnchor={fx(f) > 330 ? "end" : "start"} className="fig-label" style={{ fill: "var(--arches)" }}>real: {f} Hz</text>
         <line x1={fx(f)} x2={fx(f) + 5} y1={FY + 5} y2={FY + 19} stroke="var(--arches)" strokeWidth="0.8" />
         {aliased && (
           <>
             <rect x={fx(fa) - 4} y={FY - 4} width="8" height="8" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.8" />
-            <line x1={fx(fa)} x2={fx(fa) + (fx(fa) < 100 ? 5 : -5)} y1={FY + 5} y2={FY + 19} stroke="var(--harvest)" strokeWidth="0.8" />
-            <text x={fx(fa) + (fx(fa) < 100 ? 7 : -7)} y={FY + 26} textAnchor={fx(fa) < 100 ? "start" : "end"} className="fig-label" style={{ fill: "var(--harvest)" }}>seen as: {fa} Hz</text>
+            <line x1={fx(fa)} x2={fx(fa) + (fx(fa) < 100 ? 5 : -5)} y1={FY + 5} y2={FY + 30} stroke="var(--harvest)" strokeWidth="0.8" />
+            <text x={fx(fa) + (fx(fa) < 100 ? 7 : -7)} y={FY + 38} textAnchor={fx(fa) < 100 ? "start" : "end"} className="fig-label" style={{ fill: "var(--harvest)" }}>seen as: {fa} Hz</text>
           </>
         )}
         <defs>
@@ -121,7 +121,7 @@ function SamplingAlias() {
           <code>Nyquist = {fs} / 2 = {nyq} Hz</code>
         </div>
       </div>
-      <figcaption>Top: 10 ms of a sine and the samples taken from it. Bottom: the frequency axis. Only the shaded part, from 0 Hz to half the sampling rate, can be told apart in the samples; a tone outside it lands back inside. Drag the signal frequency across the Nyquist line and watch the slow wave appear.</figcaption>
+      <figcaption>Top: 10 ms of a sine and the samples taken from it. Bottom: the frequency axis. Only the shaded part, from 0 Hz to half the sampling rate, can be told apart in the samples. A tone outside it (circle) lands back inside (square), at its distance from the nearest multiple of the sampling rate.</figcaption>
     </figure>
   );
 }

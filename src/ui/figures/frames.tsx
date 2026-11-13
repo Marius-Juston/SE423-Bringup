@@ -14,7 +14,10 @@ const fmt = (v: number, d = 2) => {
   const s = v.toFixed(d);
   return /^-0\.?0*$/.test(s) ? s.slice(1) : s;
 };
-const par = (v: number) => (v < 0 ? `(${fmt(v)})` : fmt(v));
+const par = (v: number) => (fmt(v).startsWith("-") ? `(${fmt(v)})` : fmt(v));
+// The robot stays one foot inside the drawing, so its axes are never cut off.
+const X_MIN = 1;
+const Y_MIN = 1;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 function Frames() {
@@ -48,11 +51,16 @@ function Frames() {
   // corner of the path "xb ahead, then yb to the left"
   const knee = { x: pose.x + pb.x * c, y: pose.y + pb.x * s };
   const arrow = (x0: number, y0: number, x1: number, y1: number, cls: string, id: string) => <path d={`M${wx(x0)},${wy(y0)} L${wx(x1)},${wy(y1)}`} className={cls} markerEnd={`url(#${id})`} />;
-  const side = pb.y > 0.005 ? "on its left" : pb.y < -0.005 ? "on its right" : "dead ahead or behind";
+  const where = (x: number, y: number, d: number) =>
+    Math.abs(x) < 0.005 && Math.abs(y) < 0.005
+      ? "at the robot's centre"
+      : `${fmt(Math.abs(x), d)} ft ${x >= 0 ? "ahead" : "behind"} and ${Math.abs(y) < 0.005 ? "neither left nor right" : `${fmt(Math.abs(y), d)} ft to its ${y > 0 ? "left" : "right"}`}`;
+  const near = (v: number, tick: number) => Math.abs(v - tick) < 0.5;
+  const outside = pw.x < -0.9 || pw.x > 8 || pw.y < -0.5 || pw.y > 5.6;
 
   return (
     <figure className="figure fr-fig" aria-label="Interactive drawing of the world frame, the robot frame and a point in both">
-      <style>{`.fr-fig .fr-range{flex:1;min-width:90px;accent-color:var(--orange)}.fr-fig .fr-grid{stroke:var(--border);stroke-width:1}.fr-fig .fr-w{stroke:var(--arches);stroke-width:2;fill:none}.fr-fig .fr-b{stroke:var(--orange);stroke-width:2;fill:none}.fr-fig .fr-wd{stroke:var(--arches);stroke-width:1.2;fill:none;stroke-dasharray:3 3}.fr-fig .fr-bd{stroke:var(--orange);stroke-width:1.6;fill:none;stroke-dasharray:5 3}.fr-fig .fr-t{stroke:var(--dim);stroke-width:1.2;fill:none;stroke-dasharray:2 3}.fr-fig .fr-robot{cursor:grab;touch-action:none}.fr-fig .fr-wt{fill:var(--arches)}.fr-fig .fr-bt{fill:var(--orange)}.fr-fig .fr-eq{white-space:pre-wrap}.fr-fig .fr-num{width:4.6rem;white-space:nowrap;text-align:right;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
+      <style>{`.fr-fig .fr-range{flex:1;min-width:90px;accent-color:var(--orange)}.fr-fig .fr-grid{stroke:var(--border);stroke-width:1}.fr-fig .fr-w{stroke:var(--arches);stroke-width:2;fill:none}.fr-fig .fr-b{stroke:var(--orange);stroke-width:2;fill:none}.fr-fig .fr-wd{stroke:var(--arches);stroke-width:1.2;fill:none;stroke-dasharray:3 3}.fr-fig .fr-bd{stroke:var(--orange);stroke-width:1.6;fill:none;stroke-dasharray:5 3}.fr-fig .fr-t{stroke:var(--dim);stroke-width:1.2;fill:none;stroke-dasharray:2 3}.fr-fig .fr-robot{cursor:grab;touch-action:none}.fr-fig .fr-wt{fill:var(--arches)}.fr-fig .fr-bt{fill:var(--orange)}.fr-fig .fr-eq{white-space:pre}.fr-fig .fr-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.fr-fig .fr-num{width:4.6rem;white-space:nowrap;text-align:right;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
       <svg ref={svg} viewBox="0 0 420 290" role="img" aria-label={`Robot at ${fmt(pose.x, 1)}, ${fmt(pose.y, 1)} feet, heading ${pose.deg} degrees. Point: ${fmt(pb.x)} ahead and ${fmt(pb.y)} to the left in the robot frame, ${fmt(pw.x)}, ${fmt(pw.y)} in the world frame.`}>
         <defs>
           {[
@@ -70,10 +78,10 @@ function Frames() {
         {Array.from({ length: 6 }, (_, i) => (
           <line key={`h${i}`} x1={wx(0)} x2={wx(8)} y1={wy(i)} y2={wy(i)} className="fr-grid" />
         ))}
-        {[2, 4, 6].map((i) => (
+        {[2, 4, 6].map((i) => !near(pw.x, i) && (
           <text key={i} x={wx(i)} y={OY + 11} textAnchor="middle" className="fig-label dim">{i}</text>
         ))}
-        {[2, 4].map((i) => (
+        {[2, 4].map((i) => !near(pw.y, i) && (
           <text key={i} x={OX - 5} y={wy(i) + 3} textAnchor="end" className="fig-label dim">{i}</text>
         ))}
         {/* world frame */}
@@ -83,16 +91,16 @@ function Frames() {
         <text x={OX + 5} y={wy(5.4) + 4} className="fig-label fr-wt">world y</text>
         {/* T: where the robot is */}
         <path d={`M${wx(0)},${wy(0)} L${wx(pose.x)},${wy(pose.y)}`} className="fr-t" />
-        <text x={wx(pose.x / 2) + 4} y={wy(pose.y / 2) + 11} className="fig-label dim">T</text>
+        <text x={wx(pose.x / 2) + 4} y={wy(pose.y / 2) + 11} className="fig-label dim fr-halo">T</text>
         {/* world coordinates of the point */}
         <path d={`M${wx(pw.x)},${wy(pw.y)} V${wy(0)}`} className="fr-wd" />
         <path d={`M${wx(pw.x)},${wy(pw.y)} H${wx(0)}`} className="fr-wd" />
-        <text x={wx(pw.x)} y={OY + 11} textAnchor="middle" className="fig-value small">{fmt(pw.x)}</text>
-        <text x={OX - 5} y={wy(pw.y) + 3} textAnchor="end" className="fig-value small">{fmt(pw.y)}</text>
+        <text x={clamp(wx(pw.x), 14, 406)} y={OY + 11} textAnchor="middle" className="fig-value small fr-halo">{fmt(pw.x)}</text>
+        <text x={OX - 5} y={clamp(wy(pw.y), 6, 284) + 3} textAnchor="end" className="fig-value small fr-halo">{fmt(pw.y)}</text>
         {/* robot coordinates of the point: ahead, then left */}
         <path d={`M${wx(pose.x)},${wy(pose.y)} L${wx(knee.x)},${wy(knee.y)} L${wx(pw.x)},${wy(pw.y)}`} className="fr-bd" />
-        <text x={wx((pose.x + knee.x) / 2) + 11 * s} y={wy((pose.y + knee.y) / 2) + 11 * c + 3} textAnchor="middle" className="fig-value small">{fmt(pb.x)}</text>
-        <text x={wx((knee.x + pw.x) / 2) + 12 * c} y={wy((knee.y + pw.y) / 2) - 12 * s + 3} textAnchor="middle" className="fig-value small">{fmt(pb.y)}</text>
+        {Math.abs(pb.x) >= 0.45 && <text x={wx((pose.x + knee.x) / 2) + 11 * s} y={wy((pose.y + knee.y) / 2) + 11 * c + 3} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.x)}</text>}
+        {Math.abs(pb.y) >= 0.45 && <text x={wx((knee.x + pw.x) / 2) + 14 * c * Math.sign(pb.x || 1)} y={wy((knee.y + pw.y) / 2) - 14 * s * Math.sign(pb.x || 1) + 3} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.y)}</text>}
         {/* robot */}
         <g
           className="fr-robot"
@@ -105,7 +113,7 @@ function Frames() {
           onPointerMove={(e) => {
             if (!drag.current) return;
             const p = at(e);
-            setPose({ ...pose, x: clamp(round(p.x + drag.current.dx), 0, 6), y: clamp(round(p.y + drag.current.dy), 0, 4) });
+            setPose({ ...pose, x: clamp(round(p.x + drag.current.dx), X_MIN, 6), y: clamp(round(p.y + drag.current.dy), Y_MIN, 4) });
           }}
           onPointerUp={() => (drag.current = null)}
           onPointerCancel={() => (drag.current = null)}
@@ -120,13 +128,13 @@ function Frames() {
         <text x={wx(pose.x) - 32 * s - 9 * c} y={wy(pose.y) - 32 * c + 9 * s + 3} textAnchor="middle" className="fig-label fr-bt">y</text>
         {/* the point */}
         <circle cx={wx(pw.x)} cy={wy(pw.y)} r={4.5} fill="var(--harvest)" stroke="var(--inset)" strokeWidth={1} />
-        <text x={wx(pw.x) + 7} y={wy(pw.y) - 6} className="fig-label">P</text>
+        <text x={wx(pw.x) + 7} y={wy(pw.y) - 6} className="fig-label fr-halo">P</text>
       </svg>
       <div className="fig-controls">
         <div>
           <span>Robot at</span>
-          <input className="fr-range" type="range" aria-label="Robot x" min={0} max={6} step={0.1} value={pose.x} onChange={(e) => setPose({ ...pose, x: +e.target.value })} />
-          <input className="fr-range" type="range" aria-label="Robot y" min={0} max={4} step={0.1} value={pose.y} onChange={(e) => setPose({ ...pose, y: +e.target.value })} />
+          <input className="fr-range" type="range" aria-label="Robot x in feet" min={X_MIN} max={6} step={0.1} value={pose.x} onChange={(e) => setPose({ ...pose, x: +e.target.value })} />
+          <input className="fr-range" type="range" aria-label="Robot y in feet" min={Y_MIN} max={4} step={0.1} value={pose.y} onChange={(e) => setPose({ ...pose, y: +e.target.value })} />
           <span className="fr-num">{fmt(pose.x, 1)}, {fmt(pose.y, 1)}</span>
         </div>
         <div>
@@ -166,16 +174,16 @@ function Frames() {
       </div>
       <div className="fig-why" role="status">
         {inverse
-          ? `P is fixed in the room at (${fmt(pw.x)}, ${fmt(pw.y)}). Seen from the robot it is ${fmt(Math.abs(pb.x))} ft ${pb.x >= 0 ? "ahead" : "behind"} and ${fmt(Math.abs(pb.y))} ft ${side}: move or turn the robot and only these robot-frame numbers change.`
-          : `P is fixed to the robot: ${fmt(Math.abs(body.x), 1)} ft ${body.x >= 0 ? "ahead" : "behind"}, ${fmt(Math.abs(body.y), 1)} ft ${side}. Move or turn the robot and P's world coordinates change, now (${fmt(pw.x)}, ${fmt(pw.y)}).`}
+          ? `P stays in the room at (${fmt(pw.x)}, ${fmt(pw.y)}). Seen from the robot it is ${where(pb.x, pb.y, 2)}. Move or turn the robot: only these robot-frame numbers change.${outside ? " P is outside the drawing." : ""}`
+          : `P rides on the robot: it is ${where(body.x, body.y, 1)}. Move or turn the robot: only P's world coordinates change. They are now (${fmt(pw.x)}, ${fmt(pw.y)}).${outside ? " That is outside the drawing." : ""}`}
       </div>
       <div className="fig-step">
         <strong>{inverse ? "World to robot: subtract T, then rotate back" : "Robot to world: rotate by the heading, then add T"}</strong>
         <pre><code className="fr-eq">{inverse
-          ? `dx = ${fmt(pw.x)} - ${par(pose.x)} = ${fmt(dx)}     dy = ${fmt(pw.y)} - ${par(pose.y)} = ${fmt(dy)}\nx_robot =  dx cos(${pose.deg}°) + dy sin(${pose.deg}°)\n        =  ${par(dx)} x ${par(c)} + ${par(dy)} x ${par(s)} = ${fmt(pb.x)}\ny_robot = -dx sin(${pose.deg}°) + dy cos(${pose.deg}°)\n        = -${par(dx)} x ${par(s)} + ${par(dy)} x ${par(c)} = ${fmt(pb.y)}`
-          : `x_world = x cos(${pose.deg}°) - y sin(${pose.deg}°) + Tx\n        = ${par(pb.x)} x ${par(c)} - ${par(pb.y)} x ${par(s)} + ${par(pose.x)} = ${fmt(pw.x)}\ny_world = x sin(${pose.deg}°) + y cos(${pose.deg}°) + Ty\n        = ${par(pb.x)} x ${par(s)} + ${par(pb.y)} x ${par(c)} + ${par(pose.y)} = ${fmt(pw.y)}`}</code></pre>
+          ? `dx = ${fmt(pw.x)} - ${fmt(pose.x)} = ${fmt(dx)}\ndy = ${fmt(pw.y)} - ${fmt(pose.y)} = ${fmt(dy)}\nx_robot = dx cos(${pose.deg}°) + dy sin(${pose.deg}°)\n  = ${par(dx)}*${par(c)} + ${par(dy)}*${par(s)} = ${fmt(pb.x)}\ny_robot = -dx sin(${pose.deg}°) + dy cos(${pose.deg}°)\n  = -${par(dx)}*${par(s)} + ${par(dy)}*${par(c)} = ${fmt(pb.y)}`
+          : `x_world = x cos(${pose.deg}°) - y sin(${pose.deg}°) + Tx\n  = ${par(pb.x)}*${par(c)} - ${par(pb.y)}*${par(s)} + ${fmt(pose.x)} = ${fmt(pw.x)}\ny_world = x sin(${pose.deg}°) + y cos(${pose.deg}°) + Ty\n  = ${par(pb.x)}*${par(s)} + ${par(pb.y)}*${par(c)} + ${fmt(pose.y)} = ${fmt(pw.y)}`}</code></pre>
       </div>
-      <figcaption>Blue is the world frame, orange the robot frame: x straight ahead, y to the robot's left. The dashed orange path is the point's robot coordinates (ahead, then left); the dashed blue lines read off its world coordinates. Drag the robot.</figcaption>
+      <figcaption>The same point P in two frames. Blue is the world frame. Orange is the robot frame: x straight ahead, y to the robot's left, and the dashed orange path is P's robot coordinates (ahead, then left). T is the robot's position; you can also drag the robot.</figcaption>
     </figure>
   );
 }

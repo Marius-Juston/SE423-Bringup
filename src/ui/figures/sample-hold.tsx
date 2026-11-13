@@ -3,8 +3,10 @@
 // "Choosing an Acquisition Window Duration": RC settling model, time
 // constant (Rs + Ron) * Ch (the pin capacitance terms are left out here),
 // about 9.7 time constants to settle within 1/4 step of 12 bits. Ron =
-// 425 ohm and Ch = 14.5 pF are the 12-bit input model of the F2837xD data
-// manual, which also gives the 75 ns minimum window.
+// 425 ohm and Ch = 14.5 pF are the 12-bit single-ended input model of the
+// F2837xD data sheet (Table 5-48), which also gives the 75 ns minimum
+// sample window for 12-bit mode. ln(2^14) = 9.7. The course code uses
+// ACQPS = 99 (500 ns).
 import { useState } from "react";
 
 const RON = 425;
@@ -59,9 +61,9 @@ function SampleHold() {
   const mvOff = Math.abs(held - VPIN) * 1000;
 
   const why = tooShort
-    ? `A window of ${windowNs} ns is below the chip's minimum of 75 ns (ACQPS = 14). Do not use it, whatever the source.`
+    ? `A window of ${windowNs} ns is below the minimum of 75 ns that the data sheet allows (ACQPS = 14). Do not use it, whatever the source.`
     : off !== 0
-      ? `The window closes after ${windowNs} ns, but with ${rLabel} in the way the capacitor charges with a time constant of ${tau.toFixed(0)} ns. It is still ${mvOff.toFixed(1)} mV away from the pin, on the side of the channel measured before: the result is ${code} instead of ${want}. ${needAcqps <= 511 ? `This source needs about ${needNs.toFixed(0)} ns: ACQPS = ${needAcqps} or more.` : `This source would need ${needNs.toFixed(0)} ns, more than ACQPS can give (511, 2560 ns): put an amplifier between sensor and pin.`}`
+      ? `The window closes after ${windowNs} ns, but with ${rLabel} in the way the capacitor charges with a time constant of ${tau.toFixed(0)} ns. It is still ${mvOff.toFixed(1)} mV away from the pin, on the side of the channel measured before: the result is ${code} instead of ${want}. ${needAcqps <= 511 ? `To settle within a quarter of a step this source needs about 9.7 time constants, ${needNs.toFixed(0)} ns: ACQPS = ${needAcqps} or more.` : `To settle within a quarter of a step this source would need about 9.7 time constants, ${needNs.toFixed(0)} ns, more than ACQPS can give (511, 2560 ns): put an amplifier between sensor and pin.`}`
       : `In ${windowNs} ns the capacitor reaches the pin voltage (time constant ${tau.toFixed(0)} ns, so the window is ${(windowNs / tau).toFixed(0)} time constants long). The switch opens and the capacitor holds ${VPIN.toFixed(1)} V: the result is ${code}, as it should be.`;
 
   return (
@@ -84,8 +86,8 @@ function SampleHold() {
         <line x1="152" x2="180" y1="35" y2="24" className="fig-wire thick" />
         <circle cx="182" cy="35" r="2.2" className="fig-dot" />
         <text x="167" y="14" textAnchor="middle" className="fig-label">switch</text>
-        <text x="167" y="52" textAnchor="middle" className="fig-value small">closed {windowNs} ns,</text>
-        <text x="167" y="63" textAnchor="middle" className="fig-value small">then open</text>
+        <text x="162" y="52" textAnchor="middle" className="fig-value small">closed {windowNs} ns,</text>
+        <text x="162" y="63" textAnchor="middle" className="fig-value small">then open</text>
         <line x1="182" x2="198" y1="35" y2="35" className="fig-wire" />
         <rect x="198" y="30" width="28" height="10" className="fig-box" />
         <text x="212" y="24" textAnchor="middle" className="fig-label dim">425 Ω</text>
@@ -97,21 +99,20 @@ function SampleHold() {
         <line x1="242" x2="262" y1="55" y2="55" className="fig-wire thick" />
         <line x1="252" x2="252" y1="55" y2="66" className="fig-wire" style={{ stroke: "var(--arches)" }} />
         <line x1="245" x2="259" y1="66" y2="66" className="fig-wire" style={{ stroke: "var(--arches)" }} />
-        <text x="238" y="56" textAnchor="end" className="fig-label dim">14.5 pF</text>
+        <text x="252" y="77" textAnchor="middle" className="fig-label dim">14.5 pF</text>
         <text x="252" y="24" textAnchor="middle" className="fig-label">capacitor</text>
         <rect x="290" y="14" width="124" height="46" rx="4" className={`fig-box ${off !== 0 || tooShort ? "hot" : "active"}`} />
         <text x="352" y="27" textAnchor="middle" className="fig-label">converter measures</text>
         <text x="352" y="41" textAnchor="middle" className="fig-value">{held.toFixed(4)} V = {code}</text>
-        <text x="352" y="54" textAnchor="middle" className="fig-label" style={{ fill: off !== 0 ? "var(--bad)" : "var(--ok)" }}>{off !== 0 ? `wrong by ${Math.abs(off)} step${Math.abs(off) > 1 ? "s" : ""} (pin: ${want})` : `correct (pin: ${want})`}</text>
+        <text x="352" y="54" textAnchor="middle" className="fig-label" style={{ fill: off !== 0 ? "var(--bad)" : "var(--ok)" }}>{off !== 0 ? `wrong: ${off > 0 ? "+" : "-"}${Math.abs(off)} (pin is ${want})` : `correct (pin is ${want})`}</text>
         {/* plot */}
         <text x={X0} y="90" className="fig-label dim">capacitor voltage over time</text>
         <rect x={X0} y={Y1 - 6} width={Math.max(0, xw - X0)} height={Y0 - Y1 + 6} fill="var(--orange)" fillOpacity="0.12" />
         <line x1={X0} x2={X1} y1={Y0} y2={Y0} className="fig-wire" />
         <line x1={X0} x2={X0} y1={Y0} y2={Y1 - 6} className="fig-wire" />
         <line x1={X0} x2={X1} y1={y(VPIN)} y2={y(VPIN)} stroke="var(--orange)" strokeWidth="1.2" strokeDasharray="4 3" />
-        <text x={X0 - 4} y={y(VPIN) + 3} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>{VPIN.toFixed(1)} V</text>
+        <text x={X0 - 4} y={y(VPIN) + 3} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>pin {VPIN.toFixed(1)} V</text>
         <text x={X0 - 4} y={y(prev) + 3} textAnchor="end" className="fig-label">{prev.toFixed(1)} V</text>
-        <text x={X0 + 14} y={y(VPIN) - 4} className="fig-label" style={{ fill: "var(--orange)" }}>pin voltage</text>
         <path d={d} className="fig-trace data" />
         <line x1={xw} x2={xw} y1={Y1 - 6} y2={Y0 + 3} stroke="var(--orange)" strokeWidth="1.4" />
         <circle cx={xw} cy={y(held)} r="3.2" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.8" />

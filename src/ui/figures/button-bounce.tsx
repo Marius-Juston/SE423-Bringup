@@ -84,6 +84,7 @@ function ButtonBounce() {
   const nNaive = naiveAll.length;
   const nDeb = debounced.length;
   const delay = nDeb ? debounced[0] - PRESS : 0;
+  const plainDelay = naive.length ? naive[0] - PRESS : 0;
 
   const why =
     nNaive === 0
@@ -92,7 +93,7 @@ function ButtonBounce() {
         ? `The pin is read every ${fmt(N)}, but the contacts take about ${bounce.toFixed(1)} ms to settle. The plain edge detector sees ${nNaive} falling edges${naiveRelease.length ? ` (${naiveRelease.length} of them while the button is being released)` : ""} and counts ${nNaive} presses for one. The debounced counter only accepts a level that has read the same for ${STABLE_MS} ms (${need} reads in a row), and counts ${nDeb}.`
         : N < bounce
           ? `One press counted, but by luck: the reads are ${fmt(N)} apart and the bounce lasts ${bounce.toFixed(1)} ms, so two reads can still land in one bounce. Try "another press".`
-          : `Reading the pin less often than the bounce lasts is already a debounce: two reads can never land in the same bounce, so both counters say 1. The price is reaction time: the press is noticed up to ${fmt(N)} after first contact${nDeb ? ` (here after ${delay.toFixed(1)} ms)` : ""}.`;
+          : `Reading the pin less often than the bounce lasts is already a debounce: two reads can never land in the same bounce, so both counters say 1. The price is reaction time: the plain detector notices the press at the first read that finds the pin low, at the latest ${fmt(N)} after the contacts settle (here ${plainDelay.toFixed(1)} ms after first contact)${nDeb ? `, and the debounced counter, which also wants ${STABLE_MS} ms of steady readings, after ${delay.toFixed(1)} ms` : ""}.`;
 
   // Drawing
   const X0 = 52;
@@ -113,22 +114,28 @@ function ButtonBounce() {
     return out;
   };
   const inZoom = samples.filter((s) => s.t >= zFrom && s.t <= zTo);
-  const tri = (x: number, y: number, key: string, cls: string) => <path key={key} d={`M${x - 3.5},${y + 6} L${x},${y} L${x + 3.5},${y + 6} Z`} className={cls} />;
+  // Plain detector: triangle. Debounced counter: diamond. Shape, not colour, tells them apart.
+  const tri = (x: number, y: number, key: string) => <path key={key} d={`M${x - 3.5},${y + 6} L${x},${y} L${x + 3.5},${y + 6} Z`} className="bb-naive" />;
+  const dia = (x: number, y: number, key: string) => <path key={key} d={`M${x - 3.5},${y + 3.5} L${x},${y} L${x + 3.5},${y + 3.5} L${x},${y + 7} Z`} className="bb-deb" />;
+  const verdict = (n: number) => (n === 1 ? "correct" : n === 0 ? "wrong: missed" : "wrong: too many");
 
   return (
     <figure className="figure bb-fig" aria-label="Interactive diagram of push button contact bounce and sampling">
       <style>{`
-        .bb-fig .bb-naive { fill: var(--bad); }
-        .bb-fig .bb-deb { fill: var(--ok); }
-        .bb-fig .bb-zoom { fill: rgba(255,255,255,0.07); stroke: var(--dim); stroke-dasharray: 3 2; stroke-width: 0.8; }
+        .bb-fig .bb-naive { fill: var(--text); }
+        .bb-fig .bb-deb { fill: var(--ok); stroke: var(--inset); stroke-width: 0.6; }
+        .bb-fig .bb-zoom { fill: var(--surface); fill-opacity: 0.55; stroke: var(--dim); stroke-dasharray: 3 2; stroke-width: 0.8; }
+        .bb-fig .bb-counts small { display: block; font-size: 0.75rem; }
         .bb-fig .bb-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0.5rem 0; }
         .bb-fig .bb-counts div { background: var(--surface); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color: var(--dim); border-top: 3px solid var(--dim); }
         .bb-fig .bb-counts b { display: block; font-family: var(--mono); font-size: 1.25rem; color: var(--text); }
-        .bb-fig .bb-counts .n { border-color: var(--bad); }
-        .bb-fig .bb-counts .d { border-color: var(--ok); }
+        .bb-fig .bb-counts .ok { border-color: var(--ok); }
+        .bb-fig .bb-counts .ok small { color: var(--ok); }
+        .bb-fig .bb-counts .wrong { border-color: var(--bad); }
+        .bb-fig .bb-counts .wrong small { color: var(--bad); }
         .bb-fig input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--orange); }
       `}</style>
-      <svg viewBox="0 0 420 172" role="img" aria-label={`One button press with contact bounce of ${bounce.toFixed(1)} milliseconds, read every ${fmt(N)}. Plain edge detector counts ${nNaive}, debounced counter counts ${nDeb}.`}>
+      <svg viewBox="0 0 420 172" role="img" aria-label={`One button press with contact bounce of ${bounce.toFixed(1)} milliseconds, read every ${fmt(N)}. Zoomed on the ${zoom}. Plain edge detector counts ${nNaive}, debounced counter counts ${nDeb}; the right count is 1.`}>
         {/* overview */}
         <text x={X0} y={10} className="fig-label dim">the pin during one press and release (60 ms)</text>
         <text x={4} y={21} className="fig-label">3.3 V</text>
@@ -136,8 +143,8 @@ function ButtonBounce() {
         <rect x={xo(zFrom)} y={13} width={xo(zTo) - xo(zFrom)} height={32} className="bb-zoom" />
         {segs(xo, 0, T_END, 18, 38)}
         <text x={xo(23)} y={32} textAnchor="middle" className="fig-label dim">held down</text>
-        {naiveAll.map((t, i) => tri(xo(t), 47, `on${i}`, "bb-naive"))}
-        {debounced.map((t, i) => tri(xo(t), 47, `od${i}`, "bb-deb"))}
+        {naiveAll.map((t, i) => tri(xo(t), 47, `on${i}`))}
+        {debounced.map((t, i) => dia(xo(t), 54, `od${i}`))}
         <path d={`M${xo(zFrom)},45 L${X0},66 M${xo(zTo)},45 L${X1},66`} className="fig-wire" strokeDasharray="3 2" style={{ strokeWidth: 0.8 }} />
         {/* zoom */}
         <rect x={X0} y={66} width={X1 - X0} height={62} className="bb-zoom" />
@@ -152,9 +159,9 @@ function ButtonBounce() {
         <text x={4} y={109} className="fig-label dim">closed</text>
         <text x={4} y={139} className="fig-label">plain</text>
         <text x={4} y={152} className="fig-label">debounced</text>
-        {naiveAll.filter((t) => t >= zFrom && t <= zTo).map((t, i) => tri(xz(t), 132, `zn${i}`, "bb-naive"))}
-        {debounced.filter((t) => t >= zFrom && t <= zTo).map((t, i) => tri(xz(t), 145, `zd${i}`, "bb-deb"))}
-        <line x1={X0} x2={X1} y1={142.5} y2={142.5} stroke="rgba(255,255,255,0.12)" />
+        {naiveAll.filter((t) => t >= zFrom && t <= zTo).map((t, i) => tri(xz(t), 132, `zn${i}`))}
+        {debounced.filter((t) => t >= zFrom && t <= zTo).map((t, i) => dia(xz(t), 145, `zd${i}`))}
+        <line x1={X0} x2={X1} y1={142.5} y2={142.5} stroke="var(--faint)" />
         {Array.from({ length: 11 }, (_, i) => (
           <g key={i}>
             <line x1={xz(zFrom + i)} x2={xz(zFrom + i)} y1={128} y2={131} className="fig-wire" />
@@ -165,8 +172,8 @@ function ButtonBounce() {
       </svg>
       <div className="bb-counts">
         <div>Real presses<b>1</b></div>
-        <div className="n">Plain detector ▲<b>{nNaive}</b></div>
-        <div className="d">Debounced ▲<b>{nDeb}</b></div>
+        <div className={nNaive === 1 ? "ok" : "wrong"}>Plain detector ▲<b>{nNaive}</b><small>{verdict(nNaive)}</small></div>
+        <div className={nDeb === 1 ? "ok" : "wrong"}>Debounced ◆<b>{nDeb}</b><small>{verdict(nDeb)}</small></div>
       </div>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -184,7 +191,7 @@ function ButtonBounce() {
         </div>
       </div>
       <figcaption>
-        Dots are the moments the program reads the pin. A triangle marks a read where a counter went up. The plain detector counts every read that is 0 after a read that was 1: <code>if (last == 1 &amp;&amp; now == 0) presses++;</code> The debounced one first waits until the new level has stayed for {STABLE_MS} ms.
+        One press of a button whose contacts bounce. Dots are the moments the program reads the pin; a triangle or diamond marks a read where that counter went up. The plain detector counts every read that is 0 after a read that was 1: <code>if (last == 1 &amp;&amp; now == 0) presses++;</code> The debounced one first waits until the new level has stayed for {STABLE_MS} ms.
       </figcaption>
     </figure>
   );

@@ -8,7 +8,7 @@ import { useState } from "react";
 const VREF = 3.0;
 const VMAX = 3.3;
 const CSS = `
-.quant input[type=range] { flex: 1 1 8rem; min-width: 6rem; padding: 0; accent-color: var(--orange); }
+.quant input[type=range] { flex: 1 1 4rem; min-width: 3.5rem; padding: 0; accent-color: var(--orange); }
 .quant .quant-num { font-family: var(--mono); color: var(--harvest); min-width: 4.6em; text-align: right; }
 `;
 
@@ -41,7 +41,7 @@ function Quantise() {
   // right panel: four steps around the voltage
   const c0 = Math.min(Math.max(code - 1, 0), top - 3);
   const RX0 = 250;
-  const RX1 = 410;
+  const RX1 = 400;
   const rx = (v: number) => RX0 + ((v - c0 * lsb) / (4 * lsb)) * (RX1 - RX0);
   const RY0 = Y0 - 14;
   const ry = (v: number) => RY0 - ((v - c0 * lsb) / (4 * lsb)) * (RY0 - Y1);
@@ -56,7 +56,7 @@ function Quantise() {
 
   const why = clipped
     ? `${vin.toFixed(3)} V is at or above the 3.0 V reference, so the result stays at the top, ${top}. The ADC cannot tell 3.0 V from 3.3 V.`
-    : `${vin.toFixed(4)} V lies on step ${code}, which starts at ${back.toFixed(dec)} V. Every voltage on that step gives ${code}, so the ${mv(errMv)} mV above the start of the step is lost. This quantisation error is always less than one step, ${mv(lsb * 1000)} mV.`;
+    : `${vin.toFixed(4)} V lies on step ${code}, which starts at ${back.toFixed(dec)} V. Every voltage on that step gives ${code}. ${errMv < 0.00005 ? "Here the voltage is exactly at the start of the step, so nothing is lost." : `The ${mv(errMv)} mV above the start of the step is lost.`} This quantisation error is always less than one step, ${mv(lsb * 1000)} mV.`;
 
   return (
     <figure className="figure quant" aria-label="Interactive ADC transfer curve: pin voltage against result">
@@ -88,7 +88,7 @@ function Quantise() {
         {[0, 1, 2, 3, 4].map((k) => (
           <g key={k}>
             <line x1={rx((c0 + k) * lsb)} x2={rx((c0 + k) * lsb)} y1={Y0} y2={Y0 + 3} className="fig-wire" />
-            {(c0 + k === code || c0 + k === code + 1) && <text x={Math.min(RX1 - 16, Math.max(RX0 + 16, rx((c0 + k) * lsb)))} y={Y0 + 11} textAnchor="middle" className="fig-label">{((c0 + k) * lsb).toFixed(dec)}</text>}
+            {(c0 + k === code || c0 + k === code + 1) && <text x={rx((c0 + k) * lsb)} y={Y0 + 11} textAnchor="middle" className="fig-label">{((c0 + k) * lsb).toFixed(dec)}</text>}
           </g>
         ))}
         <text x={(RX0 + RX1) / 2} y={Y0 + 24} textAnchor="middle" className="fig-label dim">pin voltage (V)</text>
@@ -129,7 +129,7 @@ function Quantise() {
           <code>volts = {code} * 3.0 / {levels}.0 = {back.toFixed(5)} V</code>
         </div>
       </div>
-      <figcaption>The ADC answers with the number of the step the voltage is on. Dashed line: the exact voltage. Staircase: what the result says. The short thick bar between them is the quantisation error.</figcaption>
+      <figcaption>result = 4096 x Vin / 3.0 V with the fraction dropped, limited to 4095: the ADC answers with the number of the step the voltage is on. Dashed line: the exact voltage. Staircase: what the result says. The short thick bar between them is the quantisation error.</figcaption>
     </figure>
   );
 }

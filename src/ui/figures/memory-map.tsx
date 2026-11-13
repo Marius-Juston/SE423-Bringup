@@ -36,11 +36,11 @@ const BLOCKS: Block[] = [
 
 const CSS = `
 .mm-reg { fill: var(--surface); stroke: var(--dim); stroke-width: 1; }
-.mm-reg.sel { fill: var(--accent-soft, rgba(255, 95, 5, 0.16)); stroke: var(--orange); stroke-width: 2; }
+.mm-reg.sel { fill: var(--accent-soft); stroke: var(--orange); stroke-width: 2; }
 .mm-word { fill: none; stroke: var(--dim); stroke-width: 1; }
 .mm-word.sel { stroke: var(--orange); stroke-width: 2; }
 .mm-none { fill: none; stroke: var(--dim); stroke-dasharray: 3 2; }
-.mm-sum { display: block; margin: 0.4rem 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-size: 0.78rem; white-space: pre-wrap; }
+.mm-sum { display: block; margin: 0.4rem 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.74rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mm-h { margin: 0.7rem 0 0.2rem; font-size: 0.85rem; font-weight: 700; }
 .mm-grid { display: grid; grid-template-columns: 3.4rem repeat(16, minmax(0, 1fr)); column-gap: 2px; row-gap: 2px; align-items: center; }
 .mm-grid .mm-nib { margin-left: 4px; }
@@ -144,8 +144,8 @@ function MemoryMap() {
         </text>
         <text x="392" y="111" textAnchor="end" className="fig-label">base + offset = address of {reg.name}</text>
       </svg>
-      <p className="mm-h">The bits of {reg.name}: click to change them</p>
-      <div className="mm-grid" role="group" aria-label={`${reg.name} holds ${hex(value, nbits / 4)}`}>
+      <p className="mm-h">The bits of {reg.name}: click a bit to change it</p>
+      <div className="mm-grid" role="group" aria-label={`The ${nbits} bits of ${reg.name}, value ${hex(value, nbits / 4)}`}>
         {rows.map((row) => {
           const bits = Array.from({ length: 16 }, (_, i) => row * 16 + 15 - i);
           const cells = [];
@@ -176,8 +176,8 @@ function MemoryMap() {
         })}
       </div>
       <code className="mm-sum">
-        {`${block.name}.${reg.name}.all = ${hex(value, nbits / 4)};   // whole register`}
-        {cur ? `\n${block.name}.${reg.name}.bit.${cur.name} = ${curVal};   // one field` : ""}
+        {`${block.name}.${reg.name}.all = ${hex(value, nbits / 4)};  // all ${nbits} bits`}
+        {cur ? `\n${block.name}.${reg.name}.bit.${cur.name} = ${curVal};  // one field` : ""}
       </code>
       <p className="fig-why" role="status">{why}</p>
       <figcaption>Memory is a row of numbered 16-bit words. A peripheral's registers sit side by side from its base address; a 32-bit register takes two words, so the next one is 2 further on. TI's header files turn every address into a name.</figcaption>

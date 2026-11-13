@@ -1,11 +1,14 @@
 // An 8-bit R-2R ladder DAC with a 3.0 V reference: the resistor network of
 // the DAC block diagram, TRM section 12.1.2, drawn at 8 bits. Every switch
 // connects its 2R leg to the reference or to ground; bit k adds
-// 3.0 V / 2^(8 - k), and the output is their sum: code x 3.0 / 256.
+// 3.0 V / 2^(8 - k), and the output is their sum: code x 3.0 / 256. The TRM
+// does not say how the chip's own 12-bit DAC is built; this is the classic
+// textbook circuit (course Lecture 5), not a claim about the F28379D.
 import { useState } from "react";
 
 const VREF = 3.0;
 const N = 8;
+const mvOf = (v: number) => (v * 1000).toFixed(1).replace(/\.0$/, "");
 const trim = (v: number) => v.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
 
 function R2RLadder() {
@@ -21,7 +24,7 @@ function R2RLadder() {
   const why =
     bitsOn.length === 0
       ? "Every switch is on ground, so nothing is added: the output is 0 V."
-      : `${bitsOn.length === 1 ? `Only bit ${bitsOn[0]} is` : `Bits ${bitsOn.join(", ").replace(/, (\d)$/, " and $1")} are`} switched to the 3.0 V reference: ${bitsOn.map((k) => trim(weight(k))).join(" + ")}${bitsOn.length > 1 ? ` = ${trim(vout)}` : ""} V. The same result from the number: ${code} x 3.0 / 256 = ${trim(vout)} V.${code === 255 ? " All bits on is still one step short of 3.0 V." : ""}`;
+      : `${bitsOn.length === 1 ? `Only bit ${bitsOn[0]} is` : `Bits ${bitsOn.join(", ").replace(/, (\d)$/, " and $1")} are`} switched to the 3.0 V reference. ${bitsOn.length === 1 ? `It is worth ${1 << bitsOn[0]} steps` : `They are worth ${bitsOn.map((k) => 1 << k).join(" + ")} = ${code} steps`} of 3.0 V / 256 (11.72 mV), so the output is ${code} x 3.0 / 256 = ${trim(vout)} V.${code === 255 ? " All bits on is still one step short of 3.0 V." : ""}`;
 
   return (
     <figure className="figure r2r" aria-label="Interactive 8-bit R-2R ladder DAC">
@@ -53,7 +56,7 @@ function R2RLadder() {
         <text x="391" y="56" textAnchor="end" className="fig-label dim">2R</text>
         <line x1="398" x2="398" y1="64" y2="88" className="fig-wire" style={{ stroke: "var(--arches)" }} />
         <line x1="390" x2="406" y1="88" y2="88" className="fig-wire thick" style={{ stroke: "var(--arches)" }} />
-        <text x="398" y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--arches)" }}>0V</text>
+        <text x="398" y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--arches)" }}>0 V</text>
         {/* legs */}
         {Array.from({ length: N }, (_, i) => {
           const k = 7 - i;
@@ -71,33 +74,33 @@ function R2RLadder() {
               <circle cx={x} cy="74" r="2" className="fig-dot" />
               <circle cx={x - 9} cy="90" r="3" fill="var(--orange)" opacity={hi ? 1 : 0.45} />
               <circle cx={x + 9} cy="90" r="3" fill="var(--arches)" opacity={hi ? 0.45 : 1} />
-              <text x={x - 9} y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)", opacity: hi ? 1 : 0.6 }}>3V</text>
-              <text x={x + 9} y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--arches)", opacity: hi ? 0.6 : 1 }}>0V</text>
-              <text x={x} y="122" textAnchor="middle" className={hi ? "fig-value small" : "fig-label dim"}>{hi ? `+${trim(weight(k))}` : "0"}</text>
+              <text x={x - 9} y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)", opacity: hi ? 1 : 0.6 }}>3 V</text>
+              <text x={x + 9} y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--arches)", opacity: hi ? 0.6 : 1 }}>0 V</text>
+              <text x={x} y="122" textAnchor="middle" className={hi ? "fig-value small" : "fig-label dim"}>{hi ? `+${mvOf(weight(k))}` : "0"}</text>
               <text x={x} y="136" textAnchor="middle" className="fig-label dim">bit {k}</text>
               {/* large invisible click target; the buttons below do the same for keyboards */}
               <rect x={x - 18} y="38" width="36" height="102" fill="transparent" className="r2r-sw" onClick={() => setCode(code ^ (1 << k))} />
             </g>
           );
         })}
-        <text x="60" y="122" textAnchor="end" className="fig-label dim">adds (V)</text>
+        <text x="60" y="122" textAnchor="end" className="fig-label dim">adds (mV)</text>
         <text x="150" y="158" textAnchor="end" className="fig-value">{binSpaced} = {code}</text>
         <text x="172" y="158" className="fig-value">{code} x 3.0 / 256 = {trim(vout)} V</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
-          <span>Switches</span>
+          <span>Bit on</span>
           {Array.from({ length: N }, (_, i) => {
             const k = 7 - i;
             return (
-              <button key={k} className="fig-opt r2r-bits" aria-pressed={on(k)} aria-label={`Bit ${k}, adds ${trim(weight(k))} volts`} onClick={() => setCode(code ^ (1 << k))}>{k}</button>
+              <button key={k} className="fig-opt r2r-bits" aria-pressed={on(k)} aria-label={`Bit ${k}, adds ${mvOf(weight(k))} millivolts`} onClick={() => setCode(code ^ (1 << k))}>{k}</button>
             );
           })}
           <button className="fig-opt" onClick={() => setCode(0)}>all off</button>
         </div>
       </div>
-      <figcaption>An 8-bit R-2R ladder with a 3.0 V reference. Only two resistor values are needed. Each switch puts its leg on 3.0 V (orange, bit = 1) or on ground (blue, bit = 0), and each bit adds half as much as the bit to its left. Click a switch or use the buttons.</figcaption>
+      <figcaption>An 8-bit R-2R ladder with a 3.0 V reference. Only two resistor values are needed. Each switch puts its leg on 3.0 V (orange, bit = 1) or on ground (blue, bit = 0), and each bit adds half as much as the bit to its left. Click a switch or use the buttons below.</figcaption>
     </figure>
   );
 }

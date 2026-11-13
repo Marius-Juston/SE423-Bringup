@@ -1,12 +1,23 @@
 import { useState } from "react";
 
-type Outside = "nothing" | "released" | "pressed" | "high";
+// One GPIO pin, as TRM chapter 8 draws it (Figure 8-1; 8.2 "Configuration
+// Overview": pull-ups are disabled by default, GPyPUD bit = 1; 8.3 "Digital
+// General-Purpose I/O Control": GPyDAT reads the pin, not the latch, and the
+// latch keeps its value while the pin is an input or belongs to a peripheral).
 
-/** One GPIO pin, as TRM chapter 8 draws it: mux, direction, latch, pull-up, input path. */
+type Outside = "nothing" | "released" | "pressed" | "high";
+type LatchOp = "SET" | "CLEAR" | "TOGGLE";
+
+/** A choice pill (aria-pressed) or, with `on` left out, a plain action button. */
+function Btn({ on, set, children }: { on?: boolean; set: () => void; children: string }) {
+  return <button className="fig-opt" aria-pressed={on} onClick={set}>{children}</button>;
+}
+
 function GpioPin() {
   const [gpio, setGpio] = useState(true);
   const [output, setOutput] = useState(false);
   const [latch, setLatch] = useState<0 | 1>(0);
+  const [op, setOp] = useState<LatchOp>("SET");
   const [pullup, setPullup] = useState(false);
   const [outside, setOutside] = useState<Outside>("nothing");
 
@@ -17,7 +28,7 @@ function GpioPin() {
   const color = level === null ? "var(--dim)" : level ? "var(--orange)" : "var(--arches)";
   const dash = level === null ? "3 2" : undefined;
   const why = !gpio
-    ? "The mux has handed this pin to a peripheral (for example a PWM output or the serial port). The GPIO output latch no longer reaches it."
+    ? "The mux has handed this pin to a peripheral (for example a PWM output or the serial port). The GPIO output latch no longer reaches the pin: the peripheral decides whether it is driven. GPxDAT still reads the pin."
     : short
       ? "The chip drives the pin one way and the outside circuit drives it the other way: a short circuit. A pin wired to a button or sensor must be an input."
       : driving
@@ -31,13 +42,14 @@ function GpioPin() {
             : "Input: nothing drives the pin and the pull-up is off. The pin floats: its voltage drifts with electrical noise, and reads come back as random 0s and 1s.";
   const reads = level === null ? "random 0 or 1" : String(level);
 
-  const Btn = ({ on, set, children }: { on: boolean; set: () => void; children: string }) => (
-    <button className="fig-opt" aria-pressed={on} onClick={set}>{children}</button>
-  );
+  const write = (o: LatchOp) => {
+    setOp(o);
+    setLatch(o === "SET" ? 1 : o === "CLEAR" ? 0 : latch ? 0 : 1);
+  };
 
   return (
     <figure className="figure" aria-label="Interactive diagram of one GPIO pin">
-      <svg viewBox="0 0 400 170" role="img" aria-label={`Pin is ${level === null ? "floating" : level ? "high, 3.3 volts" : "low, 0 volts"}. GPxDAT reads ${reads}.`}>
+      <svg viewBox="0 0 400 170" role="img" aria-label={`Mux: ${gpio ? "GPIO" : "peripheral"}. Direction: ${output ? "output" : "input"}. Output latch holds ${latch}. Pull-up ${pullup ? "on" : "off"}. ${short ? "Short circuit: the chip and the outside circuit drive the pin to different levels." : `Pin is ${level === null ? "floating" : level ? "high, 3.3 volts" : "low, 0 volts"}.`} GPxDAT reads ${short ? "an unreliable value" : reads}.`}>
         {/* chip */}
         <rect x="6" y="14" width="236" height="148" rx="8" className="fig-chip" />
         <text x="14" y="28" className="fig-label dim">inside the chip</text>
@@ -70,7 +82,7 @@ function GpioPin() {
         <line x1="224" y1="126" x2="116" y2="126" className="fig-wire" style={{ stroke: color, strokeDasharray: dash }} />
         <rect x="18" y="108" width="98" height="36" rx="4" className="fig-box active" />
         <text x="67" y="122" textAnchor="middle" className="fig-label">GPxDAT reads</text>
-        <text x="67" y="137" textAnchor="middle" className="fig-value small">{reads}</text>
+        <text x="67" y="137" textAnchor="middle" className="fig-value small">{short ? "unreliable" : reads}</text>
         {/* outside */}
         <text x="330" y="28" textAnchor="middle" className="fig-label dim">outside the chip</text>
         {outside === "nothing" && <text x="300" y="73" className="fig-label dim">nothing connected</text>}
@@ -101,7 +113,7 @@ function GpioPin() {
       <div className="fig-controls">
         <div><span>Mux</span><Btn on={gpio} set={() => setGpio(true)}>GPIO</Btn><Btn on={!gpio} set={() => setGpio(false)}>peripheral</Btn><code>GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, {gpio ? 0 : "n"});</code></div>
         <div><span>Direction</span><Btn on={!output} set={() => setOutput(false)}>input</Btn><Btn on={output} set={() => setOutput(true)}>output</Btn><code>GPIO_SetupPinOptions(pin, {output ? "GPIO_OUTPUT, GPIO_PUSHPULL" : pullup ? "GPIO_INPUT, GPIO_PULLUP" : "GPIO_INPUT, 0"});</code></div>
-        <div><span>Latch</span><Btn on={false} set={() => setLatch(1)}>SET</Btn><Btn on={false} set={() => setLatch(0)}>CLEAR</Btn><Btn on={false} set={() => setLatch(latch ? 0 : 1)}>TOGGLE</Btn><code>GpioDataRegs.GPxSET.bit.GPIOn = 1;</code></div>
+        <div><span>Latch</span><Btn set={() => write("SET")}>SET</Btn><Btn set={() => write("CLEAR")}>CLEAR</Btn><Btn set={() => write("TOGGLE")}>TOGGLE</Btn><code>GpioDataRegs.GPx{op}.bit.GPIOn = 1;</code></div>
         <div><span>Pull-up</span><Btn on={!pullup} set={() => setPullup(false)}>off</Btn><Btn on={pullup} set={() => setPullup(true)}>on</Btn><code>GPxPUD bit = {pullup ? "0 (enabled)" : "1 (disabled, the reset state)"}</code></div>
         <div><span>Outside</span><Btn on={outside === "nothing"} set={() => setOutside("nothing")}>nothing</Btn><Btn on={outside === "released"} set={() => setOutside("released")}>button, released</Btn><Btn on={outside === "pressed"} set={() => setOutside("pressed")}>button, pressed</Btn><Btn on={outside === "high"} set={() => setOutside("high")}>3.3 V source</Btn></div>
       </div>

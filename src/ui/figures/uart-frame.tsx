@@ -12,7 +12,7 @@ const bin = (v: number) => `${v.toString(2).padStart(8, "0").slice(0, 4)} ${v.to
 const show = (c: string) => (c === " " ? "' ' (space)" : `'${c}'`);
 const us = (s: number) => {
   const v = s * 1e6;
-  return v >= 1000 ? `${+(v / 1000).toPrecision(4)} ms` : `${+v.toPrecision(3)} us`;
+  return v >= 1000 ? `${+(v / 1000).toPrecision(4)} ms` : `${+v.toPrecision(3)} µs`;
 };
 
 interface Cell {
@@ -50,8 +50,8 @@ function UartFrame() {
   const why =
     n === 0
       ? "Type a character. While nothing is sent the line simply stays high."
-      : `${show(chars[0])} is ${hex(codes[0])}, written ${bin(codes[0])} with bit 7 on the left. The line rests high, the start bit pulls it low, then bit 0 goes first: on a scope the data bits appear as ${sent[0]}, the mirror image of the written number. The stop bit puts the line back high.` +
-        (n === 2 ? ` ${show(chars[1])} (${hex(codes[1])}) follows at once: the stop bit of the first character is the only high time before the next start bit.` : "");
+      : `${show(chars[0])} is ${hex(codes[0])}, written ${bin(codes[0])} with bit 7 on the left. The line rests high, the start bit pulls it low, then bit 0 goes first: on an oscilloscope the data bits appear as ${sent[0]}, the written number in reverse order. The stop bit puts the line back high.` +
+        (n === 2 ? ` ${show(chars[1])} (${hex(codes[1])}) follows immediately: the stop bit of the first character is the only high time before the next start bit.` : "");
 
   return (
     <figure className="figure uf-fig" aria-label="Interactive diagram of a serial frame on the TX line">
@@ -81,7 +81,7 @@ function UartFrame() {
           ))}
         </div>
       </div>
-      <svg viewBox="0 0 420 134" role="img" aria-label={n ? `TX line: idle high, ${codes.map((c, k) => `start bit low, data bits ${sent[k].split("").join(" ")} (bit 0 first, character ${hex(c)}), stop bit high`).join(", then ")}, idle high. One bit lasts ${us(bit)}.` : "TX line idle high."}>
+      <svg viewBox="0 0 420 142" role="img" aria-label={n ? `TX line: idle high, ${codes.map((c, k) => `start bit low, data bits ${sent[k].split("").join(" ")} (bit 0 first, character ${hex(c)}), stop bit high`).join(", then ")}, idle high. One bit lasts ${us(bit)}.` : "TX line idle high."}>
         {codes.map((code, k) => {
           const first = 2 + k * 10; // index of the b0 cell
           return (
@@ -139,7 +139,7 @@ function UartFrame() {
         {wide ? " (This character is not ASCII; only its low 8 bits are shown.)" : ""}
       </p>
       <figcaption>
-        Blue is low (0 V), orange is high (3.3 V). {small ? "S is the start bit, P the stop bit, 0 to 7 the data bits. " : ""}The yellow lines show where each written bit ends up on the wire: they cross because bit 0 is sent first.
+        Blue is low (0 V), orange is high (3.3 V). {small ? "S is the start bit, P the stop bit, 0 to 7 the data bits. " : ""}The thin lines join each written bit to its place on the wire. They cross because bit 0 is sent first.
       </figcaption>
     </figure>
   );

@@ -3,7 +3,8 @@
 // so the pin changes once per counter period and one period of the tone
 // takes two. CLKDIV = 1 (/2) gives TBCLK = 25 MHz, and HW3's note values
 // are TBPRD = ((50000000 / 2) / 2) / frequency. By 15.4.3 a counter period
-// is TBPRD + 1 counts, so the tone is a hair flat.
+// is TBPRD + 1 counts: tone = TBCLK / (2 x (TBPRD + 1)), a little below the
+// note (A4: 439.99 Hz for 440 Hz).
 import { useState } from "react";
 
 const TBCLK = 25e6;
@@ -85,7 +86,7 @@ function BuzzerTone() {
   const zeros = off ? [] : Array.from({ length: Math.ceil(TW / len) }, (_, k) => k * len);
 
   const why = off
-    ? "OFFNOTE is 0. With TBPRD = 0 the counter has nowhere to go: the pin would toggle 12.5 million times a second, far above what the buzzer or your ear can follow. That is silence."
+    ? "OFFNOTE is 0. With TBPRD = 0 the counter has nowhere to go: it is back at zero on every count, so the pin would toggle every 40 ns. That is a 12.5 MHz square wave, far above what the buzzer or your ear can follow: silence."
     : `The pin toggles each time the counter is back at zero, so one high plus one low takes two teeth: the tone is half the counter's frequency. ${name}: 25 MHz / 2 / ${want} Hz = ${prd} counts in TBPRD. The pin gives ${tone.toFixed(2)} Hz, always at 50 % duty, and CMPA is not used at all.`;
 
   return (

@@ -17,16 +17,16 @@ const MAX = 168;
 const CSS = `
 .pm-row { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .pm-row label { color: var(--dim); font-size: 0.82rem; width: 4.6rem; }
-.pm-row input[type="number"] { width: 4.2rem; font-family: var(--mono); font-size: 0.9rem; font-weight: 700; background: var(--inset, var(--bg)); color: var(--harvest); border: 1px solid var(--dim); border-radius: 4px; padding: 0.1em 0.3em; }
+.pm-row input[type="number"] { width: 4.2rem; font-family: var(--mono); font-size: 0.9rem; font-weight: 700; background: var(--inset); color: var(--harvest); border: 1px solid var(--dim); border-radius: 4px; padding: 0.1em 0.3em; }
 .pm-row input[type="range"] { flex: 1; min-width: 8rem; accent-color: var(--orange); }
 .pm-port { fill: var(--surface); stroke: var(--dim); stroke-width: 1; }
-.pm-port.sel { stroke: var(--orange); stroke-width: 2; fill: var(--accent-soft, rgba(255, 95, 5, 0.16)); }
+.pm-port.sel { stroke: var(--orange); stroke-width: 2; fill: var(--accent-soft); }
 .pm-tick { stroke: var(--harvest); stroke-width: 1.6; }
 .pm-cell { fill: var(--surface); stroke: var(--dim); stroke-width: 0.7; }
 .pm-cell.none { fill: none; stroke-dasharray: 2 2; opacity: 0.6; }
 .pm-cell.mark { fill: var(--harvest); stroke: var(--harvest); }
 .pm-cell.sel { fill: var(--orange); stroke: var(--orange); }
-.pm-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pm-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 `;
 
 const PW = 60; // width of one port in the strip
@@ -70,7 +70,7 @@ function PortMap() {
           ))}
         </div>
       </div>
-      <svg viewBox="0 0 400 174" role="img" aria-label={`GPIO${n} is bit ${bit} of port ${L}.`}>
+      <svg viewBox="0 0 400 174" role="img" aria-label={`GPIO${n}${mark ? `, ${mark},` : ""} is bit ${bit} of port ${L}, GPIO${port * 32} to GPIO${port === 5 ? 168 : port * 32 + 31}.`}>
         <text x="8" y="10" className="fig-label dim">All 169 pins, GPIO0 on the left. Marks: the robot board's LEDs and buttons.</text>
         {/* the six ports */}
         {Array.from(LETTERS, (c, p) => {
@@ -99,7 +99,7 @@ function PortMap() {
           const cls = !exists ? "none" : b === bit ? "sel" : MARKS[g] && g !== 31 && g !== 34 ? "mark" : "";
           return <rect key={b} x={CX(b) + 0.8} y="86" width={CW - 1.6} height="18" rx="2" className={`pm-cell ${cls}`} />;
         })}
-        {[31, 24, 16, 8, 0].map((b) => (b === bit ? null : <text key={b} x={CX(b) + CW / 2} y="116" textAnchor="middle" className="fig-label dim">{b}</text>))}
+        {[31, 24, 16, 8, 0].map((b) => (Math.abs(b - bit) <= 1 ? null : <text key={b} x={CX(b) + CW / 2} y="116" textAnchor="middle" className="fig-label dim">{b}</text>))}
         <text x={CX(bit) + CW / 2} y="116" textAnchor="middle" className="fig-value small" style={{ fill: "var(--orange)" }}>{bit}</text>
         <text x="200" y="128" textAnchor="middle" className="fig-label dim">port {L}'s 32 bits, one per pin, bit 31 on the left as in every GP{L}... register</text>
         <text x="200" y="143" textAnchor="middle" className="fig-value small">{n} / 32 = {port} remainder {bit}</text>
@@ -110,7 +110,7 @@ function PortMap() {
         {lines.map(([c, note]) => `${c.padEnd(width)}  // ${note}`).join("\n")}
       </code>
       <p className="fig-why" role="status">{why}</p>
-      <figcaption>Type a GPIO number, drag the slider or pick a board part. The port letter goes into every register name, and the pin keeps its GPIO number as the field name.</figcaption>
+      <figcaption>Every GPIO pin is one bit of a 32-bit port. The port letter goes into every register name, and the pin keeps its GPIO number as the field name.</figcaption>
     </figure>
   );
 }

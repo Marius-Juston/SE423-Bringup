@@ -175,7 +175,7 @@ function I2cBus() {
         ))}
       </svg>
       {mode === "xfer" && (
-        <svg viewBox="0 0 420 104" role="img" aria-label={`Waveforms of the transfer up to step ${s + 1} of ${items.length}.`}>
+        <svg viewBox="0 0 420 104" role="img" aria-label={`Waveforms of SCL and SDA for the transfer, up to step ${s + 1} of ${items.length}: ${it.kind === "bit" ? `a bit, ${it.sda}` : it.kind === "ack" ? (it.sda ? "NACK" : "ACK") : it.kind === "start" ? "START" : it.kind === "stop" ? "STOP" : "idle"}.`}>
           <rect x={x(it.t0)} y="14" width={x(it.t1) - x(it.t0)} height="78" className="ib-now" />
           {groups.filter((g) => g.t0 < tEnd).map((g, i) => (
             <g key={i}>
@@ -218,10 +218,10 @@ function I2cBus() {
           <>
             <div>
               <span>Step</span>
-              <button className="fig-opt" disabled={s === 0} onClick={() => setStep(s - 1)}>back</button>
-              <button className="fig-opt" disabled={s === items.length - 1} onClick={() => setStep(s + 1)}>next step</button>
-              <button className="fig-opt" disabled={s === items.length - 1} onClick={() => setStep(items.length - 1)}>whole transfer</button>
-              <button className="fig-opt" disabled={s === 0} onClick={() => setStep(0)}>start again</button>
+              <button className="fig-opt" disabled={s === 0} onClick={() => setStep(s - 1)}>Back</button>
+              <button className="fig-opt" disabled={s === items.length - 1} onClick={() => setStep(s + 1)}>Next</button>
+              <button className="fig-opt" disabled={s === items.length - 1} onClick={() => setStep(items.length - 1)}>Whole transfer</button>
+              <button className="fig-opt" disabled={s === 0} onClick={() => setStep(0)}>Reset</button>
             </div>
             <div>
               <span>Address</span>
@@ -239,7 +239,7 @@ function I2cBus() {
           </>
         )}
       </div>
-      <figcaption>Every device connects to the same two lines and can only close a switch to ground or leave it open. Orange lines are high, blue lines low. In the step-through, the switches show who is pulling SDA at the moment each bit is read (SCL high); between bits the master pulls SCL low, and that is when SDA changes.</figcaption>
+      <figcaption>Every device connects to the same two lines and can only close a switch to ground or leave it open. Orange lines are high, blue lines are low. In the step-through the switches show who pulls SDA while SCL is high, which is when each bit is read; SDA only changes while the master holds SCL low.</figcaption>
     </figure>
   );
 }

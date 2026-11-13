@@ -12,7 +12,7 @@ const CSS = `
 .lw-led.lit { fill: var(--orange); stroke: var(--orange); }
 .lw-flow { fill: none; stroke: var(--harvest); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .lw-panel { fill: none; stroke: var(--border-strong, var(--dim)); stroke-dasharray: 4 3; }
-.lw-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset, var(--bg)); border-radius: 6px; font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lw-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 `;
 
 const TOP = 44;
@@ -88,8 +88,8 @@ function LedWiring() {
       </svg>
       <code className="lw-code">
         {high
-          ? "GpioDataRegs.GPASET.bit.GPIO22 = 1;   // LED1 on\nGpioDataRegs.GPBSET.bit.GPIO34 = 1;   // red LED OFF"
-          : "GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;   // LED1 off\nGpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;   // red LED ON"}
+          ? "GpioDataRegs.GPASET.bit.GPIO22 = 1;  // LED1 on\nGpioDataRegs.GPBSET.bit.GPIO34 = 1;  // red LED off"
+          : "GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;  // LED1 off\nGpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;  // red LED on"}
       </code>
       <p className="fig-why" role="status">{why}</p>
       <figcaption>An LED lights only when current flows through it, from a higher voltage to a lower one. The pin is one end of the circuit; what the other end is tied to decides whether a 1 or a 0 turns the LED on. The LaunchPad's blue LED on GPIO31 is wired like its red one.</figcaption>

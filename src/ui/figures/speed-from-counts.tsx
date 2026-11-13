@@ -73,12 +73,14 @@ function SpeedFromCounts() {
   const trueV = `M${X0},${yV(v0)} ${change ? `H${xOf(100)} V${yV(v0 / 2)} ` : ""}H${X1}`;
   const levels: number[] = [];
   if (res > 0 && top / res <= 9) for (let n = 0; n * res <= top; n++) levels.push(n * res);
+  // Label every level only while the labels are at least 11 units apart.
+  const labelEvery = levels.length > 1 && yV(levels[0]) - yV(levels[1]) < 11 ? 2 : 1;
 
   const flat = hi - lo < v0 * 0.02;
   const why =
     method === "gap"
-      ? `Turned around: measure the time between two counts. One count is ${RAD_PER_COUNT.toFixed(6)} rad; here they are ${(1 / perMs).toFixed(perMs > 1 ? 2 : 0)} ms apart. ${perMs < 0.5 ? "The reading is steady at low speed, and it only changes when a count arrives: no news means still the same speed." : "At this speed the counts come faster than the 1 ms clock can time them, so this method gets coarse. Use the difference over a few milliseconds."}`
-      : `In ${method} ms the wheel moves ${(perMs * method).toFixed(2)} counts, but the counter only shows whole counts. So the difference is ${Math.floor(perMs * method)} or ${Math.floor(perMs * method) + 1} counts, and the speed reads ${sig(Math.floor(perMs * method) * res)} or ${sig((Math.floor(perMs * method) + 1) * res)} rad/s: steps of ${sig(res)} rad/s, never ${sig(v0)}.${method > 1 ? ` The longer window makes the steps ${method} times finer, but the answer is on average ${method / 2} ms old${change ? ": look how late it follows the change at 100 ms" : ""}. Averaging the last ${method} one-millisecond speeds gives exactly the same numbers.` : flat ? "" : " Try a longer window."}`;
+      ? `Turned around: measure the time between two counts. One count is ${RAD_PER_COUNT.toFixed(6)} rad; here they are ${(1 / perMs).toFixed(perMs > 1 ? 2 : 0)} ms apart. ${perMs < 0.5 ? `The reading is steady at low speed. But it only changes when a count arrives${change ? ": look how long the old speed stays after the change at 100 ms" : ""}. If the wheel stops, no count comes and the old speed stays for ever, so real code also sets the speed to 0 after a time-out.` : "At this speed the counts come faster than the 1 ms clock can time them, so this method gets coarse. Use the difference over a few milliseconds."}`
+      : `In ${method} ms the wheel moves ${(perMs * method).toFixed(2)} counts, but the counter only shows whole counts. So the difference is ${Math.floor(perMs * method)} or ${Math.floor(perMs * method) + 1} count${Math.floor(perMs * method) === 0 ? "" : "s"}, and the speed reads ${sig(Math.floor(perMs * method) * res)} or ${sig((Math.floor(perMs * method) + 1) * res)} rad/s: steps of ${sig(res)} rad/s, never ${sig(v0)}.${method > 1 ? ` The longer window makes the steps ${method} times finer, but the answer is on average ${method / 2} ms old${change ? ": look how late it follows the change at 100 ms" : ""}. Averaging the last ${method} one-millisecond speeds gives exactly the same numbers.` : flat ? "" : " Try a longer window."}`;
 
   return (
     <figure className="figure sc-fig" aria-label="Interactive plot: speed computed from encoder counts, with its quantisation">
@@ -96,13 +98,14 @@ function SpeedFromCounts() {
         {levels.map((l, i) => (
           <g key={i}>
             <line x1={X0} x2={X1} y1={yV(l)} y2={yV(l)} className="sc-grid" />
-            <text x={X0 - 4} y={yV(l) + 3} textAnchor="end" className="fig-label dim">{l === 0 ? "0" : sig(l)}</text>
+            {i % labelEvery === 0 && <text x={X0 - 4} y={yV(l) + 3} textAnchor="end" className="fig-label dim">{l === 0 ? "0" : sig(l)}</text>}
           </g>
         ))}
         {!levels.length && (
           <g>
             <line x1={X0} x2={X1} y1={190} y2={190} className="sc-grid" />
             <text x={X0 - 4} y={193} textAnchor="end" className="fig-label dim">0</text>
+            <text x={X0 - 4} y={yV(v0) + 3} textAnchor="end" className="fig-label dim">{sig(v0)}</text>
           </g>
         )}
         <path d={trueV} className="sc-true" />
@@ -133,9 +136,9 @@ function SpeedFromCounts() {
       </div>
       <div className="fig-why" role="status">{why}</div>
       <div className="fig-step">
-        <pre><code>{method === "gap" ? "if (count != lastCount) {       // a count arrived\n    SlowVel = (count - lastCount)*radPerCount\n              / (msSinceChange*0.001);\n    lastCount = count;\n    msSinceChange = 0;\n}" : method === 1 ? "// every 1 ms\nvel = (pos - pos_old) / 0.001;\npos_old = pos;" : `// every 1 ms, pos_${method}: the position ${method} ms ago\nvel = (pos - pos_${method}) / ${(method * 0.001).toFixed(3)};`}</code></pre>
+        <pre><code>{method === "gap" ? "msSinceChange++;                 // every 1 ms\nif (count != lastCount) {       // a count arrived\n    SlowVel = (count - lastCount)*radPerCount\n              / (msSinceChange*0.001);\n    lastCount = count;\n    msSinceChange = 0;\n}" : method === 1 ? "// every 1 ms\nvel = (pos - pos_old) / 0.001;\npos_old = pos;" : `// every 1 ms, pos_${method}: the position ${method} ms ago\nvel = (pos - pos_${method}) / ${(method * 0.001).toFixed(3)};`}</code></pre>
       </div>
-      <figcaption>The counter moves in whole counts, so a difference of positions moves in whole counts too. Fast wheels do not notice. Slow wheels need a longer window (and get an older answer) or the time between counts.</figcaption>
+      <figcaption>The counter moves in whole counts, so a difference of positions moves in whole counts too. Fast wheels do not notice. Slow wheels need a longer window, which gives an older answer, or the time between counts.</figcaption>
     </figure>
   );
 }

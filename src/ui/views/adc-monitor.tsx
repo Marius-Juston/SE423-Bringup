@@ -1,3 +1,7 @@
+// One row per configured SOC of the powered-up ADCs (src/sim/plugins/adc.ts,
+// TRM chapter 11): result = 4096 * volts / 3.0 V, limited to 0..4095. The
+// bar is the latest result, the line is the pin's voltage now on the same
+// scale, so a gap between them means the pin moved since the last conversion.
 import { triggerName } from "../../sim/plugins/adc";
 import type { Board } from "../../sim/board";
 import type { BenchView, ViewProps } from "./types";
@@ -10,6 +14,7 @@ const DAC_PIN: Record<string, { regs: string; out: string }> = {
   ADCINB1: { regs: "DaccRegs", out: "DACC" },
 };
 
+const finite = (v: number | undefined) => (v !== undefined && Number.isFinite(v) ? v : 0);
 const powered = (board: Board, letter: string) => board.dev.get(`Adc${letter}Regs.ADCCTL1`, "ADCPWDNZ") === 1;
 
 /** Voltage on an ADC pin right now, read without marking the input as used. */
@@ -18,10 +23,10 @@ function pinVolts(board: Board, L: string, ch: number): { volts: number; from: s
   const dac = DAC_PIN[name];
   if (dac && board.dev.get(`${dac.regs}.DACOUTEN`, "DACOUTEN") === 1) {
     const tr = board.outputs.get(dac.out);
-    return { volts: tr?.length ? tr[tr.length - 1].v : 0, from: dac.out };
+    return { volts: finite(tr?.length ? tr[tr.length - 1].v : 0), from: dac.out };
   }
-  if (ch >= 14 && !board.inputs.has(name)) return { volts: board.inputs.get(`ADCIN${ch}`) ?? 0, from: "" };
-  return { volts: board.inputs.get(name) ?? 0, from: "" };
+  if (ch >= 14 && !board.inputs.has(name)) return { volts: finite(board.inputs.get(`ADCIN${ch}`)), from: "" };
+  return { volts: finite(board.inputs.get(name)), from: "" };
 }
 
 function when(trigsel: number): string {
@@ -70,37 +75,44 @@ function rows(board: Board): Row[] {
 
 /** One row per configured SOC: when, which pin, the pin's voltage now and the latest result. */
 function AdcMonitor({ board }: ViewProps) {
-  const list = rows(board);
-  if (!list.length) return <p className="hint-text">The ADC is powered up but no SOC is set up yet. A SOC needs a trigger (TRIGSEL), a pin (CHSEL) and a sample time (ACQPS).</p>;
+  const all = rows(board);
+  if (!all.length) return <p className="hint-text">The ADC is powered up but no SOC is set up yet. A SOC needs a trigger (TRIGSEL), a pin (CHSEL) and a sample time (ACQPS).</p>;
   const W = 400;
   const RH = 44;
+  // Keep the picture small: a program rarely sets up more than a few SOCs.
+  const more = Math.max(0, all.length - 8);
+  const list = all.slice(0, 8);
   const BX0 = 130;
   const BX1 = 296;
   const bx = (frac: number) => BX0 + Math.max(0, Math.min(1, frac)) * (BX1 - BX0);
   return (
-    <svg className="scope" viewBox={`0 0 ${W} ${list.length * RH + 14}`} role="img" aria-label={list.map((r) => `ADC${r.adc} SOC${r.soc}: trigger ${when(r.trigsel)}, pin ADCIN${r.adc}${r.ch} at ${r.volts.toFixed(3)} volts, result ${r.result}`).join(". ")}>
+    <>
+    <svg className="scope" viewBox={`0 0 ${W} ${list.length * RH + 14}`} role="img" aria-label={list.map((r) => `ADC${r.adc} SOC${r.soc}: trigger ${when(r.trigsel)}, pin ADCIN${r.adc}${r.ch} at ${r.volts.toFixed(3)} volts now, last result ${r.result} of 4095${r.ints.length ? `, then raises ADCINT${r.ints.join(" and ")}` : ""}`).join(". ")}>
       {list.map((r, i) => {
         const y = i * RH;
         return (
           <g key={`${r.adc}${r.soc}`}>
             {i > 0 && <line x1={4} x2={W - 4} y1={y + 1} y2={y + 1} stroke="var(--border)" />}
             <text x={6} y={y + 15} style={{ fill: "var(--text)", fontWeight: 700 }}>ADC{r.adc} SOC{r.soc}</text>
-            <text x={70} y={y + 15}>when: <tspan style={{ fill: "var(--text)" }}>{when(r.trigsel)}</tspan></text>
-            <text x={190} y={y + 15}>pin: <tspan style={{ fill: "var(--text)" }}>ADCIN{r.adc}{r.ch}</tspan></text>
-            {r.ints.length > 0 && <text x={W - 6} y={y + 15} textAnchor="end" style={{ fill: "var(--orange)" }}>raises ADCINT{r.ints.join(",")}</text>}
-            <text x={6} y={y + 33}>{r.from || "pin"} now <tspan style={{ fill: "var(--orange)" }}>{r.volts.toFixed(3)} V</tspan></text>
+            <text x={70} y={y + 15}>
+              when <tspan style={{ fill: "var(--text)" }}>{when(r.trigsel)}</tspan> · pin <tspan style={{ fill: "var(--text)" }}>ADCIN{r.adc}{r.ch}</tspan>
+            </text>
+            {r.ints.length > 0 && <text x={W - 6} y={y + 15} textAnchor="end" style={{ fill: "var(--text)" }}>then ADCINT{r.ints.join(",")}</text>}
+            <text x={6} y={y + 33}>{r.from || "pin"} now <tspan style={{ fill: "var(--hi)" }}>{r.volts.toFixed(3)} V</tspan></text>
             <rect x={BX0} y={y + 24} width={BX1 - BX0} height={10} rx={2} fill="none" stroke="var(--dim)" strokeWidth={0.8} />
-            <rect x={BX0} y={y + 24} width={bx(r.result / 4095) - BX0} height={10} rx={2} fill="var(--harvest)" />
-            <line x1={bx(r.volts / 3)} x2={bx(r.volts / 3)} y1={y + 21} y2={y + 37} stroke="var(--orange)" strokeWidth={1.6} />
-            <text x={W - 6} y={y + 33} textAnchor="end">RESULT{r.soc} <tspan style={{ fill: "var(--harvest)", fontWeight: 700 }}>{r.result}</tspan></text>
+            <rect x={BX0} y={y + 24} width={bx(r.result / 4095) - BX0} height={10} rx={2} fill="var(--value)" />
+            <line x1={bx(r.volts / 3)} x2={bx(r.volts / 3)} y1={y + 21} y2={y + 37} stroke="var(--hi)" strokeWidth={1.6} />
+            <text x={W - 6} y={y + 33} textAnchor="end">RESULT{r.soc} <tspan style={{ fill: "var(--value)", fontWeight: 700 }}>{r.result}</tspan></text>
           </g>
         );
       })}
-      <text x={BX0} y={list.length * RH + 9}>0</text>
-      <text x={BX1} y={list.length * RH + 9} textAnchor="end">4095</text>
-      <text x={6} y={list.length * RH + 9}>bar: result</text>
+      <text x={BX0} y={list.length * RH + 9}>0 (0 V)</text>
+      <text x={BX1} y={list.length * RH + 9} textAnchor="end">4095 (3.0 V)</text>
+      <text x={6} y={list.length * RH + 9}>bar: last result</text>
       <text x={W - 6} y={list.length * RH + 9} textAnchor="end">line: pin now</text>
     </svg>
+      {more > 0 && <p className="hint-text">{more} more SOC{more === 1 ? "" : "s"} not shown.</p>}
+    </>
   );
 }
 

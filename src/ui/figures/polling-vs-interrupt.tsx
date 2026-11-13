@@ -2,9 +2,11 @@ import { useState } from "react";
 
 // Polling a flag in while (1) against letting the hardware interrupt main.
 // The interrupt latency quoted is the minimum of TRM 3.4.3 "Interrupt Entry
-// Sequence": 14 SYSCLK cycles (70 ns at 200 MHz) from the flag being latched
-// to the first instruction of the function. A flag (TCR.TIF, TRM 3.8) is one
-// bit: a second event before it is cleared is not counted.
+// Sequence": at least 14 SYSCLK cycles (70 ns at 200 MHz) from the flag being
+// latched to the first instruction of the function, so "about 70 ns" here.
+// A flag (TCR.TIF, TRM 3.8) is one bit: a second event before it is cleared
+// is not counted. The polling loop is simulated past the 100 ms shown until
+// every event has been seen, so the last delay is not understated.
 
 const T_END = 100; // ms shown
 const EVENTS = [12, 37, 62, 87]; // ms: the timer reaches zero every 25 ms
@@ -22,7 +24,7 @@ function polling(work: number) {
   const lost: number[] = [];
   let t = 0;
   let next = 0; // index of the first event the loop has not seen yet
-  while (t < T_END) {
+  while (t < T_END || next < EVENTS.length) {
     // The check itself: has the flag been set since the last look?
     const pending = [];
     while (next < EVENTS.length && EVENTS[next] <= t) pending.push(EVENTS[next++]);
@@ -72,6 +74,7 @@ function PollingVsInterrupt() {
   const main = interrupted(work);
   const delays = late.map((l) => l.at - l.event);
   const worst = delays.length ? Math.max(...delays) : 0;
+  const shown = blocks.filter((b) => b.from < T_END);
 
   const X0 = 40;
   const X1 = 412;
@@ -82,8 +85,8 @@ function PollingVsInterrupt() {
     work === 0
       ? "With nothing else in the loop, polling reacts at once. But the CPU does nothing except ask, millions of times a second. Give main some work with the slider."
       : lost.length
-        ? `main's own work takes ${work} ms per pass, longer than the 25 ms between events. The flag was set again before anyone looked, so ${lost.length} event${lost.length > 1 ? "s were" : " was"} lost: a flag is one bit and cannot count. The interrupt version still reacts to all ${EVENTS.length}, each 70 ns after the event.`
-        : `Polling notices an event only when the loop comes round again: ${delays.map((d) => d.toFixed(0)).join(", ")} ms late here, a different amount each time and up to ${work} ms. With an interrupt the function starts 70 ns after the event, whatever main is doing, and main just continues ${HANDLE} ms later.`;
+        ? `One pass of main now takes ${work} ms of work plus the ${HANDLE} ms reaction, longer than the 25 ms between events. The flag was set a second time before main looked, so ${lost.length} event${lost.length > 1 ? "s were" : " was"} lost: a flag is one bit and cannot count. The interrupt still reacts to all ${EVENTS.length}, each about 70 ns after the event.`
+        : `Polling sees an event only when main reaches the check again: ${delays.map((d) => d.toFixed(0)).join(", ")} ms late here. The delay is different each time and can be as long as one whole pass of the loop. With an interrupt the function starts about 70 ns after the event, whatever main is doing, and main continues ${HANDLE} ms later.`;
 
   return (
     <figure className="figure pvi-fig" aria-label="Interactive comparison of polling and interrupts on a timeline">
@@ -97,9 +100,10 @@ function PollingVsInterrupt() {
         .pvi-fig .pvi-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin: 0.5rem 0; }
         .pvi-fig .pvi-sum div { background: var(--surface); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color: var(--dim); }
         .pvi-fig .pvi-sum b { display: block; font-family: var(--mono); font-size: 1rem; color: var(--text); }
+        .pvi-fig .pvi-sum code { display: block; margin-top: 0.2rem; font-size: 0.72rem; overflow-wrap: anywhere; }
         .pvi-fig input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--orange); }
       `}</style>
-      <svg viewBox="0 0 420 198" role="img" aria-label={`Four events, 25 milliseconds apart. Polling with ${work} milliseconds of other work per loop pass reacts up to ${worst.toFixed(0)} milliseconds late and loses ${lost.length} events. The interrupt reacts 70 nanoseconds after each event.`}>
+      <svg viewBox="0 0 420 198" role="img" aria-label={`Four events, 25 milliseconds apart. Polling with ${work} milliseconds of other work per loop pass reacts up to ${worst.toFixed(0)} milliseconds late and loses ${lost.length} events. The interrupt reacts about 70 nanoseconds after each event.`}>
         {/* events */}
         <text x={4} y={10} className="fig-label">Events: the timer reaches zero every 25 ms</text>
         {EVENTS.map((e) => (
@@ -113,7 +117,7 @@ function PollingVsInterrupt() {
         {/* polling */}
         <text x={4} y={40} className="fig-label">Polling: main asks "has it happened?" once per loop pass</text>
         <text x={4} y={62} className="fig-label dim">main</text>
-        {blocks.map((b, i) =>
+        {shown.map((b, i) =>
           b.kind === "ask" ? (
             <g key={i}>
               <rect x={x(b.from)} y={50} width={w(b)} height={18} className="pvi-ask" />
@@ -167,8 +171,8 @@ function PollingVsInterrupt() {
         <line x1={X0} x2={X1} y1={184} y2={184} className="fig-wire" style={{ strokeWidth: 0.8 }} />
       </svg>
       <div className="pvi-sum">
-        <div>Polling reacts<b>{work === 0 ? "at once" : `up to ${worst.toFixed(0)} ms late`}</b>{lost.length ? `${lost.length} of ${EVENTS.length} events lost` : `all ${EVENTS.length} events seen`}</div>
-        <div>Interrupt reacts<b>70 ns late</b>all {EVENTS.length} events seen</div>
+        <div>Polling reacts<b>{work === 0 ? "at once" : `up to ${worst.toFixed(0)} ms late`}</b>{lost.length ? `${lost.length} of ${EVENTS.length} events lost` : `all ${EVENTS.length} events seen`}<code>while (1) {"{"} if (flag) react(); work(); {"}"}</code></div>
+        <div>Interrupt reacts<b>about 70 ns late</b>all {EVENTS.length} events seen<code>while (1) {"{"} work(); {"}"}</code></div>
       </div>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -179,7 +183,7 @@ function PollingVsInterrupt() {
         </div>
       </div>
       <figcaption>
-        Orange blocks are the reaction to the event ({HANDLE} ms of code, the same in both). Grey blocks are everything else main has to do. Top: <code>while (1) {"{"} if (flag) react(); work(); {"}"}</code>. Bottom: the reaction is an <code>__interrupt</code> function and the loop only contains <code>work();</code>.
+        Orange blocks are the reaction to the event ({HANDLE} ms of code, the same in both rows). Blocks labelled "work" are everything else main has to do. Polling has to wait until main reaches the check again; an <code>__interrupt</code> function does not wait for main.
       </figcaption>
     </figure>
   );

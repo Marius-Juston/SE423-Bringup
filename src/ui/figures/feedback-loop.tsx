@@ -103,8 +103,9 @@ function FeedbackLoop() {
   const off = Math.abs(r - s.v);
   const h = s.hist;
   const top = 2.4;
+  const bottom = -0.6; // open loop with the load and no effort: the wheel is pushed backwards
   const px = (i: number) => 40 + ((HIST - h.length + i) / HIST) * 372;
-  const py = (v: number) => 206 - (Math.max(0, Math.min(top, v)) / top) * 52;
+  const py = (v: number) => 200 - (Math.max(bottom, Math.min(top, v)) / top) * 46;
   const line = (f: (p: { v: number; r: number }) => number) => {
     let d = "";
     for (let i = 0; i < h.length; i += 3) d += `${d ? "L" : "M"}${px(i).toFixed(1)},${py(f(h[i])).toFixed(1)}`;
@@ -116,16 +117,16 @@ function FeedbackLoop() {
     ? off < 0.01
       ? `Closed loop: the encoder reports ${fmt(s.v)} ft/s, the error is 0, and the integral holds the effort at ${fmt(s.u, 1)}${load ? `: ${fmt(LOAD, 0)} more than without the load. The controller found that by itself` : ""}.`
       : sat
-        ? `Closed loop: the controller asks for ${fmt(s.uRaw, 1)} but the amplifier only takes ${MAX_EFFORT}. The wheel gives all it has: ${fmt(s.v)} ft/s.`
+        ? `Closed loop: the effort is at its limit of ${s.uRaw > 0 ? "" : "-"}${MAX_EFFORT}${Math.abs(s.uRaw) >= MAX_EFFORT + 0.05 ? ` (the controller asks for ${fmt(s.uRaw, 1)})` : ""}. The wheel cannot do more: it runs at ${fmt(s.v)} ft/s, not ${fmt(r, 1)}.`
         : `Closed loop: the wheel is at ${fmt(s.v)} ft/s, ${s.v < r ? "too slow" : "too fast"} by ${fmt(off)}. The error ${s.v < r ? "raises" : "lowers"} the effort until it is gone.`
     : off < 0.01
-      ? `Open loop: the effort ${fmt(s.u, 1)} comes from a table (4 x ${fmt(r, 1)} + 0.8). It happens to be right, because nothing has disturbed the wheel. Add the load.`
-      : `Open loop: the effort stays at ${fmt(s.u, 1)} whatever the wheel does. ${load ? "With the load the wheel" : "The wheel"} ${Math.abs(s.v) < 0.005 ? "stands still" : `runs at ${fmt(s.v)} ft/s`} instead of ${fmt(r, 1)}, and nobody notices: the measurement is not used.`;
+      ? `Open loop: the effort ${fmt(s.u, 1)} comes from a table (4 x ${fmt(r, 1)} + 0.8). It is right only because nothing disturbs the wheel. Switch the load on.`
+      : `Open loop: the effort stays at ${fmt(s.u, 1)} whatever the wheel does. ${load ? "With the load the wheel" : "The wheel"} ${Math.abs(s.v) < 0.005 ? "stands still" : `runs at ${fmt(s.v)} ft/s${s.v < -0.005 ? " (backwards)" : ""}`} instead of ${fmt(r, 1)}, and the controller does not react: the measurement is not used.`;
 
   return (
     <figure className="figure fb-fig" aria-label="Interactive block diagram of a speed control loop, open and closed">
       <style>{`.fb-fig .fb-range{flex:1;min-width:140px;accent-color:var(--orange)}.fb-fig .fb-off{stroke-dasharray:3 3;opacity:.5}.fb-fig .fb-ref{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.fb-fig .fb-grid{stroke:var(--border);stroke-width:1}.fb-fig .fb-sat{fill:var(--bad)}`}</style>
-      <svg viewBox="0 0 420 222" role="img" aria-label={`${closed ? "Closed" : "Open"} loop${load ? " with load" : ""}. Reference ${fmt(r, 1)}, speed ${fmt(s.v)} feet per second, effort ${fmt(s.u, 1)}.`}>
+      <svg viewBox="0 0 420 226" role="img" aria-label={`${closed ? "Closed" : "Open"} loop${load ? " with load" : ""}. Reference ${fmt(r, 1)}, speed ${fmt(s.v)} feet per second, effort ${fmt(s.u, 1)}.`}>
         <defs>
           <marker id="fb-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />
@@ -138,14 +139,14 @@ function FeedbackLoop() {
         {/* compare */}
         {closed && <circle cx={60} cy={52} r={8} className="fig-box" />}
         {closed && <text x={60} y={55} textAnchor="middle" className="fig-label">+</text>}
-        {closed && <text x={67} y={73} className="fig-label">-</text>}
+        {closed && <text x={67} y={73} className="fig-label">−</text>}
         <path d={closed ? "M68 52 H97" : "M38 52 H97"} className="fig-wire" markerEnd="url(#fb-arrow)" />
         <text x={83} y={36} textAnchor="middle" className="fig-label dim">{closed ? "error e" : ""}</text>
         <text x={83} y={47} textAnchor="middle" className="fig-value small">{closed ? fmt(s.e, 2) : ""}</text>
         {/* controller */}
         <rect x={99} y={32} width={78} height={40} rx={4} className={`fig-box ${closed ? "hot" : ""}`} />
         <text x={138} y={46} textAnchor="middle" className="fig-label">{closed ? "PI controller" : "table"}</text>
-        <text x={138} y={58} textAnchor="middle" className="fig-label dim">{closed ? "8 e + 100 ∫e" : "u = 4 r + 0.8"}</text>
+        <text x={138} y={58} textAnchor="middle" className="fig-label dim">{closed ? "u = 8 e + 100 ∫e" : "u = 4 r + 0.8"}</text>
         {closed && <text x={138} y={68} textAnchor="middle" className="fig-label dim">∫e = <tspan className="fig-value small">{fmt(s.I, 3)}</tspan></text>}
         <path d="M177 52 H207" className="fig-wire" markerEnd="url(#fb-arrow)" />
         <text x={192} y={47} textAnchor="middle" className="fig-value small">{fmt(s.uRaw, 1)}</text>
@@ -175,15 +176,15 @@ function FeedbackLoop() {
         {!closed && <text x={66} y={114} className="fig-label dim">not connected</text>}
         {/* speed over time */}
         <text x={40} y={146} className="fig-label">speed <tspan className="fig-label dim">and reference (dashed), last 1.2 s, slowed down 4 times</tspan></text>
-        <line x1={40} x2={412} y1={206} y2={206} className="fb-grid" />
+        <line x1={40} x2={412} y1={py(0)} y2={py(0)} className="fb-grid" />
         <line x1={40} x2={412} y1={py(2)} y2={py(2)} className="fb-grid" />
         <line x1={40} x2={412} y1={py(1)} y2={py(1)} className="fb-grid" />
-        <text x={36} y={209} textAnchor="end" className="fig-label dim">0</text>
+        <text x={36} y={py(0) + 3} textAnchor="end" className="fig-label dim">0</text>
         <text x={36} y={py(1) + 3} textAnchor="end" className="fig-label dim">1</text>
         <text x={36} y={py(2) + 3} textAnchor="end" className="fig-label dim">2 ft/s</text>
         <path d={line((p) => p.r)} className="fb-ref" />
-        <path d={line((p) => p.v)} className="fig-trace data" />
-        <text x={412} y={218} textAnchor="end" className="fig-label dim">now</text>
+        <path d={line((p) => p.v)} className="fig-trace" />
+        <text x={412} y={223} textAnchor="end" className="fig-label dim">now</text>
       </svg>
       <div className="fig-controls">
         <div>
@@ -202,7 +203,7 @@ function FeedbackLoop() {
         </div>
       </div>
       <div className="fig-why" role="status">{why}</div>
-      <figcaption>One pass every millisecond: measure, compare, compute, saturate, actuate. Open loop sends the effort and hopes. Closed loop looks at what happened and corrects.</figcaption>
+      <figcaption>One pass every millisecond: measure, compare, compute, saturate, actuate. Open loop sends an effort and never checks the result. Closed loop measures the speed and corrects the effort.</figcaption>
     </figure>
   );
 }

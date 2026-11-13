@@ -19,14 +19,30 @@ const CSS = `
 `;
 
 const NAMES = ["IMU_AX_G", "IMU_AY_G", "IMU_AZ_G", "IMU_GX_DPS", "IMU_GY_DPS", "IMU_GZ_DPS"];
-const VARS = ["gyroz", "gyroz_raw", "accelx", "accely", "accelz", "heading", "roll", "pitch", "bias"];
+const VARS = ["gyrox", "gyroy", "gyroz", "gyrox_raw", "gyroz_raw", "accelx", "accely", "accelz", "heading", "roll", "pitch", "bias"];
+
+/** A program value: whole numbers as they are, others with three decimals, no "-0.000". */
+const show = (v: number) => {
+  if (!Number.isFinite(v)) return "not a number";
+  if (Number.isInteger(v)) return String(v);
+  const s = v.toFixed(3);
+  return /^-0\.0+$/.test(s) ? s.slice(1) : s;
+};
 
 function ImuView({ board }: ViewProps) {
-  const inp = (n: string, d: number) => board.inputs.get(n) ?? d;
+  const inp = (n: string, d: number) => {
+    const v = board.inputs.get(n);
+    return v !== undefined && Number.isFinite(v) ? v : d;
+  };
   const ax = inp("IMU_AX_G", 0);
   const ay = inp("IMU_AY_G", 0);
   const az = inp("IMU_AZ_G", 1);
   const gz = inp("IMU_GZ_DPS", 0);
+  // The picture is a top view, so it only draws the turn about Z; a turn
+  // about X or Y (tipping the board) is given in words when there is one.
+  const gx = inp("IMU_GX_DPS", 0);
+  const gy = inp("IMU_GY_DPS", 0);
+  const tipping = gx !== 0 || gy !== 0 ? `Turn rate about X ${gx.toFixed(1)} deg/s, about Y ${gy.toFixed(1)} deg/s.` : "";
   const G = 24; // px per g
   const CX = 72;
   const CY = 76;
@@ -61,8 +77,8 @@ function ImuView({ board }: ViewProps) {
   return (
     <div>
       <style>{CSS}</style>
-      <svg className="iv-svg" viewBox="0 0 400 152" role="img" aria-label={`Acceleration X ${ax.toFixed(2)} g, Y ${ay.toFixed(2)} g, Z ${az.toFixed(2)} g. Turn rate about Z ${gz.toFixed(1)} degrees per second, ${turning}.`}>
-        <text x={8} y={13} className="iv-txt dim">X and Y, seen from above</text>
+      <svg className="iv-svg" viewBox="0 0 400 152" role="img" aria-label={`What the MPU-9250 measures now. Acceleration X ${ax.toFixed(2)} g, Y ${ay.toFixed(2)} g, Z ${az.toFixed(2)} g. Turn rate about Z ${gz.toFixed(1)} degrees per second, ${turning}. ${tipping}`}>
+        <text x={8} y={13} className="iv-txt dim">X and Y, from above</text>
         <circle cx={CX} cy={CY} r={2 * G} className="iv-ring" />
         <circle cx={CX} cy={CY} r={G} className="iv-ring g1" />
         <line x1={CX - 2 * G} x2={CX + 2 * G} y1={CY} y2={CY} className="iv-ring" />
@@ -72,7 +88,8 @@ function ImuView({ board }: ViewProps) {
         <text x={CX + G + 2} y={CY + 11} className="iv-txt dim">1 g</text>
         <line x1={CX} y1={CY} x2={tipX} y2={tipY} stroke="var(--accent)" strokeWidth={2.5} />
         {head ? <path d={head} fill="var(--accent)" /> : <circle cx={CX} cy={CY} r={3.5} fill="var(--accent)" />}
-        <text x={8} y={146} className="iv-num">X {ax.toFixed(2)} g, Y {ay.toFixed(2)} g</text>
+        <text x={8} y={134} className="iv-num">X {ax.toFixed(2)} g</text>
+        <text x={8} y={146} className="iv-num">Y {ay.toFixed(2)} g</text>
         {/* Z */}
         <text x={ZX} y={13} textAnchor="middle" className="iv-txt dim">Z (up)</text>
         <line x1={ZX} x2={ZX} y1={zy(2)} y2={zy(-2)} className="iv-ring" />
@@ -95,12 +112,13 @@ function ImuView({ board }: ViewProps) {
         <text x={DX} y={146} textAnchor="middle" className="iv-num">{gz >= 0 ? "+" : ""}{gz.toFixed(1)} deg/s</text>
         <text x={DX} y={134} textAnchor="middle" className="iv-txt">{turning}</text>
       </svg>
+      {tipping && <p className="hint-text">{tipping}</p>}
       {vars.length > 0 && (
         <dl className="iv-vars" aria-label="What the program has computed">
           {vars.map(([n, v]) => (
             <div key={n}>
               <dt>{n}</dt>
-              <dd>{Number.isInteger(v) ? v : (v as number).toFixed(3)}</dd>
+              <dd>{show(v as number)}</dd>
             </div>
           ))}
         </dl>
