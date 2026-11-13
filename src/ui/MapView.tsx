@@ -43,7 +43,7 @@ export function MapView({ open }: { open: (id: string) => void }) {
               <ol className="level-list">
                 {c.levels.map((l) => (
                   <li key={l.id}>
-                    <button className={`level-row ${save.passed[l.id] ? "passed" : ""}`} disabled={!unlocked} onClick={() => open(l.id)}>
+                    <button className={`level-row ${save.passed[l.id] ? "passed" : ""}`} data-level={l.id} disabled={!unlocked} onClick={() => open(l.id)}>
                       <span className="mark" aria-hidden="true">{save.passed[l.id] ? "✓" : "·"}</span>
                       <span>
                         {l.title}

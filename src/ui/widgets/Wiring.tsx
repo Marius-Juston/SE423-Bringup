@@ -35,6 +35,37 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
         {(level.fixed ?? []).map(([a, b], i) => (
           <line key={`f${i}`} className="fixed" x1={node(a).x} y1={node(a).y} x2={node(b).x} y2={node(b).y} />
         ))}
+        {(level.parts ?? []).map((part, i) => {
+          const a = node(part.a);
+          const b = node(part.b);
+          const len = Math.hypot(b.x - a.x, b.y - a.y);
+          const deg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+          const h = len / 2;
+          return (
+            <g key={`p${i}`} className="part" transform={`translate(${(a.x + b.x) / 2} ${(a.y + b.y) / 2}) rotate(${deg})`} aria-hidden="true">
+              {part.kind === "resistor" ? (
+                <>
+                  <line x1={-h} y1={0} x2={h} y2={0} />
+                  <rect x={-4.5} y={-1.6} width={9} height={3.2} />
+                </>
+              ) : (
+                <>
+                  <line x1={-h} y1={0} x2={-3.5} y2={0} />
+                  <line x1={3.5} y1={0} x2={h} y2={0} />
+                  <circle cx={-3.5} cy={0} r={0.8} />
+                  <circle cx={3.5} cy={0} r={0.8} />
+                  <line x1={-4.2} y1={-2.6} x2={4.2} y2={-2.6} />
+                  <line x1={0} y1={-2.6} x2={0} y2={-5} />
+                </>
+              )}
+              {part.label && (
+                <text x={0} y={part.kind === "button" ? -6.2 : -3} textAnchor="middle" transform={Math.abs(deg) > 45 ? `rotate(${-deg}) translate(${deg > 0 ? 7 : -7} 3.8)` : undefined}>
+                  {part.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
         {wires.map(([a, b], i) => (
           <line key={i} className="wire" x1={node(a).x} y1={node(a).y} x2={node(b).x} y2={node(b).y} />
         ))}
@@ -42,6 +73,7 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
           <g
             key={n.id}
             className={`node ${sel === n.id ? "sel" : ""}`}
+            data-node={n.id}
             tabIndex={0}
             role="button"
             aria-pressed={sel === n.id}
@@ -54,8 +86,16 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
               }
             }}
           >
+            {/* A generous invisible target makes the terminal easy to hit. */}
+            <circle className="hit" cx={n.x} cy={n.y} r={4.5} />
             <circle cx={n.x} cy={n.y} r={2.2} />
-            <text x={n.x} y={n.y - 3.4} textAnchor="middle">{n.label}</text>
+            <text
+              x={n.side === "left" ? n.x - 3.4 : n.side === "right" ? n.x + 3.4 : n.x}
+              y={n.side === "bottom" ? n.y + 5.6 : n.side === "left" || n.side === "right" ? n.y + 0.9 : n.y - 3.6}
+              textAnchor={n.side === "left" ? "end" : n.side === "right" ? "start" : "middle"}
+            >
+              {n.label}
+            </text>
           </g>
         ))}
       </svg>

@@ -234,6 +234,7 @@ export class Board implements Rt {
 
   /** Sets a CPU interrupt flag (bit 0 = INT1 ... bit 13 = INT14). */
   raiseCpu(bit: number): void {
+    this.mem.writes++;
     this.ifr |= 1 << bit;
     this.updateIrq();
   }

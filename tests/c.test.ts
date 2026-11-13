@@ -182,6 +182,57 @@ void main(void) {
     const r = run(prog(all).replace("PieVectTable.TIMER0_INT = &t0;", ""), 10.5);
     expect(r.runtimeError?.msg).toMatch(/PieVectTable\.TIMER0_INT/);
   });
+  it("maps PIE channels to the vectors the TI header names", () => {
+    const board = run("void main(void) {}").board;
+    const pie = board.pie;
+    // 32 legacy vectors + 12 groups x 16 channels, two words each, from 0x0D00.
+    const table = board.dev.instances.find((i) => i.name === "PieVectTable")!;
+    expect(table.type.fields.length).toBe(224);
+    expect(table.type.size).toBe(448);
+    expect(board.dev.reg("PieVectTable.EMIF_ERROR_INT").addr).toBe(0x0d00 + 2 * (128 + 11 * 8));
+    expect(pie.vectorName(1, 7)).toBe("TIMER0_INT");
+    expect(pie.vectorName(9, 1)).toBe("SCIA_RX_INT");
+    expect(pie.vectorName(12, 9)).toBe("EMIF_ERROR_INT");
+    expect(pie.vectorName(1, 1)).toBe("ADCA1_INT");
+    expect(pie.vectorName(6, 3)).toBe("SPIB_RX_INT");
+  });
+  it("runs a software interrupt posted through PIEIFR12 (course SWI)", () => {
+    const r = run(`
+uint32_t n = 0;
+__interrupt void swi(void) { n++; PieCtrlRegs.PIEACK.all = PIEACK_GROUP12; }
+void main(void) {
+  InitPieCtrl(); IER = 0; IFR = 0; InitPieVectTable();
+  EALLOW; PieVectTable.EMIF_ERROR_INT = &swi; EDIS;
+  IER |= M_INT12; PieCtrlRegs.PIEIER12.bit.INTx9 = 1; EINT;
+  PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;
+  PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;
+  while (1) {}
+}`, 1);
+    expect(r.runtimeError).toBeUndefined();
+    expect(r.board.readVar("n")).toBe(2);
+  });
+  it("keeps a polling loop that drives a pin fast to simulate", () => {
+    const t = Date.now();
+    const r = run(`void main(void) {
+  InitGpio();
+  GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0); GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+  GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
+  while (1) {
+    if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) GpioDataRegs.GPASET.bit.GPIO22 = 1;
+    else GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+  }
+}`, 5000);
+    expect(r.runtimeError).toBeUndefined();
+    expect(Date.now() - t).toBeLessThan(2000);
+  });
+  it("warns when a floating pin's own bit is read", () => {
+    const r = run(`int v; void main(void) { InitGpio(); v = GpioDataRegs.GPEDAT.bit.GPIO157; while (1) {} }`);
+    expect(codes(r)).toContain("floating-157");
+    const ok = run(`int v; void main(void) { InitGpio(); GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
+      v = GpioDataRegs.GPEDAT.bit.GPIO157; while (1) {} }`);
+    expect(codes(ok)).toEqual([]);
+    expect(ok.board.readVar("v")).toBe(1);
+  });
   it("skips idle time: one simulated minute runs quickly", () => {
     const t = Date.now();
     expect(run(prog(all), 60000).board.readVar("n")).toBe(59999);

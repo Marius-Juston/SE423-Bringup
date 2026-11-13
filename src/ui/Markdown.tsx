@@ -40,12 +40,14 @@ export function Markdown({ text }: { text: string }) {
       i++;
     } else if (/^(-|\d+\.)\s/.test(line)) {
       const ordered = /^\d+\./.test(line);
+      // A numbered list interrupted by a code block continues its numbering.
+      const start = ordered ? parseInt(line, 10) : 1;
       const items: ReactNode[] = [];
       while (i < lines.length && /^(-|\d+\.)\s/.test(lines[i])) {
         items.push(<li key={items.length}>{inline(lines[i].replace(/^(-|\d+\.)\s/, ""), k * 100 + items.length)}</li>);
         i++;
       }
-      blocks.push(ordered ? <ol key={k++}>{items}</ol> : <ul key={k++}>{items}</ul>);
+      blocks.push(ordered ? <ol key={k++} start={start}>{items}</ol> : <ul key={k++}>{items}</ul>);
     } else if (line.trim() === "") {
       i++;
     } else {

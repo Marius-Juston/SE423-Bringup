@@ -117,7 +117,19 @@ export function Registers({ board, names }: { board: Board; names: string[] }) {
   return (
     <div>
       {[...names].reverse().map((n) => {
-        const r = board.dev.reg(n);
+        const r = board.dev.regs.get(n);
+        // IER and IFR are CPU registers, not part of the peripheral map.
+        if (!r) {
+          const v = n === "IER" ? board.ier : n === "IFR" ? board.ifr : 0;
+          return (
+            <div className="reg-row" key={n}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--mono)", fontSize: "0.85rem" }}>
+                <span>{n} (CPU register)</span>
+                <span style={{ color: "var(--harvest)" }}>{hex(v, 16)}</span>
+              </div>
+            </div>
+          );
+        }
         const v = board.mem.peek(r.addr, r.words);
         const fields = fieldsOf(r).filter((f) => !f.reserved);
         return (

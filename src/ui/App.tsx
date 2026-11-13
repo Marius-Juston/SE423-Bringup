@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Component, useState, type ReactNode } from "react";
 import { CHAPTERS, findLevel } from "../levels/index";
 import { useSave } from "./store";
 import { MapView } from "./MapView";
@@ -8,6 +8,33 @@ import { Sandbox } from "./Sandbox";
 import { Settings } from "./Settings";
 
 export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook" } | { name: "sandbox" } | { name: "settings" };
+
+/** Shows a message instead of a blank window if a screen fails to draw. */
+class Boundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="map" role="alert">
+        <h1>Something went wrong on this screen</h1>
+        <p className="map-intro">Your progress is safe. This is a bug in the game, not in your code.</p>
+        <pre>{String(this.state.error.message)}</pre>
+        <button
+          className="btn primary"
+          onClick={() => {
+            this.setState({ error: null });
+            this.props.onReset();
+          }}
+        >
+          Back to the map
+        </button>
+      </div>
+    );
+  }
+}
 
 export function App() {
   const [view, setView] = useState<View>({ name: "map" });
@@ -36,11 +63,13 @@ export function App() {
         <span className="progress-pill">{done} of {total} levels passed</span>
       </header>
       <main>
+        <Boundary key={view.name === "level" ? view.id : view.name} onReset={() => setView({ name: "map" })}>
         {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} />}
         {view.name === "level" && findLevel(view.id) && <LevelView key={view.id} id={view.id} go={setView} />}
         {view.name === "handbook" && <Handbook />}
         {view.name === "sandbox" && <Sandbox />}
         {view.name === "settings" && <Settings />}
+        </Boundary>
       </main>
     </div>
   );

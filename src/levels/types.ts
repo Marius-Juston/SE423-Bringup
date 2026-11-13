@@ -101,8 +101,10 @@ export interface OrderLevel extends Base {
 /** Connect parts with wires. */
 export interface WiringLevel extends Base {
   kind: "wiring";
-  /** Terminals placed on a 100 x 60 grid. */
-  nodes: { id: string; label: string; x: number; y: number; group?: string }[];
+  /** Terminals placed on a 100 x 60 grid; `side` says where the label goes (default "top"). */
+  nodes: { id: string; label: string; x: number; y: number; side?: "top" | "bottom" | "left" | "right" }[];
+  /** Component symbols drawn between two terminals (not editable). */
+  parts?: { kind: "resistor" | "button"; a: string; b: string; label?: string }[];
   /** Fixed connections drawn but not editable. */
   fixed?: [string, string][];
   /** Wires the student must place (in either direction). */

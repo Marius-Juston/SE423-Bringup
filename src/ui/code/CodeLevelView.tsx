@@ -90,7 +90,7 @@ export function CodeLevelView({ level, onPass }: { level: CodeLevel; onPass: () 
   const nowMs = live ? live.timeMs : (result?.endMs ?? 0);
   const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
   const windowMs = live ? Math.min(Math.max(nowMs, 1), 400) : Math.max(nowMs, 1);
-  const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : "type" })) : [];
+  const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : `'${s.type}'` })) : [];
 
   return (
     <>
@@ -162,7 +162,7 @@ export function CodeLevelView({ level, onPass }: { level: CodeLevel; onPass: () 
             </p>
             <h3>Signals</h3>
             {board ? <Scope kit={kit} traces={board.gpio.trace} fromMs={Math.max(0, nowMs - windowMs)} toMs={Math.max(nowMs, 1)} marks={stimMarks} /> : <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>Run the program to see its pins.</p>}
-            {level.watch && board && (
+            {level.watch && level.watch.length > 0 && board && (
               <>
                 <h3>Variables</h3>
                 <dl className="watch">

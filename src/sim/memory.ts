@@ -10,6 +10,8 @@ export interface RegHook {
   protect: boolean;
   /** Value changes with time even when nothing writes it (disables idle skipping). */
   live?: boolean;
+  /** The hook itself bumps `writes` when a write changes something. */
+  quiet?: boolean;
   /** Returns the value a read sees (default: the stored value). */
   read?: (stored: number) => number;
   /** Returns the value to store (default: the written value). */
@@ -24,8 +26,19 @@ const PAGE = 1 << PAGE_BITS;
 export class Memory {
   private pages = new Map<number, Uint16Array>();
   private regs = new Map<number, RegHook>();
-  /** Counts every write (used to detect idle loops). */
+  /**
+   * Idle-loop detection. `writes` counts writes with side effects outside
+   * memory (hooked registers, library calls, CPU state). `sigA`/`sigB` are a
+   * running signature of the memory contents: they return to the same
+   * values exactly when memory returns to the same contents, so a loop pass
+   * that leaves all three unchanged did nothing.
+   */
   writes = 0;
+  sigA = 0;
+  sigB = 0;
+  /** Bits of the register the current read asks for (set for bit-field reads). */
+  readMask = 0;
+  reqMask = 0xffffffff;
   /** Counts reads of registers that change with time. */
   liveReads = 0;
   eallow = false;
@@ -56,10 +69,21 @@ export class Memory {
     return ((hi << 16) | lo) >>> 0;
   }
 
+  private set16(addr: number, v: number): void {
+    const p = this.page(addr);
+    const i = addr & (PAGE - 1);
+    const old = p[i];
+    if (old === v) return;
+    // XOR out the old (address, value) pair and XOR in the new one.
+    this.sigA ^= Math.imul(Math.imul(addr, 0x9e3779b1) ^ old, 0x85ebca6b) ^ Math.imul(Math.imul(addr, 0x9e3779b1) ^ v, 0x85ebca6b);
+    this.sigB ^= Math.imul((addr * 0x10001) ^ Math.imul(old, 0xc2b2ae35), 0x27d4eb2f) ^ Math.imul((addr * 0x10001) ^ Math.imul(v, 0xc2b2ae35), 0x27d4eb2f);
+    p[i] = v;
+  }
+
   /** Store without hooks or protection (for peripherals). */
   poke(addr: number, words: number, v: number): void {
-    this.page(addr)[addr & (PAGE - 1)] = v & 0xffff;
-    if (words === 2) this.page(addr + 1)[(addr + 1) & (PAGE - 1)] = (v >>> 16) & 0xffff;
+    this.set16(addr, v & 0xffff);
+    if (words === 2) this.set16(addr + 1, (v >>> 16) & 0xffff);
   }
 
   /** CPU read of 1 or 2 words; returns an unsigned value. */
@@ -68,7 +92,13 @@ export class Memory {
     if (!h) return this.peek(addr, words);
     if (h.live) this.liveReads++;
     const stored = this.peek(h.addr, h.words);
-    const v = h.read ? h.read(stored) >>> 0 : stored;
+    let v = stored;
+    if (h.read) {
+      const unit = this.readMask || (words === 1 ? 0xffff : 0xffffffff);
+      this.reqMask = (unit * 2 ** ((addr - h.addr) * 16)) >>> 0;
+      v = h.read(stored) >>> 0;
+      this.reqMask = 0xffffffff;
+    }
     if (h.words === words && h.addr === addr) return words === 1 ? v & 0xffff : v;
     // Partial access to a 32-bit register (or a 2-word read starting at a 16-bit one).
     const shift = (addr - h.addr) * 16;
@@ -79,7 +109,6 @@ export class Memory {
 
   /** CPU write of 1 or 2 words. */
   write(addr: number, words: number, v: number): void {
-    this.writes++;
     const h = this.regs.get(addr);
     if (!h) {
       this.poke(addr, words, v);
@@ -100,6 +129,7 @@ export class Memory {
       this.onProtectedWrite(h);
       return;
     }
+    if ((h.write || h.after) && !h.quiet) this.writes++;
     const before = this.peek(h.addr, h.words);
     const mask = h.words === 1 ? 0xffff : 0xffffffff;
     const val = (v & mask) >>> 0;

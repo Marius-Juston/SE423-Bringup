@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { TimingLevel } from "../../levels/types";
 
 export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => void }) {
@@ -8,10 +8,10 @@ export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => vo
   return (
     <div>
       <div className="timing">
-        <table>
+        <table style={{ "--slots": level.slots.length } as CSSProperties}>
           <thead>
             <tr>
-              <th />
+              <th className="rowname"><span className="sr-only">Signal</span></th>
               {level.slots.map((s, i) => (
                 <th key={i} scope="col">{s}</th>
               ))}

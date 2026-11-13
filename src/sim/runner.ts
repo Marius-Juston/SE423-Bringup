@@ -83,8 +83,9 @@ export function runProgram(spec: RunSpec): RunResult {
     ran: false, passed: false, checks: [], diagnostics: [], serial: [], console: "", lcd: ["", ""],
     traces: b.gpio.trace, isrLog: b.isrLog, touched: [], endMs: spec.durationMs, board: b, kit,
   };
-  b.mem.onWrite = (reg) => {
-    if (b.libDepth && !reg.name.startsWith("Gpio")) return;
+  b.mem.onWrite = (reg, _value, before) => {
+    // Library code is only interesting when it actually changed something.
+    if (b.libDepth && b.mem.peek(reg.addr, reg.words) === before) return;
     const i = res.touched.indexOf(reg.name);
     if (i >= 0) res.touched.splice(i, 1);
     res.touched.push(reg.name);

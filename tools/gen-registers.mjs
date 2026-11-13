@@ -21,7 +21,23 @@ const externs = []; // [instance, structName]
 for (const h of HEADERS) {
   const text = readFileSync(join(root, "include", `F2837xD_${h}.h`), "latin1");
   let cur = null;
+  // The game simulates CPU1: keep "#ifdef CPU1" branches, drop CPU2 ones.
+  const cond = [];
   for (const raw of text.split(/\r?\n/)) {
+    const d = /^\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b\s*(.*)$/.exec(raw);
+    if (d) {
+      const arg = d[2].replace(/\/\/.*$|\/\*.*$/, "").trim();
+      const truth = (a) => (/CPU2/.test(a) ? false : /__cplusplus/.test(a) ? false : true);
+      if (d[1] === "ifdef" || d[1] === "if") cond.push({ live: truth(arg), taken: truth(arg) });
+      else if (d[1] === "ifndef") cond.push({ live: true, taken: true });
+      else if (d[1] === "elif" || d[1] === "else") {
+        const c = cond[cond.length - 1];
+        c.live = !c.taken && (d[1] === "else" || truth(arg));
+        c.taken = c.taken || c.live;
+      } else cond.pop();
+      continue;
+    }
+    if (cond.some((c) => !c.live)) continue;
     const ci = raw.indexOf("//");
     const code = (ci >= 0 ? raw.slice(0, ci) : raw).trim();
     let desc = ci >= 0 ? raw.slice(ci + 2).trim() : "";

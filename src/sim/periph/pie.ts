@@ -4,12 +4,15 @@
 import type { Board } from "../board";
 
 export class Pie {
-  /** Vector names in PieVectTable order (index = word offset / 2). */
-  private vectors: string[];
+  /** Vector name per "group.channel", from the TI header's own comments ("12.9 - ..."). */
+  private vectors = new Map<string, string>();
 
   constructor(private b: Board) {
     const dev = b.dev;
-    this.vectors = dev.instances.find((i) => i.name === "PieVectTable")!.type.fields.map((f) => f.name);
+    for (const f of dev.instances.find((i) => i.name === "PieVectTable")!.type.fields) {
+      const m = /^(\d+)\.(\d+) - /.exec(f.desc ?? "");
+      if (m) this.vectors.set(`${m[1]}.${m[2]}`, f.name);
+    }
     const re = () => this.evaluate();
     // PIEACK: writing 1 clears the bit (TRM 3.15.3.2).
     const ack = dev.reg("PieCtrlRegs.PIEACK").hook;
@@ -24,12 +27,14 @@ export class Pie {
 
   /** Name of the vector for group x (1..12), channel y (1..16). */
   vectorName(x: number, y: number): string {
-    const i = y <= 8 ? 32 + (x - 1) * 8 + (y - 1) : 128 + (x - 1) * 8 + (y - 9);
-    return this.vectors[i];
+    const name = this.vectors.get(`${x}.${y}`);
+    if (!name) throw new Error(`no PIE vector for INT${x}.${y}`);
+    return name;
   }
 
   /** A peripheral requests interrupt INTx.y (step 1: latched in PIEIFRx.y). */
   raise(x: number, y: number): void {
+    this.b.mem.writes++;
     const name = `PieCtrlRegs.PIEIFR${x}`;
     this.b.dev.set(name, this.b.dev.get(name) | (1 << (y - 1)));
     this.evaluate();

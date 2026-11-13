@@ -492,6 +492,8 @@ export class Compiler {
             for (;;) {
               const w0 = mem.writes;
               const l0 = mem.liveReads;
+              const a0 = mem.sigA;
+              const b0 = mem.sigB;
               rt.tick(tl);
               if ((testFirst || !first) && c && !c()) break;
               first = false;
@@ -501,7 +503,7 @@ export class Compiler {
               if (step) step();
               // Nothing changed during this pass: every later pass would be
               // identical until an event happens, so jump to that event.
-              if (mem.writes === w0 && mem.liveReads === l0) rt.idle();
+              if (mem.writes === w0 && mem.liveReads === l0 && mem.sigA === a0 && mem.sigB === b0) rt.idle();
               if (rt.pause) yield;
             }
             return 0 as Sig;
@@ -914,11 +916,20 @@ export class Compiler {
       const mask = f.bitW === 32 ? 0xffffffff : 2 ** f.bitW - 1;
       const signed = isInt(f.type) && f.type.s;
       const w = f.bitW;
+      // Tell the register which bits this read is about (a floating pin
+      // only matters when its own bit is read).
+      const unitMask = (mask * 2 ** sh) >>> 0;
+      const readBits = (addr: number): number => {
+        mem.readMask = unitMask;
+        const v = mem.read(addr, unit);
+        mem.readMask = 0;
+        return v;
+      };
       return {
         t: this.promote(f.type),
         get: signed
-          ? () => (((mem.read(a(), unit) >>> sh) & mask) << (32 - w)) >> (32 - w)
-          : () => ((mem.read(a(), unit) >>> sh) & mask) >>> 0,
+          ? () => (((readBits(a()) >>> sh) & mask) << (32 - w)) >> (32 - w)
+          : () => ((readBits(a()) >>> sh) & mask) >>> 0,
         lv: { addr: a, bit: f },
       };
     }

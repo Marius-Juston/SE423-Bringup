@@ -31,7 +31,7 @@ export function Order({ steps, onPass }: { steps: string[]; onPass: () => void }
     <div>
       <ol className="order">
         {order.map((s, i) => (
-          <li key={s} className={checked ? (right(i) ? "right" : "wrong") : ""}>
+          <li key={s} data-step={s} className={checked ? (right(i) ? "right" : "wrong") : ""}>
             <span><Markdown text={steps[s]} /></span>
             <span className="moves">
               <button className="btn small" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move step ${i + 1} up`}>↑</button>

@@ -25,6 +25,8 @@ h1, h2, h3 { margin: 0; line-height: 1.2; font-weight: 700; }
 h1 { font-size: 1.6rem; } h2 { font-size: 1.2rem; } h3 { font-size: 1rem; }
 p { margin: 0 0 0.7em; }
 code, pre, .mono { font-family: var(--mono); font-size: 0.9em; }
+/* Code must show the characters that were typed: no ligatures (|= is not one glyph). */
+code, pre, .mono, .cm-editor, .cm-editor *, .term, .lcd, input, textarea, .watch, .reg-row, .bit, .readout { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
 code { background: rgba(255, 255, 255, 0.1); padding: 0.08em 0.35em; border-radius: 4px; }
 pre { background: #0a1730; border: 1px solid var(--border); border-radius: var(--radius); padding: 0.7em 0.9em; overflow-x: auto; margin: 0 0 0.8em; line-height: 1.45; }
 pre code { background: none; padding: 0; }
@@ -78,11 +80,11 @@ main { overflow: auto; min-height: 0; }
 .bar > span { display: block; height: 100%; background: var(--ok); }
 
 /* ---- level ---- */
-.level { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+.level { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
 .level-head { display: flex; align-items: center; gap: 0.8rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-2); flex-wrap: wrap; }
 .badge { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 0.15em 0.6em; border-radius: 999px; background: var(--surface-2); color: var(--harvest); white-space: nowrap; }
 .badge.ok { color: var(--ok); }
-.level-body { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; min-height: 0; }
+.level-body { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; grid-template-rows: minmax(0, 1fr); min-height: 0; overflow: hidden; }
 .level-body.code { grid-template-columns: minmax(260px, 340px) minmax(360px, 1fr) minmax(340px, 440px); }
 .pane { overflow: auto; padding: 1rem; min-height: 0; min-width: 0; }
 .pane + .pane { border-left: 1px solid var(--border); }
@@ -138,10 +140,10 @@ tr.target td:first-child { color: var(--harvest); }
 
 /* ---- timing ---- */
 .timing { overflow-x: auto; }
-.timing table { border-collapse: collapse; }
-.timing th { font-size: 0.75rem; color: var(--dim); font-weight: 600; padding: 0 2px 4px; text-align: center; min-width: 2.6rem; }
-.timing th.rowname { text-align: right; padding-right: 0.6rem; font-family: var(--mono); color: var(--text); }
-.wave { width: 2.6rem; height: 3rem; background: #0a1730; border: none; border-right: 1px dashed rgba(255, 255, 255, 0.12); padding: 0; position: relative; display: block; }
+.timing table { border-collapse: collapse; table-layout: fixed; width: 100%; max-width: calc(4.5rem + var(--slots) * 2.8rem); min-width: calc(4.5rem + var(--slots) * 1.5rem); }
+.timing th { font-size: 0.75rem; color: var(--dim); font-weight: 600; padding: 0 0 4px; text-align: center; overflow: hidden; }
+.timing th.rowname { width: 4.5rem; text-align: right; padding-right: 0.6rem; font-family: var(--mono); color: var(--text); }
+.wave { width: 100%; height: 3rem; background: #0a1730; border: none; border-right: 1px dashed rgba(255, 255, 255, 0.12); padding: 0; position: relative; display: block; }
 .wave::after { content: ""; position: absolute; left: 0; right: 0; height: 3px; background: var(--arches); }
 .wave.hi::after { top: 8px; } .wave.lo::after { bottom: 8px; }
 .wave.edge::before { content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 3px; background: var(--arches); }
@@ -160,8 +162,15 @@ tr.target td:first-child { color: var(--harvest); }
 .wiring svg { width: 100%; max-width: 760px; background: #0a1730; border: 1px solid var(--border); border-radius: var(--radius); }
 .wiring .node { cursor: pointer; }
 .wiring .node circle { fill: var(--surface-2); stroke: var(--text); stroke-width: 0.5; }
+.wiring .node circle.hit { fill: transparent; stroke: none; }
+.wiring .node.sel circle.hit { fill: transparent; }
+.wiring .node:hover circle.hit { stroke: none; }
 .wiring .node.sel circle { fill: var(--orange); }
-.wiring .node text { fill: var(--text); font-size: 3px; font-family: var(--sans); }
+.wiring .node text, .wiring .part text { fill: var(--text); font-size: 2.6px; font-family: var(--sans); paint-order: stroke; stroke: #0a1730; stroke-width: 1.4px; stroke-linejoin: round; }
+.wiring .part text { fill: var(--dim); font-size: 2.3px; font-style: italic; }
+.wiring .part line, .wiring .part rect { stroke: var(--dim); stroke-width: 0.7; fill: #0a1730; stroke-linecap: round; }
+.wiring .part circle { fill: var(--dim); }
+.wiring .node:hover circle { stroke: var(--harvest); stroke-width: 0.9; }
 .wiring line.wire { stroke: var(--harvest); stroke-width: 0.9; stroke-linecap: round; }
 .wiring line.fixed { stroke: var(--dim); stroke-width: 0.7; }
 .wirelist { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
@@ -169,12 +178,12 @@ tr.target td:first-child { color: var(--harvest); }
 .wirelist button { background: none; border: none; color: var(--bad); font-weight: 700; }
 
 /* ---- code level ---- */
-.editor-pane { display: grid; grid-template-rows: auto 1fr auto; min-height: 0; padding: 0; }
+.editor-pane { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; padding: 0; overflow: hidden; }
 .toolbar { display: flex; gap: 0.5rem; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--border); align-items: center; flex-wrap: wrap; }
 .editor-host { min-height: 0; overflow: hidden; }
 .editor-host .cm-editor { height: 100%; font-size: 0.9rem; }
 .editor-host .cm-scroller { font-family: var(--mono); line-height: 1.5; }
-.problems { max-height: 34%; overflow: auto; border-top: 1px solid var(--border); padding: 0.4rem 0.7rem; font-size: 0.92rem; }
+.problems { max-height: 13rem; overflow: auto; border-top: 1px solid var(--border); padding: 0.4rem 0.7rem; font-size: 0.92rem; }
 .problem { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem; padding: 0.25rem 0; align-items: baseline; }
 .problem button { background: none; border: none; font-family: var(--mono); color: var(--arches); padding: 0; text-decoration: underline; }
 .problem.error .sev { color: var(--bad); } .problem.warning .sev { color: var(--harvest); }
@@ -222,7 +231,7 @@ tr.target td:first-child { color: var(--harvest); }
 .handbook .detail { overflow: auto; padding: 1.2rem; }
 
 @media (max-width: 1000px) {
-  .level-body, .level-body.code { grid-template-columns: 1fr; overflow: auto; }
+  .level-body, .level-body.code { grid-template-columns: 1fr; grid-template-rows: none; overflow: auto; }
   .level-body .pane { overflow: visible; }
   .pane + .pane { border-left: none; border-top: 1px solid var(--border); }
   .editor-pane { min-height: 60vh; }

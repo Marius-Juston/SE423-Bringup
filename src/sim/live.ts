@@ -30,8 +30,9 @@ export class LiveSession {
   constructor(kitId: string, source: string) {
     this.kit = KITS[kitId];
     const b = this.board;
-    b.mem.onWrite = (reg) => {
-      if (b.libDepth && !reg.name.startsWith("Gpio")) return;
+    b.mem.onWrite = (reg, _value, before) => {
+      // Library code is only interesting when it actually changed something.
+      if (b.libDepth && b.mem.peek(reg.addr, reg.words) === before) return;
       const i = this.touched.indexOf(reg.name);
       if (i >= 0) this.touched.splice(i, 1);
       this.touched.push(reg.name);

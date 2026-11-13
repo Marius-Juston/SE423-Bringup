@@ -5,6 +5,7 @@ export function Settings() {
   const save = useSave();
   const file = useRef<HTMLInputElement>(null);
   const [msg, setMsg] = useState("");
+  const [text, setText] = useState<string | null>(null);
   return (
     <div className="map" style={{ maxWidth: 720 }}>
       <h1>Settings</h1>
@@ -63,6 +64,24 @@ export function Settings() {
           </button>
         </div>
         <p role="status" style={{ color: "var(--ok)", minHeight: "1.5em" }}>{msg}</p>
+        <details>
+          <summary>Copy and paste instead of using a file</summary>
+          <p style={{ color: "var(--dim)", marginTop: "0.5rem" }}>Copy this text to save your progress. To restore, paste saved text here and press Load.</p>
+          <label className="sr-only" htmlFor="save-text">Progress as text</label>
+          <textarea id="save-text" value={text ?? store.export()} onChange={(e) => setText(e.target.value)} rows={8} spellCheck={false} style={{ width: "100%", fontFamily: "var(--mono)", fontSize: "0.8rem" }} />
+          <div className="actions">
+            <button
+              className="btn"
+              onClick={() => {
+                setMsg(store.import(text ?? "") ? "Progress loaded." : "That text is not Bringup progress.");
+                setText(null);
+              }}
+              disabled={text === null}
+            >
+              Load
+            </button>
+          </div>
+        </details>
       </section>
       <section style={{ marginTop: "1rem" }}>
         <h2>About</h2>

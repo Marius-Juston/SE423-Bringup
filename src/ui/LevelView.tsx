@@ -4,6 +4,7 @@ import { KIND_LABEL, kindOf, type Ref } from "../levels/types";
 import { store, useSave } from "./store";
 import { Markdown } from "./Markdown";
 import { trmRef } from "./device";
+import { openExternal } from "./external";
 import { Quiz } from "./widgets/Quiz";
 import { Calc } from "./widgets/Calc";
 import { Order } from "./widgets/Order";
@@ -21,7 +22,7 @@ export function Refs({ refs }: { refs: Ref[] }) {
           const t = trmRef(r.trm);
           return (
             <li key={i}>
-              <a href={t?.url} target="_blank" rel="noreferrer" title="Opens the Technical Reference Manual at this page">
+              <a href={t?.url} target="_blank" rel="noreferrer" title="Opens the Technical Reference Manual at this page" onClick={(e) => t && openExternal(e, t.url)}>
                 TRM §{r.trm} {t ? `${t.title}, p. ${t.page}` : ""}
               </a>
             </li>
