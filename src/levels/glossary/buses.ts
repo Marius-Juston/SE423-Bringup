@@ -2,9 +2,9 @@ import type { GlossaryEntry } from "../types";
 
 // Terms first taught in chapters 12 to 15 (SPI, SPI devices, I2C and CAN,
 // DMA and filters). `level` is the level that explains the term. Terms these
-// chapters explain in place but that analog.ts already lists (edge, sample,
-// signal, noise, ADC, PWM, FIFO, polling, trigger, extern, data sheet,
-// low-pass filter) are not repeated here.
+// chapters explain in place but that foundations.ts or analog.ts already
+// list (clock, SYSCLK, frame, FIFO, polling, extern, edge, sample, signal,
+// noise, ADC, PWM, trigger, data sheet, low-pass filter) are not repeated here.
 export const glossary: GlossaryEntry[] = [
   // ---- chapter 12: SPI
   { term: "SPI", meaning: "Serial Peripheral Interface: a way to send bits between chips with a clock wire, two data wires and one chip-select wire per device.", level: "spi-brief" },

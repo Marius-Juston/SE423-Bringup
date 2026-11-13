@@ -223,6 +223,184 @@ ${EPWM5}
 ${ADC_POWER}
 ${SOC0}`;
 
+// ---- the set-up ladder: adc-setup-own -> adc-trigger-own -> adc-x-scratch ----
+const OWN_GLOBALS = `uint16_t adca4result = 0;
+float adcina4volts = 0;
+int32_t numSamples = 0;`;
+
+const OWN_SETUP = `// Powers up ADCA and sets up SOC0 for the photoresistor on ADCINA4
+void setupADCA(void)
+{
+${ADC_POWER}
+    AdcaRegs.ADCSOC0CTL.bit.CHSEL = 4;     // SOC0 converts ADCINA4
+    AdcaRegs.ADCSOC0CTL.bit.ACQPS = 99;    // sample window is acqps + 1 SYSCLK cycles = 500 ns
+    AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = TRIG;
+${INT1(0)}
+}`;
+
+const OWN_POLL = `    while (1) {
+        AdcaRegs.ADCSOCFRC1.bit.SOC0 = 1;        // start SOC0 from software
+
+        // wait until SOC0 has finished
+        while (AdcaRegs.ADCINTFLG.bit.ADCINT1 == 0) {}
+
+        adca4result = AdcaResultRegs.ADCRESULT0;
+        adcina4volts = adca4result * 3.0 / 4096.0;
+
+        AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;   // clear the flag: write 1
+        numSamples++;
+        DELAY_US(1000);                    // one sample per millisecond
+    }`;
+
+/** adc-setup-own: the student writes the body of setupADCA(); main() polls. */
+const setupOwn = (fn: string) => `${OWN_GLOBALS}
+
+${fn}
+
+void main(void)
+{
+    InitSysCtrl();
+
+${PIE_INIT}
+
+    setupADCA();
+
+${OWN_POLL}
+}
+`;
+
+const OWN_SETUP_SW = OWN_SETUP.replace("TRIG;", "0;   // software only");
+
+const TRIGGER_OWN_STARTER = `${OWN_GLOBALS}
+
+${OWN_SETUP_SW}
+
+// TODO 1: write setupEPWM5() here: SOCA every 0.5 ms
+
+void main(void)
+{
+    InitSysCtrl();
+
+${PIE_INIT}
+
+    // TODO 2: the vector for ADCA_ISR, and call setupEPWM5()
+
+    setupADCA();     // TODO 3: inside it, SOC0 must listen to EPWM5 SOCA
+
+    // TODO 4: enable ADCA1 (INT1.1) in the PIE and in IER, then EINT
+
+    // TODO 5: empty this loop, and move its middle part into ADCA_ISR
+${OWN_POLL}
+}
+
+// TODO 6: write ADCA_ISR (and its prototype at the top of the file)
+`;
+
+const TRIGGER_OWN_SOLUTION = `__interrupt void ADCA_ISR(void);
+
+${OWN_GLOBALS}
+
+${OWN_SETUP.replace("TRIG;", "13;  // EPWM5 ADCSOCA triggers SOC0")}
+
+// EPWM5 as the sample clock: SOCA every 0.5 ms
+void setupEPWM5(void)
+{
+${EPWM5}
+}
+
+void main(void)
+{
+    InitSysCtrl();
+
+${PIE_INIT}
+
+${VECTOR}
+
+    setupEPWM5();
+    setupADCA();
+
+${ENABLE}
+
+    while (1) {}
+}
+
+// adca1 pie interrupt
+__interrupt void ADCA_ISR(void)
+{
+    adca4result = AdcaResultRegs.ADCRESULT0;
+    adcina4volts = adca4result * 3.0 / 4096.0;
+    numSamples++;
+
+${ISR_END}
+}
+`;
+
+const SCRATCH_STARTER = `__interrupt void ADCA_ISR(void);
+
+float joyXvolts = 0;     // joystick X, volts
+int32_t numADCA = 0;     // calls of ADCA_ISR
+
+void main(void)
+{
+    InitSysCtrl();
+
+    // everything from here on is yours
+
+    while (1) {}
+}
+
+__interrupt void ADCA_ISR(void)
+{
+}
+`;
+
+const SCRATCH_SOLUTION = `__interrupt void ADCA_ISR(void);
+
+float joyXvolts = 0;     // joystick X, volts
+int32_t numADCA = 0;     // calls of ADCA_ISR
+
+void main(void)
+{
+    InitSysCtrl();
+
+${PIE_INIT}
+
+${VECTOR}
+
+    EALLOW;
+    EPwm2Regs.ETSEL.bit.SOCAEN = 0;      // no pulses while it is set up
+    EPwm2Regs.TBCTL.bit.CTRMODE = 3;     // freeze counter
+    EPwm2Regs.ETSEL.bit.SOCASEL = 1;     // event: counter equal to zero
+    EPwm2Regs.ETPS.bit.SOCAPRD = 1;      // pulse on every event
+    EPwm2Regs.TBCTR = 0x0;
+    EPwm2Regs.TBPHS.bit.TBPHS = 0x0000;
+    EPwm2Regs.TBCTL.bit.PHSEN = 0;
+    EPwm2Regs.TBCTL.bit.CLKDIV = 0;      // 50 MHz
+    EPwm2Regs.TBPRD = 12499;             // 12500 counts of 20 ns: 0.25 ms
+    EPwm2Regs.ETSEL.bit.SOCAEN = 1;      // enable SOCA
+    EPwm2Regs.TBCTL.bit.CTRMODE = 0;     // count up
+    EDIS;
+
+${ADC_POWER}
+    AdcaRegs.ADCSOC0CTL.bit.CHSEL = 2;     // SOC0 converts ADCINA2
+    AdcaRegs.ADCSOC0CTL.bit.ACQPS = 39;    // 40 SYSCLK cycles = 200 ns
+    AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 7;   // EPWM2 ADCSOCA
+${INT1(0)}
+
+${ENABLE}
+
+    while (1) {}
+}
+
+__interrupt void ADCA_ISR(void)
+{
+    joyXvolts = AdcaResultRegs.ADCRESULT0 * 3.0 / 4096.0;
+    numADCA++;
+
+${ISR_END}
+}
+`;
+
 export const ch08: Chapter = {
   id: "adc",
   number: 8,
@@ -1700,6 +1878,332 @@ ${ISR_END}`,
         "`adca4result * 3 / 4096` is all integers, so the result is 0, 1 or 2. Use `3.0 / 4096.0`.",
       ],
       takeaway: "A wrong reading has three usual suspects: the setting never got written (EALLOW), the wrong pin (CHSEL), or integer arithmetic in the scaling.",
+    },
+    {
+      id: "adc-setup-order",
+      kind: "order",
+      tier: "practice",
+      title: "The set-up, line by line",
+      goal: "Put the steps of the ADC set-up in the order the course writes them, and know why each comes where it does.",
+      refs: [{ trm: "11.12" }, { trm: "11.5" }, { trm: "11.9" }, { course: "HW2" }, { course: "Lab 4" }],
+      brief: `
+So far the ADC set-up was given and you filled in numbers. In the lab you type all of it. The next levels have you write it from an empty function, so first get the order straight.
+
+The manual's power-up sequence has four steps: switch on the ADC's clock, set the clock divider, power up, wait. \`InitSysCtrl()\` already does the first one for every peripheral.
+
+The reasons for the order:
+
+- **\`EALLOW;\` comes first.** The ADC's configuration registers are protected. A write outside \`EALLOW;\` ... \`EDIS;\` is ignored, without an error on the real chip.
+- **Clock and mode before power.** The converter should start up with the clock it will run on (\`PRESCALE\`) and in the mode it will use (\`AdcSetMode\`).
+- **Power, then wait.** After \`ADCPWDNZ = 1\` the analog circuits need time to settle. A conversion started in that time gives a wrong number. The course waits 1 ms.
+- **Then the chain, front to back.** First the SOC: which pin, how long, which trigger. Then the interrupt: which SOC's end sets ADCINT1, the enable, and a clear of the flag so that no old flag is left over.
+- **\`EDIS;\`** closes the protected registers.
+- **The CPU side comes last.** The PIE channel, the group bit in \`IER\` and \`EINT\` let interrupts through. Open that gate only when everything behind it is ready.
+`,
+      steps: [
+        "`EALLOW;` opens the protected registers",
+        "Set the ADC clock divider (`PRESCALE = 6`) and the mode (`AdcSetMode`, 12 bit, single-ended)",
+        "Power up the converter: `ADCPWDNZ = 1`",
+        "`DELAY_US(1000);` gives the analog circuits time to settle",
+        "SOC0: the pin (`CHSEL`), the sample window (`ACQPS`), the trigger (`TRIGSEL`)",
+        "The interrupt: `INT1SEL`, `INT1E = 1`, and clear the flag ADCINT1",
+        "`EDIS;` closes the protected registers",
+        "Enable ADCA1 in the PIE (`PIEIER1.INTx1`) and in `IER`, then `EINT;`",
+      ],
+      hints: [
+        "The first and the seventh step are a pair. Nothing in between works without the first.",
+        "Power-up follows the manual: divider, power, wait. Only then the SOC, and after the SOC the interrupt that reports its end.",
+        "EALLOW, PRESCALE and mode, ADCPWDNZ, DELAY_US, SOC0, INT1, EDIS, PIE and IER and EINT.",
+      ],
+      takeaway: "EALLOW, clock, power, wait, SOC, interrupt select, EDIS, and the CPU's enables last. A conversion started during the wait gives a wrong number.",
+    },
+    {
+      id: "adc-setup-own",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Power up, from an empty function",
+      goal: "Write the whole body of setupADCA(): power up ADCA, set up SOC0 for the photoresistor and its ADCINT1 flag.",
+      refs: [{ trm: "11.12" }, { trm: "11.5" }, { trm: "11.9" }, { course: "HW2" }, { course: "Lab 4" }],
+      brief: `
+\`setupADCA()\` is empty. \`main()\` is given: it is the loop of "One sample by hand". It starts SOC0 from software once per millisecond, waits for the flag ADCINT1, and converts the result to volts. With an empty set-up the ADC is off and the loop waits for ever.
+
+Write the body. Every register belongs to \`AdcaRegs\`. Work down this list, in this order:
+
+1. \`EALLOW;\`
+2. \`ADCCTL2.bit.PRESCALE = 6;\` The converter's clock is the 200 MHz system clock divided by 4.
+3. \`AdcSetMode(ADC_ADCA, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE);\` 12-bit results, one pin measured against ground.
+4. \`ADCCTL1.bit.INTPULSEPOS = 1;\` The flag comes at the end of the conversion, when the result is ready.
+5. \`ADCCTL1.bit.ADCPWDNZ = 1;\` Power on.
+6. \`DELAY_US(1000);\` Wait 1 ms.
+7. SOC0, in \`ADCSOC0CTL\`: \`CHSEL\` for ADCINA4, \`ACQPS\` for a 500 ns window, \`TRIGSEL = 0\` (software only).
+8. The flag, in \`ADCINTSEL1N2\`: \`INT1SEL\` names the SOC whose end sets ADCINT1, and \`INT1E = 1\` enables it.
+9. \`ADCINTFLGCLR.bit.ADCINT1 = 1;\` Start with the flag cleared.
+10. \`EDIS;\`
+
+The checks are in the order of the list, so the first red one is the next thing to fix. The five lines after \`InitSysCtrl()\` are the PIE start-up from the interrupts chapter. They do nothing yet: the next level needs them.
+
+The photoresistor is at 1.2 V, then at 2.4 V.
+`,
+      kit: "robot",
+      durationMs: 12,
+      stimuli: [
+        { at: 0, set: "ADCINA4", value: 1.2 },
+        { at: 6.25, set: "ADCINA4", value: 2.4 },
+      ],
+      starter: setupOwn(`// Powers up ADCA and sets up SOC0 for the photoresistor on ADCINA4
+void setupADCA(void)
+{
+}`),
+      solution: setupOwn(OWN_SETUP_SW),
+      checks: [
+        {
+          kind: "no-diagnostic",
+          code: "eallow",
+          label: "1. Every ADC setting is written between EALLOW; and EDIS;",
+          hint: "The line named here was ignored by the chip. Put EALLOW; first in the function and EDIS; last.",
+        },
+        { kind: "reg", reg: "AdcaRegs.ADCCTL2", field: "PRESCALE", equals: 6, label: "2. The converter's clock is SYSCLK / 4", hint: "PRESCALE is a code, not the divisor: 6 means divide by 4." },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCCTL1",
+          field: "INTPULSEPOS",
+          equals: 1,
+          label: "4. The flag comes at the end of the conversion",
+          hint: "With INTPULSEPOS = 0 the flag comes when sampling ends, before the result is in ADCRESULT0.",
+        },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCCTL1",
+          field: "ADCPWDNZ",
+          equals: 1,
+          label: "5. The converter is powered up",
+          hint: "ADCPWDNZ = 1 switches the analog circuits on. Without it every result is meaningless.",
+        },
+        {
+          kind: "no-diagnostic",
+          code: "adc-powerup",
+          label: "6. The converter had time to settle before its first conversion",
+          hint: "DELAY_US(1000); goes right after the ADCPWDNZ line, before the function returns.",
+        },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "CHSEL", equals: 4, label: "7. SOC0 measures ADCINA4", hint: "CHSEL is the digit at the end of the pin name." },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "ACQPS", equals: 99, label: "7. The sample window is 500 ns", hint: "The window is (ACQPS + 1) x 5 ns." },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "TRIGSEL", equals: 0, label: "7. SOC0 is started by software only", hint: "TRIGSEL = 0. main() starts it with ADCSOCFRC1." },
+        { kind: "reg", reg: "AdcaRegs.ADCINTSEL1N2", field: "INT1SEL", equals: 0, label: "8. The end of SOC0 sets ADCINT1", hint: "INT1SEL is a SOC number. Only SOC0 converts here." },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCINTSEL1N2",
+          field: "INT1E",
+          equals: 1,
+          label: "8. The flag ADCINT1 is enabled",
+          hint: "With INT1E = 0 the flag never sets, and main() waits for it for ever.",
+        },
+        {
+          kind: "var",
+          name: "numSamples",
+          min: 9,
+          max: 12,
+          label: "main() gets one sample per millisecond",
+          hint: "0 means main() is stuck waiting for ADCINT1. Fix the first red check above.",
+        },
+        { kind: "var", name: "adcina4volts", at: 5, min: 1.199, max: 1.201, label: "adcina4volts is 1.2 V", hint: "A wrong voltage with every check above green: look at CHSEL again." },
+        { kind: "var", name: "adcina4volts", min: 2.399, max: 2.401, label: "and 2.4 V after the light changes" },
+        { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
+      ],
+      watch: ["adca4result", "adcina4volts", "numSamples"],
+      inspect: ["AdcaRegs.ADCCTL1", "AdcaRegs.ADCCTL2", "AdcaRegs.ADCSOC0CTL", "AdcaRegs.ADCINTSEL1N2", "AdcaRegs.ADCINTFLG"],
+      hints: [
+        "Ten lines of the list, ten or so lines of code. Every register line starts with `AdcaRegs.` and uses `.bit.`",
+        "ADCINA4 is channel 4. 500 ns is 100 cycles of 5 ns, and ACQPS holds one less. INT1SEL is the number of the SOC.",
+        "`CHSEL = 4`, `ACQPS = 99`, `TRIGSEL = 0`, `AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0;`, `AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;`, `AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;` and the six lines before them as the list spells them.",
+      ],
+      takeaway: "You have now typed the block every ADC program of the course starts with. Only the letter of the ADC, the SOC lines and INT1SEL ever change.",
+    },
+    {
+      id: "adc-trigger-own",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      continues: "adc-setup-own",
+      title: "Hand the trigger to EPWM5",
+      goal: "Add the EPWM5 trigger block and the interrupt path to your own set-up, so that ADCA_ISR gets a sample every half millisecond.",
+      refs: [{ course: "HW2" }, { trm: "15.10" }, { trm: "15.4.3" }, { trm: "11.6.1" }, { trm: "3.4.5" }],
+      brief: `
+Your program from the last level samples when \`main()\` says so. Now hardware does it: EPWM5 sends SOCA every **0.5 ms**, and the result arrives in an interrupt function. You write the trigger block this time. Your \`setupADCA()\` stays, with one number changed.
+
+## 1. A new function, setupEPWM5()
+All in \`EPwm5Regs\`, between \`EALLOW;\` and \`EDIS;\`:
+
+1. \`ETSEL.bit.SOCAEN = 0;\` and \`TBCTL.bit.CTRMODE = 3;\` No pulses and a frozen counter while you set up.
+2. \`ETSEL.bit.SOCASEL\`: the event "counter equals zero".
+3. \`ETPS.bit.SOCAPRD\`: a pulse on every event.
+4. \`TBCTR = 0;\` \`TBPHS.bit.TBPHS = 0;\` \`TBCTL.bit.PHSEN = 0;\` \`TBCTL.bit.CLKDIV = 0;\`
+5. \`TBPRD\`: one round of 0.5 ms at 20 ns per count. Count the "+ 1".
+6. \`ETSEL.bit.SOCAEN = 1;\` then \`TBCTL.bit.CTRMODE = 0;\` Pulses on, count up.
+
+## 2. In setupADCA()
+\`TRIGSEL\`: SOC0 now listens to EPWM5 SOCA.
+
+## 3. In main()
+- the vector, between \`EALLOW;\` and \`EDIS;\`: \`PieVectTable.ADCA1_INT = &ADCA_ISR;\`
+- call \`setupEPWM5();\`
+- after \`setupADCA();\`: \`PIEIER1.INTx1\`, \`IER |= M_INT1;\` and \`EINT;\`
+- empty the loop: \`while (1) {}\`. Nothing in \`main()\` may start a conversion any more.
+
+## 4. ADCA_ISR
+Declare it at the top: \`__interrupt void ADCA_ISR(void);\`. In it: read the result, convert to volts, count in \`numSamples\`, clear ADCINT1, acknowledge PIE group 1.
+`,
+      kit: "robot",
+      durationMs: 12.5,
+      stimuli: [
+        { at: 0, set: "ADCINA4", value: 1.2 },
+        { at: 7.25, set: "ADCINA4", value: 2.4 },
+      ],
+      starter: TRIGGER_OWN_STARTER,
+      solution: TRIGGER_OWN_SOLUTION,
+      checks: [
+        { kind: "no-diagnostic", code: "eallow", label: "Every protected write is between EALLOW; and EDIS;", hint: "The line named here was ignored. The vector and the ADC registers are protected." },
+        {
+          kind: "reg",
+          reg: "EPwm5Regs.ETSEL",
+          field: "SOCASEL",
+          equals: 1,
+          label: "1.2 SOCA is sent when the counter equals zero",
+          hint: "SOCASEL chooses the event: 1 is 'counter equals zero', 2 is 'counter equals TBPRD'. 0 is no event.",
+        },
+        { kind: "reg", reg: "EPwm5Regs.ETPS", field: "SOCAPRD", equals: 1, label: "1.3 A pulse on every event", hint: "SOCAPRD counts events per pulse. 0, the reset value, means no pulse at all." },
+        {
+          kind: "reg",
+          reg: "EPwm5Regs.TBPRD",
+          equals: 24999,
+          label: "1.5 One round of the counter is exactly 0.5 ms",
+          hint: "0.5 ms / 20 ns = 25000 counts, and a round is TBPRD + 1 counts. A value above 65535 does not fit.",
+        },
+        { kind: "reg", reg: "EPwm5Regs.ETSEL", field: "SOCAEN", equals: 1, label: "1.6 The SOCA pulse is enabled", hint: "SOCAEN is the switch for the pulse. With 0 the counter runs and nobody hears it." },
+        { kind: "reg", reg: "EPwm5Regs.TBCTL", field: "CTRMODE", equals: 0, label: "1.6 The counter counts up", hint: "After reset CTRMODE is 3, frozen. The last line of the block sets it to 0." },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCSOC0CTL",
+          field: "TRIGSEL",
+          equals: 13,
+          label: "2. SOC0 listens to EPWM5 SOCA",
+          hint: "TRIGSEL is still the old value or a miscount. Two numbers per ePWM, SOCA first, starting with 5 for EPWM1.",
+        },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER1", field: "INTx1", equals: 1, label: "3. ADCA1 is enabled in the PIE", hint: "PieCtrlRegs.PIEIER1.bit.INTx1 = 1; ADCA1 is INT1.1." },
+        {
+          kind: "source",
+          mustNotMatch: "ADCSOCFRC1",
+          label: "3. main() no longer starts conversions itself",
+          hint: "Delete the body of the while(1) loop. Its reading and converting lines move into ADCA_ISR.",
+        },
+        {
+          kind: "isr",
+          fn: "ADCA_ISR",
+          min: 18,
+          max: 25,
+          label: "ADCA_ISR runs once per half millisecond",
+          hint: "Never: fix the first red check above, then look at the vector, IER and EINT. Once: ADCINT1 or PIEACK is not cleared in the function.",
+        },
+        {
+          kind: "reg",
+          reg: "AdcaRegs.ADCINTOVF",
+          field: "ADCINT1",
+          equals: 0,
+          label: "4. No conversion ended while ADCINT1 was still set",
+          hint: "AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; in ADCA_ISR, before the PIE acknowledge. If the line is there, the function ran only once: see the check above.",
+        },
+        { kind: "var", name: "adcina4volts", at: 6.75, min: 1.199, max: 1.201, label: "adcina4volts follows the pin: 1.2 V" },
+        { kind: "var", name: "adcina4volts", min: 2.399, max: 2.401, label: "and 2.4 V after the light changes" },
+        { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
+      ],
+      watch: ["adca4result", "adcina4volts", "numSamples"],
+      inspect: ["EPwm5Regs.ETSEL", "EPwm5Regs.ETPS", "EPwm5Regs.TBPRD", "EPwm5Regs.TBCTL", "AdcaRegs.ADCSOC0CTL", "AdcaRegs.ADCINTOVF"],
+      hints: [
+        "Do the four parts in order and run after each. The checks carry the numbers of the brief.",
+        "SOCASEL = 1, SOCAPRD = 1, TBPRD = 24999. EPWM5 SOCA is trigger number 13: 5 and 6 belong to EPWM1, 7 and 8 to EPWM2, and so on.",
+        "ADCA_ISR: `adca4result = AdcaResultRegs.ADCRESULT0;` `adcina4volts = adca4result * 3.0 / 4096.0;` `numSamples++;` `AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;` `PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;`",
+      ],
+      takeaway: "Freeze, choose the event (ETSEL, ETPS), set the period, enable SOCA, unfreeze. That block, your ADC block and five interrupt lines are the whole sampling program of HW2 and Lab 4.",
+    },
+    {
+      id: "adc-x-scratch",
+      kind: "code",
+      mode: "write",
+      tier: "expert",
+      title: "From a blank page",
+      goal: "Write a complete sampling program from its requirements: no given lines, no checklist.",
+      refs: [{ trm: "11.12" }, { trm: "11.5" }, { trm: "11.6.1" }, { trm: "15.10" }, { trm: "3.4.5" }, { course: "HW2" }],
+      brief: `
+This is what the lab asks of you: a sentence of requirements and an empty \`main()\`. Only \`InitSysCtrl()\`, two variables and the empty interrupt function are there.
+
+## Requirements
+- Measure the **joystick's X axis** on pin **ADCINA2** with **SOC0** of ADCA.
+- Sample every **0.25 ms**. The sample clock is **EPWM2**: its SOCA pulse, sent when the counter equals zero, on every event. Counter clock 50 MHz.
+- Sample window **200 ns**.
+- ADCA as the course runs it: converter clock SYSCLK / 4, 12 bit single-ended, flag at the end of the conversion, 1 ms of settling time after power-up.
+- The end of SOC0 raises **ADCA1** (INT1.1), served by \`ADCA_ISR\`.
+- \`ADCA_ISR\` stores the voltage in \`joyXvolts\` and counts its calls in \`numADCA\`.
+
+## What you need to work out
+- \`TBPRD\` for 0.25 ms at 20 ns per count.
+- \`ACQPS\` for 200 ns at 5 ns per cycle.
+- The \`TRIGSEL\` number of EPWM2 SOCA. The table goes: 0 software, 1 to 3 CPU timers, 4 a pin, then two numbers per ePWM starting with 5 for EPWM1 SOCA.
+
+Nothing is given, so remember the parts that were always there: the five PIE start-up lines after \`InitSysCtrl()\`, the vector, \`EALLOW;\` and \`EDIS;\`, the enables with \`EINT;\`, and the two clearing lines at the end of the interrupt function.
+
+Each check names one decision. The joystick is at 0.9 V, then at 2.1 V.
+`,
+      kit: "robot",
+      durationMs: 12.5,
+      stimuli: [
+        { at: 0, set: "ADCINA2", value: 0.9 },
+        { at: 7.3, set: "ADCINA2", value: 2.1 },
+      ],
+      starter: SCRATCH_STARTER,
+      solution: SCRATCH_SOLUTION,
+      checks: [
+        { kind: "no-diagnostic", code: "eallow", label: "Every protected write is between EALLOW; and EDIS;", hint: "The line named here was ignored: the vector table and the ADC's configuration registers are protected." },
+        { kind: "reg", reg: "EPwm2Regs.ETSEL", field: "SOCASEL", equals: 1, label: "EPWM2: SOCA when the counter equals zero", hint: "ETSEL.SOCASEL picks the event: 1 is zero, 2 is TBPRD." },
+        { kind: "reg", reg: "EPwm2Regs.ETPS", field: "SOCAPRD", equals: 1, label: "EPWM2: a pulse on every event", hint: "ETPS.SOCAPRD resets to 0, which sends no pulse." },
+        { kind: "reg", reg: "EPwm2Regs.ETSEL", field: "SOCAEN", equals: 1, label: "EPWM2: the SOCA pulse is enabled", hint: "ETSEL.SOCAEN switches the pulse on." },
+        { kind: "reg", reg: "EPwm2Regs.TBPRD", equals: 12499, label: "EPWM2: one round is exactly 0.25 ms", hint: "0.25 ms / 20 ns counts, and a round is TBPRD + 1 counts." },
+        { kind: "reg", reg: "EPwm2Regs.TBCTL", field: "CTRMODE", equals: 0, label: "EPWM2: the counter counts up", hint: "CTRMODE resets to 3, frozen." },
+        { kind: "reg", reg: "AdcaRegs.ADCCTL2", field: "PRESCALE", equals: 6, label: "ADCA: converter clock SYSCLK / 4", hint: "ADCCTL2.PRESCALE = 6 is the code for divide by 4." },
+        { kind: "reg", reg: "AdcaRegs.ADCCTL1", field: "INTPULSEPOS", equals: 1, label: "ADCA: flag at the end of the conversion", hint: "ADCCTL1.INTPULSEPOS = 1. With 0 the flag comes before the result." },
+        { kind: "reg", reg: "AdcaRegs.ADCCTL1", field: "ADCPWDNZ", equals: 1, label: "ADCA: powered up", hint: "ADCCTL1.ADCPWDNZ = 1, inside EALLOW." },
+        {
+          kind: "no-diagnostic",
+          code: "adc-powerup",
+          label: "ADCA: 1 ms of settling time before the first conversion",
+          hint: "DELAY_US(1000); after the power-up line. If the delay is there, a trigger reached SOC0 too early: set TRIGSEL after the delay.",
+        },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "CHSEL", equals: 2, label: "SOC0 measures ADCINA2", hint: "CHSEL is the pin's channel number." },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "ACQPS", equals: 39, label: "SOC0 samples for 200 ns", hint: "(ACQPS + 1) x 5 ns = 200 ns." },
+        { kind: "reg", reg: "AdcaRegs.ADCSOC0CTL", field: "TRIGSEL", equals: 7, label: "SOC0 listens to EPWM2 SOCA", hint: "5 is EPWM1 SOCA, 6 is EPWM1 SOCB. The next one is yours." },
+        { kind: "reg", reg: "AdcaRegs.ADCINTSEL1N2", field: "INT1SEL", equals: 0, label: "The end of SOC0 sets ADCINT1", hint: "INT1SEL is a SOC number." },
+        { kind: "reg", reg: "AdcaRegs.ADCINTSEL1N2", field: "INT1E", equals: 1, label: "ADCINT1 is enabled", hint: "ADCINTSEL1N2.INT1E = 1." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER1", field: "INTx1", equals: 1, label: "ADCA1 is enabled in the PIE", hint: "ADCA1 is INT1.1: PIEIER1.INTx1, and IER |= M_INT1." },
+        {
+          kind: "isr",
+          fn: "ADCA_ISR",
+          min: 40,
+          max: 50,
+          label: "ADCA_ISR runs four times per millisecond",
+          hint: "Never, with every check above green: the five PIE start-up lines, the vector, IER or EINT. Once: clear ADCINT1 and acknowledge group 1 at the end of the function.",
+        },
+        { kind: "reg", reg: "AdcaRegs.ADCINTOVF", field: "ADCINT1", equals: 0, label: "No conversion ended while ADCINT1 was still set", hint: "AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; in ADCA_ISR. If the line is there, the function did not run every time: see the check above." },
+        { kind: "var", name: "joyXvolts", at: 6.9, min: 0.899, max: 0.901, label: "joyXvolts is 0.9 V", hint: "Exactly 0: integer division, write 3.0 / 4096.0. Another voltage: CHSEL, or the wrong result register. SOC0 fills ADCRESULT0." },
+        { kind: "var", name: "joyXvolts", min: 2.099, max: 2.101, label: "and follows the joystick to 2.1 V" },
+        { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
+      ],
+      watch: ["joyXvolts", "numADCA"],
+      inspect: ["EPwm2Regs.ETSEL", "EPwm2Regs.TBPRD", "AdcaRegs.ADCCTL1", "AdcaRegs.ADCSOC0CTL", "AdcaRegs.ADCINTSEL1N2", "AdcaRegs.ADCINTFLG"],
+      hints: [
+        "Build it in the order of the chain and run after each part: PIE start-up and vector, EPWM2, ADC power-up, SOC0, INT1, enables, the function.",
+        "TBPRD = 12499, ACQPS = 39, TRIGSEL = 7, CHSEL = 2, INT1SEL = 0.",
+        "The structure is your program from \"Hand the trigger to EPWM5\" with EPwm2Regs and these numbers. The function ends with ADCINTFLGCLR.bit.ADCINT1 = 1 and PIEACK_GROUP1.",
+      ],
+      takeaway: "Trigger, SOC, converter, result, interrupt: you can now build the whole chain from a sentence. In the lab only the names and the numbers differ.",
     },
     {
       id: "adc-average",

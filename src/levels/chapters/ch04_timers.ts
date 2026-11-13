@@ -233,7 +233,7 @@ if (CpuTimer0Regs.TCR.bit.TIF == 1) {
     // the work to do once per period
 }
 \`\`\`
-Checking a flag over and over like this is called **polling**.
+Checking a flag over and over like this is called **polling**. The course never polls a timer: its programs always use the timer's **interrupt** (chapter 5), and polling is shown here so that you see the flag itself.
 
 Compare this with \`DELAY_US\`. A delay holds the CPU inside the wait, and the time your own code takes is added on top, so the rate drifts. Here the timer keeps counting on its own. The loop only glances at the flag, and is free to do other work between two flags.
 

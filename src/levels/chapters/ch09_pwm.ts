@@ -945,6 +945,109 @@ void set_brightness(float brightness)
         "0.25 assigned to an integer is 0. Multiply by the period first: 0.25 x 25000 = 6250 counts. The product is still a float and is still cut off, but now it loses less than one count.",
     },
 
+    {
+      id: "pwm-req",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "From the requirements alone",
+      goal: "Write a complete PWM set-up for another module and another pin from its requirements, with no list of lines to follow.",
+      refs: [{ course: "Lab 3" }, { trm: "15.4" }, { trm: "15.4.3" }, { trm: "15.6" }, { trm: "15.15.2" }, { trm: "15.2" }],
+      brief: `
+In "The whole set-up, from nothing" a list told you which lines to write. A lab gives you less: what the signal must be, and on which pin. Which registers that takes is for you to know.
+
+## Requirements
+- Output: **EPWM1A** on **GPIO0**. The course's pin mux table says: GPIO0, position **1**, EPWM1A.
+- Frequency: **250 Hz**.
+- Duty cycle: **40 %**, high at the start of each period.
+- Up-count. Free run when the program is paused from the PC.
+- **Finest steps:** use the smallest clock divider for which one period still fits in \`TBPRD\`.
+- Pull-up of the pin off, as on every PWM pin.
+
+## What is new
+Only one thing: the number does not fit. At 50 MHz one period of 250 Hz is 50 000 000 / 250 = 200 000 counts, and \`TBPRD\` has 16 bits: **65535** at most. Written anyway, the value is cut off to its lowest 16 bits and the frequency is wrong.
+
+So the counter has to count slower. \`TBCTL.CLKDIV\` divides its clock, and the field holds a **code**: 0 = /1, 1 = /2, 2 = /4, 3 = /8. Each step halves the counts per period. Take the first divider that brings the count to 65535 or less, then work out \`TBPRD\` and \`CMPA\` from the slower clock. Use the round number of counts, as before.
+
+A slower clock means longer counts, so coarser duty-cycle steps. That is why you take the smallest divider that works.
+
+The registers are those of \`EPwm1Regs\`. The test measures GPIO0 for 40 ms.
+`,
+      kit: "robot",
+      durationMs: 40,
+      inspect: ["EPwm1Regs.TBCTL", "EPwm1Regs.TBPRD", "EPwm1Regs.CMPA", "EPwm1Regs.AQCTLA"],
+      starter: `void main(void)
+{
+${INIT}
+
+    // EPWM1A on GPIO0: 250 Hz, 40 %
+
+    while (1) {
+    }
+}
+`,
+      solution: `void main(void)
+{
+${INIT}
+
+    // EPWM1A on GPIO0: 250 Hz, 40 %
+    EPwm1Regs.TBCTL.bit.CTRMODE = 0;     // count up
+    EPwm1Regs.TBCTL.bit.FREE_SOFT = 2;   // keep running at a breakpoint
+    EPwm1Regs.TBCTL.bit.PHSEN = 0;       // no phase loading
+    EPwm1Regs.TBCTL.bit.CLKDIV = 2;      // divide by 4: 12.5 MHz, 80 ns per count
+    EPwm1Regs.TBCTR = 0;                 // start counting from zero
+    EPwm1Regs.TBPRD = 50000;             // 12 500 000 / 250
+    EPwm1Regs.CMPA.bit.CMPA = 20000;     // 40 % of 50000
+    EPwm1Regs.AQCTLA.bit.CAU = 1;        // clear the pin when the counter reaches CMPA
+    EPwm1Regs.AQCTLA.bit.ZRO = 2;        // set the pin when the counter is zero
+    EPwm1Regs.TBPHS.bit.TBPHS = 0;       // phase: not used
+
+    GPIO_SetupPinMux(0, GPIO_MUX_CPU1, 1);   // GPIO0 becomes EPWM1A
+    EALLOW;
+    GpioCtrlRegs.GPAPUD.bit.GPIO0 = 1;       // pull-up off on a PWM pin
+    EDIS;
+
+    while (1) {
+    }
+}
+`,
+      checks: [
+        { kind: "reg", reg: "EPwm1Regs.TBCTL", field: "CTRMODE", equals: 0, label: "The counter counts up", hint: "TBCTL.CTRMODE is 3 after reset: frozen. 0 is up-count." },
+        { kind: "reg", reg: "EPwm1Regs.TBCTL", field: "FREE_SOFT", equals: 2, label: "The counter runs free when the program is paused", hint: "TBCTL.FREE_SOFT = 2." },
+        {
+          kind: "reg",
+          reg: "EPwm1Regs.TBCTL",
+          field: "CLKDIV",
+          equals: 2,
+          label: "The clock divider is the smallest that fits: divide by 4",
+          hint: "CLKDIV holds a code: 0 = /1, 1 = /2, 2 = /4. 200 000 counts halve to 100 000 (too many), then to 50 000 (fits). A larger divider works but makes the steps coarser.",
+        },
+        {
+          kind: "reg",
+          reg: "EPwm1Regs.TBPRD",
+          equals: 50000,
+          label: "TBPRD holds the counts of one 250 Hz period at the divided clock",
+          hint: "12 500 000 counts per second / 250 periods per second. If you see 3392: you wrote 200 000, which was cut off to 16 bits.",
+        },
+        { kind: "reg", reg: "EPwm1Regs.CMPA", field: "CMPA", equals: 20000, label: "CMPA is 40 % of TBPRD", hint: "CMPA is a number of counts: 0.40 x TBPRD. Not 40 and not 0.4." },
+        { kind: "reg", reg: "EPwm1Regs.AQCTLA", field: "ZRO", equals: 2, label: "The pin is set when the counter is zero", hint: "AQCTLA.ZRO chooses the action at zero: 2 is set, 1 is clear." },
+        { kind: "reg", reg: "EPwm1Regs.AQCTLA", field: "CAU", equals: 1, label: "The pin is cleared at the compare match", hint: "AQCTLA.CAU chooses the action when the counter reaches CMPA: 1 is clear." },
+        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM1A is connected to GPIO0", hint: "GPIO_SetupPinMux(0, GPIO_MUX_CPU1, 1); The position comes from the pin mux table: it is not 5 for every pin." },
+        { kind: "reg", reg: "GpioCtrlRegs.GPAPUD", field: "GPIO0", equals: 1, label: "The pull-up of GPIO0 is off", hint: "GPAPUD is protected: EALLOW; GpioCtrlRegs.GPAPUD.bit.GPIO0 = 1; EDIS;" },
+        { kind: "no-diagnostic", code: "eallow", label: "Every protected write is between EALLOW; and EDIS;" },
+        { kind: "duty", pin: 0, pct: 40, tolPct: 1, from: 4, label: "GPIO0 is high 40 % of the time", hint: "0 %: the counter is frozen, no pin is connected, or the two actions are missing. 60 %: the actions are swapped. 100 %: CMPA is larger than TBPRD, so the counter never reaches it." },
+        { kind: "pin", pin: 0, at: 21.5, level: 1, label: "A period lasts 4 ms: high 1.5 ms after the start of the sixth period", hint: "Fix the red checks above first. If they are all green, the frequency is wrong: counts x time per count must be 4 ms, so look at CLKDIV and TBPRD together." },
+        { kind: "pin", pin: 0, at: 21.7, level: 0, label: "and low 1.7 ms after it", hint: "Fix the red checks above first. If they are all green, the frequency is wrong: counts x time per count must be 4 ms, so look at CLKDIV and TBPRD together." },
+        { kind: "pin", pin: 0, at: 24.1, level: 1, label: "and high again when the seventh period has begun", hint: "Fix the red checks above first. If they are all green, the frequency is wrong: counts x time per count must be 4 ms, so look at CLKDIV and TBPRD together." },
+      ],
+      hints: [
+        "It is the set-up you wrote for EPWM12A, with EPwm1Regs, three new numbers and another pin. Find the divider first.",
+        "Divide by 4 (CLKDIV = 2): the clock is 12.5 MHz, one period is 50 000 counts, and 40 % of that is 20 000.",
+        "CTRMODE = 0; FREE_SOFT = 2; PHSEN = 0; CLKDIV = 2; TBCTR = 0; TBPRD = 50000; CMPA.bit.CMPA = 20000; AQCTLA.bit.CAU = 1; AQCTLA.bit.ZRO = 2; TBPHS.bit.TBPHS = 0; then GPIO_SetupPinMux(0, GPIO_MUX_CPU1, 1); and the GPAPUD line for GPIO0.",
+      ],
+      takeaway: "A requirement turns into registers in a fixed order: clock and divider, period, compare, actions, pin. When the period does not fit in 16 bits, slow the counter with CLKDIV.",
+    },
+
     // ---------------------------------------------------------------- expert
     {
       id: "pwm-x-trigger",

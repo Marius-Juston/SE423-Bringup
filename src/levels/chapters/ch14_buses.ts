@@ -800,6 +800,138 @@ __interrupt void can_isr(void)
 }
 `;
 
+// ---- set-up from empty functions: bus-i2c-setup and bus-can-setup ----
+const i2cSetup = (init: string, read: string) => `int16_t tempRaw = 0;     // the 16 bits the sensor sent
+float tempC = 0;         // degrees C
+uint16_t readings = 0;
+
+// I2CB: SDAB on GPIO40, SCLB on GPIO41, SCL at 100 kHz
+void init_I2CB(void)
+{
+${init}
+}
+
+// Reads the two temperature bytes of the sensor at address 0x48.
+void read_temperature(void)
+{
+${read}
+}
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+    init_I2CB();
+
+    while (1) {
+        read_temperature();
+        DELAY_US(2000);
+    }
+}
+`;
+
+const I2C_SETUP_INIT = `    GPIO_SetupPinMux(40, GPIO_MUX_CPU1, 6);
+    GPIO_SetupPinOptions(40, GPIO_INPUT, GPIO_PULLUP | GPIO_ASYNC);
+    GPIO_SetupPinMux(41, GPIO_MUX_CPU1, 6);
+    GPIO_SetupPinOptions(41, GPIO_INPUT, GPIO_PULLUP | GPIO_ASYNC);
+
+    I2cbRegs.I2CMDR.bit.IRS = 0;    // keep the module in reset while it is set up
+    I2cbRegs.I2CPSC.all = 19;       // module clock = 200 MHz / (19 + 1) = 10 MHz
+    I2cbRegs.I2CCLKL = 45;          // SCL low  = (45 + 5) / 10 MHz = 5 us
+    I2cbRegs.I2CCLKH = 45;          // SCL high = (45 + 5) / 10 MHz = 5 us
+    I2cbRegs.I2CMDR.bit.IRS = 1;    // out of reset`;
+
+const I2C_SETUP_READ = `    uint16_t msb;
+    uint16_t lsb;
+
+    I2cbRegs.I2CSAR.all = 0x48;
+    I2cbRegs.I2CCNT = 2;
+    I2cbRegs.I2CMDR.all = 0x2C20;               // START, STOP, master, receiver, out of reset
+
+    while (I2cbRegs.I2CSTR.bit.RRDY == 0) {}    // first byte has arrived
+    msb = I2cbRegs.I2CDRR.all;
+    while (I2cbRegs.I2CSTR.bit.RRDY == 0) {}    // second byte has arrived
+    lsb = I2cbRegs.I2CDRR.all;
+    while (I2cbRegs.I2CMDR.bit.STP == 1) {}     // the STOP is on the bus
+
+    tempRaw = (msb << 8) | lsb;
+    tempC = tempRaw / 256.0;
+    readings++;`;
+
+const canSetup = (body: string) => `#define RX_MSG_DATA_LENGTH    8
+#define RX_MSG_OBJ_ID_1       1  // measurement from sensor 1
+
+__interrupt void can_isr(void);
+
+volatile uint32_t rxMsgCount_1 = 0;
+extern uint16_t rxMsgData[8];    // defined in F28379dCAN.c: one received byte per element
+uint32_t dis_1 = 0;              // distance in mm
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+
+    DINT;
+    InitPieCtrl();
+    IER = 0x0000;
+    IFR = 0x0000;
+    InitPieVectTable();
+
+${body}
+
+    while (1) {
+    }
+}
+
+// Given: the interrupt function of "Hear sensor 1"
+__interrupt void can_isr(void)
+{
+    uint32_t status;
+
+    status = CANgetInterruptCause(CANB_BASE);
+
+    if (status == CAN_INT_INT0ID_STATUS) {
+        status = CANgetStatus(CANB_BASE);
+    } else if (status == RX_MSG_OBJ_ID_1) {
+        CANreadMessage(CANB_BASE, RX_MSG_OBJ_ID_1, rxMsgData);
+        dis_1 = 256 * (uint32_t)rxMsgData[1] + rxMsgData[0];
+        CANclearInterruptStatus(CANB_BASE, RX_MSG_OBJ_ID_1);
+        rxMsgCount_1++;
+    }
+
+    CANclearGlobalInterruptStatus(CANB_BASE, CAN_GLOBAL_INT_CANINT0);
+    InterruptclearACKGroup(INTERRUPT_ACK_GROUP9);
+}
+`;
+
+const CAN_SETUP_BODY = `    //GPIO17 - CANRXB
+    GPIO_SetupPinMux(17, GPIO_MUX_CPU1, 2);
+    GPIO_SetupPinOptions(17, GPIO_INPUT, GPIO_ASYNC);
+    //GPIO12 - CANTXB
+    GPIO_SetupPinMux(12, GPIO_MUX_CPU1, 2);
+    GPIO_SetupPinOptions(12, GPIO_OUTPUT, GPIO_PUSHPULL);
+
+    // Initialize the CAN controller, bit rate 1000 kbps
+    InitCANB();
+    setCANBitRate(200000000, 1000000);
+    // Interrupt line 0, error and status change interrupts
+    CanbRegs.CAN_CTL.bit.IE0 = 1;
+    CanbRegs.CAN_CTL.bit.EIE = 1;
+
+    EALLOW;
+    PieVectTable.CANB0_INT = &can_isr;
+    EDIS;
+
+${CAN_PIE_ENABLE}
+    CanbRegs.CAN_GLB_INT_EN.bit.GLBINT0_EN = 1;
+    EINT;
+
+    // Measured distance from sensor 1
+${msgObject(1, "0x060b0101")}
+
+${CAN_START}`;
+
 export const ch14: Chapter = {
   id: "buses",
   number: 14,
@@ -1979,6 +2111,151 @@ A frame with a 29-bit identifier and 8 data bytes is 128 bits long (the hardware
         "Prescaler = 200 000 000 / (1 000 000 x 10).",
       ],
       takeaway: "Little-endian: low byte first. When a 16-bit value from a bus looks absurd, try the bytes the other way round.",
+    },
+    {
+      id: "bus-i2c-setup",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "I2C from two empty functions",
+      goal: "Write init_I2CB() and read_temperature() yourself: pins, clock, reset, then a two-byte read.",
+      refs: [{ course: "L10" }, { trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.3" }, { trm: "20.2" }],
+      brief: `
+In "Read the temperature" both functions were written and you filled in four values. Here both are empty. The course has no I2C starter file, so on the robot you would write exactly this.
+
+## init_I2CB()
+1. **Pins.** GPIO40 is SDAB and GPIO41 is SCLB, both at mux position **6**. Each also needs its internal pull-up, because the board has no pull-up resistors, and no input filter:
+\`\`\`c
+GPIO_SetupPinOptions(40, GPIO_INPUT, GPIO_PULLUP | GPIO_ASYNC);
+\`\`\`
+2. **Into reset:** \`I2cbRegs.I2CMDR.bit.IRS = 0;\` The clock settings only take effect when the module comes out of reset.
+3. **Module clock:** \`I2cbRegs.I2CPSC.all\`. The module wants about 10 MHz: 200 MHz / (I2CPSC + 1).
+4. **SCL:** \`I2cbRegs.I2CCLKL\` and \`I2cbRegs.I2CCLKH\`. SCL is low for (I2CCLKL + 5) module clock periods and high for (I2CCLKH + 5). For 100 kHz each half lasts 5 us.
+5. **Out of reset:** \`IRS = 1\`.
+
+## read_temperature()
+1. \`I2cbRegs.I2CSAR.all\`: the 7-bit address, 0x48. \`I2cbRegs.I2CCNT\`: 2 bytes.
+2. \`I2cbRegs.I2CMDR.all\`: one mode word. START (bit 13), STOP (bit 11), master (bit 10), receiver (bit 9 stays 0), out of reset (bit 5).
+3. Twice: wait until \`I2cbRegs.I2CSTR.bit.RRDY\` is 1, then read a byte from \`I2cbRegs.I2CDRR.all\`. The first byte is the most significant.
+4. Wait until \`I2cbRegs.I2CMDR.bit.STP\` is 0: the STOP is on the bus.
+5. \`tempRaw\` from the two bytes, \`tempC = tempRaw / 256.0\`, and count in \`readings\`.
+
+A wait is a loop with an empty body: \`while (I2cbRegs.I2CSTR.bit.RRDY == 0) {}\`. You need two local variables for the bytes.
+
+The tests set the temperature to 30.5 and then to -4 degrees C.
+`,
+      kit: "robot",
+      starter: i2cSetup("    // TODO: pins, reset, clock, out of reset", "    // TODO: address, count, mode word, two bytes, STOP, convert"),
+      solution: i2cSetup(I2C_SETUP_INIT, I2C_SETUP_READ),
+      durationMs: 16,
+      stimuli: [
+        { at: 5, set: "TEMP_C", value: 30.5 },
+        { at: 10, set: "TEMP_C", value: -4 },
+      ],
+      checks: [
+        { kind: "no-diagnostic", code: "i2c-mux", label: "init 1: GPIO40 and GPIO41 are switched to I2CB", hint: "GPIO_SetupPinMux(40, GPIO_MUX_CPU1, 6); and the same for 41." },
+        { kind: "no-diagnostic", code: "i2c-pullup", label: "init 1: both lines have a pull-up", hint: "I2C pins only pull low. Without GPIO_PULLUP in GPIO_SetupPinOptions the line never goes high." },
+        { kind: "reg", reg: "I2cbRegs.I2CPSC", equals: 19, label: "init 3: the module clock is 10 MHz", hint: "200 MHz / (I2CPSC + 1) = 10 MHz." },
+        { kind: "no-diagnostic", code: "i2c-psc-late", label: "init 2: the prescaler is written while the module is in reset", hint: "IRS = 0 comes before I2CPSC, IRS = 1 after the clock settings." },
+        { kind: "reg", reg: "I2cbRegs.I2CCLKL", equals: 45, label: "init 4: SCL is low for 5 us", hint: "(I2CCLKL + 5) periods of 0.1 us make 5 us." },
+        { kind: "reg", reg: "I2cbRegs.I2CCLKH", equals: 45, label: "init 4: SCL is high for 5 us", hint: "(I2CCLKH + 5) periods of 0.1 us make 5 us." },
+        { kind: "reg", reg: "I2cbRegs.I2CMDR", field: "IRS", equals: 1, label: "init 5: the module is out of reset, and stays out", hint: "IRS = 1 at the end of init_I2CB(). A mode word without 0x0020 puts the module back in reset." },
+        { kind: "reg", reg: "I2cbRegs.I2CSAR", equals: 0x48, label: "read 1: I2CSAR holds the 7-bit address 0x48", hint: "Write the address as it is. The module shifts it and adds the R/W bit itself." },
+        { kind: "reg", reg: "I2cbRegs.I2CCNT", equals: 2, label: "read 1: I2CCNT asks for 2 bytes", hint: "With a count of 0 or 1 the second byte never comes." },
+        { kind: "reg", reg: "I2cbRegs.I2CMDR", field: "TRX", equals: 0, label: "read 2: the mode word says receiver", hint: "Bit 9 (0x0200) must stay 0 to read." },
+        { kind: "signal", name: "I2C_SCL_HZ", equals: 100000, tol: 500, label: "SCL runs at 100 kHz", hint: "No value: no transfer ever started. The mode word needs START (0x2000) and master (0x0400), and the checks above must be green." },
+        {
+          kind: "var", name: "readings", min: 4,
+          label: "read_temperature() finishes again and again",
+          hint: "0: the function is stuck in a wait loop, because no byte arrives. Fix the first red check above.",
+        },
+        { kind: "var", name: "tempC", at: 4, equals: 25, label: "tempC is 25 at the start", hint: "25 degrees arrives as 0x19, 0x00: tempRaw = (msb << 8) | lsb = 6400. A value near 0.1 means the bytes are swapped." },
+        { kind: "var", name: "tempC", at: 9, equals: 30.5, label: "tempC follows the knob to 30.5", hint: "Divide by 256.0, not 256, to keep the half degree." },
+        { kind: "var", name: "tempC", at: 14, equals: -4, label: "tempC follows the knob to -4", hint: "tempRaw must stay an int16_t so that values below zero come out negative." },
+        { kind: "signal", name: "I2C_STOPS", min: 4, label: "Every read ends with a STOP on the bus", hint: "Bit 11 of the mode word, 0x0800." },
+        { kind: "no-diagnostic", code: "i2c", label: "The I2C module reports no problem" },
+      ],
+      watch: ["tempRaw", "tempC", "readings"],
+      inspect: ["I2cbRegs.I2CMDR", "I2cbRegs.I2CSTR", "I2cbRegs.I2CPSC", "I2cbRegs.I2CCLKL", "I2cbRegs.I2CSAR", "I2cbRegs.I2CCNT"],
+      hints: [
+        "Write init_I2CB() first and run: the init checks turn green before read_temperature() does anything.",
+        "I2CPSC = 19. 5 us is 50 periods of 0.1 us, so I2CCLKL = I2CCLKH = 45. The mode word is 0x2000 + 0x0800 + 0x0400 + 0x0020 = 0x2C20.",
+        "`msb = I2cbRegs.I2CDRR.all;` after the first wait, `lsb = I2cbRegs.I2CDRR.all;` after the second, then `tempRaw = (msb << 8) | lsb;` and `tempC = tempRaw / 256.0;`",
+      ],
+      takeaway: "I2C set-up is small: two pins with pull-ups, a prescaler and two clock counts written in reset. A read is address, count, one mode word, and a wait per byte.",
+    },
+    {
+      id: "bus-can-setup",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "The CAN set-up, typed once",
+      goal: "Write the whole CAN receive set-up in main(): pins, bit rate, interrupt path, message object, start.",
+      refs: [{ course: "L10" }, { trm: "22.4.1" }, { trm: "22.10.3" }, { trm: "22.6" }, { trm: "3.4.5" }],
+      brief: `
+The final project starter gives you the CAN set-up, and you only change it. Type it once anyway: when a second sensor has to be added, you need to know what each line is for and why the order matters. \`can_isr\` is given.
+
+Write these seven steps after the PIE start-up lines, in this order:
+
+1. **Pins.** GPIO17 is CANRXB and GPIO12 is CANTXB, both at mux position **2**:
+\`\`\`c
+GPIO_SetupPinMux(17, GPIO_MUX_CPU1, 2);
+GPIO_SetupPinOptions(17, GPIO_INPUT, GPIO_ASYNC);
+GPIO_SetupPinMux(12, GPIO_MUX_CPU1, 2);
+GPIO_SetupPinOptions(12, GPIO_OUTPUT, GPIO_PUSHPULL);
+\`\`\`
+2. **Module and bit rate.** \`InitCANB();\` then \`setCANBitRate(200000000, 1000000);\` The first number is the system clock in Hz, the second the bit rate: 1 Mbit/s, what the sensors send at.
+3. **The module's interrupt enables:** \`CanbRegs.CAN_CTL.bit.IE0 = 1;\` and \`CanbRegs.CAN_CTL.bit.EIE = 1;\`
+4. **Vector:** \`PieVectTable.CANB0_INT = &can_isr;\` between \`EALLOW;\` and \`EDIS;\`.
+5. **Enables:** CANB0 is INT9.7, so \`PIEIER9\` and \`IER\`. Then \`CanbRegs.CAN_GLB_INT_EN.bit.GLBINT0_EN = 1;\` and \`EINT;\`
+6. **Message object** number \`RX_MSG_OBJ_ID_1\` for sensor 1's identifier, 0x060B0101. It is the call from "Hear sensor 1":
+\`\`\`c
+CANsetupMessageObject(CANB_BASE, objectNumber, identifier,
+    CAN_MSG_FRAME_EXT, CAN_MSG_OBJ_TYPE_RX, 0,
+    CAN_MSG_OBJ_RX_INT_ENABLE, RX_MSG_DATA_LENGTH);
+\`\`\`
+7. **Start:** \`CanbRegs.CAN_CTL.bit.Init = 0;\` and \`CanbRegs.CAN_CTL.bit.CCE = 0;\`
+
+## Why this order
+\`InitCANB()\` leaves the module stopped (\`Init = 1\`) and empties every message object, so it comes before the object. The bit rate belongs to the stopped module too, so it follows at once. Step 7 comes last: from then on frames arrive.
+
+The sensor sends every 100 ms. The tests move it to 1234 mm, then to 300 mm.
+`,
+      kit: "robot",
+      starter: canSetup("    // TODO: the CAN set-up, steps 1 to 7"),
+      solution: canSetup(CAN_SETUP_BODY),
+      durationMs: 330,
+      stimuli: [
+        { at: 60, set: "CAN_DIST1_MM", value: 1234 },
+        { at: 160, set: "CAN_DIST1_MM", value: 300 },
+      ],
+      checks: [
+        { kind: "no-diagnostic", code: "can-rx-mux", label: "1. GPIO17 is switched to CANRXB", hint: "GPIO_SetupPinMux(17, GPIO_MUX_CPU1, 2);" },
+        { kind: "no-diagnostic", code: "can-tx-mux", label: "1. GPIO12 is switched to CANTXB", hint: "GPIO_SetupPinMux(12, GPIO_MUX_CPU1, 2); A receiver needs its transmit pin too: it acknowledges every frame." },
+        { kind: "signal", name: "CAN_BITRATE", equals: 1000000, label: "2. The bit rate is 1 Mbit/s", hint: "No value: setCANBitRate was never called. A wrong value: the arguments are the system clock in Hz, then the bit rate." },
+        { kind: "reg", reg: "CanbRegs.CAN_CTL", field: "IE0", equals: 1, label: "3. The module may use interrupt line 0", hint: "CanbRegs.CAN_CTL.bit.IE0 = 1; after InitCANB(), which resets the module." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER9", field: "INTx7", equals: 1, label: "5. CANB0 is enabled in the PIE", hint: "PieCtrlRegs.PIEIER9.bit.INTx7 = 1; and IER |= M_INT9;" },
+        { kind: "reg", reg: "CanbRegs.CAN_GLB_INT_EN", field: "GLBINT0_EN", equals: 1, label: "5. The module's global interrupt switch is on", hint: "CanbRegs.CAN_GLB_INT_EN.bit.GLBINT0_EN = 1;" },
+        {
+          kind: "signal", name: "CAN_RX_FRAMES", min: 3,
+          label: "6. Sensor 1's frames are stored in the message object",
+          hint: "No frame matched. Check the identifier 0x060b0101 and CAN_MSG_FRAME_EXT, and that the call comes after InitCANB(), which empties every object.",
+        },
+        { kind: "reg", reg: "CanbRegs.CAN_CTL", field: "Init", equals: 0, label: "7. The module takes part in the bus traffic", hint: "CanbRegs.CAN_CTL.bit.Init = 0; as the last step." },
+        { kind: "isr", fn: "can_isr", min: 3, label: "can_isr runs for every frame", hint: "Frames are stored but no interrupt reaches the CPU: one of the enables of steps 3 to 5 is missing, or EINT." },
+        { kind: "var", name: "dis_1", at: 50, equals: 500, label: "dis_1 is 500 mm at the start", hint: "1200 is sensor 2: the identifier must end in 01." },
+        { kind: "var", name: "dis_1", at: 250, equals: 300, label: "dis_1 follows the sensor to 300 mm" },
+        { kind: "no-diagnostic", code: "eallow", label: "The vector is written between EALLOW; and EDIS;" },
+        { kind: "no-diagnostic", code: "can", label: "The CAN module reports no problem" },
+      ],
+      watch: ["dis_1", "rxMsgCount_1"],
+      inspect: ["CanbRegs.CAN_CTL", "CanbRegs.CAN_INT", "CanbRegs.CAN_GLB_INT_EN", "PieCtrlRegs.PIEIER9"],
+      hints: [
+        "Seven steps, about twenty lines, and most are spelled out in the brief. Run after each step: the checks carry the step numbers.",
+        "Step 5: `PieCtrlRegs.PIEIER9.bit.INTx7 = 1;` `IER |= M_INT9;` Step 6: the object number is RX_MSG_OBJ_ID_1 and the identifier 0x060b0101.",
+        "The finished block is in \"Hear sensor 1\", from the comment //GPIO17 down to the two CAN_CTL lines before while(1).",
+      ],
+      takeaway: "Pins, InitCANB, bit rate, interrupt path, message objects, then Init = 0. Adding a sensor is one more message object and one more branch in can_isr.",
     },
 
     // ------------------------------------------------------------------ expert

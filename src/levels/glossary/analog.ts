@@ -76,12 +76,6 @@ export const glossary: GlossaryEntry[] = [
     level: "act-servo-numbers",
   },
   {
-    term: "Clock",
-    meaning:
-      "A signal inside the chip that ticks at a fixed, known rate. Counting its ticks measures time.",
-    level: "pwm-sawtooth",
-  },
-  {
     term: "Clock divider",
     meaning:
       "A circuit that passes on only every 2nd, 4th ... clock tick, which makes a counter run slower. The ePWM has two: HSPCLKDIV and CLKDIV.",
@@ -430,12 +424,6 @@ export const glossary: GlossaryEntry[] = [
     level: "adc-brief",
   },
   {
-    term: "Saturate",
-    meaning:
-      "To stop a value at a limit instead of letting it run past, for example keeping CMPA between 0 and TBPRD.",
-    level: "pwm-checkpoint",
-  },
-  {
     term: "Saturation",
     meaning:
       "Limiting a value to its allowed range: anything above the top becomes the top, anything below the bottom becomes the bottom.",
@@ -472,22 +460,10 @@ export const glossary: GlossaryEntry[] = [
     level: "adc-soc",
   },
   {
-    term: "Square wave",
-    meaning:
-      "A signal that is high for half of each period and low for the other half: a 50 % duty cycle.",
-    level: "act-brief",
-  },
-  {
     term: "successive approximation (SAR)",
     meaning:
       "How the ADC finds its number: it tries one bit at a time from the top, and keeps the bit if the held voltage is at least the trial voltage.",
     level: "adc-sar",
-  },
-  {
-    term: "SYSCLK",
-    meaning:
-      "The chip's main clock: 200 MHz, one tick every 5 ns.",
-    level: "pwm-numbers",
   },
   {
     term: "threshold",

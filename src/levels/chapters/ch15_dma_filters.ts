@@ -598,6 +598,140 @@ const counts = (from: number) => ((1.5 + mean(SIG_SLOW, from, 50)) * 4096) / 3;
 const SLOW_HI = (counts(0) + counts(50)) / 2;
 const SLOW_LO = (counts(100) + counts(150)) / 2;
 
+// ---- the DMA set-up ladder: dmaf-setup-own (checklist) and dmaf-x-adc (requirements only) ----
+const DMA_SOLVED = dma(
+  `    DmaRegs.CH1.TRANSFER_SIZE = N-1;                    // N bursts per transfer`,
+  `    DmaRegs.CH1.DST_TRANSFER_STEP = 1;                  // add 1 to the pointer after each burst`,
+  `        EALLOW;
+        DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;
+        EDIS;`,
+  `        EALLOW;
+        DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)ping;
+        EDIS;`,
+);
+/** The same program with an empty InitDma(). */
+const DMA_EMPTY = (() => {
+  const from = DMA_SOLVED.indexOf("void InitDma(void)\n{\n") + "void InitDma(void)\n{\n".length;
+  const to = DMA_SOLVED.indexOf("}\n\n__interrupt void DMA_ISR(void)");
+  return `${DMA_SOLVED.slice(0, from)}    // TODO: steps 1 to 10 of the brief\n${DMA_SOLVED.slice(to)}`;
+})();
+
+const xAdc = (o: { vector: string; init: string; isr: string }) => `${FREQ}
+
+#define N 40                 // samples per buffer
+
+__interrupt void DMA_ISR(void);
+void InitDma(void);
+void setupSampling(void);
+
+uint16_t samples[N];
+uint16_t bufferReady = 0;
+int16_t DMAcount = 0;
+float meanVolts = 0;
+
+void main(void)
+{
+    int i;
+    float sum;
+
+${INIT}
+
+${PIE_INIT}
+
+${o.vector}
+
+    InitDma();
+    setupSampling();        // given: one sample of ADCINA4 every 0.1 ms
+
+    EINT;
+    ERTM;
+
+    while (1) {
+        if (bufferReady == 1) {
+            bufferReady = 0;
+            sum = 0;
+            for (i = 0; i < N; i++) {
+                sum = sum + samples[i];
+            }
+            meanVolts = (sum / N) * 3.0 / 4096.0;
+        }
+    }
+}
+
+void InitDma(void)
+{
+${o.init}
+}
+
+__interrupt void DMA_ISR(void)
+{
+${o.isr}
+}
+
+// Given (the ADC chapter): EPWM5 sends SOCA every 0.1 ms, SOC0 of ADCA converts
+// ADCINA4. INT1CONT = 1 makes ADCA raise ADCAINT1 after every conversion even
+// though nobody clears its flag: the DMA is the only listener.
+void setupSampling(void)
+{
+    EALLOW;
+    EPwm5Regs.ETSEL.bit.SOCAEN = 0;
+    EPwm5Regs.TBCTL.bit.CTRMODE = 3;
+    EPwm5Regs.ETSEL.bit.SOCASEL = 1;
+    EPwm5Regs.ETPS.bit.SOCAPRD = 1;
+    EPwm5Regs.TBCTR = 0x0;
+    EPwm5Regs.TBPHS.bit.TBPHS = 0x0000;
+    EPwm5Regs.TBCTL.bit.PHSEN = 0;
+    EPwm5Regs.TBCTL.bit.CLKDIV = 0;
+    EPwm5Regs.TBPRD = 4999;                  // 5000 counts of 20 ns: 0.1 ms
+    EPwm5Regs.ETSEL.bit.SOCAEN = 1;
+    EPwm5Regs.TBCTL.bit.CTRMODE = 0;
+
+    AdcaRegs.ADCCTL2.bit.PRESCALE = 6;
+    AdcSetMode(ADC_ADCA, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE);
+    AdcaRegs.ADCCTL1.bit.INTPULSEPOS = 1;
+    AdcaRegs.ADCCTL1.bit.ADCPWDNZ = 1;
+    DELAY_US(1000);
+    AdcaRegs.ADCSOC0CTL.bit.CHSEL = 4;
+    AdcaRegs.ADCSOC0CTL.bit.ACQPS = 99;
+    AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 13;    // EPWM5 SOCA
+    AdcaRegs.ADCINTSEL1N2.bit.INT1SEL = 0;
+    AdcaRegs.ADCINTSEL1N2.bit.INT1E = 1;
+    AdcaRegs.ADCINTSEL1N2.bit.INT1CONT = 1;
+    AdcaRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;
+    EDIS;
+}
+`;
+
+const X_ADC_INIT = `    EALLOW;
+
+    DmaRegs.DMACTRL.bit.HARDRESET = 1;          // Reset entire DMA module
+    asm(" NOP");                                // 1 cycle delay for HARDRESET to take effect
+
+    DmaRegs.CH2.MODE.all = 0x8B02;
+    // bit 15        1:      CHINTE, interrupt enabled
+    // bit 11        1:      CONTINUOUS
+    // bit 9         1:      CHINTMODE, interrupt at the end of the transfer
+    // bit 8         1:      PERINTE, trigger enabled
+    // bit 4-0       00010:  channel number
+
+    DmaClaSrcSelRegs.DMACHSRCSEL1.bit.CH2 = 1;          // trigger: ADCAINT1
+
+    DmaRegs.CH2.BURST_SIZE.bit.BURSTSIZE = 0;           // 1 word per burst
+    DmaRegs.CH2.TRANSFER_SIZE = N-1;                    // N bursts per transfer
+
+    DmaRegs.CH2.SRC_TRANSFER_STEP = 0;                  // always read the same register
+    DmaRegs.CH2.SRC_ADDR_SHADOW = (Uint32)&AdcaResultRegs.ADCRESULT0;
+
+    DmaRegs.CH2.DST_TRANSFER_STEP = 1;                  // walk through the buffer
+    DmaRegs.CH2.DST_ADDR_SHADOW = (Uint32)samples;
+
+    DmaRegs.CH2.CONTROL.all = 0x0091;                   // ERRCLR, PERINTCLR, RUN
+
+    EDIS;
+
+    PieCtrlRegs.PIEIER7.bit.INTx2 = 1;  // DMA channel 2 is INT7.2
+    IER |= M_INT7;`;
+
 export const ch15: Chapter = {
   id: "dma-filters",
   number: 15,
@@ -1476,6 +1610,144 @@ Writing one element past the end of an array does not fail. It changes whatever 
         "Declare `float xk[NUM_B]`.",
       ],
       takeaway: "Order M needs M + 1 coefficients and M + 1 places if the newest sample lives in the array too. Size both arrays with the same #define and the mistake cannot happen.",
+    },
+    {
+      id: "dmaf-setup-own",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "InitDma(), from an empty function",
+      goal: "Write the whole DMA channel 1 set-up yourself, building its mode word bit by bit.",
+      refs: [{ course: "L8-9" }, { trm: "5.9.3" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.1" }, { trm: "3.4.5" }],
+      brief: `
+In "Let the DMA do the copying" \`InitDma()\` was given and you changed two lines. Here it is empty. The rest of the program is the one you finished there, with the test bench as the ADC and CPU timer 0 as the trigger.
+
+Write these steps in this order. The channel's registers are \`DmaRegs.CH1.\` plus the name.
+
+1. \`EALLOW;\` Every DMA register is protected.
+2. \`DmaRegs.DMACTRL.bit.HARDRESET = 1;\` then \`asm(" NOP");\` Reset the whole DMA and wait one cycle.
+3. \`MODE.all\`: one word, the sum of its bits. Bit n is worth 2^n.
+   - bit 15, CHINTE = 1: the channel may interrupt the CPU
+   - bit 11, CONTINUOUS = 1: start again after each transfer
+   - bit 10, ONESHOT = 0: one burst per trigger
+   - bit 9, CHINTMODE = 0: interrupt at the start of a transfer
+   - bit 8, PERINTE = 1: listen to the trigger
+   - bits 4 to 0: the channel's own number
+4. \`DmaClaSrcSelRegs.DMACHSRCSEL1.bit.CH1 = 68;\` The trigger: 68 is TINT0.
+5. \`BURST_SIZE.bit.BURSTSIZE\` and \`TRANSFER_SIZE\`: one word per burst, N bursts per transfer. Both hold **one less** than the count.
+6. \`SRC_TRANSFER_STEP = 0;\` and \`SRC_ADDR_SHADOW = (Uint32)&adcResult;\` Always read the same variable.
+7. \`DST_TRANSFER_STEP = 1;\` and \`DST_ADDR_SHADOW = (Uint32)ping;\` Walk through \`ping\` first.
+8. \`CONTROL.all = 0x0091;\` Bit 7 clears an old error, bit 4 an old trigger, bit 0 is **RUN**. This line comes after the addresses: RUN starts the channel with what is set.
+9. \`EDIS;\`
+10. DMA channel 1 is **INT7.1**: its \`PIEIER7\` bit, and group 7 in \`IER\`.
+`,
+      kit: "robot",
+      durationMs: 22,
+      stimuli: signal(SIG_SLOW),
+      starter: DMA_EMPTY,
+      solution: DMA_SOLVED,
+      checks: [
+        { kind: "no-diagnostic", code: "eallow", label: "1. Every DMA register write is between EALLOW; and EDIS;", hint: "The line named here was ignored. EALLOW; is the first line of InitDma() and EDIS; comes after the CONTROL line." },
+        { kind: "reg", reg: "DmaRegs.CH1.MODE", field: "CHINTE", equals: 1, label: "3. MODE: the channel may interrupt (bit 15)", hint: "Bit 15 is worth 0x8000." },
+        { kind: "reg", reg: "DmaRegs.CH1.MODE", field: "CONTINUOUS", equals: 1, label: "3. MODE: continuous (bit 11)", hint: "Bit 11 is worth 0x0800. Without it the channel stops after the first buffer." },
+        { kind: "reg", reg: "DmaRegs.CH1.MODE", field: "ONESHOT", equals: 0, label: "3. MODE: one burst per trigger (bit 10 is 0)", hint: "With ONESHOT = 1 a single trigger copies the whole buffer at once: 50 times the same sample." },
+        { kind: "reg", reg: "DmaRegs.CH1.MODE", field: "CHINTMODE", equals: 0, label: "3. MODE: interrupt at the start of a transfer (bit 9 is 0)", hint: "DMA_ISR is written for an interrupt at the start. Leave bit 9 (0x0200) at 0." },
+        { kind: "reg", reg: "DmaRegs.CH1.MODE", field: "PERINTE", equals: 1, label: "3. MODE: the trigger is enabled (bit 8)", hint: "Bit 8 is worth 0x0100. Without it no trigger reaches the channel and nothing is copied." },
+        { kind: "reg", reg: "DmaRegs.CH1.MODE", field: "PERINTSEL", equals: 1, label: "3. MODE: bits 4 to 0 hold the channel number, 1", hint: "The lowest bits must be the channel's own number, or the trigger chosen in step 4 never arrives." },
+        { kind: "reg", reg: "DmaClaSrcSelRegs.DMACHSRCSEL1", field: "CH1", equals: 68, label: "4. The trigger is TINT0 (68)", hint: "DmaClaSrcSelRegs.DMACHSRCSEL1.bit.CH1 = 68; Note the other register group: DmaClaSrcSelRegs." },
+        { kind: "reg", reg: "DmaRegs.CH1.BURST_SIZE", field: "BURSTSIZE", equals: 0, label: "5. One word per burst (BURSTSIZE = 0)", hint: "The register holds the count minus one." },
+        { kind: "reg", reg: "DmaRegs.CH1.TRANSFER_SIZE", equals: 49, label: "5. A transfer is 50 samples (TRANSFER_SIZE = 49)", hint: "N-1. With 0, every sample is its own transfer and DMA_ISR runs hundreds of times." },
+        { kind: "reg", reg: "DmaRegs.CH1.SRC_TRANSFER_STEP", equals: 0, label: "6. The source address stays on adcResult", hint: "SRC_TRANSFER_STEP = 0: the source is one variable, not a list." },
+        { kind: "reg", reg: "DmaRegs.CH1.DST_TRANSFER_STEP", equals: 1, label: "7. The destination moves on by one word per sample", hint: "With a step of 0 every sample lands in ping[0]." },
+        { kind: "no-diagnostic", code: "dma", label: "8. The channel is started with its addresses and trigger in place", hint: "The message says what was not in place when RUN was set. CONTROL.all = 0x0091 comes last: after MODE, the trigger and both SHADOW addresses." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER7", field: "INTx1", equals: 1, label: "10. DMA channel 1 is enabled in the PIE", hint: "PieCtrlRegs.PIEIER7.bit.INTx1 = 1; and IER |= M_INT7;" },
+        { kind: "isr", fn: "DMA_ISR", min: 5, max: 5, label: "DMA_ISR runs once per buffer (5 times in 22 ms)", hint: "Never, with every check above green: the RUN bit (CONTROL bit 0) or IER |= M_INT7. Once: CONTINUOUS. Hundreds: TRANSFER_SIZE." },
+        { kind: "var", name: "pingMean", at: 6, ...near(SLOW_HI, 80), label: "After 6 ms: the mean of the first buffer (ping) is about 2900", hint: "0: nothing was copied to ping. Check both SHADOW addresses: (Uint32)&adcResult as the source, (Uint32)ping as the destination." },
+        { kind: "var", name: "pongMean", at: 21, ...near(SLOW_LO, 80), label: "After 21 ms: the mean of the fourth buffer (pong) is about 1200" },
+      ],
+      watch: ["DMAcount", "iPingPong", "pingMean", "pongMean"],
+      inspect: ["DmaRegs.CH1.MODE", "DmaRegs.CH1.CONTROL", "DmaRegs.CH1.TRANSFER_SIZE", "DmaRegs.CH1.SRC_ADDR_SHADOW", "DmaRegs.CH1.DST_ADDR_SHADOW"],
+      hints: [
+        "Ten steps, about fifteen lines. Run after each step: the checks carry the step numbers.",
+        "The mode word is 0x8000 + 0x0800 + 0x0100 + 1 = 0x8901. BURSTSIZE = 0 and TRANSFER_SIZE = N-1.",
+        "The last lines: `DmaRegs.CH1.CONTROL.all = 0x0091;` `EDIS;` `PieCtrlRegs.PIEIER7.bit.INTx1 = 1;` `IER |= M_INT7;`",
+      ],
+      takeaway: "A DMA channel is six answers: when (trigger and mode), how much (burst and transfer size), from where, to where, both steps, and RUN last.",
+    },
+    {
+      id: "dmaf-x-adc",
+      kind: "code",
+      mode: "write",
+      tier: "expert",
+      title: "The real chain, on channel 2",
+      goal: "Set up DMA channel 2 from its requirements so that it collects real ADC results, with no test bench and no list of lines.",
+      refs: [{ course: "L8-9" }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "5.9.3" }, { trm: "11.9" }, { trm: "3.4.5" }],
+      brief: `
+No test bench this time. \`setupSampling()\` is given: EPWM5 starts SOC0 of ADCA every 0.1 ms, and ADCA raises **ADCAINT1** after every conversion. The result is in \`AdcaResultRegs.ADCRESULT0\`. Your DMA channel moves it into a buffer.
+
+## Requirements
+- Use DMA **channel 2**. Its registers are \`DmaRegs.CH2.\` plus the name.
+- Trigger: **ADCAINT1**. In the DMA's source table that is number **1**. Channel 2's field is \`DmaClaSrcSelRegs.DMACHSRCSEL1.bit.CH2\`.
+- Each trigger copies **one** 16-bit word from \`AdcaResultRegs.ADCRESULT0\` to the next place in \`samples\`.
+- A transfer is **N** samples. When one is complete the channel starts again at \`samples[0]\` by itself: one buffer, no ping and pong.
+- The channel interrupts the CPU at the **end** of each transfer, when the buffer is complete. Channel 2 is **INT7.2**, and its vector is \`PieVectTable.DMA_CH2_INT\`.
+- \`DMA_ISR\` acknowledges PIE group 7, sets \`bufferReady = 1\` and counts in \`DMAcount\`. main() computes the mean.
+
+## What you need to work out
+- The **mode word**. The bits are those of the level before, with two changes: the interrupt comes at the end (bit 9, CHINTMODE = 1), and the lowest five bits hold this channel's number.
+- The source address. The address of a register is taken like that of a variable: \`(Uint32)&AdcaResultRegs.ADCRESULT0\`.
+- Everything in the two size and two step registers.
+
+Three parts are yours: the vector in \`main()\`, \`InitDma()\` and \`DMA_ISR\`. The photoresistor is at 1.2 V, then at 2.4 V.
+
+A star if \`DMA_ISR\` stays under 1 us: it reports, main() calculates.
+`,
+      kit: "robot",
+      durationMs: 22,
+      stimuli: [
+        { at: 0, set: "ADCINA4", value: 1.2 },
+        { at: 10.02, set: "ADCINA4", value: 2.4 },
+      ],
+      starter: xAdc({ vector: "    // the vector of DMA channel 2: yours", init: "    // yours", isr: "    // yours" }),
+      solution: xAdc({
+        vector: `    EALLOW;
+    PieVectTable.DMA_CH2_INT = &DMA_ISR;
+    EDIS;`,
+        init: X_ADC_INIT,
+        isr: `    PieCtrlRegs.PIEACK.all = PIEACK_GROUP7;
+    bufferReady = 1;
+    DMAcount += 1;`,
+      }),
+      checks: [
+        { kind: "no-diagnostic", code: "eallow", label: "Every protected write is between EALLOW; and EDIS;", hint: "The line named here was ignored. The DMA registers and the vector table are protected." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "PERINTSEL", equals: 2, label: "MODE: the lowest bits hold the channel number, 2", hint: "0x8901 was channel 1's word. For channel 2 the lowest five bits are 00010." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "PERINTE", equals: 1, label: "MODE: the trigger is enabled (bit 8)", hint: "Bit 8, 0x0100." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "CHINTMODE", equals: 1, label: "MODE: interrupt at the end of a transfer (bit 9)", hint: "Bit 9, 0x0200. With 0 the interrupt comes when the buffer has one fresh sample and 39 old ones." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "ONESHOT", equals: 0, label: "MODE: one burst per trigger (bit 10 is 0)", hint: "With ONESHOT = 1 one trigger fills the whole buffer with the same sample." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "CONTINUOUS", equals: 1, label: "MODE: continuous (bit 11)", hint: "Bit 11, 0x0800. Without it the channel stops after the first buffer." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "CHINTE", equals: 1, label: "MODE: the channel may interrupt (bit 15)", hint: "Bit 15, 0x8000." },
+        { kind: "reg", reg: "DmaRegs.CH2.MODE", field: "DATASIZE", equals: 0, label: "MODE: 16-bit words (bit 14 is 0)", hint: "An ADC result is one 16-bit word." },
+        { kind: "reg", reg: "DmaClaSrcSelRegs.DMACHSRCSEL1", field: "CH2", equals: 1, label: "The trigger of channel 2 is ADCAINT1 (1)", hint: "DmaClaSrcSelRegs.DMACHSRCSEL1.bit.CH2 = 1; The field CH1 belongs to the other channel." },
+        { kind: "reg", reg: "DmaRegs.CH2.BURST_SIZE", field: "BURSTSIZE", equals: 0, label: "One word per burst", hint: "BURSTSIZE holds the count minus one." },
+        { kind: "reg", reg: "DmaRegs.CH2.TRANSFER_SIZE", equals: 39, label: "A transfer is 40 samples", hint: "TRANSFER_SIZE holds N-1." },
+        { kind: "reg", reg: "DmaRegs.CH2.SRC_TRANSFER_STEP", equals: 0, label: "The source stays on ADCRESULT0", hint: "A source step of 1 would read ADCRESULT1, ADCRESULT2 and so on." },
+        { kind: "reg", reg: "DmaRegs.CH2.DST_TRANSFER_STEP", equals: 1, label: "The destination walks through samples", hint: "With a step of 0 every sample lands in samples[0]." },
+        { kind: "no-diagnostic", code: "dma", label: "The channel is started with its addresses and trigger in place", hint: "The message says what was not in place when RUN was set. CONTROL.all = 0x0091 comes last: after MODE, the trigger and both SHADOW addresses." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER7", field: "INTx2", equals: 1, label: "DMA channel 2 is enabled in the PIE", hint: "INT7.2: PieCtrlRegs.PIEIER7.bit.INTx2 = 1; and IER |= M_INT7;" },
+        { kind: "isr", fn: "DMA_ISR", min: 4, max: 6, label: "DMA_ISR runs once per buffer, every 4 ms", hint: "Never, with the checks above green: RUN, IER |= M_INT7, or the registers of CH1 were written. Once: PIEACK_GROUP7. Hundreds of times: TRANSFER_SIZE." },
+        { kind: "var", name: "meanVolts", at: 9.9, min: 1.19, max: 1.21, label: "meanVolts is 1.2 V after two buffers", hint: "0: bufferReady is never set, or nothing reaches samples. A small value: the destination step is 0, so only samples[0] is written. Check the source address too." },
+        { kind: "var", name: "meanVolts", min: 2.39, max: 2.41, label: "and 2.4 V after the light changes" },
+        { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
+      ],
+      bonus: [{ kind: "isr-time", fn: "DMA_ISR", maxUs: 1, label: "DMA_ISR takes less than 1 us", hint: "Set the flag and return. The loop over the buffer belongs in main()." }],
+      watch: ["DMAcount", "bufferReady", "meanVolts"],
+      inspect: ["DmaRegs.CH2.MODE", "DmaRegs.CH2.CONTROL", "DmaRegs.CH2.TRANSFER_COUNT", "DmaRegs.CH2.SRC_ADDR_SHADOW", "DmaRegs.CH2.DST_ADDR_SHADOW", "AdcaResultRegs.ADCRESULT0"],
+      hints: [
+        "Write InitDma() in the order of the level before: reset, mode, trigger, sizes, source, destination, CONTROL, then the PIE.",
+        "The mode word is 0x8000 + 0x0800 + 0x0200 + 0x0100 + 2 = 0x8B02. TRANSFER_SIZE = N-1.",
+        "`DmaRegs.CH2.SRC_ADDR_SHADOW = (Uint32)&AdcaResultRegs.ADCRESULT0;` `DmaRegs.CH2.DST_ADDR_SHADOW = (Uint32)samples;` `DmaRegs.CH2.CONTROL.all = 0x0091;` and in DMA_ISR: `PieCtrlRegs.PIEACK.all = PIEACK_GROUP7;` `bufferReady = 1;` `DMAcount += 1;`",
+      ],
+      takeaway: "ePWM, ADC and DMA now run the whole sampling chain, and the CPU hears of it once per buffer. On the robot the same block points at ADCB and a microphone.",
     },
 
     // ------------------------------------------------------------------ expert
