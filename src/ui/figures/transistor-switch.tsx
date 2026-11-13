@@ -77,4 +77,9 @@ function TransistorSwitch() {
   );
 }
 
-export const figure = { id: "transistor-switch", Component: TransistorSwitch };
+export const figure = {
+  id: "transistor-switch",
+  title: "Transistor as a switch",
+  description: "Drive the pin high or low to see the transistor switch a motor whose current the pin could never supply.",
+  Component: TransistorSwitch,
+};

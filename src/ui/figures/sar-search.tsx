@@ -147,4 +147,9 @@ function SarSearch() {
   );
 }
 
-export const figure = { id: "sar-search", Component: SarSearch };
+export const figure = {
+  id: "sar-search",
+  title: "How the ADC finds the number",
+  description: "Step through a conversion one comparison at a time to see the converter halve the range until it has every bit.",
+  Component: SarSearch,
+};

@@ -89,19 +89,19 @@ function LogOdds() {
           <>
             <path d="M52 35 H146" className="lodd-beam" />
             <path d="M149 35 l-8,-4.5 v9 Z" className="lodd-beamhead" />
-            <text x="100" y="28" textAnchor="middle" className="fig-label">beam ends here: hit</text>
+            <text x="100" y="28" textAnchor="middle" className="fig-label">ends here: hit</text>
           </>
         ) : (
           <>
             <path d="M52 35 H262" className="lodd-beam" />
             <path d="M266 35 l-8,-4.5 v9 Z" className="lodd-beamhead" />
             <rect x="270" y="14" width="6" height="42" className="fig-box" />
-            <text x="100" y="28" textAnchor="middle" className="fig-label">beam passes through</text>
+            <text x="100" y="28" textAnchor="middle" className="fig-label">passes through</text>
             <text x="282" y="38" className="fig-label dim">it ends further on</text>
           </>
         )}
-        <text x="206" y={last === false ? 68 : 30} className="fig-value">p = {fp(p)}</text>
-        <text x="206" y={last === false ? 80 : 44} className="fig-label">{verdict}</text>
+        <text x="206" y={last === false ? 60 : 30} className="fig-value">p = {fp(p)}</text>
+        <text x="206" y={last === false ? 72 : 44} className="fig-label">{verdict}</text>
         {/* log-odds axis */}
         <text x="4" y="110" className="fig-label">log-odds l</text>
         <line x1={X0} x2={X1} y1="106" y2="106" className="lodd-axis" />
@@ -130,6 +130,13 @@ function LogOdds() {
         ))}
         <text x={Math.max(X0 + 40, Math.min(X1 - 40, xp(p)))} y="172" textAnchor="middle" className="fig-value small">{Math.abs(p - 0.5) < 0.08 ? "" : fp(p)}</text>
       </svg>
+      <div className="fig-step" role="status">
+        <p>{status}</p>
+        <pre><code>{`// l: ${sum} = ${f3(l)}${limited ? " (limited)" : ""}
+// L_0 = 0
+logodds = logodds + l_sensor - L_0;
+${clamp ? `if (logodds > ${L_LIMIT}.0f) logodds = ${L_LIMIT}.0f;\nif (logodds < -${L_LIMIT}.0f) logodds = -${L_LIMIT}.0f;\n` : ""}p = 1 - 1 / (1 + exp(logodds));  // ${fp(p)}`}</code></pre>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Beam</span>
@@ -143,15 +150,14 @@ function LogOdds() {
           <button className="fig-opt" aria-pressed={clamp} onClick={() => setClamp(!clamp)}>Limit l to ±{L_LIMIT}</button>
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>{status}</p>
-        <pre><code>{`// l: ${sum} = ${f3(l)}${limited ? " (limited)" : ""}
-logodds = logodds + l_sensor - L_0;   // L_0 = 0
-${clamp ? `if (logodds > ${L_LIMIT}.0f) logodds = ${L_LIMIT}.0f;\nif (logodds < -${L_LIMIT}.0f) logodds = -${L_LIMIT}.0f;\n` : ""}p = 1 - 1 / (1 + exp(logodds));       // ${fp(p)}`}</code></pre>
-      </div>
       <figcaption>A hit says "occupied with p = 0.8" (l_sensor = +1.386), a pass-through says "occupied with p = 0.3" (l_sensor = -0.847). In log-odds, each new piece of evidence is one addition. Mapping code usually also limits l (here to ±{L_LIMIT}, p = {f3(prob(-L_LIMIT))} to {f3(prob(L_LIMIT))}) so that a few beams can still change a cell when the world changes.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "log-odds", Component: LogOdds };
+export const figure = {
+  id: "log-odds",
+  title: "Occupancy cell in log-odds",
+  description: "Send beams that hit or pass through one map cell to see each one add a fixed amount of evidence while the probability moves less and less.",
+  Component: LogOdds,
+};

@@ -139,14 +139,14 @@ function fire(m: Model): Model {
   };
 }
 
-const TEXT: Record<Op, string> = { lock: "", read: "read    reg = counter", add: "add     reg = reg + 1", write: "write   counter = reg", unlock: "" };
+const TEXT: Record<Op, string> = { lock: "", read: "read  reg = counter", add: "add   reg = reg + 1", write: "write counter = reg", unlock: "" };
 
 function LostUpdate() {
   const [m, setM] = useState<Model>(() => fresh("threads", false));
   const [na, nb] = names(m.mode);
   const allDone = done(m, 0) && done(m, 1);
   const lost = allDone && m.counter !== START + 2;
-  const label = (op: Op) => (op === "lock" ? (m.mode === "threads" ? "lock    the mutex" : "DINT;   interrupts off") : op === "unlock" ? (m.mode === "threads" ? "unlock  the mutex" : "EINT;   interrupts on") : TEXT[op]);
+  const label = (op: Op) => (op === "lock" ? (m.mode === "threads" ? "lock  the mutex" : "DINT; no interrupts") : op === "unlock" ? (m.mode === "threads" ? "unlock the mutex" : "EINT; interrupts on") : TEXT[op]);
   const guardName = m.mode === "threads" ? "mutex" : "DINT / EINT";
   const code = !m.guard
     ? "counter += 1;"
@@ -165,8 +165,8 @@ function LostUpdate() {
         : m.holder === 0
           ? ["INTM = 1: interrupts off", m.pending ? "one request is waiting" : "requests have to wait"]
           : ["INTM = 0: interrupts on", "may fire now"];
-  const colX = [6, 278];
-  const W = 136;
+  const colX = [3, 275];
+  const W = 142;
   const column = (who: 0 | 1) => {
     const ops = opsOf(m, who);
     const x = colX[who];
@@ -180,8 +180,8 @@ function LostUpdate() {
           return (
             <g key={op}>
               <rect x={x} y={20 + k * 22} width={W} height="19" rx="4" className={`fig-box ${isLast ? "hot" : isNext ? "active" : isDone ? "off" : ""}`} />
-              <text x={x + 5} y={33 + k * 22} className="fig-label">{isDone ? "✓" : isNext ? "▶" : ""}</text>
-              <text x={x + 17} y={33 + k * 22} className={`fig-label lu-mono ${isDone && !isLast ? "dim" : ""}`}>{label(op)}</text>
+              <text x={x + 3} y={33 + k * 22} className="fig-label">{isDone ? "✓" : isNext ? "▶" : ""}</text>
+              <text x={x + 13} y={33 + k * 22} className={`fig-label lu-mono ${isDone && !isLast ? "dim" : ""}`}>{label(op)}</text>
             </g>
           );
         })}
@@ -194,8 +194,8 @@ function LostUpdate() {
   const arrow = () => {
     if (!m.last || (m.last.op !== "read" && m.last.op !== "write")) return null;
     const left = m.last.who === 0;
-    const from = m.last.op === "read" ? (left ? 164 : 256) : left ? 142 : 278;
-    const to = m.last.op === "read" ? (left ? 144 : 276) : left ? 162 : 258;
+    const from = m.last.op === "read" ? (left ? 164 : 256) : left ? 147 : 273;
+    const to = m.last.op === "read" ? (left ? 149 : 271) : left ? 162 : 258;
     return <path d={`M${from} 160 H${to}`} className="fig-wire hot" markerEnd="url(#lu-arrow)" />;
   };
   return (
@@ -211,19 +211,6 @@ function LostUpdate() {
         .lu-fig .fig-controls pre { margin: 0; font-size: 0.75rem; }
         .lu-fig .fig-controls pre code { margin-left: 0; }
       `}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Who</span>
-          <button className="fig-opt" aria-pressed={m.mode === "threads"} onClick={() => setM(fresh("threads", m.guard))}>two threads</button>
-          <button className="fig-opt" aria-pressed={m.mode === "irq"} onClick={() => setM(fresh("irq", m.guard))}>main and an interrupt</button>
-        </div>
-        <div>
-          <span>Protection</span>
-          <button className="fig-opt" aria-pressed={!m.guard} onClick={() => setM(fresh(m.mode, false))}>none</button>
-          <button className="fig-opt" aria-pressed={m.guard} onClick={() => setM(fresh(m.mode, true))}>{guardName}</button>
-          <pre><code>{code}</code></pre>
-        </div>
-      </div>
       <svg viewBox="0 0 420 186" role="img" aria-label={`counter is ${m.counter}. ${na} has done ${m.pc[0]} of ${opsOf(m, 0).length} steps and its register holds ${m.reg[0] ?? "nothing"}. ${nb} has done ${m.pc[1]} of ${opsOf(m, 1).length} steps and its register holds ${m.reg[1] ?? "nothing"}. ${lockText[0]}.`}>
         <defs>
           <marker id="lu-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
@@ -233,7 +220,7 @@ function LostUpdate() {
         {column(0)}
         {column(1)}
         <text x="210" y="13" textAnchor="middle" className="fig-label dim">SHARED</text>
-        <rect x="152" y="20" width="116" height="34" rx="4" className={`fig-box ${m.guard && m.holder !== -1 ? "hot" : m.guard ? "" : "off"}`} strokeDasharray={m.guard ? undefined : "4 3"} />
+        <rect x="151" y="20" width="118" height="34" rx="4" className={`fig-box ${m.guard && m.holder !== -1 ? "hot" : m.guard ? "" : "off"}`} strokeDasharray={m.guard ? undefined : "4 3"} />
         <text x="210" y="34" textAnchor="middle" className="fig-label">{lockText[0]}</text>
         <text x="210" y="46" textAnchor="middle" className="fig-label dim">{lockText[1]}</text>
         <rect x="164" y="118" width="92" height="60" rx="4" className={`fig-box ${m.last?.op === "write" ? "hot" : "active"}`} />
@@ -244,15 +231,6 @@ function LostUpdate() {
         {allDone && <text x="210" y="96" textAnchor="middle" className="fig-label lu-verdict">{lost ? `✗ ended at ${m.counter}` : `✓ ended at ${m.counter}`}</text>}
         {arrow()}
       </svg>
-      <div className="fig-controls row">
-        <button className="btn small primary" onClick={() => setM(step(m, 0))} disabled={done(m, 0)}>{m.mode === "threads" ? "Step thread A" : "Step main()"}</button>
-        {m.mode === "threads" ? (
-          <button className="btn small primary" onClick={() => setM(step(m, 1))} disabled={done(m, 1)}>Step thread B</button>
-        ) : (
-          <button className="btn small primary" onClick={() => setM(fire(m))} disabled={done(m, 1) || m.pending}>Fire the interrupt</button>
-        )}
-        <button className="btn small" onClick={() => setM(fresh(m.mode, m.guard))}>Reset</button>
-      </div>
       <div className="fig-step" role="status">
         <p>
           {allDone ? (
@@ -279,6 +257,28 @@ function LostUpdate() {
           ))}
         </ol>
       </div>
+      <div className="fig-controls row">
+        <button className="btn small primary" onClick={() => setM(step(m, 0))} disabled={done(m, 0)}>{m.mode === "threads" ? "Step thread A" : "Step main()"}</button>
+        {m.mode === "threads" ? (
+          <button className="btn small primary" onClick={() => setM(step(m, 1))} disabled={done(m, 1)}>Step thread B</button>
+        ) : (
+          <button className="btn small primary" onClick={() => setM(fire(m))} disabled={done(m, 1) || m.pending}>Fire the interrupt</button>
+        )}
+        <button className="btn small" onClick={() => setM(fresh(m.mode, m.guard))}>Reset</button>
+      </div>
+      <div className="fig-controls">
+        <div>
+          <span>Who</span>
+          <button className="fig-opt" aria-pressed={m.mode === "threads"} onClick={() => setM(fresh("threads", m.guard))}>two threads</button>
+          <button className="fig-opt" aria-pressed={m.mode === "irq"} onClick={() => setM(fresh("irq", m.guard))}>main and an interrupt</button>
+        </div>
+        <div>
+          <span>Protection</span>
+          <button className="fig-opt" aria-pressed={!m.guard} onClick={() => setM(fresh(m.mode, false))}>none</button>
+          <button className="fig-opt" aria-pressed={m.guard} onClick={() => setM(fresh(m.mode, true))}>{guardName}</button>
+          <pre><code>{code}</code></pre>
+        </div>
+      </div>
       <figcaption>
         <code>counter += 1;</code> can become three machine steps: read, add, write. You choose who runs next. {m.mode === "irq" ? "main() cannot pause an interrupt function, so the interrupt always runs its three steps together, but it can start between any two steps of main()." : "Two threads on the Raspberry Pi can be paused between any two steps."}
       </figcaption>
@@ -286,4 +286,9 @@ function LostUpdate() {
   );
 }
 
-export const figure = { id: "lost-update", Component: LostUpdate };
+export const figure = {
+  id: "lost-update",
+  title: "Lost update on a shared counter",
+  description: "Choose which of two pieces of code runs its next step to make one increment disappear, then switch on the protection and try again.",
+  Component: LostUpdate,
+};

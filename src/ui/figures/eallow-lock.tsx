@@ -79,14 +79,6 @@ function EallowLock() {
   return (
     <figure className="figure" aria-label="Interactive EALLOW lock: when does a write to a protected register land?">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Write to</span>
-          {TARGETS.map((x, i) => (
-            <button key={x.reg} className="fig-opt" aria-pressed={ti === i} onClick={() => { setTi(i); setLast("none"); }}>{x.reg}</button>
-          ))}
-        </div>
-      </div>
       <svg viewBox="0 0 400 104" role="img" aria-label={`The lock is ${open ? "open" : "closed"}. ${t.reg} is ${t.protect ? "protected" : "not protected"} and holds ${done ? t.after : t.before}.${last === "ignored" ? " The last write was ignored." : last === "landed" ? " The last write landed." : ""}`}>
         {/* CPU */}
         <rect x="8" y="38" width="96" height="52" rx="5" className="fig-box" />
@@ -124,19 +116,6 @@ function EallowLock() {
           <text key={i} x="342" y={81 + i * 11} textAnchor="middle" className="fig-value small">{i ? `(${part}` : part}</text>
         ))}
       </svg>
-      <div className="el-list">
-        <div><b>Protected (need EALLOW)</b>GpioCtrlRegs (pin mux, direction, pull-ups), PieVectTable (interrupt vectors), ClkCfgRegs and CpuSysRegs (clocks), WdRegs (watchdog)</div>
-        <div><b>Not protected</b>GpioDataRegs (pin levels), CpuTimer0Regs (timer settings), PieCtrlRegs (interrupt enables)</div>
-      </div>
-      <div className="fig-controls">
-        <div>
-          <span>Run a line</span>
-          <button className="el-run" onClick={eallow}>EALLOW;</button>
-          <button className="el-run" onClick={write}>{t.stmt}</button>
-          <button className="el-run" onClick={edis}>EDIS;</button>
-          <button className="fig-opt" aria-disabled={lines.length === 0 && !open} onClick={reset}>Reset</button>
-        </div>
-      </div>
       <ol className="el-prog" aria-label="The lines you have run">
         {lines.length === 0 && <li className="dim">// the lines you run appear here, in order</li>}
         {lines.map((l, i) => (
@@ -147,9 +126,33 @@ function EallowLock() {
         ))}
       </ol>
       <p className="fig-why" role="status">{why}</p>
+      <div className="fig-controls">
+        <div>
+          <span>Write to</span>
+          {TARGETS.map((x, i) => (
+            <button key={x.reg} className="fig-opt" aria-pressed={ti === i} onClick={() => { setTi(i); setLast("none"); }}>{x.reg}</button>
+          ))}
+        </div>
+        <div>
+          <span>Run a line</span>
+          <button className="el-run" onClick={eallow}>EALLOW;</button>
+          <button className="el-run" onClick={write}>{t.stmt}</button>
+          <button className="el-run" onClick={edis}>EDIS;</button>
+          <button className="fig-opt" aria-disabled={lines.length === 0 && !open} onClick={reset}>Reset</button>
+        </div>
+      </div>
+      <div className="el-list">
+        <div><b>Protected (need EALLOW)</b>GpioCtrlRegs (pin mux, direction, pull-ups), PieVectTable (interrupt vectors), ClkCfgRegs and CpuSysRegs (clocks), WdRegs (watchdog)</div>
+        <div><b>Not protected</b>GpioDataRegs (pin levels), CpuTimer0Regs (timer settings), PieCtrlRegs (interrupt enables)</div>
+      </div>
       <figcaption>A protected register only takes a write between EALLOW; and EDIS;. A write that meets the closed lock is dropped without any error: on the real chip the only sign is that the hardware does not do what the code says.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "eallow-lock", Component: EallowLock };
+export const figure = {
+  id: "eallow-lock",
+  title: "The EALLOW lock",
+  description: "Run EALLOW, a register write and EDIS in any order to see when a write to a protected register lands and when it is silently dropped.",
+  Component: EallowLock,
+};

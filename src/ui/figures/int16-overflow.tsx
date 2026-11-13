@@ -26,7 +26,7 @@ const CSS = `
 
 const CX = 110;
 const CY = 101;
-const R = 70;
+const R = 62;
 const pt = (v: number, r: number) => {
   const a = (v / 65536) * 2 * Math.PI;
   return [CX + r * Math.sin(a), CY - r * Math.cos(a)];
@@ -95,8 +95,8 @@ function Int16Overflow() {
         <text x={CX + 5} y={CY + R + 17} className="fig-value small">32767</text>
         <text x={CX - 5} y={CY + R + 17} textAnchor="end" className="fig-value small">-32768</text>
         <text x={CX} y={CY + R + 27} textAnchor="middle" className="fig-label">the two ends meet here</text>
-        <text x={CX + 56} y={CY - 58} className="fig-label dim">positive</text>
-        <text x={CX - 56} y={CY - 58} textAnchor="end" className="fig-label dim">negative</text>
+        <text x={CX + 52} y={CY - 54} className="fig-label dim">positive</text>
+        <text x={CX - 52} y={CY - 54} textAnchor="end" className="fig-label dim">negative</text>
         {/* the walk */}
         <path d={d} className="io-path" style={{ strokeDasharray: Math.abs(span) > 4 * 65536 ? "2 3" : undefined, opacity: long ? 0.45 : 1 }} />
         <line x1={tx} y1={ty} x2={ex} y2={ey} className="io-path" style={{ strokeDasharray: "2 2", opacity: long ? 0.45 : 1 }} />
@@ -111,9 +111,9 @@ function Int16Overflow() {
         </text>
         <path d="M306,83 V94 M301,89 L306,95 L311,89" className="fig-wire" />
         <rect x="216" y="100" width="180" height="62" rx="5" className={`fig-box ${!long && overflow ? "hot" : "active"}`} />
-        <text x="224" y="114" className="fig-label dim">{long ? "what the chip computes (32-bit long)" : "what the chip computes (16-bit int)"}</text>
+        <text x="224" y="114" className="fig-label dim">{long ? "the chip computes (32-bit long)" : "the chip computes (16-bit int)"}</text>
         <text x="224" y="137" className={`io-big ${!long && overflow ? "io-bad" : "io-ok"}`}>{stored}</text>
-        <text x="224" y="153" className="fig-label">{long ? "correct" : overflow ? `WRONG: bits ${hex}, the low 16 bits` : `correct: bits ${hex}`}</text>
+        <text x="224" y="153" className="fig-label">{long ? "correct" : overflow ? `WRONG: the low 16 bits, ${hex}` : `correct: bits ${hex}`}</text>
         <text x="216" y="178" className="fig-label dim">Small dot: where the walk starts.</text>
         <text x="216" y="189" className="fig-label dim">Large dot: where the result lands.</text>
       </svg>
@@ -147,4 +147,9 @@ function Int16Overflow() {
   );
 }
 
-export const figure = { id: "int16-overflow", Component: Int16Overflow };
+export const figure = {
+  id: "int16-overflow",
+  title: "16-bit overflow wheel",
+  description: "Pick two numbers and an operation to watch the result walk round the circle of 16-bit values and land on the wrong number when it passes the end.",
+  Component: Int16Overflow,
+};

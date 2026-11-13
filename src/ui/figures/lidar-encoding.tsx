@@ -156,6 +156,17 @@ function LidarEncoding() {
           <text x={LX} y="191" textAnchor="middle" className="fig-label dim">sent second</text>
         </g>
       </svg>
+      <div className="fig-step" role="status">
+        <strong>{s.title}</strong>
+        <p>{s.text}</p>
+        <pre><code>{s.code}</code></pre>
+      </div>
+      <div className="fig-controls row">
+        <button className="btn small" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Back</button>
+        <button className="btn small primary" onClick={() => setStep(step + 1)} disabled={step === 3}>Next</button>
+        <button className="btn small" onClick={() => setStep(0)} disabled={step === 0}>Reset</button>
+        <span className="fig-dots" aria-hidden="true">{STEPS.map((_, k) => (<i key={k} className={k === step ? "on" : ""} />))}</span>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Distance</span>
@@ -176,20 +187,14 @@ function LidarEncoding() {
           <button className="fig-opt" aria-pressed={!decode} onClick={() => { setDecode(false); setStep(0); }}>encode (the sensor)</button>
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <strong>{s.title}</strong>
-        <p>{s.text}</p>
-        <pre><code>{s.code}</code></pre>
-      </div>
-      <div className="fig-controls row">
-        <button className="btn small" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>Back</button>
-        <button className="btn small primary" onClick={() => setStep(step + 1)} disabled={step === 3}>Next</button>
-        <button className="btn small" onClick={() => setStep(0)} disabled={step === 0}>Reset</button>
-        <span className="fig-dots" aria-hidden="true">{STEPS.map((_, k) => (<i key={k} className={k === step ? "on" : ""} />))}</span>
-      </div>
       <figcaption>One reading on the wire is two printable characters. Decoding goes up the picture, encoding goes down. The second character counts millimetres, the first one counts steps of 64 mm.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "lidar-encoding", Component: LidarEncoding };
+export const figure = {
+  id: "lidar-encoding",
+  title: "LIDAR distance as two characters",
+  description: "Set a distance and step through how its 12 bits are split into two halves and sent as two printable characters, or decoded back.",
+  Component: LidarEncoding,
+};

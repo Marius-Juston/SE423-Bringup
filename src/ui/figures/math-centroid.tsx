@@ -83,4 +83,9 @@ function MathCentroid() {
   );
 }
 
-export const figure = { id: "math-centroid", Component: MathCentroid };
+export const figure = {
+  id: "math-centroid",
+  title: "Centroid of a pixel mask",
+  description: "Click pixels on and off to see the sums the code keeps and the average position they give.",
+  Component: MathCentroid,
+};

@@ -57,13 +57,6 @@ function LedWiring() {
   return (
     <figure className="figure" aria-label="Interactive: an LED lit by a high pin and an LED lit by a low pin">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Both pins</span>
-          <button className="fig-opt" aria-pressed={high} onClick={() => setHigh(true)}>drive high</button>
-          <button className="fig-opt" aria-pressed={!high} onClick={() => setHigh(false)}>drive low</button>
-        </div>
-      </div>
       <svg viewBox="0 0 400 190" role="img" aria-label={`Both pins are ${high ? "high" : "low"}. The robot board LED is ${high ? "lit" : "dark"}. The LaunchPad LED is ${high ? "dark" : "lit"}.`}>
         <rect x="4" y="4" width="192" height="182" rx="6" className="lw-panel" />
         <rect x="204" y="4" width="192" height="182" rx="6" className="lw-panel" />
@@ -88,13 +81,25 @@ function LedWiring() {
       </svg>
       <code className="lw-code">
         {high
-          ? "GpioDataRegs.GPASET.bit.GPIO22 = 1;  // LED1 on\nGpioDataRegs.GPBSET.bit.GPIO34 = 1;  // red LED off"
-          : "GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;  // LED1 off\nGpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;  // red LED on"}
+          ? "// LED1 on\nGpioDataRegs.GPASET.bit.GPIO22 = 1;\n// red LED off\nGpioDataRegs.GPBSET.bit.GPIO34 = 1;"
+          : "// LED1 off\nGpioDataRegs.GPACLEAR.bit.GPIO22 = 1;\n// red LED on\nGpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;"}
       </code>
       <p className="fig-why" role="status">{why}</p>
+      <div className="fig-controls">
+        <div>
+          <span>Both pins</span>
+          <button className="fig-opt" aria-pressed={high} onClick={() => setHigh(true)}>drive high</button>
+          <button className="fig-opt" aria-pressed={!high} onClick={() => setHigh(false)}>drive low</button>
+        </div>
+      </div>
       <figcaption>An LED lights only when current flows through it, from a higher voltage to a lower one. The pin is one end of the circuit; what the other end is tied to decides whether a 1 or a 0 turns the LED on. The LaunchPad's blue LED on GPIO31 is wired like its red one.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "led-wiring", Component: LedWiring };
+export const figure = {
+  id: "led-wiring",
+  title: "LED lit by a high pin or a low pin",
+  description: "Drive both pins high or low to see why one LED lights on a 1 and the other on a 0.",
+  Component: LedWiring,
+};

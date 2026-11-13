@@ -129,4 +129,9 @@ function MathIntegrate() {
   );
 }
 
-export const figure = { id: "math-integrate", Component: MathIntegrate };
+export const figure = {
+  id: "math-integrate",
+  title: "Integrating: a running total",
+  description: "Move through time to watch rate times time step being added up, step by step, into a total that rises and falls.",
+  Component: MathIntegrate,
+};

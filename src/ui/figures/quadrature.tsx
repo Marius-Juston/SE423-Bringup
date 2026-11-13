@@ -133,7 +133,7 @@ function Quadrature() {
           );
         })}
         <text x={CX} y={160} textAnchor="middle" className="fig-label dim">drag the disc to turn it</text>
-        <text x={CX} y={172} textAnchor="middle" className="fig-label dim">{SLITS} slits drawn, the robot's has 500</text>
+        <text x={CX} y={172} textAnchor="middle" className="fig-label dim">{SLITS} slits here, 500 on the robot</text>
 
         {/* waveforms */}
         <text x={150} y={36} textAnchor="end" className="fig-label">A</text>
@@ -154,11 +154,11 @@ function Quadrature() {
         {/* the four states */}
         <g opacity={oneChannel ? 0.35 : 1}>
           <circle cx={196} cy={152} r={30} className="fig-wire" strokeDasharray="2 3" />
-          <text x={196} y={dir === 0 ? 146 : 150} textAnchor="middle" className="fig-label dim">A B</text>
+          <text x={196} y={dir === 0 ? 143 : 150} textAnchor="middle" className="fig-label dim">A B</text>
           {dir === 0 ? (
             <>
-              <text x={196} y={156} textAnchor="middle" className="fig-label">↻ +1</text>
-              <text x={196} y={166} textAnchor="middle" className="fig-label">↺ -1</text>
+              <text x={196} y={155} textAnchor="middle" className="fig-label">↻ +1</text>
+              <text x={196} y={167} textAnchor="middle" className="fig-label">↺ -1</text>
             </>
           ) : (
             <text x={196} y={161} textAnchor="middle" className="fig-label" style={{ fill: "var(--harvest)" }}>{dir > 0 ? "↻ +1" : "↺ -1"}</text>
@@ -195,6 +195,7 @@ function Quadrature() {
           </g>
         )}
       </svg>
+      <div className="fig-why" role="status">{why}</div>
       <div className="fig-controls">
         <div>
           <span>Turn</span>
@@ -215,13 +216,17 @@ function Quadrature() {
           <button className="fig-opt" aria-pressed={oneChannel} onClick={() => setOneChannel(true)}>cover B: one channel only</button>
         </div>
       </div>
-      <div className="fig-why" role="status">{why}</div>
       <div className="fig-step">
-        <pre><code>{oneChannel ? "// One channel: a counter cannot tell forward from\n// backward. The eQEP needs both QEPA and QEPB\n// for quadrature count mode (QSRC = 0)." : mode === 4 ? "EQep1Regs.QDECCTL.bit.QSRC = 0;   // x4: every edge\nint32_t raw = EQep1Regs.QPOSCNT;   // the count so far" : `// x${mode}: what simpler decoders do, with\n// ${mode === 2 ? "half" : "a quarter of"} the resolution. The eQEP's\n// quadrature count (QSRC = 0) is always x4.`}</code></pre>
+        <pre><code>{oneChannel ? "// One channel: a counter cannot tell forward from\n// backward. The eQEP needs both QEPA and QEPB\n// for quadrature count mode (QSRC = 0)." : mode === 4 ? "// x4: every edge of A and B\nEQep1Regs.QDECCTL.bit.QSRC = 0;\n// the count so far\nint32_t raw = EQep1Regs.QPOSCNT;" : `// x${mode}: what simpler decoders do, with\n// ${mode === 2 ? "half" : "a quarter of"} the resolution. The eQEP's\n// quadrature count (QSRC = 0) is always x4.`}</code></pre>
       </div>
       <figcaption>The same disc read with one sensor or two. With two, the order of the edges gives the direction, and counting all four edges of a slit period gives 4 x 500 = 2000 counts per motor turn. Each step of Back or Step is one edge, a quarter of a slit period.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "quadrature", Component: Quadrature };
+export const figure = {
+  id: "quadrature",
+  title: "Quadrature encoder",
+  description: "Turn an encoder disc and watch the two sensor signals, the direction they reveal and the count in x1, x2 and x4 mode.",
+  Component: Quadrature,
+};

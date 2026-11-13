@@ -137,10 +137,10 @@ const CSS = `
 .sx-x { stroke: var(--inset); stroke-width: 2; }
 .sx-path { fill: none; stroke: var(--ok); stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; opacity: 0.5; }
 .sx-path.key { stroke-width: 7; }
-.sx-tag { font-size: 9px; font-weight: 700; font-family: var(--sans); fill: var(--inset); }
+.sx-tag { font-size: max(9px, calc(9px / var(--fig-k, 1))); font-weight: 700; font-family: var(--sans); fill: var(--inset); }
 .sx-tagbox { fill: var(--text); }
 .sx-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.5rem; }
-.sx-hint { color: var(--dim); font-size: 0.82rem; }
+.sx-hint { color: var(--dim); font-size: 0.82rem; margin: 0; }
 .sx-table caption { text-align: left; color: var(--dim); font-size: 0.82rem; }
 .sx-table th, .sx-table td { text-align: left; padding: 0.15rem 0.5rem 0.15rem 0; border-bottom: 1px solid var(--border); }
 .sx-table th { white-space: nowrap; }
@@ -154,7 +154,7 @@ function SearchExplorer() {
   const [walls, setWalls] = useState<boolean[]>(() => wallsOf(MAZE));
   const [start, setStart] = useState(4 * COLS + 0);
   const [goal, setGoal] = useState(0 * COLS + 6);
-  const [algo, setAlgo] = useState<Algo>("astar");
+  const [algo, setAlgo] = useState<Algo>("bfs");
   const [tool, setTool] = useState<"wall" | "start" | "goal">("wall");
   const [preset, setPreset] = useState(0);
   const [s, setS] = useState<Search>(() => initSearch(4 * COLS + 0));
@@ -283,7 +283,7 @@ function SearchExplorer() {
           [goal, "GOAL"],
         ].map(([cell, text]) => (
           <g key={text as string} pointerEvents="none">
-            <rect x={cx(cell as number) - 17} y={cy(cell as number) + 11} width={34} height={12} rx={3} className="sx-tagbox" />
+            <rect x={cx(cell as number) - 20} y={cy(cell as number) + 10} width={40} height={13} rx={3} className="sx-tagbox" />
             <text x={cx(cell as number)} y={cy(cell as number) + 20.5} textAnchor="middle" className="sx-tag">{text}</text>
           </g>
         ))}
@@ -299,15 +299,15 @@ function SearchExplorer() {
           <text x={311} y={10} className="fig-label">path</text>
         </g>
       </svg>
+      <div className="fig-why" role="status">
+        {status}
+        {!s.done && algo === "bfs" && frontier.length > 1 && <> Queue, oldest first: {frontier.map(rc).join(" ")}.</>}
+      </div>
       <div className="fig-controls row">
         <button className="btn small primary" onClick={() => setS(step(s, algo, walls, goal))} disabled={!!s.done}>Step</button>
         <button className="btn small" onClick={() => setS(runAll(algo, walls, start, goal))} disabled={!!s.done}>Run to the end</button>
         <button className="btn small" onClick={() => restart()} disabled={s.cur === -1 && !s.done}>Reset</button>
         <span className="sx-count">expanded: <strong>{s.expanded}</strong></span>
-      </div>
-      <div className="fig-why" role="status">
-        {status}
-        {!s.done && algo === "bfs" && frontier.length > 1 && <> Queue, oldest first: {frontier.map(rc).join(" ")}.</>}
       </div>
       <div className="fig-controls">
         <div>
@@ -322,14 +322,19 @@ function SearchExplorer() {
             <button key={p.name} className="fig-opt" aria-pressed={preset === i} onClick={() => loadPreset(i)}>{p.name}</button>
           ))}
         </div>
-        <div>
-          <span>Click sets</span>
-          <button className="fig-opt" aria-pressed={tool === "wall"} onClick={() => setTool("wall")}>obstacle</button>
-          <button className="fig-opt" aria-pressed={tool === "start"} onClick={() => setTool("start")}>start</button>
-          <button className="fig-opt" aria-pressed={tool === "goal"} onClick={() => setTool("goal")}>goal</button>
-          <span className="sx-hint">on the cell you click</span>
-        </div>
       </div>
+      <details className="fig-more">
+        <summary>More controls: draw your own map</summary>
+        <div className="fig-controls">
+          <div>
+            <span>A click</span>
+            <button className="fig-opt" aria-pressed={tool === "wall"} onClick={() => setTool("wall")}>adds or removes an obstacle</button>
+            <button className="fig-opt" aria-pressed={tool === "start"} onClick={() => setTool("start")}>moves the start</button>
+            <button className="fig-opt" aria-pressed={tool === "goal"} onClick={() => setTool("goal")}>moves the goal</button>
+          </div>
+          <p className="sx-hint">Click a cell of the grid (or move to it with Tab and press Enter). The search starts again on the new map.</p>
+        </div>
+      </details>
       <table className="sx-table">
         <caption>The three searches on this map, run to the end</caption>
         <thead>
@@ -362,4 +367,9 @@ function SearchExplorer() {
   );
 }
 
-export const figure = { id: "search-explorer", Component: SearchExplorer };
+export const figure = {
+  id: "search-explorer",
+  title: "Grid search, one step at a time",
+  description: "Step breadth-first search, greedy search and A* across a small map and watch which cell each one takes next, how many cells it expands and how long its path is.",
+  Component: SearchExplorer,
+};

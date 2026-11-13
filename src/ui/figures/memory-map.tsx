@@ -40,7 +40,7 @@ const CSS = `
 .mm-word { fill: none; stroke: var(--dim); stroke-width: 1; }
 .mm-word.sel { stroke: var(--orange); stroke-width: 2; }
 .mm-none { fill: none; stroke: var(--dim); stroke-dasharray: 3 2; }
-.mm-sum { display: block; margin: 0.4rem 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.74rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mm-sum { display: block; margin: 0.4rem 0; padding: 0.4rem 0.5rem; background: var(--inset); border-radius: 6px; font-size: 0.7rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mm-h { margin: 0.7rem 0 0.2rem; font-size: 0.85rem; font-weight: 700; }
 .mm-grid { display: grid; grid-template-columns: 3.4rem repeat(16, minmax(0, 1fr)); column-gap: 2px; row-gap: 2px; align-items: center; }
 .mm-grid .mm-nib { margin-left: 4px; }
@@ -96,20 +96,6 @@ function MemoryMap() {
   return (
     <figure className="figure" aria-label="Interactive memory map: register addresses and the .all and .bit views">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Peripheral</span>
-          {BLOCKS.map((b, i) => (
-            <button key={b.name} className="fig-opt" aria-pressed={bi === i} onClick={() => pick(i, i === 0 ? 1 : 2)}>{b.name}</button>
-          ))}
-        </div>
-        <div>
-          <span>Register</span>
-          {block.regs.map((r, i) => (
-            <button key={r.name} className="fig-opt" aria-pressed={ri === i} onClick={() => pick(bi, i)}>{r.name}</button>
-          ))}
-        </div>
-      </div>
       <svg viewBox="0 0 400 118" role="img" aria-label={`${block.name} starts at ${hex(block.base, 4)}. ${reg.name} is at offset ${reg.offset}, address ${hex(addr, 4)}, and is ${reg.words} word${reg.words > 1 ? "s" : ""} long.`}>
         <text x={X0} y="10" className="fig-label dim">{block.name}: {block.what}. Each box below is one 16-bit word of memory.</text>
         {/* registers, drawn to scale over the words they occupy */}
@@ -176,13 +162,32 @@ function MemoryMap() {
         })}
       </div>
       <code className="mm-sum">
-        {`${block.name}.${reg.name}.all = ${hex(value, nbits / 4)};  // all ${nbits} bits`}
+        {`${block.name}.${reg.name}.all = ${hex(value, nbits / 4)};  // all bits`}
         {cur ? `\n${block.name}.${reg.name}.bit.${cur.name} = ${curVal};  // one field` : ""}
       </code>
       <p className="fig-why" role="status">{why}</p>
+      <div className="fig-controls">
+        <div>
+          <span>Peripheral</span>
+          {BLOCKS.map((b, i) => (
+            <button key={b.name} className="fig-opt" aria-pressed={bi === i} onClick={() => pick(i, i === 0 ? 1 : 2)}>{b.name}</button>
+          ))}
+        </div>
+        <div>
+          <span>Register</span>
+          {block.regs.map((r, i) => (
+            <button key={r.name} className="fig-opt" aria-pressed={ri === i} onClick={() => pick(bi, i)}>{r.name}</button>
+          ))}
+        </div>
+      </div>
       <figcaption>Memory is a row of numbered 16-bit words. A peripheral's registers sit side by side from its base address; a 32-bit register takes two words, so the next one is 2 further on. TI's header files turn every address into a name.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "memory-map", Component: MemoryMap };
+export const figure = {
+  id: "memory-map",
+  title: "Register addresses and bits",
+  description: "Pick a peripheral register to see where it sits in memory, then click its bits to see the same value as .all and as .bit fields.",
+  Component: MemoryMap,
+};

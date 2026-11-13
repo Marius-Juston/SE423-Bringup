@@ -65,22 +65,6 @@ function UartFrame() {
         .uf-fig .uf-nums b { display: block; font-family: var(--mono); font-size: 1rem; color: var(--text); }
         @media (max-width: 420px) { .uf-fig .uf-nums { grid-template-columns: 1fr; } }
       `}</style>
-      <div className="fig-controls">
-        <div>
-          <span id="uf-c">Send</span>
-          <input className="uf-in" type="text" maxLength={2} value={text} aria-labelledby="uf-c" aria-describedby="uf-h" onChange={(e) => setText(e.target.value)} />
-          {["A", "a", "0", "U", "Hi"].map((t) => (
-            <button key={t} className="fig-opt" aria-pressed={text === t} aria-label={`send ${t}`} onClick={() => setText(t)}>{t}</button>
-          ))}
-          <code id="uf-h">{n ? `serial_printf(&SerialA, "${text.replace(/["\\]/g, "\\$&")}");` : "one or two characters"}</code>
-        </div>
-        <div>
-          <span>Baud rate</span>
-          {BAUDS.map((b) => (
-            <button key={b} className="fig-opt" aria-pressed={baud === b} onClick={() => setBaud(b)}>{b}</button>
-          ))}
-        </div>
-      </div>
       <svg viewBox="0 0 420 142" role="img" aria-label={n ? `TX line: idle high, ${codes.map((c, k) => `start bit low, data bits ${sent[k].split("").join(" ")} (bit 0 first, character ${hex(c)}), stop bit high`).join(", then ")}, idle high. One bit lasts ${us(bit)}.` : "TX line idle high."}>
         {codes.map((code, k) => {
           const first = 2 + k * 10; // index of the b0 cell
@@ -138,6 +122,22 @@ function UartFrame() {
         {why}
         {wide ? " (This character is not ASCII; only its low 8 bits are shown.)" : ""}
       </p>
+      <div className="fig-controls">
+        <div>
+          <span id="uf-c">Send</span>
+          <input className="uf-in" type="text" maxLength={2} value={text} aria-labelledby="uf-c" aria-describedby="uf-h" onChange={(e) => setText(e.target.value)} />
+          {["A", "a", "0", "U", "Hi"].map((t) => (
+            <button key={t} className="fig-opt" aria-pressed={text === t} aria-label={`send ${t}`} onClick={() => setText(t)}>{t}</button>
+          ))}
+          <code id="uf-h">{n ? `serial_printf(&SerialA, "${text.replace(/["\\]/g, "\\$&")}");` : "one or two characters"}</code>
+        </div>
+        <div>
+          <span>Baud rate</span>
+          {BAUDS.map((b) => (
+            <button key={b} className="fig-opt" aria-pressed={baud === b} onClick={() => setBaud(b)}>{b}</button>
+          ))}
+        </div>
+      </div>
       <figcaption>
         Blue is low (0 V), orange is high (3.3 V). {small ? "S is the start bit, P the stop bit, 0 to 7 the data bits. " : ""}The thin lines join each written bit to its place on the wire. They cross because bit 0 is sent first.
       </figcaption>
@@ -145,4 +145,9 @@ function UartFrame() {
   );
 }
 
-export const figure = { id: "uart-frame", Component: UartFrame };
+export const figure = {
+  id: "uart-frame",
+  title: "Serial (UART) frame",
+  description: "Type one or two characters to see the start bit, the eight data bits and the stop bit they become on the TX line.",
+  Component: UartFrame,
+};

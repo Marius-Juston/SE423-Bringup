@@ -66,22 +66,6 @@ function MaskOps() {
   return (
     <figure className="figure" aria-label="Interactive bit masks: set, clear, toggle and test bits of a 16-bit value">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Operation</span>
-          <button className="fig-opt" aria-pressed={op === "set"} onClick={() => setOp("set")}>set (OR)</button>
-          <button className="fig-opt" aria-pressed={op === "clear"} onClick={() => setOp("clear")}>clear (AND NOT)</button>
-          <button className="fig-opt" aria-pressed={op === "toggle"} onClick={() => setOp("toggle")}>toggle (XOR)</button>
-          <button className="fig-opt" aria-pressed={op === "test"} onClick={() => setOp("test")}>test (AND)</button>
-        </div>
-        <div>
-          <span>Mask</span>
-          <button className="fig-opt" aria-label="shift the 1 one place right, to a lower bit" aria-disabled={single && pos === 0} onClick={() => shift(-1)}>-</button>
-          <span className="mo-n" aria-hidden="true">{single ? pos : "?"}</span>
-          <button className="fig-opt" aria-label="shift the 1 one place left, to a higher bit" aria-disabled={single && pos === 15} onClick={() => shift(1)}>+</button>
-          <code>{single ? `(1 << ${pos}) = ${m}` : mask === 0 ? `${m}: no bit chosen` : `${m}: more than one bit`}</code>
-        </div>
-      </div>
       <div className="mo-grid" role="group" aria-label={`x is ${hex4(x)}, mask is ${m}, result is ${hex4(result)}`}>
         <span className="mo-lab">bit</span>
         {BITS.map((b) => <span key={b} className={`mo-num${nib(b)}`}>{b}</span>)}
@@ -116,6 +100,20 @@ function MaskOps() {
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
+          <span>Operation</span>
+          <button className="fig-opt" aria-pressed={op === "set"} onClick={() => setOp("set")}>set (OR)</button>
+          <button className="fig-opt" aria-pressed={op === "clear"} onClick={() => setOp("clear")}>clear (AND NOT)</button>
+          <button className="fig-opt" aria-pressed={op === "toggle"} onClick={() => setOp("toggle")}>toggle (XOR)</button>
+          <button className="fig-opt" aria-pressed={op === "test"} onClick={() => setOp("test")}>test (AND)</button>
+        </div>
+        <div>
+          <span>Mask</span>
+          <button className="fig-opt" aria-label="shift the 1 one place right, to a lower bit" aria-disabled={single && pos === 0} onClick={() => shift(-1)}>-</button>
+          <span className="mo-n" aria-hidden="true">{single ? pos : "?"}</span>
+          <button className="fig-opt" aria-label="shift the 1 one place left, to a higher bit" aria-disabled={single && pos === 15} onClick={() => shift(1)}>+</button>
+          <code>{single ? `(1 << ${pos}) = ${m}` : mask === 0 ? `${m}: no bit chosen` : `${m}: more than one bit`}</code>
+        </div>
+        <div>
           <span>Then</span>
           <button className="fig-opt" aria-disabled={op === "test" || result === x} onClick={() => op !== "test" && setX(result)}>run it: x = result</button>
           <button className="fig-opt" aria-disabled={x === START} onClick={() => setX(START)}>Reset x to {hex4(START)}</button>
@@ -126,4 +124,9 @@ function MaskOps() {
   );
 }
 
-export const figure = { id: "mask-ops", Component: MaskOps };
+export const figure = {
+  id: "mask-ops",
+  title: "Bit masks: set, clear, toggle, test",
+  description: "Click the bits of a mask and choose an operation to see which bits of x change and the C statement that does it.",
+  Component: MaskOps,
+};

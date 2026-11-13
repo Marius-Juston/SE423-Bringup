@@ -94,4 +94,9 @@ function ClosedLoop() {
   );
 }
 
-export const figure = { id: "closed-loop", Component: ClosedLoop };
+export const figure = {
+  id: "closed-loop",
+  title: "A complete circuit",
+  description: "Open and close the switch of a battery and lamp circuit to see that current flows only around a complete loop.",
+  Component: ClosedLoop,
+};

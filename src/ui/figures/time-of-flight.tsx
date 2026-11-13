@@ -42,7 +42,7 @@ function TimeOfFlight() {
         .tof-drop { stroke: var(--harvest); stroke-width: 1; stroke-dasharray: 2 3; }
         .tof-axis { stroke: var(--dim); stroke-width: 1; }
       `}</style>
-      <svg viewBox="0 0 420 166" role="img" aria-label={`Wall ${d.toFixed(2)} metres away. The echo returns after ${tNs.toFixed(1)} nanoseconds, during which the 5 nanosecond CPU clock ticks ${count} times.`}>
+      <svg viewBox="0 0 420 170" role="img" aria-label={`Wall ${d.toFixed(2)} metres away. The echo returns after ${tNs.toFixed(1)} nanoseconds, during which the 5 nanosecond CPU clock ticks ${count} times.`}>
         <defs>
           <marker id="tof-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="tof-head" />
@@ -82,10 +82,20 @@ function TimeOfFlight() {
           <g key={k}>
             <line x1={x(k * CLK_NS)} x2={x(k * CLK_NS)} y1="137" y2="143" className="tof-axis" />
             <text x={x(k * CLK_NS) + (k === periods ? 8 : 0)} y="153" textAnchor={k === periods ? "end" : "middle"} className="fig-label dim">{k * CLK_NS} ns</text>
-            <text x={x(k * CLK_NS) + (k === periods ? 8 : 0)} y="163" textAnchor={k === periods ? "end" : "middle"} className="fig-label dim">{(k * M_PER_CLK).toFixed(2)} m</text>
+            <text x={x(k * CLK_NS) + (k === periods ? 8 : 0)} y="166" textAnchor={k === periods ? "end" : "middle"} className="fig-label dim">{(k * M_PER_CLK).toFixed(2)} m</text>
           </g>
         ))}
       </svg>
+      <div className="fig-step" role="status">
+        <p>
+          A wall <strong>{d.toFixed(2)} m</strong> away sends the echo back after <strong>{tNs.toFixed(tNs < 10 ? 2 : 1)} ns</strong>. In that time the 200 MHz clock has finished <strong>{count}</strong> {count === 1 ? "period" : "periods"}.{" "}
+          {count === 0
+            ? "The echo is back before the first clock period is over: a counter of clock periods still reads 0."
+            : `A counter of clock periods reads ${count}.`}{" "}
+          A count of {count} fits every wall from {lo} m to {hi} m, because one clock period is 0.75 m of distance.
+        </p>
+        <pre><code>{`d = c * t / 2;   // 3.0e8 * ${tNs.toFixed(tNs < 10 ? 2 : 1)}e-9 / 2 = ${d.toFixed(2)} m`}</code></pre>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Distance</span>
@@ -101,19 +111,14 @@ function TimeOfFlight() {
           ))}
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>
-          A wall <strong>{d.toFixed(2)} m</strong> away sends the echo back after <strong>{tNs.toFixed(tNs < 10 ? 2 : 1)} ns</strong>. In that time the 200 MHz clock has finished <strong>{count}</strong> {count === 1 ? "period" : "periods"}.{" "}
-          {count === 0
-            ? "The echo is back before the first clock period is over: a counter of clock periods still reads 0."
-            : `A counter of clock periods reads ${count}.`}{" "}
-          A count of {count} fits every wall from {lo} m to {hi} m, because one clock period is 0.75 m of distance.
-        </p>
-        <pre><code>{`d = c * t / 2;   // 3.0e8 * ${tNs.toFixed(tNs < 10 ? 2 : 1)}e-9 / 2 = ${d.toFixed(2)} m`}</code></pre>
-      </div>
       <figcaption>Distance and time are drawn to the same scale, so the round-trip bar ends exactly under the wall. To tell walls 1 mm apart the sensor has to resolve 6.67 ps, 750 times finer than the CPU clock. It does that in its own circuit and sends the finished distance.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "time-of-flight", Component: TimeOfFlight };
+export const figure = {
+  id: "time-of-flight",
+  title: "LIDAR time of flight",
+  description: "Move the wall to see how long the laser pulse takes to return and how few CPU clock ticks fit in that time.",
+  Component: TimeOfFlight,
+};

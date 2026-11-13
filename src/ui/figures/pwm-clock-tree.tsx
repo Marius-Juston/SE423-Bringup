@@ -4,13 +4,15 @@
 // 1 = /2 (reset), 2 = /4, 3 = /6 ... 7 = /14. CLKDIV: /1 (reset) to /128
 // in powers of two. TBPRD is 16 bits. Up count: TPWM = (TBPRD + 1) x TTBCLK
 // (15.4.3); the course writes the round number of counts into TBPRD.
+// Frequencies offered: those of ch09_pwm.ts (LED1 at 10 kHz, TBPRD = 5000)
+// and of the servo level, never a lab or homework answer.
 import { useState } from "react";
 
 const HSP = [1, 2, 4, 6, 8, 10, 12, 14];
 const WANT: [number, string, string][] = [
   [50, "50 Hz", "RC servo"],
-  [5000, "5 kHz", "HW2"],
-  [20000, "20 kHz", "Lab 3"],
+  [1000, "1 kHz", ""],
+  [10000, "10 kHz", "LED1"],
   [200000, "200 kHz", ""],
 ];
 
@@ -69,7 +71,7 @@ function PwmClockTree() {
     const c = tbclk / wf;
     const off = c < 10 || c > 1e7;
     const label = off ? `${name} (${c < 10 ? "under 10" : "over 10 million"})` : name;
-    const w = label.length * 5.2 + 6;
+    const w = label.length * 5.9 + 6;
     const mx = lx(c);
     const tx = Math.max(AX0, Math.min(AX1 - w, mx - w / 2));
     return { name, label, on: i === wi, off, x: mx, tx, w, row: 0 };
@@ -87,7 +89,7 @@ function PwmClockTree() {
     why = `${fname} at ${hz(tbclk)} would need ${group(prd)} counts in one period, but TBPRD is a 16-bit register: 65 535 at most. Slow the counter down. ${need !== undefined ? `CLKDIV = ${need} (/${1 << need}) leaves ${group(mid / (1 << need) / f)} counts, which fits.` : "Even /128 is not enough with this HSPCLKDIV."}`;
   } else if (!useful) why = `The counter now ticks only every ${time(tickNs)}, slower than the ${fname} you want. There is no TBPRD for that: divide the clock less.`;
   else
-    why = `One count lasts ${time(tickNs)}. A period of ${time(1e9 / f)} (${fname}) is ${hz(tbclk)} / ${fname} = ${group(prd)} counts, so TBPRD = ${prd}${Number.isInteger(counts) ? ` (a period is TBPRD + 1 counts, so ${prd - 1} would be exact; the course writes the round number)` : ""}. CMPA is a whole number of counts: the duty cycle moves in ${group(prd)} steps of ${trim(stepPct, stepPct < 0.01 ? 4 : 2)} %.${prd < 500 ? " That is coarse: a faster carrier costs resolution." : ""}${hsp !== 1 ? " The course never touches HSPCLKDIV: it stays /2 from reset." : ""}`;
+    why = `One count lasts ${time(tickNs)}. A period of ${time(1e9 / f)} (${fname}) is ${hz(tbclk)} / ${fname} = ${group(prd)} counts, so TBPRD = ${prd}${Number.isInteger(counts) ? " (strictly a period is TBPRD + 1 counts; the course writes the round number)" : ""}. CMPA is a whole number of counts: the duty cycle moves in ${group(prd)} steps of ${trim(stepPct, stepPct < 0.01 ? 4 : 2)} %.${prd < 500 ? " That is coarse: a faster carrier costs resolution." : ""}${hsp !== 1 ? " The course never touches HSPCLKDIV: it stays /2 from reset." : ""}`;
 
   return (
     <figure className="figure pwmc" aria-label="Interactive ePWM clock tree: from the system clock to the counter clock, the period register and the duty resolution">
@@ -122,7 +124,6 @@ function PwmClockTree() {
             </g>
           );
         })}
-        <text x={bx(3) + BW / 2} y="54" textAnchor="middle" className="fig-label dim">1 count = {time(tickNs)}</text>
 
         {/* counts per period */}
         <text x={AX0} y="72" className="fig-label">Counts in one period = TBCLK / frequency = number of duty steps</text>
@@ -133,7 +134,7 @@ function PwmClockTree() {
         {[1, 2, 3, 4, 5, 6, 7].map((e) => (
           <g key={e}>
             <line x1={lx(10 ** e)} x2={lx(10 ** e)} y1={AY} y2={AY + 4} className="fig-wire" />
-            <text x={lx(10 ** e)} y={AY + 14} textAnchor={e === 1 ? "start" : e === 7 ? "end" : "middle"} className="fig-label dim">{["10", "100", "1 000", "10 000", "100 000", "1 million", "10 million"][e - 1]}</text>
+            <text x={lx(10 ** e)} y={AY + 14} textAnchor={e === 1 ? "start" : e === 7 ? "end" : "middle"} className="fig-label dim">{["10", "100", "1 000", "10 000", "100 000", "1 million", "10 M"][e - 1]}</text>
           </g>
         ))}
         {marks.map((m) => (
@@ -174,9 +175,14 @@ function PwmClockTree() {
           <code>{fits && useful ? `EPwm12Regs.TBPRD = ${prd};` : "no TBPRD works"}</code>
         </div>
       </div>
-      <figcaption>The counter clock is fixed by two dividers, and everything else follows from it: the period register is the number of counts in one period, and that same number is how finely the duty cycle can be set. Try 20 kHz against 200 kHz, then 50 Hz.</figcaption>
+      <figcaption>The counter clock is fixed by two dividers, and everything else follows from it: the period register is the number of counts in one period, and that same number is how finely the duty cycle can be set. Try 10 kHz against 200 kHz, then 50 Hz.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "pwm-clock-tree", Component: PwmClockTree };
+export const figure = {
+  id: "pwm-clock-tree",
+  title: "PWM counter clock and period",
+  description: "Change the two clock dividers and pick a frequency, and read how long one count lasts, how many counts a period needs and how finely the duty cycle can then be set.",
+  Component: PwmClockTree,
+};

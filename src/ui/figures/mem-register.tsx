@@ -82,4 +82,9 @@ function MemRegister() {
   );
 }
 
-export const figure = { id: "mem-register", Component: MemRegister };
+export const figure = {
+  id: "mem-register",
+  title: "Registers are memory the hardware shares",
+  description: "Run a program line by line against a made-up lamp peripheral and see the hardware react to what is written into its registers.",
+  Component: MemRegister,
+};

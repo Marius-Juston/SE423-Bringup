@@ -103,7 +103,7 @@ function PingPong() {
         <text x="12" y="19" className="fig-label">DMA channel 1</text>
         <text x="12" y="30" className="fig-label dim">writes to (active address):</text>
         <text x="200" y="30" textAnchor="end" className="fig-value small">{t === 0 ? "-" : `${NAMES[dest]}[${c}]`}</text>
-        <text x="12" y="41" className="fig-label dim">next transfer (DST_ADDR_SHADOW):</text>
+        <text x="12" y="41" className="fig-label dim">next (DST_ADDR_SHADOW):</text>
         <text x="200" y="41" textAnchor="end" className="fig-value small">{t === 0 ? "ping" : NAMES[other]}</text>
         {/* main */}
         <rect x="214" y="6" width="200" height="40" rx="4" className={`fig-box ${busy ? (last.ok ? "active" : "hot") : ""}`} />
@@ -143,8 +143,8 @@ function PingPong() {
         })}
         {/* timeline */}
         <line x1={tx(t)} x2={tx(t)} y1="141" y2="182" stroke="var(--text)" strokeWidth="1.6" />
-        <text x="6" y="152" className="fig-label dim">DMA fills</text>
-        <text x="6" y="172" className="fig-label dim">main reads</text>
+        <text x="6" y="152" className="fig-label dim">DMA</text>
+        <text x="6" y="172" className="fig-label dim">main</text>
         {[0, 1, 2, 3, 4].map((k) => (
           <g key={k}>
             <rect x={tx(k * SIZE)} y="142" width={SIZE * TW - 1} height="14" rx="2" className={`fig-box ${k * SIZE < t ? "" : "off"}`} />
@@ -188,4 +188,9 @@ function PingPong() {
   );
 }
 
-export const figure = { id: "ping-pong", Component: PingPong };
+export const figure = {
+  id: "ping-pong",
+  title: "Ping-pong buffers",
+  description: "Step through DMA transfers into two alternating buffers and see which one main may safely read, and what goes wrong if it reads the other.",
+  Component: PingPong,
+};

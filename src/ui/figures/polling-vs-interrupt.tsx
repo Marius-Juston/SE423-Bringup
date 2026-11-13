@@ -95,8 +95,8 @@ function PollingVsInterrupt() {
         .pvi-fig .pvi-react { fill: var(--orange); }
         .pvi-fig .pvi-ask { fill: none; stroke: var(--dim); stroke-width: 0.8; stroke-dasharray: 1.5 2.5; }
         .pvi-fig .pvi-late { stroke: var(--bad); stroke-width: 2; }
-        .pvi-fig .pvi-latetext { fill: var(--bad); font-size: 8.5px; font-weight: 700; font-family: var(--sans); }
-        .pvi-fig .pvi-lost { fill: var(--bad); font-size: 8.5px; font-weight: 700; font-family: var(--sans); }
+        .pvi-fig .pvi-latetext { fill: var(--bad); font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-weight: 700; font-family: var(--sans); }
+        .pvi-fig .pvi-lost { fill: var(--bad); font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-weight: 700; font-family: var(--sans); }
         .pvi-fig .pvi-sum { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin: 0.5rem 0; }
         .pvi-fig .pvi-sum div { background: var(--surface); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color: var(--dim); }
         .pvi-fig .pvi-sum b { display: block; font-family: var(--mono); font-size: 1rem; color: var(--text); }
@@ -189,4 +189,9 @@ function PollingVsInterrupt() {
   );
 }
 
-export const figure = { id: "polling-vs-interrupt", Component: PollingVsInterrupt };
+export const figure = {
+  id: "polling-vs-interrupt",
+  title: "Polling versus interrupts",
+  description: "Give main more work per loop pass and compare how late it reacts to a timer event when it polls a flag and when an interrupt calls the function.",
+  Component: PollingVsInterrupt,
+};

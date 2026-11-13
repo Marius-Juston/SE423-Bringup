@@ -145,15 +145,15 @@ function FeedbackLoop() {
         <text x={83} y={47} textAnchor="middle" className="fig-value small">{closed ? fmt(s.e, 2) : ""}</text>
         {/* controller */}
         <rect x={99} y={32} width={78} height={40} rx={4} className={`fig-box ${closed ? "hot" : ""}`} />
-        <text x={138} y={46} textAnchor="middle" className="fig-label">{closed ? "PI controller" : "table"}</text>
-        <text x={138} y={58} textAnchor="middle" className="fig-label dim">{closed ? "u = 8 e + 100 ∫e" : "u = 4 r + 0.8"}</text>
-        {closed && <text x={138} y={68} textAnchor="middle" className="fig-label dim">∫e = <tspan className="fig-value small">{fmt(s.I, 3)}</tspan></text>}
+        <text x={138} y={44} textAnchor="middle" className="fig-label">{closed ? "PI controller" : "table"}</text>
+        <text x={138} y={closed ? 55.5 : 58} textAnchor="middle" className="fig-label dim">{closed ? "8 e + 100 ∫e" : "u = 4 r + 0.8"}</text>
+        {closed && <text x={138} y={68.5} textAnchor="middle" className="fig-label dim">∫e = <tspan className="fig-value small">{fmt(s.I, 3)}</tspan></text>}
         <path d="M177 52 H207" className="fig-wire" markerEnd="url(#fb-arrow)" />
         <text x={192} y={47} textAnchor="middle" className="fig-value small">{fmt(s.uRaw, 1)}</text>
         {/* saturation */}
         <rect x={209} y={32} width={50} height={40} rx={4} className={`fig-box ${sat ? "hot" : ""}`} />
         <path d="M216 62 H224 L244 42 H252" className="fig-trace" />
-        <text x={234} y={28} textAnchor="middle" className="fig-label dim">limit ±10</text>
+        <text x={234} y={28} textAnchor="middle" className="fig-label dim">±10</text>
         <path d="M259 52 H295" className="fig-wire" markerEnd="url(#fb-arrow)" />
         <text x={277} y={36} textAnchor="middle" className="fig-label dim">effort u</text>
         <text x={277} y={47} textAnchor="middle" className="fig-value small">{fmt(s.u, 1)}</text>
@@ -186,6 +186,7 @@ function FeedbackLoop() {
         <path d={line((p) => p.v)} className="fig-trace" />
         <text x={412} y={223} textAnchor="end" className="fig-label dim">now</text>
       </svg>
+      <div className="fig-why" role="status">{why}</div>
       <div className="fig-controls">
         <div>
           <span>Reference</span>
@@ -202,10 +203,14 @@ function FeedbackLoop() {
           <button className="fig-opt" aria-pressed={load} onClick={() => setLoad(!load)}>load on the wheel (3 units of effort)</button>
         </div>
       </div>
-      <div className="fig-why" role="status">{why}</div>
       <figcaption>One pass every millisecond: measure, compare, compute, saturate, actuate. Open loop sends an effort and never checks the result. Closed loop measures the speed and corrects the effort.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "feedback-loop", Component: FeedbackLoop };
+export const figure = {
+  id: "feedback-loop",
+  title: "Open loop and closed loop",
+  description: "Set a speed, switch a load on the wheel and compare a controller that measures the speed with one that does not.",
+  Component: FeedbackLoop,
+};

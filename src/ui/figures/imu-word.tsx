@@ -15,7 +15,7 @@ const CSS = `
 .iw-cell.rw { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
 .iw-cell.addr { stroke: var(--text); stroke-width: 1.2; }
 .iw-cell.data { stroke: var(--value); stroke-width: 1.4; }
-.iw-bit { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--text); }
+.iw-bit { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--text); }
 .iw-byte { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .iw-byte.use { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; }
 .iw-byte.temp { stroke-dasharray: 3 2; }
@@ -114,7 +114,7 @@ function ImuWord() {
         <path d={`M${X0 + 8 * W + 1},35 v4 h${8 * W - 3.5} v-4`} className="fig-wire" style={{ stroke: "var(--value)" }} />
         <text x={X0} y={50} className="fig-label">{read ? "1 = read" : "0 = write"}</text>
         <text x={X0 + 4.5 * W} y={50} textAnchor="middle" className="fig-label">address 0x{h2(reg)}</text>
-        <text x={X0 + 12 * W} y={50} textAnchor="middle" className="fig-label">{read ? "zeros: the reply arrives during these 8 clocks" : `value 0x${h2(data)}`}</text>
+        <text x={X0 + 12 * W} y={50} textAnchor="middle" className="fig-label">{read ? "zeros: the reply arrives here" : `value 0x${h2(data)}`}</text>
         <text x={X0 + 4.5 * W} y={61} textAnchor="middle" className="fig-label dim">{name(reg)}</text>
         {/* the transfer, word by word */}
         <text x={4} y={RY + 8} className="fig-label dim">word</text>
@@ -186,4 +186,9 @@ function ImuWord() {
   );
 }
 
-export const figure = { id: "imu-word", Component: ImuWord };
+export const figure = {
+  id: "imu-word",
+  title: "Building an MPU-9250 SPI word",
+  description: "Choose read or write, a register and the number of words to see which bits you send and which byte of which word carries the reply.",
+  Component: ImuWord,
+};

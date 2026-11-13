@@ -28,9 +28,9 @@ function CIntDivision() {
         .cdv-left { fill: none; stroke: var(--harvest); stroke-width: 1.2; stroke-dasharray: 3 2; }
         .cdv-sum { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-family: var(--mono); font-size: 0.95rem; margin: 0.4rem 0; }
         .cdv-sum b { color: var(--harvest); }
-        .cdv-ctl label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
-        .cdv-ctl label > span { width: 11.5rem; flex: none; }
-        .cdv-ctl input { flex: 1; min-width: 4rem; }
+        .cdv-ctl label { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.5rem; font-size: 0.85rem; min-width: 0; }
+        .cdv-ctl label > span { flex: 0 1 11.5rem; }
+        .cdv-ctl input { flex: 1 1 4rem; min-width: 4rem; width: 4rem; }
         .cdv-ctl output { font-family: var(--mono); width: 2rem; text-align: right; }
       `}</style>
       <svg viewBox={`0 0 320 ${b * 13 + 46}`} role="img" aria-label={`${a} dots in groups of ${b}: ${q} full group${q === 1 ? "" : "s"} and ${r} left over.`}>
@@ -76,4 +76,9 @@ function CIntDivision() {
   );
 }
 
-export const figure = { id: "c-int-division", Component: CIntDivision };
+export const figure = {
+  id: "c-int-division",
+  title: "Whole-number division and remainder",
+  description: "Choose two whole numbers and see the dots sorted into full groups and leftovers: the results of / and % in C.",
+  Component: CIntDivision,
+};

@@ -5,6 +5,8 @@ import { useState } from "react";
 // (TRM 17.4.1, quadrature count mode), a 20:1 gear head, wheel radius
 // 1.235 in. QPOSCNT is an unsigned 32-bit register (TRM 17.5, position
 // counter); the left encoder counts down when the robot drives forward.
+// Opens on 20000 counts, the worked example of level enc-math (half a wheel
+// turn, 3.14 rad).
 
 const PX_PER_FT = 355;
 const X_ZERO = 70;
@@ -16,7 +18,7 @@ const fmt = (v: number, d: number) => {
 };
 
 function CountsToDistance() {
-  const [fwd, setFwd] = useState(10000);
+  const [fwd, setFwd] = useState(20000);
   const [left, setLeft] = useState(false);
   const raw = left ? -fwd : fwd;
   const motorTurns = raw / 2000;
@@ -32,7 +34,7 @@ function CountsToDistance() {
     { label: "counts", value: String(raw) },
     { label: "motor turns", value: fmt(motorTurns, 2) },
     { label: "wheel turns", value: fmt(wheelTurns, 4) },
-    { label: "wheel angle, rad", value: fmt(angle, 4) },
+    { label: "angle, rad", value: fmt(angle, 4) },
     { label: "distance, ft", value: fmt(feet, 4) },
   ];
   const ops = [
@@ -49,7 +51,7 @@ function CountsToDistance() {
   const sign = left ? "-" : "";
   return (
     <figure className="figure cd-fig" aria-label="Interactive chain from encoder counts to feet travelled">
-      <style>{`.cd-fig .cd-range{flex:1;min-width:140px;accent-color:var(--orange)}.cd-fig .cd-roll{stroke:var(--harvest);stroke-width:3;fill:none}.cd-fig .cd-tyre{fill:none;stroke:var(--text);stroke-width:3}`}</style>
+      <style>{`.cd-fig pre{font-size:.74rem;white-space:pre-wrap;overflow-wrap:anywhere}.cd-fig .cd-range{flex:1;min-width:140px;accent-color:var(--orange)}.cd-fig .cd-roll{stroke:var(--harvest);stroke-width:3;fill:none}.cd-fig .cd-tyre{fill:none;stroke:var(--text);stroke-width:3}`}</style>
       <svg viewBox="0 0 420 240" role="img" aria-label={`${raw} counts are ${fmt(motorTurns, 2)} motor turns, ${fmt(wheelTurns, 4)} wheel turns, ${fmt(angle, 4)} radians and ${fmt(feet, 4)} feet.`}>
         {/* the chain of numbers */}
         {boxes.map((b, i) => (
@@ -77,10 +79,10 @@ function CountsToDistance() {
         <text x={94} y={114} textAnchor="middle" className="fig-value small">20 : 1</text>
         <path d="M122 104 H144" className="fig-wire thick" markerEnd="url(#cd-arrow)" />
         <text x={150} y={101} className="fig-label">to the wheel:</text>
-        <text x={150} y={113} className="fig-label dim">20 disc turns = 1 wheel turn</text>
+        <text x={150} y={113} className="fig-label dim">20 turns : 1 turn</text>
         {/* the register */}
         <rect x={276} y={84} width={140} height={44} rx={4} className="fig-box" />
-        <text x={283} y={97} className="fig-label dim">EQep{left ? 1 : 2}Regs.QPOSCNT reads</text>
+        <text x={283} y={97} className="fig-label dim">EQep{left ? 1 : 2} QPOSCNT reads</text>
         <text x={283} y={110} className="fig-value">{hex}</text>
         <text x={283} y={122} className="fig-label">as int32_t: <tspan className="fig-value small">{raw}</tspan></text>
         {/* floor and wheel */}
@@ -109,6 +111,11 @@ function CountsToDistance() {
           </marker>
         </defs>
       </svg>
+      <div className="fig-why" role="status">
+        {fwd === 0
+          ? "At 0 counts nothing has moved. Roll the wheel."
+          : `The wheel rolled ${fwd < 0 ? "backward" : "forward"} ${fmt(Math.abs(feet), 3)} ft: the thick line on the floor is as long as the piece of tyre that touched it, angle x radius. ${left ? `The left motor is mounted mirrored, so its counter went ${fwd > 0 ? "down" : "up"}: QPOSCNT ${raw < 0 ? `reads ${hex}, which is ${raw} once it is stored in an int32_t` : `reads ${raw}`}. The minus sign in the scale factor makes forward positive again.` : fwd < 0 ? `Below zero the unsigned register reads ${hex}; stored in an int32_t the same bits are ${raw}.` : `One count is 2π / 40000 = 0.000157 rad of the wheel, or ${(RADIUS_FT * ((2 * Math.PI) / 40000) * 12 * 25.4 * 1000).toFixed(0)} thousandths of a millimetre on the floor.`}`}
+      </div>
       <div className="fig-controls">
         <div>
           <span>Roll</span>
@@ -121,17 +128,17 @@ function CountsToDistance() {
           <button className="fig-opt" aria-pressed={left} onClick={() => setLeft(true)}>left (eQEP1), mirrored</button>
         </div>
       </div>
-      <div className="fig-why" role="status">
-        {fwd === 0
-          ? "At 0 counts nothing has moved. Roll the wheel."
-          : `The wheel rolled ${fwd < 0 ? "backward" : "forward"} ${fmt(Math.abs(feet), 3)} ft: the thick line on the floor is as long as the piece of tyre that touched it, angle x radius. ${left ? `The left motor is mounted mirrored, so its counter went ${fwd > 0 ? "down" : "up"}: QPOSCNT ${raw < 0 ? `reads ${hex}, which is ${raw} once it is stored in an int32_t` : `reads ${raw}`}. The minus sign in the scale factor makes forward positive again.` : fwd < 0 ? `Below zero the unsigned register reads ${hex}; stored in an int32_t the same bits are ${raw}.` : `One count is 2π / 40000 = 0.000157 rad of the wheel, or ${(RADIUS_FT * ((2 * Math.PI) / 40000) * 12 * 25.4 * 1000).toFixed(0)} thousandths of a millimetre on the floor.`}`}
-      </div>
       <div className="fig-step">
-        <pre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`.padEnd(36) + `// ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`.padEnd(36) + `// ${fmt(angle, 4)} rad`, "dist  = angle*(1.235/12.0);".padEnd(36) + `// ${fmt(feet, 4)} ft`].join("\n")}</code></pre>
+        <pre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`.padEnd(34) + `// ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`.padEnd(34) + `// ${fmt(angle, 4)} rad`, "dist  = angle*(1.235/12.0);".padEnd(34) + `// ${fmt(feet, 4)} ft`].join("\n")}</code></pre>
       </div>
       <figcaption>Every box is the one before it times one factor. Two lines of C do the whole chain: counts to radians of the wheel, radians to feet.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "counts-to-distance", Component: CountsToDistance };
+export const figure = {
+  id: "counts-to-distance",
+  title: "From encoder counts to feet",
+  description: "Roll the wheel and follow one number through the chain from encoder counts to motor turns, wheel turns, angle and feet, for the right wheel or the mirrored left one.",
+  Component: CountsToDistance,
+};

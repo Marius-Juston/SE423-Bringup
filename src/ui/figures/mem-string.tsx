@@ -60,4 +60,9 @@ function MemString() {
   );
 }
 
-export const figure = { id: "mem-string", Component: MemString };
+export const figure = {
+  id: "mem-string",
+  title: "Strings in memory",
+  description: "Step through a loop over a text and see the characters as numbers in a row of boxes that ends at the first 0.",
+  Component: MemString,
+};

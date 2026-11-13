@@ -158,4 +158,9 @@ function BuzzerTone() {
   );
 }
 
-export const figure = { id: "buzzer-tone", Component: BuzzerTone };
+export const figure = {
+  id: "buzzer-tone",
+  title: "Buzzer notes from a timer",
+  description: "Pick a note and see the counter period that produces it, the square wave on the pin and why the tone is half the counter's frequency.",
+  Component: BuzzerTone,
+};

@@ -125,4 +125,9 @@ function SpiShift() {
   );
 }
 
-export const figure = { id: "spi-shift", Component: SpiShift };
+export const figure = {
+  id: "spi-shift",
+  title: "SPI shift registers",
+  description: "Clock the bus one bit at a time to watch the master's byte and the slave's byte trade places.",
+  Component: SpiShift,
+};

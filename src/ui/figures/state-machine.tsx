@@ -50,7 +50,7 @@ const TRANSITIONS: Transition[] = [
     id: "t-f",
     from: "TURN_LEFT",
     to: "FOLLOW",
-    d: "M236 120 V92 H330 V68",
+    d: "M236 120 V92 H310 V68",
     test: (f, _r, clear) => f > clear,
     code: (h) => `if (front_ft > ${h ? "FRONT_CLEAR" : "FRONT_BLOCKED"}) { state = FOLLOW; }`,
     say: (f, _r, clear) => `front ${f.toFixed(2)} ft is above ${clear.toFixed(1)}: the turn is finished`,
@@ -176,7 +176,7 @@ function StateMachine() {
       <style>{`
         .fsm-fig input[type=range] { flex: 1 1 8rem; min-width: 7rem; accent-color: var(--orange); }
         .fsm-fig output { font-family: var(--mono); font-size: 0.82rem; color: var(--harvest); min-width: 4.2rem; }
-        .fsm-fig .fsm-name { font-weight: 700; font-size: 9.5px; }
+        .fsm-fig svg text.fsm-name { font-weight: 700; font-size: max(9.5px, calc(9px / var(--fig-k, 1))); }
         .fsm-fig .fsm-gap { fill: var(--value); opacity: 0.16; }
         .fsm-fig .fsm-plot { fill: none; stroke: var(--border); }
         .fsm-fig .fsm-thr { stroke: var(--harvest); stroke-width: 1; stroke-dasharray: 4 3; }
@@ -189,7 +189,7 @@ function StateMachine() {
         .fsm-fig .fsm-hot { fill: var(--orange); }
         .fsm-fig .fsm-note { color: var(--dim); font-size: 0.82rem; }
       `}</style>
-      <svg viewBox="0 0 420 292" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} times.`}>
+      <svg viewBox="0 0 420 290" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} times.`}>
         <defs>
           <marker id="fsm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />
@@ -206,15 +206,15 @@ function StateMachine() {
         <text x="209" y="68" textAnchor="middle" className="fig-label">right &gt; {WALL_LOST.toFixed(1)}</text>
         <text x="54" y="100" className="fig-label">front &lt; {FRONT_BLOCKED.toFixed(1)}</text>
         <text x="54" y="111" className="fig-label dim">tested first</text>
-        <text x="366" y="100" textAnchor="end" className="fig-label">front &lt; {FRONT_BLOCKED.toFixed(1)}</text>
-        <text x="366" y="111" textAnchor="end" className="fig-label dim">tested first</text>
-        <text x="283" y="87" textAnchor="middle" className={m.hyst ? "fig-label" : "fig-value small"}>front &gt; {clear.toFixed(1)}</text>
+        <text x="368" y="100" textAnchor="end" className="fig-label">front &lt; {FRONT_BLOCKED.toFixed(1)}</text>
+        <text x="368" y="111" textAnchor="end" className="fig-label dim">tested first</text>
+        <text x="273" y="87" textAnchor="middle" className={m.hyst ? "fig-label" : "fig-value small"}>front &gt; {clear.toFixed(1)}</text>
         {NODES.map((n) => (
           <g key={n.s}>
             <rect x={n.x} y={n.y} width="100" height="38" rx="8" className={`fig-box ${state === n.s ? "hot" : ""}`} />
-            <text x={n.x + 50} y={n.y + 14} textAnchor="middle" className="fig-label fsm-name">{n.s}{state === n.s ? " ◀" : ""}</text>
-            <text x={n.x + 50} y={n.y + 25} textAnchor="middle" className="fig-label dim">{n.action}</text>
-            <text x={n.x + 50} y={n.y + 35} textAnchor="middle" className={`fig-label ${state === n.s ? "" : "dim"}`}>{n.led} {state === n.s ? "on" : "off"}</text>
+            <text x={n.x + 50} y={n.y + 12.5} textAnchor="middle" className="fig-label fsm-name">{n.s}{state === n.s ? " ◀" : ""}</text>
+            <text x={n.x + 50} y={n.y + 23.5} textAnchor="middle" className="fig-label dim">{n.action}</text>
+            <text x={n.x + 50} y={n.y + 34.5} textAnchor="middle" className={`fig-label ${state === n.s ? "" : "dim"}`}>{n.led} {state === n.s ? "on" : "off"}</text>
           </g>
         ))}
 
@@ -229,7 +229,7 @@ function StateMachine() {
         <text x="4" y={RY + 21} className="fig-label">front <tspan className="fig-value small">{last.front.toFixed(2)}</tspan>{"  "}right <tspan className="fig-value small">{last.right.toFixed(1)}</tspan>{wallLost ? " (no wall)" : ""}</text>
 
         {/* history of the front reading */}
-        <text x={CX0} y="182" className="fig-label dim">FRONT READING, LAST {KEEP} SCANS</text>
+        <text x={CX0} y="182" className="fig-label dim">FRONT, LAST {KEEP} SCANS</text>
         <text x={CX1} y="182" textAnchor="end" className="fig-label">state changes: <tspan className="fig-value small">{m.changes}</tspan></text>
         <rect x={CX0} y={CY0 - 6} width={CX1 - CX0} height={CY1 - CY0 + 10} className="fsm-plot" />
         {m.hyst && <rect x={CX0} y={cy(FRONT_CLEAR)} width={CX1 - CX0} height={cy(FRONT_BLOCKED) - cy(FRONT_CLEAR)} className="fsm-gap" />}
@@ -251,8 +251,14 @@ function StateMachine() {
           </g>
         ))}
         <text x={CX0 - 3} y={CY1 + 19} textAnchor="end" className="fig-label dim">state</text>
-        <text x={CX0} y={CY1 + 33} className="fig-label dim">S straight, T turn left, F follow. Newest scan on the right.</text>
       </svg>
+      <div className="fig-step" role="status">
+        <p>
+          <strong>Scan {m.n}.</strong> {why}
+          {verdict}
+        </p>
+        <pre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(" { ", " {\n        ").replace(" }", "\n    }")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></pre>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Front</span>
@@ -271,13 +277,6 @@ function StateMachine() {
           <code>{m.hyst ? "case TURN_LEFT: if (front_ft > FRONT_CLEAR)" : "case TURN_LEFT: if (front_ft > FRONT_BLOCKED)"}</code>
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>
-          <strong>Scan {m.n}.</strong> {why}
-          {verdict}
-        </p>
-        <pre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(" { ", " {\n        ").replace(" }", "\n    }")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></pre>
-      </div>
       <div className="fig-controls">
         <div>
           <span>Noisy wall</span>
@@ -287,10 +286,15 @@ function StateMachine() {
         </div>
       </div>
       <figcaption>
-        Each scan (each slider move, or Next) makes at most one transition. With one threshold, a front reading that moves around 1.5 ft changes the state on every scan. A second, higher threshold for leaving the turn stops that.
+        In the row of letters under the plot, S is straight, T turn left and F follow; the newest scan is on the right. Each scan (each slider move, or Next) makes at most one transition. With one threshold, a front reading that moves around 1.5 ft changes the state on every scan. A second, higher threshold for leaving the turn stops that.
       </figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "state-machine", Component: StateMachine };
+export const figure = {
+  id: "state-machine",
+  title: "Wall-follower state machine",
+  description: "Move the front and right distances or play a run to see which state the robot is in and which condition makes it change.",
+  Component: StateMachine,
+};

@@ -106,4 +106,9 @@ function MathLog() {
   );
 }
 
-export const figure = { id: "math-log", Component: MathLog };
+export const figure = {
+  id: "math-log",
+  title: "Logarithms turn multiplying into adding",
+  description: "Pick two numbers to see their logarithms laid end to end reach the logarithm of their product.",
+  Component: MathLog,
+};

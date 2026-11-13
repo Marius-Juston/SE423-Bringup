@@ -148,15 +148,15 @@ function ButtonBounce() {
         <path d={`M${xo(zFrom)},45 L${X0},66 M${xo(zTo)},45 L${X1},66`} className="fig-wire" strokeDasharray="3 2" style={{ strokeWidth: 0.8 }} />
         {/* zoom */}
         <rect x={X0} y={66} width={X1 - X0} height={62} className="bb-zoom" />
-        <text x={4} y={81} className="fig-label">3.3 V</text>
-        <text x={4} y={119} className="fig-label">0 V</text>
+        <text x={4} y={79} className="fig-label">3.3 V</text>
+        <text x={4} y={121} className="fig-label">0 V</text>
         {inZoom.length <= 70 && inZoom.map((s, i) => <line key={`l${i}`} x1={xz(s.t)} x2={xz(s.t)} y1={70} y2={124} className="fig-sample" />)}
         {segs(xz, zFrom, zTo, 78, 116)}
         {inZoom.map((s, i) => (
           <circle key={`c${i}`} cx={xz(s.t)} cy={s.v ? 78 : 116} r={inZoom.length > 70 ? 1.3 : 2.4} fill="var(--text)" stroke="var(--inset)" strokeWidth={0.6} />
         ))}
-        <text x={4} y={91} className="fig-label dim">open</text>
-        <text x={4} y={109} className="fig-label dim">closed</text>
+        <text x={4} y={92} className="fig-label dim">open</text>
+        <text x={4} y={108} className="fig-label dim">closed</text>
         <text x={4} y={139} className="fig-label">plain</text>
         <text x={4} y={152} className="fig-label">debounced</text>
         {naiveAll.filter((t) => t >= zFrom && t <= zTo).map((t, i) => tri(xz(t), 132, `zn${i}`))}
@@ -197,4 +197,9 @@ function ButtonBounce() {
   );
 }
 
-export const figure = { id: "button-bounce", Component: ButtonBounce };
+export const figure = {
+  id: "button-bounce",
+  title: "Button bounce",
+  description: "Press a button whose contacts bounce and move the sampling period to see how many presses the program counts and why waiting a few milliseconds fixes it.",
+  Component: ButtonBounce,
+};

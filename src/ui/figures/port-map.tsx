@@ -26,7 +26,7 @@ const CSS = `
 .pm-cell.none { fill: none; stroke-dasharray: 2 2; opacity: 0.6; }
 .pm-cell.mark { fill: var(--harvest); stroke: var(--harvest); }
 .pm-cell.sel { fill: var(--orange); stroke: var(--orange); }
-.pm-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.75rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.pm-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.5rem; background: var(--inset); border-radius: 6px; font-size: 0.7rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 `;
 
 const PW = 60; // width of one port in the strip
@@ -51,25 +51,11 @@ function PortMap() {
     [`GpioCtrlRegs.GP${L}DIR.bit.GPIO${n}`, "direction"],
     [`GpioCtrlRegs.GP${L}MUX${mux}.bit.GPIO${n}`, "mux"],
   ];
-  const width = Math.max(...lines.map(([c]) => c.length));
   const sx = PX(port) + ((bit + 0.5) / 32) * PW; // selected pin on the strip
   const why = `GPIO${n}${mark ? ` (${mark})` : ""}: ${n} / 32 = ${port} remainder ${bit}. Whole part ${port} is port ${L} (A is 0, B is 1, and so on); the remainder is the bit inside that port's 32-bit registers, so its mask is ${mask}.${port === 5 ? " Port F is short: it only has GPIO160 to GPIO168." : ""}${n === 159 || n === 160 ? " Buttons 3 and 4 are neighbours on the board but sit in different ports, so they are read from different registers." : ""}`;
   return (
     <figure className="figure" aria-label="Interactive map from a GPIO number to its port, bit and registers">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div className="pm-row">
-          <label htmlFor="pm-n">GPIO</label>
-          <input id="pm-n" type="number" min={0} max={MAX} value={n} onChange={(e) => set(+e.target.value)} />
-          <input type="range" aria-label="GPIO number, slider" min={0} max={MAX} value={n} onChange={(e) => set(+e.target.value)} />
-        </div>
-        <div>
-          <span>Robot board</span>
-          {PRESETS.map(([name, g]) => (
-            <button key={name} className="fig-opt" aria-pressed={n === g} onClick={() => setN(g)}>{name}</button>
-          ))}
-        </div>
-      </div>
       <svg viewBox="0 0 400 174" role="img" aria-label={`GPIO${n}${mark ? `, ${mark},` : ""} is bit ${bit} of port ${L}, GPIO${port * 32} to GPIO${port === 5 ? 168 : port * 32 + 31}.`}>
         <text x="8" y="10" className="fig-label dim">All 169 pins, GPIO0 on the left. Marks: the robot board's LEDs and buttons.</text>
         {/* the six ports */}
@@ -107,12 +93,30 @@ function PortMap() {
         <text x="200" y="170" textAnchor="middle" className="fig-label">{mark ?? "no LED or button of the robot board"}</text>
       </svg>
       <code className="pm-code">
-        {lines.map(([c, note]) => `${c.padEnd(width)}  // ${note}`).join("\n")}
+        {lines.map(([c, note]) => `${c}  // ${note}`).join("\n")}
       </code>
       <p className="fig-why" role="status">{why}</p>
+      <div className="fig-controls">
+        <div className="pm-row">
+          <label htmlFor="pm-n">GPIO</label>
+          <input id="pm-n" type="number" min={0} max={MAX} value={n} onChange={(e) => set(+e.target.value)} />
+          <input type="range" aria-label="GPIO number, slider" min={0} max={MAX} value={n} onChange={(e) => set(+e.target.value)} />
+        </div>
+        <div>
+          <span>Robot board</span>
+          {PRESETS.map(([name, g]) => (
+            <button key={name} className="fig-opt" aria-pressed={n === g} onClick={() => setN(g)}>{name}</button>
+          ))}
+        </div>
+      </div>
       <figcaption>Every GPIO pin is one bit of a 32-bit port. The port letter goes into every register name, and the pin keeps its GPIO number as the field name.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "port-map", Component: PortMap };
+export const figure = {
+  id: "port-map",
+  title: "GPIO number to port and bit",
+  description: "Choose a GPIO number and see which port and bit it is, and the register names that follow from it.",
+  Component: PortMap,
+};

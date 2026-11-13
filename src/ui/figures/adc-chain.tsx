@@ -91,7 +91,7 @@ function AdcChain() {
         <rect x="106" y="74" width="80" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
         <text x="146" y="84" textAnchor="middle" className="fig-label dim">SOC1</text>
         <rect x="106" y="91" width="80" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
-        <text x="146" y="101" textAnchor="middle" className="fig-label dim">SOC2 ... SOC15</text>
+        <text x="146" y="101" textAnchor="middle" className="fig-label dim">SOC2 ... 15</text>
         {/* pins */}
         <text x="42" y="124" textAnchor="middle" className="fig-label dim">WHICH PIN</text>
         <rect x="6" y="130" width="72" height="50" rx="4" className={`fig-box ${on("pins")}`} />
@@ -117,7 +117,7 @@ function AdcChain() {
         <text x="330" y="35" textAnchor="middle" className="fig-label">ADCRESULT0</text>
         <text x="330" y="48" textAnchor="middle" className="fig-value small">{i >= 6 ? "1638" : "----"}</text>
         <rect x="294" y="62" width="72" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
-        <text x="330" y="72" textAnchor="middle" className="fig-label dim">ADCRESULT1 ...</text>
+        <text x="330" y="72" textAnchor="middle" className="fig-label dim">RESULT1 ... 15</text>
         <path d="M330 76 V118" className={`fig-wire arrow ${on("w-int")}`} markerEnd="url(#fig-arrow)" />
         {/* interrupt */}
         <rect x="278" y="120" width="136" height="60" rx="4" className={`fig-box ${on("int")}`} />
@@ -147,4 +147,9 @@ function AdcChain() {
   );
 }
 
-export const figure = { id: "adc-chain", Component: AdcChain };
+export const figure = {
+  id: "adc-chain",
+  title: "ADC conversion, step by step",
+  description: "Step through one analog-to-digital conversion, from the trigger to the interrupt, and see which block is busy and which register holds what at each stage.",
+  Component: AdcChain,
+};

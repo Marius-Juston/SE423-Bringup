@@ -124,4 +124,9 @@ function VoltageDivider() {
   );
 }
 
-export const figure = { id: "voltage-divider", Component: VoltageDivider };
+export const figure = {
+  id: "voltage-divider",
+  title: "Voltage divider",
+  description: "Change the two resistors, or swap the bottom one for a push button, to see how the middle voltage divides.",
+  Component: VoltageDivider,
+};

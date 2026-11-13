@@ -98,4 +98,9 @@ function CFlow() {
   );
 }
 
-export const figure = { id: "c-flow", Component: CFlow };
+export const figure = {
+  id: "c-flow",
+  title: "if / else, while and for, line by line",
+  description: "Step through four short programs one line at a time and see which lines an if / else skips and how often a loop asks its question.",
+  Component: CFlow,
+};

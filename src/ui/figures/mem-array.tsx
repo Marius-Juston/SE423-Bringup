@@ -63,4 +63,9 @@ function MemArray() {
   );
 }
 
-export const figure = { id: "mem-array", Component: MemArray };
+export const figure = {
+  id: "mem-array",
+  title: "Arrays in memory",
+  description: "Pick an index and see which box of the array it selects, and what gets hit when the index runs past the end.",
+  Component: MemArray,
+};

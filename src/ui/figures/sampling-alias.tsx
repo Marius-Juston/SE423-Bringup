@@ -14,8 +14,10 @@ const CSS = `
 `;
 
 function SamplingAlias() {
-  const [f, setF] = useState(900);
-  const [fs, setFs] = useState(1000);
+  // Opens on the easy case of its first level (dmaf-signal): 20 samples per
+  // period. The alias case of level dmaf-alias is 900 Hz sampled at 1000 Hz.
+  const [f, setF] = useState(100);
+  const [fs, setFs] = useState(2000);
   const nyq = fs / 2;
   const k = Math.round(f / fs);
   const fd = f - k * fs; // in (-fs/2, fs/2]
@@ -126,4 +128,9 @@ function SamplingAlias() {
   );
 }
 
-export const figure = { id: "sampling-alias", Component: SamplingAlias };
+export const figure = {
+  id: "sampling-alias",
+  title: "Sampling and aliasing",
+  description: "Change the frequency of a sine wave and how often it is sampled, and see when the samples still show the real signal and when they show a slower one instead.",
+  Component: SamplingAlias,
+};

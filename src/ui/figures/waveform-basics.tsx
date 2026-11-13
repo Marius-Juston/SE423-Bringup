@@ -96,4 +96,9 @@ function WaveformBasics() {
   );
 }
 
-export const figure = { id: "waveform-basics", Component: WaveformBasics };
+export const figure = {
+  id: "waveform-basics",
+  title: "Period, frequency and duty cycle",
+  description: "Change the frequency and the duty cycle of a square wave to read its period and the time it spends high.",
+  Component: WaveformBasics,
+};

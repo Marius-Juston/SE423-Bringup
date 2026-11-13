@@ -98,4 +98,9 @@ function RcCharge() {
   );
 }
 
-export const figure = { id: "rc-charge", Component: RcCharge };
+export const figure = {
+  id: "rc-charge",
+  title: "RC charging curve",
+  description: "Change the resistor and the capacitor and switch between charging and discharging to see how fast the capacitor's voltage follows.",
+  Component: RcCharge,
+};

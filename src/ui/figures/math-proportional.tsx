@@ -94,6 +94,12 @@ function MathProportional() {
         <text x="389" y={gy(turn) + 3} className="fig-value small">{signed(turn, 1)}</text>
         {limited && <text x="362" y={raw > 0 ? gy(LIMIT) + 13 : gy(-LIMIT) - 5} textAnchor="middle" className="fig-label">limited</text>}
       </svg>
+      <div className="fig-step" role="status">
+        <p>{why}</p>
+        <pre><code>{`turn = Kp_right_wal *
+  (ref_right_wall - LADARrightfront);
+//   = ${kp} * (${REF} - ${d.toFixed(1)}) = ${signed(raw)}${limited ? `\n//   limited to ${signed(turn, 1)}` : ""}`}</code></pre>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Measured</span>
@@ -109,14 +115,14 @@ function MathProportional() {
           ))}
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>{why}</p>
-        <pre><code>{`turn = Kp_right_wal*(ref_right_wall - LADARrightfront);
-//   = ${kp} * (${REF} - ${d.toFixed(1)}) = ${signed(raw)}${limited ? `, limited to ${signed(turn, 1)}` : ""}`}</code></pre>
-      </div>
       <figcaption>Seen from above: the robot drives to the right of the picture, with the wall on its right-hand side. The further it is from the dashed line, the harder it steers back, up to the limit. A larger gain reacts more strongly to the same error.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "math-proportional", Component: MathProportional };
+export const figure = {
+  id: "math-proportional",
+  title: "Proportional steering along a wall",
+  description: "Move the robot nearer to or further from the wall and change the gain to see the turn command grow with the error, up to its limit.",
+  Component: MathProportional,
+};

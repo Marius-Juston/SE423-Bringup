@@ -45,14 +45,6 @@ function BitExplorer() {
   return (
     <figure className="figure" aria-label="Interactive 16-bit word: click bits to see binary, hex and decimal">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Read as</span>
-          <button className="fig-opt" aria-pressed={!signed} onClick={() => setSigned(false)}>unsigned</button>
-          <button className="fig-opt" aria-pressed={signed} onClick={() => setSigned(true)}>two's complement</button>
-          <code>{signed ? "int16_t" : "uint16_t"} v = {hex4(v)};</code>
-        </div>
-      </div>
       <div className="bx-grid" role="group" aria-label={`16 bits, value ${hex4(v)}, ${shown} in decimal`}>
         <span className="bx-row">hex digit</span>
         {[3, 2, 1, 0].map((g) => {
@@ -92,6 +84,12 @@ function BitExplorer() {
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
+          <span>Read as</span>
+          <button className="fig-opt" aria-pressed={!signed} onClick={() => setSigned(false)}>unsigned</button>
+          <button className="fig-opt" aria-pressed={signed} onClick={() => setSigned(true)}>two's complement</button>
+          <code>{signed ? "int16_t" : "uint16_t"} v = {hex4(v)};</code>
+        </div>
+        <div>
           <span>Try</span>
           <button className="fig-opt" onClick={() => setV(~v & 0xffff)}>flip every bit</button>
           <button className="fig-opt" onClick={() => setV((v + 1) & 0xffff)}>add 1</button>
@@ -104,4 +102,9 @@ function BitExplorer() {
   );
 }
 
-export const figure = { id: "bit-explorer", Component: BitExplorer };
+export const figure = {
+  id: "bit-explorer",
+  title: "Bits, hex and decimal",
+  description: "Click the 16 bits of a word to flip them and read the same value in binary, hexadecimal, unsigned and signed decimal.",
+  Component: BitExplorer,
+};

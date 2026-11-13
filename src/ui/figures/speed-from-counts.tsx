@@ -115,6 +115,7 @@ function SpeedFromCounts() {
           <text key={ms} x={xOf(ms)} y={204} textAnchor={ms === 0 ? "start" : ms === 200 ? "end" : "middle"} className="fig-label dim">{ms} ms</text>
         ))}
       </svg>
+      <div className="fig-why" role="status">{why}</div>
       <div className="fig-controls">
         <div>
           <span>Wheel speed</span>
@@ -123,18 +124,27 @@ function SpeedFromCounts() {
         </div>
         <div>
           <span>Method</span>
-          {([1, 5, 20, 50] as Method[]).map((m) => (
-            <button key={m} className="fig-opt" aria-pressed={method === m} onClick={() => setMethod(m)}>difference over {m} ms</button>
-          ))}
+          <button className="fig-opt" aria-pressed={method === 1} onClick={() => setMethod(1)}>difference over 1 ms</button>
+          <button className="fig-opt" aria-pressed={method === 20} onClick={() => setMethod(20)}>difference over 20 ms</button>
           <button className="fig-opt" aria-pressed={method === "gap"} onClick={() => setMethod("gap")}>time between counts</button>
         </div>
-        <div>
-          <span>True speed</span>
-          <button className="fig-opt" aria-pressed={!change} onClick={() => setChange(false)}>steady</button>
-          <button className="fig-opt" aria-pressed={change} onClick={() => setChange(true)}>halves at 100 ms</button>
-        </div>
       </div>
-      <div className="fig-why" role="status">{why}</div>
+      <details className="fig-more">
+        <summary>More controls: other windows, a speed that changes</summary>
+        <div className="fig-controls">
+          <div>
+            <span>Window</span>
+            {([5, 50] as Method[]).map((m) => (
+              <button key={m} className="fig-opt" aria-pressed={method === m} onClick={() => setMethod(m)}>difference over {m} ms</button>
+            ))}
+          </div>
+          <div>
+            <span>True speed</span>
+            <button className="fig-opt" aria-pressed={!change} onClick={() => setChange(false)}>steady</button>
+            <button className="fig-opt" aria-pressed={change} onClick={() => setChange(true)}>halves at 100 ms</button>
+          </div>
+        </div>
+      </details>
       <div className="fig-step">
         <pre><code>{method === "gap" ? "msSinceChange++;                 // every 1 ms\nif (count != lastCount) {       // a count arrived\n    SlowVel = (count - lastCount)*radPerCount\n              / (msSinceChange*0.001);\n    lastCount = count;\n    msSinceChange = 0;\n}" : method === 1 ? "// every 1 ms\nvel = (pos - pos_old) / 0.001;\npos_old = pos;" : `// every 1 ms, pos_${method}: the position ${method} ms ago\nvel = (pos - pos_${method}) / ${(method * 0.001).toFixed(3)};`}</code></pre>
       </div>
@@ -143,4 +153,9 @@ function SpeedFromCounts() {
   );
 }
 
-export const figure = { id: "speed-from-counts", Component: SpeedFromCounts };
+export const figure = {
+  id: "speed-from-counts",
+  title: "Speed from encoder counts",
+  description: "Slow the wheel down and compare two ways of computing its speed: the change in counts over a fixed time, which jumps between a few values, and the time between two counts.",
+  Component: SpeedFromCounts,
+};

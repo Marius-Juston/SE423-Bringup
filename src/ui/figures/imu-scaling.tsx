@@ -9,7 +9,7 @@ import { useState } from "react";
 const CSS = `
 .is-cell { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .is-cell.sign { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
-.is-bit { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--text); }
+.is-bit { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--text); }
 .is-axis { stroke: var(--dim); stroke-width: 1.2; }
 .is-bar { stroke-width: 6; stroke-linecap: butt; }
 .is-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
@@ -48,7 +48,7 @@ function ImuScaling() {
   return (
     <figure className="figure is-fig" aria-label="Interactive conversion from a raw MPU-9250 count to a physical value">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 150" role="img" aria-label={`Raw count ${raw}, hexadecimal ${h(u16, 4)}, is ${value.toFixed(digits)} ${r.unit} on the ${r.label} range.`}>
+      <svg viewBox="0 0 420 160" role="img" aria-label={`Raw count ${raw}, hexadecimal ${h(u16, 4)}, is ${value.toFixed(digits)} ${r.unit} on the ${r.label} range.`}>
         {/* the two bytes as they arrive */}
         <text x={X0} y={10} className="fig-label dim">high byte (first), 0x{h(u16 >> 8, 2)}</text>
         <text x={X1} y={10} textAnchor="end" className="fig-label dim">low byte, 0x{h(u16 & 0xff, 2)}</text>
@@ -78,9 +78,8 @@ function ImuScaling() {
         <text x={Math.max(X0 + 52, Math.min(X1 - 40, x(raw)))} y={AY - 18} textAnchor="middle" className="fig-value">
           {signed || !neg ? "" : "really "}{raw === 0 ? "0" : `${truth > 0 ? "+" : ""}${truth.toFixed(digits)}`} {r.unit}
         </text>
-        <text x={X0} y={144} className="fig-value small">
-          {r.v} = {r.v}_raw * {r.code} / 32767.0;  // {seen} * {r.code} / 32767.0 = {value.toFixed(digits)}
-        </text>
+        <text x={X0} y={141} className="fig-value small">{r.v} = {r.v}_raw * {r.code} / 32767.0;</text>
+        <text x={X0} y={154} className="fig-value small">// {seen} * {r.code} / 32767.0 = {value.toFixed(digits)}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -111,4 +110,9 @@ function ImuScaling() {
   );
 }
 
-export const figure = { id: "imu-scaling", Component: ImuScaling };
+export const figure = {
+  id: "imu-scaling",
+  title: "Raw IMU count to physical units",
+  description: "Drag the raw count and pick a range to see how the sensor's signed 16-bit number becomes degrees per second or g, and what goes wrong if it is stored unsigned.",
+  Component: ImuScaling,
+};

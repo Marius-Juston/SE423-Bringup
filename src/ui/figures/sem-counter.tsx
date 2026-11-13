@@ -107,4 +107,9 @@ function SemCounter() {
   );
 }
 
-export const figure = { id: "sem-counter", Component: SemCounter };
+export const figure = {
+  id: "sem-counter",
+  title: "Flag or counting semaphore",
+  description: "Let the interrupt ask for work several times before main gets to it and compare how many requests a flag and a semaphore remember.",
+  Component: SemCounter,
+};

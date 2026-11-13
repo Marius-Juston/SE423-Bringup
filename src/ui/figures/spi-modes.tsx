@@ -38,20 +38,6 @@ function SpiModes() {
   const n = pol * 2 + phase;
   return (
     <figure className="figure" aria-label="Interactive SPI clock polarity and phase diagram">
-      <div className="fig-controls">
-        <div>
-          <span>Polarity</span>
-          <button className="fig-opt" aria-pressed={pol === 0} onClick={() => setPol(0)}>clock rests low</button>
-          <button className="fig-opt" aria-pressed={pol === 1} onClick={() => setPol(1)}>clock rests high</button>
-          <code>SpibRegs.SPICCR.bit.CLKPOLARITY = {pol};</code>
-        </div>
-        <div>
-          <span>Phase</span>
-          <button className="fig-opt" aria-pressed={phase === 1} onClick={() => setPhase(1)}>read on the first edge</button>
-          <button className="fig-opt" aria-pressed={phase === 0} onClick={() => setPhase(0)}>read on the second edge</button>
-          <code>SpibRegs.SPICTL.bit.CLK_PHASE = {phase};</code>
-        </div>
-      </div>
       <svg viewBox="0 0 420 150" role="img" aria-label={`Clock rests ${idle ? "high" : "low"}. Data is read on each ${sampleRises ? "rising" : "falling"} edge and changes on each ${sampleRises ? "falling" : "rising"} edge.`}>
         <text x="4" y="13" className="fig-label">chip select</text>
         <text x="4" y="24" className="fig-label dim">stays low</text>
@@ -81,9 +67,28 @@ function SpiModes() {
           The manual calls this <strong>{NAMES[n][0]}</strong>. Device datasheets usually call it <strong>{NAMES[n][1]}</strong>. Careful: CLK_PHASE = 1 corresponds to CPHA 0, the two are opposite.{n === 1 ? " This is the setting the course uses for the MPU-9250 and the DAN28027." : ""}
         </p>
       </div>
+      <div className="fig-controls">
+        <div>
+          <span>Polarity</span>
+          <button className="fig-opt" aria-pressed={pol === 0} onClick={() => setPol(0)}>clock rests low</button>
+          <button className="fig-opt" aria-pressed={pol === 1} onClick={() => setPol(1)}>clock rests high</button>
+          <code>SpibRegs.SPICCR.bit.CLKPOLARITY = {pol};</code>
+        </div>
+        <div>
+          <span>Phase</span>
+          <button className="fig-opt" aria-pressed={phase === 1} onClick={() => setPhase(1)}>read on the first edge</button>
+          <button className="fig-opt" aria-pressed={phase === 0} onClick={() => setPhase(0)}>read on the second edge</button>
+          <code>SpibRegs.SPICTL.bit.CLK_PHASE = {phase};</code>
+        </div>
+      </div>
       <figcaption>The same byte in any of the four clocking schemes: only the relation between clock edges and data moves. To read a diagram, find the clock's resting level first, then see where the data line changes; it is read on the other edge.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "spi-modes", Component: SpiModes };
+export const figure = {
+  id: "spi-modes",
+  title: "SPI clock polarity and phase",
+  description: "Pick where the clock rests and on which edge the data is read to see all four clocking schemes on the same byte.",
+  Component: SpiModes,
+};

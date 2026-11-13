@@ -96,4 +96,9 @@ function MathQueue() {
   );
 }
 
-export const figure = { id: "math-queue", Component: MathQueue };
+export const figure = {
+  id: "math-queue",
+  title: "Queue in an array",
+  description: "Add and remove elements to watch the head and tail indices move through the array, first in, first out.",
+  Component: MathQueue,
+};

@@ -31,7 +31,7 @@ function MemUnion() {
     <figure className="figure" aria-label="Interactive diagram: one register as a whole number and as named bit fields">
       <style>{MEM_CSS}</style>
       <svg viewBox="0 0 400 112" role="img" aria-label={`A 16-bit register. Field ON holds ${v[0]}, MODE holds ${v[1]}, LEVEL holds ${v[2]}. Read as one number through .all it is ${all}, ${hex} in hex.`}>
-        <text x="16" y="10" className="fig-label dim">one box of memory = 16 bits, numbered 15 down to 0</text>
+        <text x="16" y="10" className="fig-label dim">one box of memory: bits 15 down to 0</text>
         {/* field brackets */}
         {FIELDS.map((x, k) => {
           const x1 = BX(x.lo + x.width - 1) + 1;
@@ -63,7 +63,7 @@ function MemUnion() {
           .all: the same 16 bits read as one number = <tspan className="fig-value">{all}</tspan> ({hex})
         </text>
       </svg>
-      <code className="mem-out">LampRegs.CTRL.bit.{f.name} = {v[last]};     // now LampRegs.CTRL.all is {all}</code>
+      <code className="mem-out">LampRegs.CTRL.bit.{f.name} = {v[last]};{"\n"}// now LampRegs.CTRL.all is {all}</code>
       <p className="fig-why" role="status">
         Writing .bit.{f.name} changed only bit{f.width > 1 ? `s ${f.lo + f.width - 1} to ${f.lo}` : ` ${f.lo}`} of the box. The other fields kept their values. .all is not a second box: it is the same 16 bits read as a single number, so it changed too. How the bits add up to that number is the subject of chapter 0.
       </p>
@@ -95,4 +95,9 @@ function MemUnion() {
   );
 }
 
-export const figure = { id: "mem-union", Component: MemUnion };
+export const figure = {
+  id: "mem-union",
+  title: "One register, two views (.all and .bit)",
+  description: "Set the named fields of a 16-bit register and see the same bits change when read as one whole number.",
+  Component: MemUnion,
+};

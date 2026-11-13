@@ -152,7 +152,7 @@ function BlobCentroid() {
         .blobc-best { fill: var(--orange); }
         .blobc-kept { fill: var(--arches); }
         .blobc-noise { fill: none; stroke: var(--dim); stroke-width: 1.3; stroke-dasharray: 3 2; }
-        .blobc-num { fill: var(--accent-ink); font-size: 9px; font-family: var(--mono); font-weight: 700; pointer-events: none; }
+        .blobc-num { fill: var(--accent-ink); font-size: max(9px, calc(9px / var(--fig-k, 1))); font-family: var(--mono); font-weight: 700; pointer-events: none; }
         .blobc-num.out { fill: var(--dim); }
         .blobc-centre { stroke: var(--dim); stroke-width: 1.2; stroke-dasharray: 5 3; }
         .blobc-cross { stroke: var(--text); stroke-width: 1.4; }
@@ -239,6 +239,10 @@ function BlobCentroid() {
         <text x="414" y="184" textAnchor="end" className="fig-value">{f2(turn)}</text>
         <text x="414" y="197" textAnchor="end" className="fig-label dim">{used ? (turn > 0.005 ? "positive: right" : turn < -0.005 ? "negative: left" : "zero: straight") : "no target"}</text>
       </svg>
+      <div className="fig-step" role="status">
+        <p>{status}</p>
+        <pre><code>{used ? `cx = ${used.m10} / ${used.m00}.0;   // ${f2(cx)}\n// ${KP_TURN} * (${f2(cx)} - ${CENTRE_COL.toFixed(1)}) = ${f2(turn)}\nturn = KP_TURN * (cx - CENTRE_COL);` : "if (m00 > 0) { cx = m10 / m00; ... } else { turn = 0; }"}</code></pre>
+      </div>
       <div className="fig-controls">
         <div className="blobc-row">
           <span><label htmlFor="blobc-min">MIN_AREA</label></span>
@@ -256,13 +260,14 @@ function BlobCentroid() {
           <button className="btn small" onClick={() => { setMask(startMask()); setMinArea(4); setFilter(true); }}>Reset</button>
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>{status}</p>
-        <pre><code>{used ? `cx = ${used.m10} / ${used.m00}.0;   // ${f2(cx)}\n// ${KP_TURN} * (${f2(cx)} - ${CENTRE_COL.toFixed(1)}) = ${f2(turn)}\nturn = KP_TURN * (cx - CENTRE_COL);` : "if (m00 > 0) { cx = m10 / m00; ... } else { turn = 0; }"}</code></pre>
-      </div>
       <figcaption>A mask you can paint: click or drag on the grid, or use the arrow keys and space. The number in a blob is its area, and dashed pixels belong to blobs below MIN_AREA; pixels that touch only at a corner are separate blobs. The cross-hair is the centroid of the largest blob, and the arrow shows which way the robot turns to face it.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "blob-centroid", Component: BlobCentroid };
+export const figure = {
+  id: "blob-centroid",
+  title: "Blobs and their centre",
+  description: "Paint pixels on a small mask and watch the blobs, their areas, the centre of the largest one and the steering command it gives.",
+  Component: BlobCentroid,
+};

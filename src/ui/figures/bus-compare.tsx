@@ -31,7 +31,7 @@ const BUSES: Bus[] = [
   {
     id: "uart", name: "UART", role: "chip",
     wires: (n) => 2 * n, wiresText: (n) => `${2 * n}: TX and RX for each device`,
-    clock: "none: both ends agree on a baud rate",
+    clock: "none: an agreed baud rate",
     select: "none: one port per device",
     speed: "115200 bit/s in the course",
     why: "UART joins exactly two devices, so every device needs a serial port of its own on the chip: two wires each. No clock wire: both ends must be set to the same baud rate beforehand. Both directions at once (full duplex).",
@@ -40,24 +40,24 @@ const BUSES: Bus[] = [
     id: "spi", name: "SPI", role: "master",
     wires: (n) => 3 + n, wiresText: (n) => `${3 + n}: 3 shared + ${n} chip selects`,
     clock: "a clock wire, from the master",
-    select: "one chip-select wire per device",
-    speed: "1 MHz in the course, up to tens of MHz",
+    select: "one chip select per device",
+    speed: "1 MHz here, up to tens of MHz",
     why: "SPI shares the clock and the two data wires, but each slave needs its own chip-select wire: fast and simple, and it costs one more pin per device. The master makes the clock. Both directions at once (full duplex).",
   },
   {
     id: "i2c", name: "I2C", role: "master",
     wires: () => 2, wiresText: () => "2 for any number: SDA, SCL",
-    clock: "a clock wire (SCL), from the master",
+    clock: "SCL, a wire from the master",
     select: "7-bit address in the first byte",
-    speed: "100 kbit/s, 400 kbit/s in fast mode",
+    speed: "100 or 400 kbit/s",
     why: "I2C needs two wires however many devices there are. The master makes the clock and names the device it wants by a 7-bit address at the start of every transfer. The price: one direction at a time (half duplex) and a modest speed, because resistors, not transistors, pull the lines high.",
   },
   {
     id: "can", name: "CAN", role: "node",
     wires: () => 2, wiresText: () => "2 for any number: CANH, CANL",
-    clock: "none: every node times the bits itself",
-    select: "none: each frame carries an identifier",
-    speed: "1 Mbit/s for the course's sensors",
+    clock: "none: each node times the bits",
+    select: "an identifier in every frame",
+    speed: "1 Mbit/s in the course",
     why: "CAN also needs two wires, a twisted pair carrying one signal as a voltage difference, which resists noise over metres of cable. No master and no clock wire: any node may send, and each frame starts with an identifier that says what it contains. The lower identifier wins when two start together.",
   },
 ];
@@ -71,30 +71,26 @@ function BusCompare() {
   const DW = n > 3 ? 27 : 34;
   const bus = BUSES.find((b) => b.id === sel)!;
   const sketch = (b: Bus, y: number) => {
+    // Shared wires run along the row, under the devices. A wire that belongs
+    // to one device drops straight down to a strip of the chip's own pins, so
+    // no wire ever runs alongside another device's.
     const lines: JSX.Element[] = [];
-    const ly = (k: number, of: number) => y + 34 + (of <= 2 ? 6 + k * 10 : k * (26 / (of - 1)));
+    const own = b.id === "uart" || b.id === "spi";
     const endX = DX(n - 1) + DW;
     const w = (key: string, d: string, color: string, dash?: string) => lines.push(<path key={key} d={d} className="bc-w" style={{ stroke: color, strokeDasharray: dash }} />);
-    if (b.id === "i2c" || b.id === "can") {
-      for (let k = 0; k < 2; k++) {
-        w(`r${k}`, `M52,${ly(k, 2)} H${endX}`, "var(--text)");
-        for (let d = 0; d < n; d++) w(`t${k}${d}`, `M${DX(d) + DW / 2 + (k ? 5 : -5)},${y + 24} V${ly(k, 2)}`, "var(--text)");
-      }
-    } else if (b.id === "spi") {
-      const total = 3 + n;
-      for (let k = 0; k < 3; k++) {
-        w(`r${k}`, `M52,${ly(k, total)} H${DX(n - 1) + 4 + k * 5}`, "var(--text)");
-        for (let d = 0; d < n; d++) w(`t${k}${d}`, `M${DX(d) + 4 + k * 5},${y + 24} V${ly(k, total)}`, "var(--text)");
-      }
-      for (let d = 0; d < n; d++) w(`c${d}`, `M52,${ly(3 + d, total)} H${DX(d) + DW - 5} V${y + 24}`, "var(--accent)", "3 2");
-    } else {
-      const total = 2 * n;
-      for (let d = 0; d < n; d++)
-        for (let k = 0; k < 2; k++) w(`u${d}${k}`, `M52,${ly(2 * d + k, total)} H${DX(d) + DW / 2 + (k ? 5 : -5)} V${y + 24}`, "var(--accent)", "3 2");
+    const shared = b.id === "uart" ? 0 : b.id === "spi" ? 3 : 2;
+    const sy = (k: number) => y + (shared === 3 ? 29 + k * 5 : 31 + k * 8);
+    for (let k = 0; k < shared; k++) {
+      const tap = (d: number) => (shared === 3 ? DX(d) + 3 + k * 4 : DX(d) + DW / 2 + (k ? 5 : -5));
+      w(`r${k}`, `M52,${sy(k)} H${tap(n - 1)}`, "var(--text)");
+      for (let d = 0; d < n; d++) w(`t${k}${d}`, `M${tap(d)},${y + 24} V${sy(k)}`, "var(--text)");
     }
+    if (b.id === "spi") for (let d = 0; d < n; d++) w(`c${d}`, `M${DX(d) + DW - 5},${y + 24} V${y + 50}`, "var(--accent)", "3 2");
+    if (b.id === "uart") for (let d = 0; d < n; d++) for (let k = 0; k < 2; k++) w(`u${d}${k}`, `M${DX(d) + DW / 2 + (k ? 5 : -5)},${y + 24} V${y + 50}`, "var(--accent)", "3 2");
     return (
       <g>
-        <rect x={8} y={y + 6} width={44} height={H - 12} rx="4" className="bc-dev" />
+        <path d={own ? `M12,${y + 6} H48 a4,4 0 0 1 4,4 V${y + 50} H${endX} V${y + 62} H12 a4,4 0 0 1 -4,-4 V${y + 10} a4,4 0 0 1 4,-4 Z` : `M12,${y + 6} H48 a4,4 0 0 1 4,4 V${y + 58} a4,4 0 0 1 -4,4 H12 a4,4 0 0 1 -4,-4 V${y + 10} a4,4 0 0 1 4,-4 Z`} className="bc-dev" />
+        {own && <text x={(52 + endX) / 2} y={y + 59.5} textAnchor="middle" className="fig-label dim">{b.id === "uart" ? "one port each" : "chip selects"}</text>}
         <text x={30} y={y + 30} textAnchor="middle" className="bc-name">{b.name}</text>
         <text x={30} y={y + 44} textAnchor="middle" className="fig-label dim">{b.role}</text>
         {lines}
@@ -145,4 +141,9 @@ function BusCompare() {
   );
 }
 
-export const figure = { id: "bus-compare", Component: BusCompare };
+export const figure = {
+  id: "bus-compare",
+  title: "UART, SPI, I2C and CAN side by side",
+  description: "Add devices and count the wires each of the four serial links needs, and compare where the clock comes from, how a device is chosen and how fast each one is.",
+  Component: BusCompare,
+};

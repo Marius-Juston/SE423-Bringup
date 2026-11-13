@@ -60,7 +60,7 @@ function GpioPin() {
         {/* driver */}
         <line x1="84" y1="69" x2="104" y2="69" className="fig-wire" style={{ stroke: driving ? (latch ? "var(--orange)" : "var(--arches)") : undefined }} />
         <polygon points="104,56 104,82 128,69" className={`fig-box ${driving ? "active" : "off"}`} />
-        <text x="116" y="48" textAnchor="middle" className="fig-label dim">{output ? "output: driver on" : "input: driver off"}</text>
+        <text x="116" y="97" textAnchor="middle" className="fig-label dim">{output ? "output: driver on" : "input: driver off"}</text>
         {/* mux */}
         <rect x="140" y="50" width="46" height="38" rx="4" className="fig-box" />
         <text x="163" y="64" textAnchor="middle" className="fig-label">mux</text>
@@ -122,4 +122,9 @@ function GpioPin() {
   );
 }
 
-export const figure = { id: "gpio-pin", Component: GpioPin };
+export const figure = {
+  id: "gpio-pin",
+  title: "One GPIO pin",
+  description: "Set the mux, direction, output latch and pull-up of one pin, connect a button or a voltage outside, and see the level on the pin and what the program reads.",
+  Component: GpioPin,
+};

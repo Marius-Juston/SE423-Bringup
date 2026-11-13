@@ -135,11 +135,11 @@ function PiTuner() {
         <path d={path(sim.v, yV)} className="fig-trace" />
         {/* effort */}
         <text x={X0} y={134} className="fig-label">effort sent</text>
-        <path d={`M${X0 + 50} 131 h14`} className="pt-u" />
-        <text x={X0 + 74} y={134} className="fig-label dim">asked for</text>
-        <path d={`M${X0 + 114} 131 h14`} className="pt-raw" />
-        <text x={X0 + 138} y={134} className="fig-label dim">integral part Ki × I</text>
-        <path d={`M${X0 + 212} 131 h14`} className="pt-int" />
+        <path d={`M${X0 + 58} 131 h14`} className="pt-u" />
+        <text x={X0 + 84} y={134} className="fig-label dim">asked for</text>
+        <path d={`M${X0 + 134} 131 h14`} className="pt-raw" />
+        <text x={X0 + 160} y={134} className="fig-label dim">integral part Ki × I</text>
+        <path d={`M${X0 + 254} 131 h14`} className="pt-int" />
         <rect x={X0} y={yU(13)} width={X1 - X0} height={yU(10) - yU(13)} className="pt-sat" />
         <rect x={X0} y={yU(-10)} width={X1 - X0} height={yU(-13) - yU(-10)} className="pt-sat" />
         <text x={X1 - 3} y={yU(-13) - 2} textAnchor="end" className="fig-label dim">shaded: beyond the limit</text>
@@ -161,6 +161,7 @@ function PiTuner() {
           <span key={k}>{k} <b>{v}</b></span>
         ))}
       </div>
+      <div className="fig-why" role="status">{why}</div>
       <div className="fig-controls">
         <div>
           <span>Kp</span>
@@ -195,7 +196,6 @@ function PiTuner() {
           <button className="fig-opt" aria-pressed={clamp} onClick={() => setClamp(true)}>clamping</button>
         </div>
       </div>
-      <div className="fig-why" role="status">{why}</div>
       <div className="fig-step">
         <pre><code>{clamp ? "eLeft = vref - vLeft;\nuLeft = Kp*eLeft + Ki*(ILeft + eLeft*0.001);\nif (uLeft > 10.0) uLeft = 10.0;        // saturated:\nelse if (uLeft < -10.0) uLeft = -10.0; // ILeft kept\nelse ILeft = ILeft + eLeft*0.001;" : `eLeft = vref - vLeft;\n${ki === 0 ? "uLeft = Kp*eLeft;" : "ILeft = ILeft + eLeft*0.001;\nuLeft = Kp*eLeft + Ki*ILeft;"}\nif (uLeft > 10.0) uLeft = 10.0;\nif (uLeft < -10.0) uLeft = -10.0;`}</code></pre>
       </div>
@@ -204,4 +204,9 @@ function PiTuner() {
   );
 }
 
-export const figure = { id: "pi-tuner", Component: PiTuner };
+export const figure = {
+  id: "pi-tuner",
+  title: "Tuning a PI speed controller",
+  description: "Slide Kp and Ki and watch the wheel's speed and the effort respond to a step, including what happens when the effort hits its limit.",
+  Component: PiTuner,
+};

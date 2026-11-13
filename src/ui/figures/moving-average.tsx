@@ -72,13 +72,13 @@ function MovingAverage() {
 
   const why =
     points === 1
-      ? "With one point the output is the input: nothing is averaged, nothing is delayed. Add points to smooth the noise."
-      : `y[${n}] = ${yn.toFixed(2)} is ${tapered ? "a weighted sum" : "the mean"} of the ${points} newest samples, x[${n - points + 1}] to x[${n}]: a filter of order ${points - 1} with ${points} coefficients${tapered ? " that favour the middle of the window" : ` of 1/${points}`}. More points give a smoother line, but the output answers later: the delay is (${points} - 1) / 2 = ${delay} sample${delay === 1 ? "" : "s"} (${(delay * 0.1).toFixed(2)} ms when sampling every 0.1 ms) and each edge is spread over ${points} samples.`;
+      ? "With one point the output is the input: nothing is averaged and nothing comes late. Add points to smooth the noise."
+      : `y[${n}] = ${yn.toFixed(2)} is ${tapered ? "a weighted sum" : "the mean"} of the ${points} newest samples, x[${n - points + 1}] to x[${n}]: each one is multiplied by ${tapered ? "its weight, and the weights favour the middle of the window" : `the same weight, 1/${points}`}. More points give a smoother line, but the output answers later: it follows the signal ${delay} sample${delay === 1 ? "" : "s"} late (half the window; ${(delay * 0.1).toFixed(2)} ms when sampling every 0.1 ms), and each jump is spread over ${points} samples.`;
 
   return (
-    <figure className="figure mavg" aria-label="Interactive moving average and FIR filter">
+    <figure className="figure mavg" aria-label="Interactive moving average: a noisy signal and its average over a sliding window">
       <style>{CSS}</style>
-      <svg ref={svg} viewBox="0 0 420 146" role="img" className="mavg-drag" onPointerDown={drag} onPointerMove={drag} aria-label={`Noisy step signal and its ${points}-point ${tapered ? "weighted" : "moving"} average. Window ends at sample ${n}; output ${yn.toFixed(2)}. Delay ${delay} samples.`}>
+      <svg ref={svg} viewBox="0 0 420 146" role="img" className="mavg-drag" onPointerDown={drag} onPointerMove={drag} aria-label={`Noisy step signal and its ${points}-point ${tapered ? "weighted" : "moving"} average. Window ends at sample ${n}; output ${yn.toFixed(2)}. The output follows ${delay} samples late.`}>
         <text x={X0} y="12" className="fig-label" style={{ fill: "var(--arches)" }}>thin: noisy samples x[n]</text>
         <text x={X1} y="12" textAnchor="end" className="fig-label" style={{ fill: "var(--harvest)" }}>thick: filtered output y[n]</text>
         <line x1={X0} x2={X1} y1={Y0} y2={Y0} className="fig-wire" />
@@ -98,13 +98,13 @@ function MovingAverage() {
           <>
             <line x1={x(EDGE_UP) - dx / 2} x2={x(EDGE_UP) - dx / 2 + delay * dx} y1={y(1.5)} y2={y(1.5)} stroke="var(--text)" strokeWidth="2" />
             <line x1={x(EDGE_UP) - dx / 2 + delay * dx} x2={x(EDGE_UP) - dx / 2 + delay * dx} y1={y(1.5) - 4} y2={y(1.5) + 4} stroke="var(--text)" strokeWidth="1.2" />
-            <text x={x(EDGE_UP) - dx / 2 - 4} y={y(1.5) - 2} textAnchor="end" className="fig-label">delay {delay}</text>
+            <text x={x(EDGE_UP) - dx / 2 - 4} y={y(1.5) - 2} textAnchor="end" className="fig-label">{delay} late</text>
           </>
         )}
         {(wx0 + wx1) / 2 > X0 + 62 && <text x={X0} y={Y0 + 12} className="fig-label dim">n = 0</text>}
         {(wx0 + wx1) / 2 < X1 - 46 && <text x={X1} y={Y0 + 12} textAnchor="end" className="fig-label dim">n = {N - 1}</text>}
       </svg>
-      <svg viewBox="0 0 420 122" role="img" aria-label={`The ${points} samples in the window times the coefficients ${b.map((v) => v.toFixed(3)).join(", ")} add up to ${yn.toFixed(2)}.`}>
+      <svg viewBox="0 0 420 122" role="img" aria-label={`The ${points} samples in the window times the weights ${b.map((v) => v.toFixed(3)).join(", ")} add up to ${yn.toFixed(2)}.`}>
         <text x="4" y="24" className="fig-label">samples</text>
         <text x="4" y="35" className="fig-value small" style={{ fill: "var(--orange)" }}>xk[i]</text>
         <text x="4" y="62" className="fig-label dim">times</text>
@@ -143,7 +143,7 @@ function MovingAverage() {
           <span>Points</span>
           <input type="range" min={1} max={9} value={points} aria-label="Number of points" onChange={(e) => setPoints(+e.target.value)} />
           <span className="mavg-num">{points}</span>
-          <code>order {points - 1}: {points} coefficient{points === 1 ? "" : "s"}</code>
+          <code>{points} sample{points === 1 ? "" : "s"}, {points} weight{points === 1 ? "" : "s"}</code>
         </div>
         <div>
           <span>Weights</span>
@@ -155,9 +155,14 @@ function MovingAverage() {
           <code>{tapered ? `for (i = 0; i < ${points}; i++) { yk = yk + b[i] * xk[i]; }` : points === 1 ? "yk = xk[0];" : `yk = (xk[0] + ${points > 2 ? "... + " : ""}xk[${points - 1}]) / ${points};`}</code>
         </div>
       </div>
-      <figcaption>Top: a noisy step, and the filter output. The dashed line is the signal without noise. Drag the orange window or use the first slider. Bottom: what happens for the one output sample marked above. Each sample in the window is multiplied by its weight and the products are added. With equal weights that is the moving average; other weights give other FIR filters with the same code.</figcaption>
+      <figcaption>Top: a noisy step, and the filter output. The dashed line is the signal without noise. Drag the orange window or use the first slider. Bottom: what happens for the one output sample marked above. Each sample in the window is multiplied by its weight and the products are added. With equal weights that is the moving average; other weights give other filters with the same code.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "moving-average", Component: MovingAverage };
+export const figure = {
+  id: "moving-average",
+  title: "Moving average of a noisy signal",
+  description: "Slide a window along a noisy signal and change how many samples it averages, and see the line get smoother and answer later.",
+  Component: MovingAverage,
+};

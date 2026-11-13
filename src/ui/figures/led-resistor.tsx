@@ -115,4 +115,9 @@ function LedResistor() {
   );
 }
 
-export const figure = { id: "led-resistor", Component: LedResistor };
+export const figure = {
+  id: "led-resistor",
+  title: "LED and series resistor",
+  description: "Change the supply, the resistor and the LED's direction to see the voltage each part takes and the current that flows.",
+  Component: LedResistor,
+};

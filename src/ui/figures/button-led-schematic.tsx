@@ -53,7 +53,7 @@ function ButtonLedSchematic() {
         <circle cx={L} cy="134" r="2.6" className="fig-dot" />
         <path d={`M${L - 12},102 V138 M${L - 12},120 H${L - 24}`} className="bl-wire" />
         <text x={L + 12} y="118" className="fig-label">push button</text>
-        <text x={L + 12} y="130" className="fig-label dim">drawn released</text>
+        <text x={L + 12} y="130" className="fig-label dim">(released)</text>
         <path d={`M${L},136 V156 M${L - 12},156 H${L + 12} M${L - 7},161 H${L + 7} M${L - 3},166 H${L + 3}`} className={w("gnd")} />
         <text x={L} y="180" textAnchor="middle" className={pt("gnd")}>ground</text>
         {/* right: output pin, resistor, LED */}
@@ -72,7 +72,7 @@ function ButtonLedSchematic() {
         <path d={`M${R - 11},131 H${R + 11}`} className="bl-wire" />
         <path d={`M${R + 16},116 l9,-6 m-4.5,0 h4.5 v4.5 M${R + 18},126 l9,-6 m-4.5,0 h4.5 v4.5`} className="bl-wire" style={{ strokeWidth: 1.3 }} />
         <text x={R - 16} y="120" textAnchor="end" className="fig-label">LED</text>
-        <text x={R - 16} y="132" textAnchor="end" className="fig-label dim">about 2 V when lit</text>
+        <text x={R - 16} y="132" textAnchor="end" className="fig-label dim">2 V when lit</text>
         <path d={`M${R},131 V156 M${R - 12},156 H${R + 12} M${R - 7},161 H${R + 7} M${R - 3},166 H${R + 3}`} className={w("gnd")} />
         <text x={R} y="180" textAnchor="middle" className={pt("gnd")}>ground</text>
       </svg>
@@ -90,4 +90,9 @@ function ButtonLedSchematic() {
   );
 }
 
-export const figure = { id: "button-led-schematic", Component: ButtonLedSchematic };
+export const figure = {
+  id: "button-led-schematic",
+  title: "Reading a button and LED schematic",
+  description: "Highlight a point of the button and LED circuit to see everything wired to it, and press the button or drive the pin to see the voltages change.",
+  Component: ButtonLedSchematic,
+};

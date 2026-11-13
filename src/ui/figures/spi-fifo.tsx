@@ -11,7 +11,7 @@ const CSS = `
 .sf-slot { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .sf-slot.full { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
 .sf-slot.next { stroke-width: 1.8; }
-.sf-word { font-family: var(--mono); font-size: 8.5px; fill: var(--text); letter-spacing: -0.2px; }
+.sf-word { font-family: var(--mono); font-size: max(8.5px, calc(9px / var(--fig-k, 1))); fill: var(--text); letter-spacing: -0.5px; }
 .sf-mark { stroke: var(--value); stroke-width: 2; }
 .sf-num { font-family: var(--mono); font-weight: 700; }
 .sf-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
@@ -151,4 +151,9 @@ function SpiFifo() {
   );
 }
 
-export const figure = { id: "spi-fifo", Component: SpiFifo };
+export const figure = {
+  id: "spi-fifo",
+  title: "SPI transmit and receive FIFOs",
+  description: "Send words, read them back and move the interrupt level to see how the two queues fill and when the receive interrupt comes.",
+  Component: SpiFifo,
+};

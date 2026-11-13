@@ -85,4 +85,9 @@ function MathAtan2() {
   );
 }
 
-export const figure = { id: "math-atan2", Component: MathAtan2 };
+export const figure = {
+  id: "math-atan2",
+  title: "atan2: from dx and dy to an angle",
+  description: "Move a target with the dx and dy sliders to see the direction angle atan2 returns in every quarter of the plane.",
+  Component: MathAtan2,
+};

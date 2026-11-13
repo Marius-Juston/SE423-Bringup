@@ -134,4 +134,9 @@ function Quantise() {
   );
 }
 
-export const figure = { id: "quantise", Component: Quantise };
+export const figure = {
+  id: "quantise",
+  title: "ADC steps (quantisation)",
+  description: "Slide the pin voltage and change the number of bits to see which step of the staircase the converter answers with and how wide one step is.",
+  Component: Quantise,
+};

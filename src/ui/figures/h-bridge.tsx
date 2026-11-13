@@ -126,13 +126,6 @@ function HBridge() {
   return (
     <figure className="figure hbr" aria-label="Interactive H-bridge: four switches around a motor, and the course's PWM drive">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Drive it</span>
-          <button className="fig-opt" aria-pressed={!pwm} onClick={() => setPwm(false)}>switches by hand</button>
-          <button className="fig-opt" aria-pressed={pwm} onClick={() => setPwm(true)}>one PWM pin, as on the robot</button>
-        </div>
-      </div>
       <svg viewBox={pwm ? "0 0 420 190" : "30 0 300 190"} role="img" aria-label={pwm ? `PWM drive, control effort ${u}, duty cycle ${pct(duty)}: motor ${state}. Drawn: the part of the period with the pin ${high ? "high, S1 and S4 closed" : "low, S3 and S2 closed"}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
         <text x={CX} y="12" textAnchor="middle" className="fig-label">battery +</text>
         <text x={CX} y="184" textAnchor="middle" className="fig-label">ground</text>
@@ -188,11 +181,11 @@ function HBridge() {
             <text x="318" y="34" className="fig-label">pin high {pct(duty)}</text>
             <rect x="318" y="38" width="96" height="7" rx="2" className="fig-box" />
             <rect x="318" y="38" width={96 * duty} height="7" rx="2" fill="var(--hi)" />
-            <text x="318" y="56" className="fig-label dim">S1 + S4 closed: forward</text>
+            <text x="318" y="56" className="fig-label dim">S1 + S4: forward</text>
             <text x="318" y="78" className="fig-label">pin low {pct(1 - duty)}</text>
             <rect x="318" y="82" width="96" height="7" rx="2" className="fig-box" />
             <rect x="318" y="82" width={96 * (1 - duty)} height="7" rx="2" fill="var(--lo)" />
-            <text x="318" y="100" className="fig-label dim">S3 + S2 closed: backward</text>
+            <text x="318" y="100" className="fig-label dim">S3 + S2: backward</text>
             <text x="318" y="126" className="fig-label">average on the motor</text>
             <text x="318" y="140" className="fig-value">{net > 0 ? "+" : net < 0 ? "-" : ""}{pct(Math.abs(net))}</text>
             <text x="318" y="151" className="fig-label dim">of the battery voltage</text>
@@ -200,24 +193,29 @@ function HBridge() {
         )}
       </svg>
       <p className="fig-why" role="status">{why}</p>
-      {!pwm ? (
-        <div className="fig-controls">
+      <div className="fig-controls">
+        <div>
+          <span>Drive it</span>
+          <button className="fig-opt" aria-pressed={!pwm} onClick={() => setPwm(false)}>switches by hand</button>
+          <button className="fig-opt" aria-pressed={pwm} onClick={() => setPwm(true)}>one PWM pin, as on the robot</button>
+        </div>
+        {!pwm ? (
           <div>
             <span>Switches</span>
             {names.map((n, i) => (
               <button key={n} className="fig-opt" aria-pressed={sw[i]} onClick={() => toggle(i)}>{n} {sw[i] ? "closed" : "open"}</button>
             ))}
           </div>
-        </div>
-      ) : (
-        <>
-          <div className="fig-controls">
-            <div>
-              <span>Draw</span>
-              <button className="fig-opt" aria-pressed={high} onClick={() => setHigh(true)}>pin high, {pct(duty)} of the time</button>
-              <button className="fig-opt" aria-pressed={!high} onClick={() => setHigh(false)}>pin low, {pct(1 - duty)}</button>
-            </div>
+        ) : (
+          <div>
+            <span>Draw</span>
+            <button className="fig-opt" aria-pressed={high} onClick={() => setHigh(true)}>pin high, {pct(duty)} of the time</button>
+            <button className="fig-opt" aria-pressed={!high} onClick={() => setHigh(false)}>pin low, {pct(1 - duty)}</button>
           </div>
+        )}
+      </div>
+      {pwm && (
+        <>
           <svg viewBox="0 0 420 116" role="img" aria-label={`Transfer line of setEPWM1A: control effort ${u} gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
             <rect x={X0} y={Y1} width={tx(-10) - X0} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
             <rect x={tx(10)} y={Y1} width={X1 - tx(10)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
@@ -230,7 +228,7 @@ function HBridge() {
                 <text x={X1 + 5} y={ty(c) + 3} className="fig-label dim">{["0 %: full backward", "50 %: stopped", "100 %: full forward"][i]}</text>
               </g>
             ))}
-            <text x="4" y={Y1 - 6} className="fig-label dim">CMPA</text>
+            <text x="4" y={Y1 - 9} className="fig-label dim">CMPA</text>
             {[-10, 0, 10].map((v) => (
               <g key={v}>
                 <line x1={tx(v)} x2={tx(v)} y1={Y0} y2={Y0 + 3} className="fig-wire" />
@@ -263,4 +261,9 @@ function HBridge() {
   );
 }
 
-export const figure = { id: "h-bridge", Component: HBridge };
+export const figure = {
+  id: "h-bridge",
+  title: "H-bridge",
+  description: "Close the four switches around a motor by hand to see forward, backward, braking and the forbidden short, then drive it with one PWM signal as the robot does.",
+  Component: HBridge,
+};

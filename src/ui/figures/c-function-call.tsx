@@ -58,4 +58,9 @@ function CFunctionCall() {
   );
 }
 
-export const figure = { id: "c-function-call", Component: CFunctionCall };
+export const figure = {
+  id: "c-function-call",
+  title: "Calling a function",
+  description: "Step through a program that calls a function and watch the argument copied into the function's own box and the result coming back.",
+  Component: CFunctionCall,
+};

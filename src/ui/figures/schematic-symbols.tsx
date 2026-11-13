@@ -142,4 +142,9 @@ function SchematicSymbols() {
   );
 }
 
-export const figure = { id: "schematic-symbols", Component: SchematicSymbols };
+export const figure = {
+  id: "schematic-symbols",
+  title: "Schematic symbols",
+  description: "Select a symbol to see what part it stands for and what that part does in a circuit.",
+  Component: SchematicSymbols,
+};

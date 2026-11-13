@@ -131,7 +131,7 @@ function HslPicker() {
               <rect x="80" y={y} width={Math.max(0.5, chan[i] * w)} height="11" rx="2" style={{ fill: ["#ff6b5c", "#7ad79a", "#6fa8ff"][i] }} />
               {shadow && <rect x="80" y={y} width={Math.max(0.5, (base[i] / 255) * w)} height="11" rx="2" className="hslp-ghost" />}
               <text x="206" y={y + 9} className="fig-value small">{String(px[i]).padStart(3, " ")} = {f2(chan[i])}</text>
-              <text x="266" y={y + 9} className="fig-label dim">{i === hiIdx ? "max" : i === loIdx ? "min" : ""}</text>
+              <text x="274" y={y + 9} className="fig-label dim">{i === hiIdx ? "max" : i === loIdx ? "min" : ""}</text>
             </g>
           );
         })}
@@ -167,10 +167,10 @@ function HslPicker() {
         <path d={arc(H_MIN, H_MAX, 50)} className="hslp-window" />
         <line x1={CX} x2={CX} y1={CY - 56} y2={CY - 30} className="hslp-seam" />
         <text x={CX} y="14" textAnchor="middle" className="fig-label">0 = 360: red</text>
-        <text x={CX + 52} y={CY + 30} className="fig-label dim">120</text>
-        <text x={CX + 52} y={CY + 40} className="fig-label dim">green</text>
+        <text x="418" y={CY + 30} textAnchor="end" className="fig-label dim">120</text>
+        <text x="418" y={CY + 42} textAnchor="end" className="fig-label dim">green</text>
         <text x={CX - 52} y={CY + 30} textAnchor="end" className="fig-label dim">240</text>
-        <text x={CX - 52} y={CY + 40} textAnchor="end" className="fig-label dim">blue</text>
+        <text x={CX - 52} y={CY + 42} textAnchor="end" className="fig-label dim">blue</text>
         {grey ? (
           <text x={CX} y={CY - 2} textAnchor="middle" className="fig-label dim">no hue</text>
         ) : (
@@ -183,6 +183,9 @@ function HslPicker() {
         <text x={CX} y="150" textAnchor="middle" className="fig-label dim">outer arc: mask window,</text>
         <text x={CX} y="161" textAnchor="middle" className="fig-label dim">hue {H_MIN} to {H_MAX}{inMask ? ": pixel is in" : ": pixel is out"}</text>
       </svg>
+      <div className="fig-why" role="status">
+        {status} {maskWhy}
+      </div>
       <div className="fig-controls">
         {names.map((n, i) => (
           <div key={n} className="hslp-row">
@@ -204,12 +207,14 @@ function HslPicker() {
           <code>rgb_to_hsl({px[0]}, {px[1]}, {px[2]}, &amp;h, &amp;s, &amp;l);</code>
         </div>
       </div>
-      <div className="fig-why" role="status">
-        {status} {maskWhy}
-      </div>
       <figcaption>One pixel converted from RGB to hue, saturation and lightness. A shadow scales R, G and B together: the lightness drops and the hue stays, so the mask tests the hue. It also asks for enough saturation, because pale and grey pixels have no reliable hue.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "hsl-picker", Component: HslPicker };
+export const figure = {
+  id: "hsl-picker",
+  title: "RGB to hue, saturation, lightness",
+  description: "Set a pixel's red, green and blue, put it in shadow, and see its hue, saturation and lightness and whether the colour mask accepts it.",
+  Component: HslPicker,
+};

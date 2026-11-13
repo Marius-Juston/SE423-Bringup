@@ -93,9 +93,9 @@ function MathRotate() {
       </div>
       <div className="fig-step">
         {matrix ? (
-          <pre><code>{`[ new x ]   [ ${fmt(c).padStart(5)}  ${fmt(-s).padStart(5)} ] [ ${fmt(x, 1).padStart(4)} ]   [ ${fmt(p.x).padStart(5)} ]\n[ new y ] = [ ${fmt(s).padStart(5)}  ${fmt(c).padStart(5)} ] [ ${fmt(y, 1).padStart(4)} ] = [ ${fmt(p.y).padStart(5)} ]\n\nrow 1: ${fmt(c)} x ${fmt(x, 1)} + ${fmt(-s)} x ${fmt(y, 1)} = ${fmt(p.x)}\nrow 2: ${fmt(s)} x ${fmt(x, 1)} + ${fmt(c)} x ${fmt(y, 1)} = ${fmt(p.y)}`}</code></pre>
+          <pre><code>{`[xn]   [${fmt(c).padStart(5)} ${fmt(-s).padStart(5)}] [${fmt(x, 1).padStart(4)}]   [${fmt(p.x).padStart(5)}]\n[yn] = [${fmt(s).padStart(5)} ${fmt(c).padStart(5)}] [${fmt(y, 1).padStart(4)}] = [${fmt(p.y).padStart(5)}]\n\nrow 1: ${fmt(c)} x ${fmt(x, 1)} + ${fmt(-s)} x ${fmt(y, 1)} = ${fmt(p.x)}\nrow 2: ${fmt(s)} x ${fmt(x, 1)} + ${fmt(c)} x ${fmt(y, 1)} = ${fmt(p.y)}`}</code></pre>
         ) : (
-          <pre><code>{`// th = ${fmt(th, 3)} rad\nxn = x * cos(th) - y * sin(th);   // ${fmt(p.x)}\nyn = x * sin(th) + y * cos(th);   // ${fmt(p.y)}`}</code></pre>
+          <pre><code>{`// th = ${fmt(th, 3)} rad\nxn = x * cos(th) - y * sin(th);  // ${fmt(p.x)}\nyn = x * sin(th) + y * cos(th);  // ${fmt(p.y)}`}</code></pre>
         )}
       </div>
       <figcaption>A point is "x across, then y up". Turning the point turns both legs by the same angle. The matrix is the same two lines written as a table: each row is multiplied by (x, y), entry by entry, and added.</figcaption>
@@ -103,4 +103,9 @@ function MathRotate() {
   );
 }
 
-export const figure = { id: "math-rotate", Component: MathRotate };
+export const figure = {
+  id: "math-rotate",
+  title: "Rotating a point",
+  description: "Turn a point by an angle and move it to see where it lands and the two lines of arithmetic that take it there.",
+  Component: MathRotate,
+};

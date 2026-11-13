@@ -162,4 +162,9 @@ function I2cArbitration() {
   return <Arbitration />;
 }
 
-export const figure = { id: "i2c-arbitration", Component: I2cArbitration };
+export const figure = {
+  id: "i2c-arbitration",
+  title: "I2C arbitration",
+  description: "Step two I2C masters through their addresses bit by bit to see which one backs off and why the lower address always wins.",
+  Component: I2cArbitration,
+};

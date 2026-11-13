@@ -119,4 +119,9 @@ function Prefixes() {
   );
 }
 
-export const figure = { id: "prefixes", Component: Prefixes };
+export const figure = {
+  id: "prefixes",
+  title: "Unit prefixes",
+  description: "Pick a quantity and move along the scale from nano to mega to see the same value written with each prefix.",
+  Component: Prefixes,
+};

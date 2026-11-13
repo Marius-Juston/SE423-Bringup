@@ -8,4 +8,9 @@ function CanArbitration() {
   return <Arbitration startCan />;
 }
 
-export const figure = { id: "can-arbitration", Component: CanArbitration };
+export const figure = {
+  id: "can-arbitration",
+  title: "CAN arbitration",
+  description: "Step two CAN nodes through their identifiers bit by bit to see which one backs off and why the lower identifier always wins.",
+  Component: CanArbitration,
+};

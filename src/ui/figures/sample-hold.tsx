@@ -76,7 +76,7 @@ function SampleHold() {
         <text x="37" y="45" textAnchor="middle" className="fig-value small" style={{ fill: "var(--orange)" }}>{VPIN.toFixed(1)} V</text>
         <line x1="68" x2="84" y1="35" y2="35" className="fig-wire hot" />
         <rect x="84" y="30" width="34" height="10" className="fig-box" />
-        <text x="101" y="24" textAnchor="middle" className="fig-label">its resistance</text>
+        <text x="127" y="24" textAnchor="end" className="fig-label">its resistance</text>
         <text x="101" y="52" textAnchor="middle" className="fig-value small">{rLabel}</text>
         <line x1="118" x2="150" y1="35" y2="35" className="fig-wire hot" />
         <rect x="134" y="29" width="8" height="12" className="fig-pin" />
@@ -86,8 +86,8 @@ function SampleHold() {
         <line x1="152" x2="180" y1="35" y2="24" className="fig-wire thick" />
         <circle cx="182" cy="35" r="2.2" className="fig-dot" />
         <text x="167" y="14" textAnchor="middle" className="fig-label">switch</text>
-        <text x="162" y="52" textAnchor="middle" className="fig-value small">closed {windowNs} ns,</text>
-        <text x="162" y="63" textAnchor="middle" className="fig-value small">then open</text>
+        <text x="174" y="52" textAnchor="middle" className="fig-value small">closed {windowNs} ns,</text>
+        <text x="174" y="63" textAnchor="middle" className="fig-value small">then open</text>
         <line x1="182" x2="198" y1="35" y2="35" className="fig-wire" />
         <rect x="198" y="30" width="28" height="10" className="fig-box" />
         <text x="212" y="24" textAnchor="middle" className="fig-label dim">425 Ω</text>
@@ -111,7 +111,8 @@ function SampleHold() {
         <line x1={X0} x2={X1} y1={Y0} y2={Y0} className="fig-wire" />
         <line x1={X0} x2={X0} y1={Y0} y2={Y1 - 6} className="fig-wire" />
         <line x1={X0} x2={X1} y1={y(VPIN)} y2={y(VPIN)} stroke="var(--orange)" strokeWidth="1.2" strokeDasharray="4 3" />
-        <text x={X0 - 4} y={y(VPIN) + 3} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>pin {VPIN.toFixed(1)} V</text>
+        <text x={X0 - 4} y={y(VPIN) + 3} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>{VPIN.toFixed(1)} V</text>
+        <text x={X1} y={y(VPIN) - 4} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>pin voltage</text>
         <text x={X0 - 4} y={y(prev) + 3} textAnchor="end" className="fig-label">{prev.toFixed(1)} V</text>
         <path d={d} className="fig-trace data" />
         <line x1={xw} x2={xw} y1={Y1 - 6} y2={Y0 + 3} stroke="var(--orange)" strokeWidth="1.4" />
@@ -157,4 +158,9 @@ function SampleHold() {
   );
 }
 
-export const figure = { id: "sample-hold", Component: SampleHold };
+export const figure = {
+  id: "sample-hold",
+  title: "ADC sample-and-hold window",
+  description: "Change the acquisition window and the source resistance to see whether the sampling capacitor reaches the pin voltage before the switch opens.",
+  Component: SampleHold,
+};

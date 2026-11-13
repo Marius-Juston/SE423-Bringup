@@ -162,7 +162,7 @@ function TimerSawtooth() {
         ))}
         <path d={stair} className="fig-trace data" />
         {/* clock */}
-        <text x={X0 - 5} y={105} textAnchor="end" className="fig-label dim">5 ns clock</text>
+        <text x={4} y={104} className="fig-label dim">clock</text>
         {Array.from({ length: now - from }, (_, i) => (
           <line key={i} x1={x(from + i + 1)} x2={x(from + i + 1)} y1={98} y2={104} stroke="var(--dim)" strokeWidth={0.7} />
         ))}
@@ -215,78 +215,88 @@ function TimerSawtooth() {
           {!calm && <button className="fig-opt" aria-pressed={running} onClick={() => setRunning(!running)}>{running ? "pause" : "run"}</button>}
           <button className="fig-opt" onClick={() => { setRunning(false); setSim(fresh(prd, tddr)); }}>Reset</button>
         </div>
-        <div>
-          <span>Stop</span>
-          <button className="fig-opt" aria-pressed={!sim.tss} onClick={() => setSim((s) => ({ ...s, tss: false, note: "" }))}>TSS = 0, running</button>
-          <button className="fig-opt" aria-pressed={sim.tss} onClick={() => setSim((s) => ({ ...s, tss: true, note: "" }))}>TSS = 1, stopped</button>
-          <code>CpuTimer0Regs.TCR.bit.TSS = {sim.tss ? 1 : 0};</code>
-        </div>
-        <div>
-          <span>Reload</span>
-          <button
-            className="fig-opt"
-            onClick={() =>
-              setSim((s) => {
-                const tim = [...s.tim];
-                tim[tim.length - 1] = prd;
-                return { ...s, tim, psc: tddr, note: "trb" };
-              })
-            }
-          >
-            write TRB = 1
-          </button>
-          <code>CpuTimer0Regs.TCR.bit.TRB = 1;</code>
-        </div>
-        <div>
-          <span>Flag</span>
-          <button
-            className="fig-opt"
-            onClick={() =>
-              setSim((s) => {
-                const tif = [...s.tif];
-                tif[tif.length - 1] = 0;
-                return { ...s, tif, note: "clear" };
-              })
-            }
-          >
-            write TIF = 1
-          </button>
-          <code>CpuTimer0Regs.TCR.bit.TIF = 1;  // clears the flag</code>
-        </div>
       </div>
-      <div className="fig-step ts-real">
-        <h4>Real periods: let ConfigCpuTimer do the arithmetic</h4>
-        <p>
-          <label>
-            Period in microseconds: <input className="ts-us" type="number" min={1} step={1} value={us} onChange={(e) => setUs(e.target.value)} />
-          </label>{" "}
-          {[
-            ["1 ms", "1000"],
-            ["10 ms", "10000"],
-            ["0.5 s", "500000"],
-          ].map(([name, v]) => (
-            <button key={v} className="fig-opt" aria-pressed={us === v} onClick={() => setUs(v)}>{name}</button>
-          ))}
-        </p>
-        {!valid ? (
-          <p className="ts-bad">Enter a period of at least 0.005 microseconds (one clock cycle).</p>
-        ) : !fits ? (
-          <p className="ts-bad">
-            200 x {us} = {product} does not fit in the 32-bit PRD. The longest period without the prescaler is 2^32 x 5 ns, about 21.47 s.
+      <details className="fig-more">
+        <summary>More controls: stop, reload, clear the flag, real periods</summary>
+        <div className="fig-controls">
+          <div>
+            <span>Stop</span>
+            <button className="fig-opt" aria-pressed={!sim.tss} onClick={() => setSim((s) => ({ ...s, tss: false, note: "" }))}>TSS = 0, running</button>
+            <button className="fig-opt" aria-pressed={sim.tss} onClick={() => setSim((s) => ({ ...s, tss: true, note: "" }))}>TSS = 1, stopped</button>
+            <code>CpuTimer0Regs.TCR.bit.TSS = {sim.tss ? 1 : 0};</code>
+          </div>
+          <div>
+            <span>Reload</span>
+            <button
+              className="fig-opt"
+              onClick={() =>
+                setSim((s) => {
+                  const tim = [...s.tim];
+                  tim[tim.length - 1] = prd;
+                  return { ...s, tim, psc: tddr, note: "trb" };
+                })
+              }
+            >
+              write TRB = 1
+            </button>
+            <code>CpuTimer0Regs.TCR.bit.TRB = 1;</code>
+          </div>
+          <div>
+            <span>Flag</span>
+            <button
+              className="fig-opt"
+              onClick={() =>
+                setSim((s) => {
+                  const tif = [...s.tif];
+                  tif[tif.length - 1] = 0;
+                  return { ...s, tif, note: "clear" };
+                })
+              }
+            >
+              write TIF = 1
+            </button>
+            <code>CpuTimer0Regs.TCR.bit.TIF = 1;  // clears the flag</code>
+          </div>
+        </div>
+        <div className="fig-step ts-real">
+          <h4>Real periods: let ConfigCpuTimer do the arithmetic</h4>
+          <p>
+            <label>
+              Period in microseconds: <input className="ts-us" type="number" min={1} step={1} value={us} onChange={(e) => setUs(e.target.value)} />
+            </label>{" "}
+            {[
+              ["1 ms", "1000"],
+              ["10 ms", "10000"],
+              ["0.5 s", "500000"],
+            ].map(([name, v]) => (
+              <button key={v} className="fig-opt" aria-pressed={us === v} onClick={() => setUs(v)}>{name}</button>
+            ))}
           </p>
-        ) : (
-          <pre>
-            <code>
-              {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = 200 x ${us} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
-            </code>
-          </pre>
-        )}
-      </div>
+          {!valid ? (
+            <p className="ts-bad">Enter a period of at least 0.005 microseconds (one clock cycle).</p>
+          ) : !fits ? (
+            <p className="ts-bad">
+              200 x {us} = {product} does not fit in the 32-bit PRD. The longest period without the prescaler is 2^32 x 5 ns, about 21.47 s.
+            </p>
+          ) : (
+            <pre>
+              <code>
+                {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = 200 x ${us} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
+              </code>
+            </pre>
+          )}
+        </div>
+      </details>
       <figcaption>
-        The staircase is the counter TIM, with small numbers so that every tick is visible; a real PRD is in the hundreds of thousands or more. Dashed lines mark the moments it passes zero: TIF is set and, if TIE is 1, an interrupt is requested. Changing PRD or the prescaler here restarts the picture from a reload.
+        The staircase is the counter TIM, with small numbers so that every tick is visible; a real PRD is in the hundreds of thousands or more. One clock cycle is 5 ns. Dashed lines mark the moments it passes zero: TIF is set and, if TIE is 1, an interrupt is requested. Changing PRD or the prescaler here restarts the picture from a reload.
       </figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "timer-sawtooth", Component: TimerSawtooth };
+export const figure = {
+  id: "timer-sawtooth",
+  title: "CPU timer countdown",
+  description: "Set the period register and the prescaler, step the clock and watch the counter count down to zero, raise its flag and start again.",
+  Component: TimerSawtooth,
+};

@@ -92,4 +92,9 @@ function MechatronicLoop() {
   );
 }
 
-export const figure = { id: "mechatronic-loop", Component: MechatronicLoop };
+export const figure = {
+  id: "mechatronic-loop",
+  title: "The mechatronic loop",
+  description: "Select sensor, controller, actuator or mechanism to see what each part of the measure, decide, act loop does on the robot.",
+  Component: MechatronicLoop,
+};

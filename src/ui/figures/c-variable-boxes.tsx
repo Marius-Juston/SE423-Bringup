@@ -41,4 +41,9 @@ function CVariableBoxes() {
   );
 }
 
-export const figure = { id: "c-variable-boxes", Component: CVariableBoxes };
+export const figure = {
+  id: "c-variable-boxes",
+  title: "Variables as boxes",
+  description: "Step through a short program line by line and watch each variable as a named box whose value changes when a line stores into it.",
+  Component: CVariableBoxes,
+};

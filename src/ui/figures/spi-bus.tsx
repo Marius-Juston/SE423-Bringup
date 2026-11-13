@@ -7,7 +7,7 @@ import { useState } from "react";
 // simulated board's pull-up holds it high, so the master reads all 1s.
 
 const CSS = `
-.sb-note { font-size: 8.5px; font-family: var(--sans); }
+.sb-note { font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-family: var(--sans); }
 `;
 
 const SLAVES = [
@@ -111,4 +111,9 @@ function SpiBus() {
   );
 }
 
-export const figure = { id: "spi-bus", Component: SpiBus };
+export const figure = {
+  id: "spi-bus",
+  title: "SPI bus wiring and chip selects",
+  description: "Add slaves and pull their chip-select lines low to see who answers on the shared data line, and what goes wrong with none or several selected.",
+  Component: SpiBus,
+};

@@ -182,4 +182,9 @@ function Kalman1d() {
   );
 }
 
-export const figure = { id: "kalman-1d", Component: Kalman1d };
+export const figure = {
+  id: "kalman-1d",
+  title: "One step of the Kalman filter",
+  description: "Step through predict and correct with bell curves, and change how much you trust the prediction or the measurement to see where the new estimate lands.",
+  Component: Kalman1d,
+};

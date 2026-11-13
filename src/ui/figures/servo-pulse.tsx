@@ -76,10 +76,10 @@ function ServoPulse() {
   return (
     <figure className="figure srvp" aria-label="Interactive RC servo pulse: pulse width against arm angle">
       <style>{CSS}</style>
-      <svg ref={svg} viewBox="0 0 420 168" role="img" aria-label={`Pulse width ${ms.toFixed(2)} milliseconds in a 20 millisecond frame, CMPA ${cmpa}: servo arm at ${angle.toFixed(1)} degrees${over ? ", at its mechanical stop" : ""}.`}>
+      <svg ref={svg} viewBox="0 -3 420 171" role="img" aria-label={`Pulse width ${ms.toFixed(2)} milliseconds in a 20 millisecond frame, CMPA ${cmpa}: servo arm at ${angle.toFixed(1)} degrees${over ? ", at its mechanical stop" : ""}.`}>
         {/* whole frame */}
-        <text x="4" y={FH + 8} className="fig-label">EPWM8A</text>
-        <text x="4" y={FH + 19} className="fig-label dim">GPIO14</text>
+        <text x="4" y={FH - 3} className="fig-label">EPWM8A</text>
+        <text x="4" y={FH + 9} className="fig-label dim">GPIO14</text>
         <path d={`M${X0},${FL} V${FH} H${xf(ms)} V${FL} Z M${xf(20)},${FL} V${FH} H${xf(20 + ms)} V${FL} Z`} fill="var(--accent-soft)" />
         <path d={frame} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         <path d={`M${X0},14 V10 H${xf(20)} V14`} className="fig-wire" />
@@ -153,4 +153,9 @@ function ServoPulse() {
   );
 }
 
-export const figure = { id: "servo-pulse", Component: ServoPulse };
+export const figure = {
+  id: "servo-pulse",
+  title: "RC servo pulse width",
+  description: "Drag the falling edge or move the slider to change the pulse width and watch the servo arm turn to the matching angle.",
+  Component: ServoPulse,
+};

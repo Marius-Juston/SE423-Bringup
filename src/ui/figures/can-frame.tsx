@@ -15,7 +15,9 @@ const CSS = `
 .cf-field.sel { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
 .cf-byte { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
 .cf-byte.dist { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
-.cf-mono { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--value); }
+.cf-mono { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--value); }
+.cf-calc pre { margin: 0.4rem 0 0; font-size: 0.78rem; background: var(--surface); border-radius: 6px; padding: 0.4rem 0.6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cf-calc p { margin: 0.25rem 0 0; font-size: 0.85rem; }
 .cf-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; accent-color: var(--orange); }
 `;
 
@@ -53,7 +55,7 @@ function CanFrame() {
   return (
     <figure className="figure cf-fig" aria-label="Interactive diagram of a CAN data frame carrying a distance measurement">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 170" role="img" aria-label={`CAN frame with identifier ${id} and 8 data bytes. Bytes 0 and 1 are ${h2(bytes[0])} and ${h2(bytes[1])} hexadecimal: ${dist} millimetres.`}>
+      <svg viewBox="0 0 420 140" role="img" aria-label={`CAN frame with identifier ${id} and 8 data bytes. Bytes 0 and 1 are ${h2(bytes[0])} and ${h2(bytes[1])} hexadecimal: ${dist} millimetres.`}>
         <text x={4} y={10} className="fig-label dim">sent first</text>
         <text x={416} y={10} textAnchor="end" className="fig-label dim">128 bits in all (plus stuff bits)</text>
         {FIELDS.map((q) => {
@@ -83,14 +85,16 @@ function CanFrame() {
         <path d={`M${BX + 1},108 v4 h${2 * BW - 4} v-4`} className="fig-wire" style={{ stroke: "var(--accent)" }} />
         <text x={BX} y={122} className="fig-label">distance: low byte, then high byte</text>
         <path d={`M${BX + 2 * BW + 1},108 v4 h${2 * BW - 4} v-4`} className="fig-wire" />
-        <text x={BX + 3 * BW} y={133} textAnchor="middle" className="fig-label dim">status (0 = valid), quality</text>
+        <text x={BX + 3 * BW} y={135} textAnchor="middle" className="fig-label dim">status (0 = valid), quality</text>
         <path d={`M${BX + 4 * BW + 1},108 v4 h${4 * BW - 4} v-4`} className="fig-wire" />
         <text x={BX + 6 * BW} y={122} textAnchor="middle" className="fig-label dim">signal rate (32 bits)</text>
-        <text x={4} y={150} className="fig-value small">dis_{sensor} = 256 * dis_raw_{sensor}[1] + dis_raw_{sensor}[0];  // 256 * {bytes[1]} + {bytes[0]} = {dist} mm</text>
-        <text x={4} y={164} className="fig-label" style={{ fill: swapped === dist ? "var(--dim)" : "var(--bad)" }}>
-          {swapped === dist ? `both bytes are equal here, so swapping them would not show: ${swapped} mm` : `✗ bytes swapped by mistake: 256 * ${bytes[0]} + ${bytes[1]} = ${swapped} mm`}
-        </text>
       </svg>
+      <div className="cf-calc">
+        <pre><code>{`dis_${sensor} = 256 * dis_raw_${sensor}[1] + dis_raw_${sensor}[0];\n// 256 * ${bytes[1]} + ${bytes[0]} = ${dist} mm`}</code></pre>
+        <p style={{ color: swapped === dist ? "var(--dim)" : "var(--bad)" }}>
+          {swapped === dist ? `Both bytes are equal here, so swapping them would not show: ${swapped} mm.` : `✗ Bytes swapped by mistake: 256 * ${bytes[0]} + ${bytes[1]} = ${swapped} mm`}
+        </p>
+      </div>
       <p className="fig-why" role="status">{f.text({ id, dist })}</p>
       <div className="fig-controls">
         <div>
@@ -118,4 +122,9 @@ function CanFrame() {
   );
 }
 
-export const figure = { id: "can-frame", Component: CanFrame };
+export const figure = {
+  id: "can-frame",
+  title: "CAN frame of a distance sensor",
+  description: "Drag the distance and see every field of the CAN frame that carries it, including the two data bytes with the low byte first.",
+  Component: CanFrame,
+};

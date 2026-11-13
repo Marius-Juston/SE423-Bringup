@@ -72,4 +72,9 @@ function MemStruct() {
   );
 }
 
-export const figure = { id: "mem-struct", Component: MemStruct };
+export const figure = {
+  id: "mem-struct",
+  title: "Structs in memory",
+  description: "Run a program line by line and see the members of two struct variables fill their boxes, through a dot and through an arrow.",
+  Component: MemStruct,
+};

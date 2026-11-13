@@ -243,12 +243,6 @@ function PwmWaveform() {
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
-          <span>Count</span>
-          <button className="fig-opt" aria-pressed={!upDown} onClick={() => setMode(false)}>up (sawtooth)</button>
-          <button className="fig-opt" aria-pressed={upDown} onClick={() => setMode(true)}>up-down (triangle)</button>
-          <code>EPwm12Regs.TBCTL.bit.CTRMODE = {upDown ? 2 : 0};</code>
-        </div>
-        <div>
           <span>Period</span>
           <input type="range" min={PMIN} max={CMAX} step={50} value={prd} aria-label="TBPRD, the period register" onChange={(e) => setPrd(+e.target.value)} />
           <code>EPwm12Regs.TBPRD = {prd};</code>
@@ -259,26 +253,42 @@ function PwmWaveform() {
           <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa};</code>
         </div>
         <div>
-          <span>Zero</span>
-          {opts(zro, setZro, "When the counter is zero")}
-          <code>EPwm12Regs.AQCTLA.bit.ZRO = {zro};</code>
+          <span>Count</span>
+          <button className="fig-opt" aria-pressed={!upDown} onClick={() => setMode(false)}>up (sawtooth)</button>
+          <button className="fig-opt" aria-pressed={upDown} onClick={() => setMode(true)}>up-down (triangle)</button>
+          <code>EPwm12Regs.TBCTL.bit.CTRMODE = {upDown ? 2 : 0};</code>
         </div>
-        <div>
-          <span>{upDown ? "CMPA up" : "CMPA"}</span>
-          {opts(cau, setCau, "When the counter reaches CMPA counting up")}
-          <code>EPwm12Regs.AQCTLA.bit.CAU = {cau};</code>
-        </div>
-        {upDown && (
-          <div>
-            <span>CMPA down</span>
-            {opts(cad, setCad, "When the counter reaches CMPA counting down")}
-            <code>EPwm12Regs.AQCTLA.bit.CAD = {cad};</code>
-          </div>
-        )}
       </div>
+      <details className="fig-more">
+        <summary>More controls: what each event does to the pin (AQCTLA)</summary>
+        <div className="fig-controls">
+          <div>
+            <span>Zero</span>
+            {opts(zro, setZro, "When the counter is zero")}
+            <code>EPwm12Regs.AQCTLA.bit.ZRO = {zro};</code>
+          </div>
+          <div>
+            <span>{upDown ? "CMPA up" : "CMPA"}</span>
+            {opts(cau, setCau, "When the counter reaches CMPA counting up")}
+            <code>EPwm12Regs.AQCTLA.bit.CAU = {cau};</code>
+          </div>
+          {upDown && (
+            <div>
+              <span>CMPA down</span>
+              {opts(cad, setCad, "When the counter reaches CMPA counting down")}
+              <code>EPwm12Regs.AQCTLA.bit.CAD = {cad};</code>
+            </div>
+          )}
+        </div>
+      </details>
       <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. A CMPA above TBPRD is never reached. Drag the two dashed lines or use the sliders. Orange dots mark the events that move the pin.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "pwm-waveform", Component: PwmWaveform };
+export const figure = {
+  id: "pwm-waveform",
+  title: "PWM counter and pin",
+  description: "Drag the period and compare lines and watch the counter, the pin, the frequency and the duty cycle follow; more controls choose what each counter event does to the pin.",
+  Component: PwmWaveform,
+};

@@ -85,4 +85,9 @@ function MathSlope() {
   );
 }
 
-export const figure = { id: "math-slope", Component: MathSlope };
+export const figure = {
+  id: "math-slope",
+  title: "Rate of change (slope)",
+  description: "Change how fast the speed rises and see the slope the code computes from each pair of neighbouring samples.",
+  Component: MathSlope,
+};

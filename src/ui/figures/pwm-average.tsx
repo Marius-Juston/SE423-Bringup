@@ -63,7 +63,7 @@ function PwmAverage() {
   }, [playing, still]);
 
   const X0 = 46;
-  const X1 = 318;
+  const X1 = 310;
   const PH = 22;
   const PL = 62;
   const FH = 92;
@@ -128,7 +128,7 @@ function PwmAverage() {
         )}
         <line x1={X0} x2={X1} y1={yp(duty)} y2={yp(duty)} stroke="var(--value)" strokeWidth="1.4" strokeDasharray="5 3" />
         <text x={X1 + 4} y={yp(duty) + 3} className="fig-value small">{avgV} V</text>
-        <text x={X1 + 4} y={yp(duty) + 13 > PL + 6 ? yp(duty) - 7 : yp(duty) + 13} className="fig-label dim">average</text>
+        <text x={X1 + 4} y={yp(duty) + 15 > PL + 8 ? yp(duty) - 9 : yp(duty) + 15} className="fig-label dim">average</text>
 
         <text x="4" y={FH + 8} className="fig-label">a slow</text>
         <text x="4" y={FH + 19} className="fig-label">load sees</text>
@@ -142,13 +142,13 @@ function PwmAverage() {
         {playing && flickers && <line x1={x(at * WIN)} x2={x(at * WIN)} y1={PH - 6} y2={FL + 4} className="fig-sample" />}
 
         {/* LED */}
-        <text x="382" y="20" textAnchor="middle" className="fig-label">LED1</text>
-        <circle cx="382" cy="62" r="30" fill="var(--hi)" fillOpacity={0.3 * seen} />
-        <circle cx="382" cy="62" r="17" fill="var(--surface)" stroke="var(--dim)" />
-        <circle cx="382" cy="62" r="17" fill="var(--hi)" fillOpacity={seen} />
-        <text x="382" y="108" textAnchor="middle" className="fig-value small">{Math.round(seen * 100)} %</text>
-        <text x="382" y="119" textAnchor="middle" className="fig-label dim">brightness</text>
-        <text x="382" y="130" textAnchor="middle" className="fig-label dim">{flickers ? (playing ? "flickering" : "it flickers") : "steady"}</text>
+        <text x="386" y="20" textAnchor="middle" className="fig-label">LED1</text>
+        <circle cx="386" cy="62" r="26" fill="var(--hi)" fillOpacity={0.3 * seen} />
+        <circle cx="386" cy="62" r="17" fill="var(--surface)" stroke="var(--dim)" />
+        <circle cx="386" cy="62" r="17" fill="var(--hi)" fillOpacity={seen} />
+        <text x="386" y="108" textAnchor="middle" className="fig-value small">{Math.round(seen * 100)} %</text>
+        <text x="386" y="119" textAnchor="middle" className="fig-label dim">brightness</text>
+        <text x="386" y="130" textAnchor="middle" className="fig-label dim">{flickers ? (playing ? "flickering" : "it flickers") : "steady"}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -175,4 +175,9 @@ function PwmAverage() {
   );
 }
 
-export const figure = { id: "pwm-average", Component: PwmAverage };
+export const figure = {
+  id: "pwm-average",
+  title: "Why PWM dims an LED",
+  description: "Set the duty cycle and the switching frequency and see when an LED stops blinking and simply shows the average voltage.",
+  Component: PwmAverage,
+};

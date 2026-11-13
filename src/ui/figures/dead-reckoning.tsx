@@ -118,14 +118,14 @@ function DeadReckoning() {
   const turnText = Math.abs(omega) < 1e-9 ? "Both wheels run at the same speed: the robot drives straight." : `The ${omega > 0 ? "right" : "left"} wheel is faster, so the robot turns ${omega > 0 ? "left (omega positive)" : "right (omega negative)"}${Math.abs(V) > 1e-9 ? ` on a circle of radius v / omega = ${fmt(Math.abs(V / omega))} ft` : " on the spot"}.`;
   const why =
     error < 0.005
-      ? `${turnText} The estimate (dashed) lies on the true path: after ${fmt(sim.dist, 1)} ft it is off by ${fmt(error, 3)} ft. Choose an encoder error or a longer time step to see the two paths separate.`
+      ? `${turnText} The estimate (dashed) lies on the true path: after ${fmt(sim.dist, 1)} ft it is off by ${fmt(error, 3)} ft. Let one encoder read 1 % too much to see the two paths separate.`
       : bias
         ? `${turnText} The right encoder reads 1 % too much (a wheel 1 % smaller than the code thinks). The same small mistake is added on every pass, so the heading drifts and the error grows with the distance: ${fmt(error, 2)} ft after ${fmt(sim.dist, 1)} ft. Dead reckoning cannot notice this: it has nothing to compare with.`
         : `${turnText} With a ${dtMs} ms step the ${rule === "rect" ? "rectangle rule pretends the speed and heading measured now held for the whole step: the estimate is off by" : "trapezoid rule averages this step's and the last step's values: the estimate is off by only"} ${fmt(error, 3)} ft after ${fmt(sim.dist, 1)} ft.${rule === "rect" ? " Try the trapezoid rule." : ""}`;
 
   return (
     <figure className="figure dr-fig" aria-label="Interactive dead reckoning: true path and estimated path of a two-wheeled robot">
-      <style>{`.dr-fig .dr-range{flex:1;min-width:110px;accent-color:var(--orange)}.dr-fig .dr-map{fill:var(--surface);stroke:var(--border)}.dr-fig .dr-grid{stroke:var(--border);stroke-width:1}.dr-fig .dr-true{fill:none;stroke:var(--arches);stroke-width:2.2}.dr-fig .dr-est{fill:none;stroke:var(--harvest);stroke-width:2;stroke-dasharray:5 3}.dr-fig .dr-rt{fill:var(--arches);stroke:var(--text);stroke-width:1}.dr-fig .dr-re{fill:none;stroke:var(--harvest);stroke-width:1.6;stroke-dasharray:3 2}.dr-fig .dr-err{stroke:var(--bad);stroke-width:1.5}.dr-fig .dr-errp{fill:none;stroke:var(--bad);stroke-width:1.8}.dr-fig .dr-num{width:5.4rem;white-space:nowrap;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
+      <style>{`.dr-fig pre{font-size:.76rem;white-space:pre-wrap;overflow-wrap:anywhere}.dr-fig .dr-range{flex:1;min-width:110px;accent-color:var(--orange)}.dr-fig .dr-map{fill:var(--surface);stroke:var(--border)}.dr-fig .dr-grid{stroke:var(--border);stroke-width:1}.dr-fig .dr-true{fill:none;stroke:var(--arches);stroke-width:2.2}.dr-fig .dr-est{fill:none;stroke:var(--harvest);stroke-width:2;stroke-dasharray:5 3}.dr-fig .dr-rt{fill:var(--arches);stroke:var(--text);stroke-width:1}.dr-fig .dr-re{fill:none;stroke:var(--harvest);stroke-width:1.6;stroke-dasharray:3 2}.dr-fig .dr-err{stroke:var(--bad);stroke-width:1.5}.dr-fig .dr-errp{fill:none;stroke:var(--bad);stroke-width:1.8}.dr-fig .dr-num{width:5.4rem;white-space:nowrap;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
       <svg viewBox="0 0 420 278" role="img" aria-label={`After ${fmt(T, 1)} seconds and ${fmt(sim.dist, 1)} feet the robot is at ${fmt(sim.end.x)}, ${fmt(sim.end.y)}; the estimate is ${fmt(error, 3)} feet off.`}>
         <clipPath id="dr-clip"><rect x={4} y={4} width={W} height={H} /></clipPath>
         <rect x={4} y={4} width={W} height={H} className="dr-map" />
@@ -144,10 +144,10 @@ function DeadReckoning() {
           {robot(sim.endEst, "dr-re")}
         </g>
         <text x={10} y={16} className="fig-label dim">grid: {grid} ft</text>
-        <path d="M262 209 h16" className="dr-true" />
-        <text x={282} y={212} className="fig-label">true path</text>
-        <path d="M326 209 h16" className="dr-est" />
-        <text x={346} y={212} className="fig-label">dead reckoning</text>
+        <path d="M232 209 h16" className="dr-true" />
+        <text x={252} y={212} className="fig-label">true path</text>
+        <path d="M312 209 h16" className="dr-est" />
+        <text x={332} y={212} className="fig-label">dead reckoning</text>
         {/* error over time */}
         <text x={40} y={224} className="fig-label">error of the estimate, ft: <tspan className="fig-value small">{fmt(error, 3)}</tspan></text>
         <line x1={40} x2={412} y1={262} y2={262} className="dr-grid" />
@@ -157,6 +157,7 @@ function DeadReckoning() {
         <text x={40} y={274} className="fig-label dim">0 s</text>
         <text x={412} y={274} textAnchor="end" className="fig-label dim">10 s</text>
       </svg>
+      <div className="fig-why" role="status">{why}</div>
       <div className="fig-controls">
         <div>
           <span>Left wheel</span>
@@ -169,34 +170,43 @@ function DeadReckoning() {
           <span className="dr-num">{fmt(vR)} ft/s</span>
         </div>
         <div>
-          <span>Drive for</span>
-          <input className="dr-range" type="range" aria-label="Driving time" min={0.2} max={10} step={0.1} value={T} onChange={(e) => setT(+e.target.value)} />
-          <span className="dr-num">{fmt(T, 1)} s</span>
-        </div>
-        <div>
           <span>Encoder</span>
           <button className="fig-opt" aria-pressed={!bias} onClick={() => setBias(false)}>perfect</button>
           <button className="fig-opt" aria-pressed={bias} onClick={() => setBias(true)}>right wheel reads 1 % too much</button>
         </div>
-        <div>
-          <span>Integrate</span>
-          <button className="fig-opt" aria-pressed={rule === "rect"} onClick={() => setRule("rect")}>rectangle rule</button>
-          <button className="fig-opt" aria-pressed={rule === "trap"} onClick={() => setRule("trap")}>trapezoid rule</button>
-        </div>
-        <div>
-          <span>Time step</span>
-          {[1, 20, 100].map((d) => (
-            <button key={d} className="fig-opt" aria-pressed={dtMs === d} onClick={() => setDtMs(d)}>every {d} ms</button>
-          ))}
-        </div>
       </div>
-      <div className="fig-why" role="status">{why}</div>
+      <details className="fig-more">
+        <summary>More controls: driving time, integration rule, time step</summary>
+        <div className="fig-controls">
+          <div>
+            <span>Drive for</span>
+            <input className="dr-range" type="range" aria-label="Driving time" min={0.2} max={10} step={0.1} value={T} onChange={(e) => setT(+e.target.value)} />
+            <span className="dr-num">{fmt(T, 1)} s</span>
+          </div>
+          <div>
+            <span>Integrate</span>
+            <button className="fig-opt" aria-pressed={rule === "rect"} onClick={() => setRule("rect")}>rectangle rule</button>
+            <button className="fig-opt" aria-pressed={rule === "trap"} onClick={() => setRule("trap")}>trapezoid rule</button>
+          </div>
+          <div>
+            <span>Time step</span>
+            {[1, 20, 100].map((d) => (
+              <button key={d} className="fig-opt" aria-pressed={dtMs === d} onClick={() => setDtMs(d)}>every {d} ms</button>
+            ))}
+          </div>
+        </div>
+      </details>
       <div className="fig-step">
-        <pre><code>{`// WHEEL_BASE = ${WHEEL_BASE} ft, DT = ${dtMs / 1000} s\nv     = (vLeft + vRight) / 2;           // ${fmt(V, 3)} ft/s\nomega = (vRight - vLeft) / WHEEL_BASE;  // ${fmt(omega, 3)} rad/s\n${rule === "rect" ? `theta = theta + omega * DT;\nx = x + v * cos(theta) * DT;\ny = y + v * sin(theta) * DT;` : `theta_new = theta + 0.5*(omega + omega_old)*DT;\nx = x + 0.5*(v*cos(theta_new) + v_old*cos(theta))*DT;\ny = y + 0.5*(v*sin(theta_new) + v_old*sin(theta))*DT;`}`}</code></pre>
+        <pre><code>{`// WHEEL_BASE = ${WHEEL_BASE} ft, DT = ${dtMs / 1000} s\n// v = ${fmt(V, 3)} ft/s, omega = ${fmt(omega, 3)} rad/s\nv     = (vLeft + vRight) / 2;\nomega = (vRight - vLeft) / WHEEL_BASE;\n${rule === "rect" ? `theta = theta + omega * DT;\nx = x + v * cos(theta) * DT;\ny = y + v * sin(theta) * DT;` : `theta_new = theta + 0.5*(omega + omega_old)*DT;\nx = x + 0.5*(v*cos(theta_new) + v_old*cos(theta))*DT;\ny = y + 0.5*(v*sin(theta_new) + v_old*sin(theta))*DT;`}`}</code></pre>
       </div>
       <figcaption>The robot adds up small steps computed from its own wheel speeds. Every step is nearly right, but the small mistakes add up: the longer the drive, the further the estimate is from the true position.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "dead-reckoning", Component: DeadReckoning };
+export const figure = {
+  id: "dead-reckoning",
+  title: "Dead reckoning drift",
+  description: "Set the two wheel speeds, then give one encoder a 1 % error, and watch the position the robot adds up from its wheels drift away from where it really is.",
+  Component: DeadReckoning,
+};

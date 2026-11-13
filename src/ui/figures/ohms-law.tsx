@@ -76,4 +76,9 @@ function OhmsLaw() {
   );
 }
 
-export const figure = { id: "ohms-law", Component: OhmsLaw };
+export const figure = {
+  id: "ohms-law",
+  title: "Ohm's law",
+  description: "Slide the voltage and the resistance and watch the current through the resistor follow V = I x R.",
+  Component: OhmsLaw,
+};

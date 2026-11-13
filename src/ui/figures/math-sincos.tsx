@@ -56,8 +56,8 @@ function MathSinCos() {
         <circle cx={tx} cy={ty} r={4} style={{ fill: "var(--text)" }} />
         {deg !== 0 && <path d={`M${CX + 16},${CY} A16,16 0 ${Math.abs(deg) > 180 ? 1 : 0} ${deg > 0 ? 0 : 1} ${(CX + 16 * c).toFixed(1)},${(CY - 16 * s).toFixed(1)}`} className="ms-arc" />}
 
-        <text x={292} y={24} className="fig-label">cos({deg} deg) = <tspan className="fig-value small">{fmt(c, 3)}</tspan></text>
-        <text x={292} y={40} className="fig-label">sin({deg} deg) = <tspan className="fig-value small">{fmt(s, 3)}</tspan></text>
+        <text x={292} y={24} className="fig-label">cos({deg}°) = <tspan className="fig-value small">{fmt(c, 3)}</tspan></text>
+        <text x={292} y={40} className="fig-label">sin({deg}°) = <tspan className="fig-value small">{fmt(s, 3)}</tspan></text>
         <text x={292} y={70} className="fig-label ms-a">across (blue)</text>
         <text x={292} y={84} className="fig-label">= length x cos</text>
         <text x={292} y={99} className="fig-value small">{fmt(len, 1)} x {fmt(c, 3)}</text>
@@ -82,11 +82,16 @@ function MathSinCos() {
         </div>
       </div>
       <div className="fig-step">
-        <pre><code>{`// theta = ${fmt(rad, 3)} rad (${deg} degrees): C wants radians\ndx = L * cos(theta);   // ${fmt(dx)} ft across\ndy = L * sin(theta);   // ${fmt(dy)} ft up`}</code></pre>
+        <pre><code>{`// C wants radians:\n// theta = ${fmt(rad, 3)} rad (${deg} degrees)\ndx = L * cos(theta);  // ${fmt(dx)} ft across\ndy = L * sin(theta);  // ${fmt(dy)} ft up`}</code></pre>
       </div>
       <figcaption>Any arrow can be replaced by two moves: across, then up. Cosine and sine are the two shares for an arrow of length 1; multiply by the length for a longer one. Both are always between -1 and 1.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "math-sincos", Component: MathSinCos };
+export const figure = {
+  id: "math-sincos",
+  title: "Sine and cosine: across and up",
+  description: "Change the angle and length of an arrow to see how far across and how far up it reaches, and the cos and sin that give those two parts.",
+  Component: MathSinCos,
+};

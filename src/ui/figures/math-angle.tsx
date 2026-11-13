@@ -47,16 +47,16 @@ function MathAngle() {
         <text x={CX} y={CY + 14} textAnchor="middle" className="fig-label dim">radius {radius} ft</text>
         <text x={8} y={14} className="fig-label dim">counter-clockwise is positive</text>
 
-        <text x={262} y={36} className="fig-label">angle in degrees</text>
-        <text x={262} y={52} className="fig-value">{deg}</text>
-        <text x={262} y={78} className="fig-label">angle in radians</text>
-        <text x={262} y={94} className="fig-value">{fmt(rad, 3)}</text>
-        <text x={262} y={108} className="fig-label dim">= degrees x 3.14159 / 180</text>
-        <text x={262} y={134} className="fig-label">arc (orange) = radius x radians</text>
-        <text x={262} y={149} className="fig-value small">{radius} x {fmt(rad, 3)} = {fmt(arcLen)} ft</text>
-        <text x={262} y={176} className="fig-label dim">full turn: 360 deg = 6.283 rad</text>
-        <text x={262} y={190} className="fig-label dim">half turn: 180 deg = 3.142 rad (PI)</text>
-        <text x={262} y={204} className="fig-label dim">1 rad = 57.3 deg</text>
+        <text x={254} y={36} className="fig-label">angle in degrees</text>
+        <text x={254} y={52} className="fig-value">{deg}</text>
+        <text x={254} y={78} className="fig-label">angle in radians</text>
+        <text x={254} y={94} className="fig-value">{fmt(rad, 3)}</text>
+        <text x={254} y={108} className="fig-label dim">= degrees x 3.14159 / 180</text>
+        <text x={254} y={134} className="fig-label">arc (orange) = radius x radians</text>
+        <text x={254} y={149} className="fig-value small">{radius} x {fmt(rad, 3)} = {fmt(arcLen)} ft</text>
+        <text x={254} y={176} className="fig-label dim">full turn: 360 deg = 6.283 rad</text>
+        <text x={254} y={190} className="fig-label dim">half turn: 180 deg = 3.142 rad</text>
+        <text x={254} y={204} className="fig-label dim">1 rad = 57.3 deg</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -89,4 +89,9 @@ function MathAngle() {
   );
 }
 
-export const figure = { id: "math-angle", Component: MathAngle };
+export const figure = {
+  id: "math-angle",
+  title: "Degrees and radians",
+  description: "Turn the arrow to read the same angle in degrees and in radians, and see that the arc length is the radius times the angle.",
+  Component: MathAngle,
+};

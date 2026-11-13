@@ -113,4 +113,9 @@ function MathSpread() {
   );
 }
 
-export const figure = { id: "math-spread", Component: MathSpread };
+export const figure = {
+  id: "math-spread",
+  title: "Mean and variance of noisy readings",
+  description: "Take more readings or make the sensor noisier and watch the mean, the variance and the bell shape of the scatter.",
+  Component: MathSpread,
+};

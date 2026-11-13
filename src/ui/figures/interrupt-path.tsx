@@ -177,28 +177,25 @@ function InterruptPath() {
     <figure className="figure ip-fig" aria-label="Interactive diagram of the path of a timer interrupt request through the PIE and the CPU">
       <style>{`
         .ip-fig ol { list-style: none; margin: 0; padding: 0; }
-        .ip-fig .ip-row { display: grid; grid-template-columns: 44px 1fr; }
+        .ip-fig .ip-row { display: grid; grid-template-columns: 36px 1fr; }
         .ip-fig .ip-rail { position: relative; display: flex; align-items: center; justify-content: center; }
         .ip-fig .ip-rail::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: var(--dim); opacity: 0.45; }
         .ip-fig .ip-row.hot .ip-rail::before { background: var(--orange); opacity: 1; }
         .ip-fig .ip-row.first .ip-rail::before { top: 50%; }
         .ip-fig .ip-row.last .ip-rail::before { bottom: 50%; }
         .ip-fig .ip-zone.top .ip-rail::before { display: none; }
-        .ip-fig .ip-rail svg { position: relative; width: 40px; height: 28px; }
+        .ip-fig .ip-rail svg { position: relative; width: 34px; height: 24px; }
         .ip-fig .ip-bar { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
         .ip-fig .ip-bar.open { stroke: var(--ok); }
-        .ip-fig .ip-body { padding: 0.28rem 0.45rem; margin: 2px 0; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 0.15rem 0.5rem; align-items: center; min-height: 2.3rem; border: 2px solid transparent; }
+        .ip-fig .ip-body { padding: 0.1rem 0.4rem; margin: 1px 0; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 0 0.45rem; align-items: center; min-height: 1.9rem; border: 2px solid transparent; }
         .ip-fig .ip-row.wait .ip-body { background: var(--accent-soft); border-color: var(--orange); }
         .ip-fig .ip-name { font-weight: 700; font-size: 0.9rem; }
         .ip-fig .ip-badge { font-family: var(--mono); font-size: 0.78rem; color: var(--harvest); font-weight: 700; }
         .ip-fig .ip-wait { font-weight: 700; font-size: 0.82rem; }
-        .ip-fig .ip-note { flex-basis: 100%; color: var(--dim); font-size: 0.8rem; }
-        .ip-fig .ip-body code { font-size: 0.75rem; overflow-wrap: anywhere; }
-        .ip-fig .ip-zone > div:last-child { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72rem; color: var(--dim); padding: 0.5rem 0.45rem 0.1rem; border-top: 1px dashed var(--border); margin-top: 0.25rem; }
+        .ip-fig .ip-body code { font-size: 0.72rem; overflow-wrap: anywhere; }
+        .ip-fig .ip-body .fig-opt { font-size: 0.78rem; padding: 0.05em 0.6em; }
+        .ip-fig .ip-zone > div:last-child { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--dim); padding: 0.2rem 0.45rem 0; border-top: 1px dashed var(--border); margin-top: 0.15rem; }
         .ip-fig .ip-zone.top > div:last-child { border-top: 0; margin-top: 0; padding-top: 0; }
-        .ip-fig .ip-side .ip-rail svg { height: 100%; min-height: 28px; }
-        .ip-fig .ip-side p { margin: 2px 0; padding: 0.28rem 0.45rem; font-size: 0.8rem; color: var(--dim); border: 1px dashed var(--border); border-radius: 6px; }
-        .ip-fig .ip-side b { color: var(--text); }
         .ip-fig .ip-fire { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
       `}</style>
       <ol>
@@ -208,9 +205,8 @@ function InterruptPath() {
           <Toggle on={s.tie} label="TIE" flip={() => set({ tie: !s.tie })} text={["TIE = 0: does not ask", "TIE = 1: asks"]} />
           <code>CpuTimer0Regs.TCR.all = {s.tie ? "0x4000" : "0x0000"};</code>
         </Row>
-        <Zone lit={hot[1]}>PIE, group 1 (shared by 16 channels)</Zone>
+        <Zone lit={hot[1]}>PIE, group 1</Zone>
         <Row t={t} i={1} kind="latch" value={s.pieifr} name="PIEIFR1.7" badge="flag">
-          <span className="ip-note">Set by the timer's request. Cleared by the CPU itself when it fetches the vector.</span>
         </Row>
         <Row t={t} i={2} kind="gate" pass={s.pieier} name="PIEIER1.7" badge="enable">
           <Toggle on={s.pieier} label="PIEIER1.7" flip={() => set({ pieier: !s.pieier })} text={["0: blocks", "1: lets it through"]} />
@@ -219,21 +215,9 @@ function InterruptPath() {
         <Row t={t} i={3} kind="gate" pass={!s.pieack} name="PIEACK bit 1" badge={s.pieack ? "= 1: group 1 blocked" : "= 0: lets it through"}>
           <Toggle on={s.ackLine} label="PIEACK line" flip={() => setS((o) => ({ ...o, ackLine: !o.ackLine }))} text={["function does not clear it", "function clears it"]} />
           <code>{s.ackLine ? "" : "// missing: "}PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;</code>
-          <span className="ip-note">The PIE sets this bit itself when a request passes. Only your code clears it, by writing 1, as the last line of the function.</span>
         </Row>
         <Zone lit={hot[4]}>CPU</Zone>
-        <li className={`ip-row ip-side ${hot[4] ? "hot" : ""}`}>
-          <div className="ip-rail">
-            <svg viewBox="0 0 40 28" aria-hidden="true" preserveAspectRatio="xMidYMid meet">
-              <path d="M40,14 H24 M28,10 L22,14 L28,18" className="fig-wire" />
-            </svg>
-          </div>
-          <p>
-            <b>CPU Timer 1</b> is wired straight to <b>INT13</b> and <b>CPU Timer 2</b> to <b>INT14</b>. They join here and skip the PIE: no PIEIER bit, no PIEACK. They still need <code>IER |= M_INT13;</code> or <code>M_INT14</code>, and <code>EINT;</code>.
-          </p>
-        </li>
         <Row t={t} i={4} kind="latch" value={s.ifr} name="IFR, bit INT1" badge="flag">
-          <span className="ip-note">Set when the PIE passes a group 1 request on. Cleared by the CPU itself when it accepts the interrupt.</span>
         </Row>
         <Row t={t} i={5} kind="gate" pass={s.ier} name="IER, bit INT1" badge="enable">
           <Toggle on={s.ier} label="IER" flip={() => set({ ier: !s.ier })} text={["0: blocks", "1: lets it through"]} />
@@ -248,7 +232,6 @@ function InterruptPath() {
           <code>EALLOW; PieVectTable.TIMER0_INT = &amp;cpu_timer0_isr; EDIS;</code>
         </Row>
         <Row t={t} i={8} kind="box" pass={hot[8]} name="cpu_timer0_isr() runs" badge={`ran ${s.runs} time${s.runs === 1 ? "" : "s"}`}>
-          <span className="ip-note">While it runs, INTM is 1 and the INT1 bit of IER is 0; both come back when it returns.</span>
         </Row>
       </ol>
       <p className="fig-why" role="status">{why}</p>
@@ -260,10 +243,15 @@ function InterruptPath() {
         </div>
       </div>
       <figcaption>
-        A flag remembers a request; an enable decides whether it may pass. The thick orange line shows how far the request has come. "Restart program" keeps your settings; "Reset" also undoes them. Timer 0 is PIE group 1, channel 7, so every name here ends in 1 or 1.7; another interrupt uses the same path with its own numbers.
+        Follow the request from top to bottom: a flag remembers it, an enable decides whether it may pass, and the thick orange line shows how far it has come. The CPU clears the two flags itself; PIEACK is set by the PIE when a request passes and only your code clears it, by writing 1 as the last line of the function. "Restart program" keeps your settings; "Reset" also undoes them. Timer 0 is PIE group 1, channel 7. CPU Timers 1 and 2 skip the PIE: they go straight to INT13 and INT14 of the CPU and need only IER and EINT.
       </figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "interrupt-path", Component: InterruptPath };
+export const figure = {
+  id: "interrupt-path",
+  title: "Path of an interrupt request",
+  description: "Open and close the gates between the timer and your interrupt function, let the timer fire, and see at which gate the request stops.",
+  Component: InterruptPath,
+};

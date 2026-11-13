@@ -14,7 +14,7 @@ const CSS = `
 .sj-cell.got { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; }
 .sj-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
 .sj-cell.junk { stroke-dasharray: 2 2; }
-.sj-bit { font-family: var(--mono); font-size: 10px; font-weight: 700; fill: var(--value); }
+.sj-bit { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--value); }
 .sj-bit.off { fill: var(--dim); font-weight: 400; }
 .sj-hex { display: inline-flex; align-items: center; gap: 0.15rem; font-family: var(--mono); font-size: 0.85rem; }
 .sj-lbl { color: var(--dim); font-size: 0.82rem; }
@@ -76,7 +76,7 @@ function SpiJustify() {
   return (
     <figure className="figure sj-fig" aria-label="Interactive diagram of SPI word length and justification">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 176" role="img" aria-label={`${n}-bit words. SPITXBUF holds 0x${hex(written, 4)}; the bits sent are 0x${hex(sent, digits)}. SPIRXBUF holds 0x${hex(rxbuf, 4)}; the received bits are 0x${hex(input, digits)}.`}>
+      <svg viewBox="0 0 420 182" role="img" aria-label={`${n}-bit words. SPITXBUF holds 0x${hex(written, 4)}; the bits sent are 0x${hex(sent, digits)}. SPIRXBUF holds 0x${hex(rxbuf, 4)}; the received bits are 0x${hex(input, digits)}.`}>
         <text x={X0} y={10} className="fig-label dim">bit 15</text>
         <text x={X0 + 16 * W - 1.5} y={10} textAnchor="end" className="fig-label dim">bit 0</text>
         <text x={4} y={27} className="fig-label">SPITXBUF</text>
@@ -90,7 +90,7 @@ function SpiJustify() {
         {Array.from({ length: n }, (_, i) => (
           <text key={i} x={X0 + i * W + (W - 1.5) / 2} y={66} textAnchor="middle" className="sj-bit">{(sent >> (n - 1 - i)) & 1}</text>
         ))}
-        <text x={X0 + n * W + 4} y={68} className="fig-value small">{n <= 10 ? `= 0x${hex(sent, digits)}, first bit on the left` : n <= 13 ? `= 0x${hex(sent, digits)}` : ""}</text>
+        <text x={X0 + n * W + 4} y={68} className="fig-value small">{n <= 10 ? `= 0x${hex(sent, digits)}, top bit first` : n <= 13 ? `= 0x${hex(sent, digits)}` : ""}</text>
         <text x={4} y={100} className="fig-label">SOMI, in</text>
         <path d={`M${X0 + (16 - n) * W},${104} H${X0 + 16 * W - 1.5}`} className="fig-wire thick" />
         {Array.from({ length: n }, (_, i) => (
@@ -102,9 +102,10 @@ function SpiJustify() {
         {row(rxbuf, 114, (i) => (i >= 16 - n ? "got" : "junk"))}
         <text x={X0 + (16 - n) * W + (n * W) / 2} y={146} textAnchor="middle" className="fig-label" style={{ fill: "var(--accent)" }}>{n < 5 ? `${n} in` : n === 16 ? "all 16 bits came in" : `bottom ${n} bits came in`}</text>
         {n <= 11 && <text x={X0 + ((16 - n) * W) / 2} y={146} textAnchor="middle" className="fig-label dim">leftovers</text>}
-        <text x={X0} y={168} className="fig-value small">
-          {n === 16 ? `rx = SpibRegs.SPIRXBUF;  // 0x${hex(rxbuf, 4)}` : `rx = SpibRegs.SPIRXBUF & 0x${hex(mask, 4)};  // 0x${hex(input, digits)}, without the mask: 0x${hex(rxbuf, 4)}`}
+        <text x={X0} y={165} className="fig-value small">
+          {n === 16 ? `rx = SpibRegs.SPIRXBUF;  // 0x${hex(rxbuf, 4)}` : `rx = SpibRegs.SPIRXBUF & 0x${hex(mask, 4)};  // 0x${hex(input, digits)}`}
         </text>
+        {n < 16 && <text x={X0} y={178} className="fig-label dim">Without the mask rx would be 0x{hex(rxbuf, 4)}.</text>}
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -133,4 +134,9 @@ function SpiJustify() {
   );
 }
 
-export const figure = { id: "spi-justify", Component: SpiJustify };
+export const figure = {
+  id: "spi-justify",
+  title: "SPI word length and justification",
+  description: "Change the number of bits per word to see which bits of SPITXBUF are sent and where the received bits land in SPIRXBUF.",
+  Component: SpiJustify,
+};

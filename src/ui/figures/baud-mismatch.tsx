@@ -113,13 +113,13 @@ function BaudMismatch() {
         .bm-fig .bm-cell.bad { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.4; }
         .bm-fig .bm-tick { stroke: var(--text); stroke-width: 0.9; }
         .bm-fig .bm-tick.bad { stroke: var(--bad); stroke-width: 1.6; }
-        .bm-fig .bm-res { font-size: 8.5px; font-family: var(--mono); font-weight: 700; fill: var(--ok); }
+        .bm-fig .bm-res { font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-family: var(--mono); font-weight: 700; fill: var(--ok); }
         .bm-fig .bm-res.bad { fill: var(--bad); }
         .bm-fig input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--orange); }
         .bm-fig .bm-in { width: 3.2em; font: inherit; font-family: var(--mono); text-align: center; background: var(--inset); color: var(--text); border: 1px solid var(--border-strong, var(--dim)); border-radius: 4px; }
       `}</style>
       <svg viewBox="0 0 420 135" role="img" aria-label={`Sender at ${BAUD} baud sends ${codes.map(hex).join(" and ")}. Receiver clock ${Math.abs(err)} percent ${dir}: it reads ${rx.map((q) => hex(q.value)).join(" and ")}${bad.length ? ", wrong" : ", correct"}.`}>
-        <text x={4} y={8} className="fig-label">Sender: {BAUD} baud, sends {codes.map((c) => hex(c) + printable(c)).join(" then ")}</text>
+        <text x={4} y={10} className="fig-label">Sender: {BAUD} baud, sends {codes.map((c) => hex(c) + printable(c)).join(" then ")}</text>
         <text x={4} y={HI + 3} className="fig-label">1</text>
         <text x={4} y={LO + 3} className="fig-label">0</text>
         {frameStart.map((s, f) =>
@@ -186,4 +186,9 @@ function BaudMismatch() {
   );
 }
 
-export const figure = { id: "baud-mismatch", Component: BaudMismatch };
+export const figure = {
+  id: "baud-mismatch",
+  title: "Wrong baud rate",
+  description: "Change the receiver's speed and the character sent to see where the receiver samples each bit and why a small mismatch still works and a large one reads garbage.",
+  Component: BaudMismatch,
+};

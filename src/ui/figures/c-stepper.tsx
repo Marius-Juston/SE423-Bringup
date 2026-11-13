@@ -107,16 +107,6 @@ export function Stepper({ programs, label, caption, showOutput = true }: { progr
   return (
     <figure className="figure" aria-label={label}>
       <style>{CSS}</style>
-      {programs.length > 1 && (
-        <div className="fig-controls">
-          <div>
-            <span>Program</span>
-            {programs.map((p, i) => (
-              <button key={p.name} className="fig-opt" aria-pressed={i === which} onClick={() => { setWhich(i); setAt(0); }}>{p.name}</button>
-            ))}
-          </div>
-        </div>
-      )}
       <ol className="cst-code" aria-label={`The program. ${step.line ? `Line ${step.line} has just run` : "Nothing has run yet"}.`}>
         {prog.code.map((text, i) => (
           <li key={i} aria-current={step.line === i + 1 ? "step" : undefined}>
@@ -159,6 +149,16 @@ export function Stepper({ programs, label, caption, showOutput = true }: { progr
         <button className="btn" onClick={() => setAt(0)} disabled={at === 0}>Start again</button>
         <span className="cst-count">step {Math.min(at, prog.steps.length - 1)} of {prog.steps.length - 1}</span>
       </div>
+      {programs.length > 1 && (
+        <div className="fig-controls">
+          <div>
+            <span>Program</span>
+            {programs.map((p, i) => (
+              <button key={p.name} className="fig-opt" aria-pressed={i === which} onClick={() => { setWhich(i); setAt(0); }}>{p.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
       <figcaption>{caption}</figcaption>
     </figure>
   );

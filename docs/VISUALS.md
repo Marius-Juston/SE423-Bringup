@@ -11,8 +11,19 @@ own: `{{figure:timer-sawtooth}}`. It is one file,
 
 ```tsx
 function TimerSawtooth() { ... }
-export const figure = { id: "timer-sawtooth", Component: TimerSawtooth };
+export const figure = {
+  id: "timer-sawtooth",
+  title: "CPU timer countdown",
+  description: "Set the period register and the prescaler, step the clock and watch the counter count down to zero, raise its flag and start again.",
+  Component: TimerSawtooth,
+};
 ```
+
+`title` and `description` are what the Handbook shows on the figure's card.
+The title is what a student would call the figure ("RC charging curve",
+"Ohm's law"), not the file name. The description is one plain sentence:
+what you can do with it and what it shows, without the terms the figure
+itself teaches.
 
 `gpio-pin.tsx`, `adc-chain.tsx` and `spi-modes.tsx` are the models to
 follow. All figures also appear in the Handbook under "Key diagrams".
@@ -29,13 +40,47 @@ What makes a good figure here:
   no legend to decode.
 - **A sentence that reacts.** A short status line (`role="status"`) says in
   plain words what the current state means and why.
+- **One idea also means few controls.** Two or three rows are visible. The
+  rest goes behind one disclosure, closed by default:
+  `<details className="fig-more"><summary>More controls: ...</summary>`.
+  A control a brief tells the student to use must be visible, or the brief
+  must say "open More controls".
+- **Opens in the state of its first level.** The embed syntax has no
+  options, so a figure opens the same way everywhere: choose the state the
+  first level that embeds it needs, and say in later briefs what to set.
 - **Small.** It sits in a column about 300 to 600 px wide next to the
-  activity: draw SVG with a `viewBox` about 400 wide so it scales, keep
-  text at 8.5 px or larger in that coordinate system.
+  activity, and about 380 px in the reading pane of a code level: draw SVG
+  with a `viewBox` about 400 wide so it scales, and use `.fig-label` /
+  `.fig-value` for its text.
+- **Legible when narrow.** No label in a drawing may render under 9 px.
+  `Figure` (`index.tsx`) gives every drawing its scale as `--fig-k` and
+  the standard label classes grow to stay at 9 px, by up to 18 % at 380 px.
+  So leave room: a label that just fits its box at 700 px runs out of it
+  at 380 px. Text with a class of its own uses
+  `font-size: max(8.5px, calc(9px / var(--fig-k, 1)))`. A sentence does not
+  belong in the drawing: put it in the status line or the caption.
 - **Correct.** Numbers, register names, bit values and formulas come from
   the Technical Reference Manual (text extracted for grep at the path given
   in your task) and the course code. Cite the TRM section in a comment at
   the top. A figure that teaches something wrong is worse than none.
+
+### Order of the parts
+
+Every figure is laid out in the same order, so a student knows where to
+look:
+
+1. the picture (and a read-out that belongs to it, such as a formula or
+   three numbers);
+2. the sentence that reacts (`.fig-why` or `.fig-step`, `role="status"`);
+3. the controls (`.fig-controls`), then "More controls";
+4. code or a table that follows from the settings, if any;
+5. the caption.
+
+The only exception: controls that are part of the picture, such as bits,
+memory cells or gates you click (`bit-explorer`, `mask-ops`, `math-grid`,
+`math-centroid`, `memory-map`, `schematic-symbols`, `interrupt-path`).
+Anything that can be dragged in a drawing also has a slider or buttons
+with a visible label, and the caption says so.
 
 Reuse the CSS classes in `src/ui/styles.css` (`.figure`, `.fig-box`,
 `.fig-box.hot`, `.fig-wire`, `.fig-label`, `.fig-value`, `.fig-trace`,
@@ -87,4 +132,6 @@ npx vitest run tests/levels.test.ts
 
 Look at every screenshot yourself (labels overlapping, text cut off,
 unreadable contrast, a wrong waveform) and iterate until it is clean at
-the default width and at `--width 480` for figures.
+the default width, at `--width 480` and at `--width 412` (a 380 px figure)
+for figures, light and `--dark`. Code lines may scroll inside their own
+box; nothing else may be wider than the figure.

@@ -87,6 +87,12 @@ function MathPolar() {
         <text x="306" y="112" className="fig-label dim">y = d sin(angle)</text>
         <text x="306" y="125" className="fig-value small">{f2(y)} ft</text>
       </svg>
+      <div className="fig-step" role="status">
+        <p>{why}</p>
+        <pre><code>{`alpha = ${deg}*0.01745329;  // ${rad.toFixed(3)} rad
+x = d*cos(alpha);  // ${d.toFixed(1)} * ${f2(c)} = ${f2(x)}
+y = d*sin(alpha);  // ${d.toFixed(1)} * ${f2(s)} = ${f2(y)}`}</code></pre>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Angle</span>
@@ -109,15 +115,14 @@ function MathPolar() {
           ))}
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>{why}</p>
-        <pre><code>{`alpha = ${deg}*0.01745329;   // degrees to radians: ${rad.toFixed(3)}
-x = d*cos(alpha);   // ${d.toFixed(1)} * ${f2(c)} = ${f2(x)}
-y = d*sin(alpha);   // ${d.toFixed(1)} * ${f2(s)} = ${f2(y)}`}</code></pre>
-      </div>
       <figcaption>Seen from above, with the robot looking to the right of the picture. The yellow beam is what the LIDAR measures. The orange leg (x) is how far ahead the point is, the dashed blue leg (y) how far to the left. The shaded fan is the 240° the sensor scans.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "math-polar", Component: MathPolar };
+export const figure = {
+  id: "math-polar",
+  title: "LIDAR beam: distance and angle to x and y",
+  description: "Change the angle and distance of one beam to see how far ahead and how far to the side the point it hits lies.",
+  Component: MathPolar,
+};

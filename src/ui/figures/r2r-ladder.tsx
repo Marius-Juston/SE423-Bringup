@@ -105,4 +105,9 @@ function R2RLadder() {
   );
 }
 
-export const figure = { id: "r2r-ladder", Component: R2RLadder };
+export const figure = {
+  id: "r2r-ladder",
+  title: "R-2R ladder DAC",
+  description: "Flip the eight switches to see how each bit adds half as much voltage as the one before it to the output.",
+  Component: R2RLadder,
+};

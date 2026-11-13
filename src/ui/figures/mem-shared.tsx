@@ -15,7 +15,7 @@ export const MEM_CSS = `
 .mem-cell.hot { fill: var(--accent-soft); stroke: var(--orange); stroke-width: 2; }
 .mem-cell.bad { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 2; }
 .mem-cell.unused { fill: none; stroke-dasharray: 3 2; }
-.mem-addr { fill: var(--dim); font-size: 8.5px; font-family: var(--mono); }
+.mem-addr { fill: var(--dim); font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-family: var(--mono); }
 .mem-addr.hot { fill: var(--text); font-weight: 700; }
 .mem-brace { fill: none; stroke: var(--dim); stroke-width: 1.2; }
 .mem-arrow { fill: none; stroke: var(--orange); stroke-width: 2; }

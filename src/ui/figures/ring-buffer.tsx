@@ -47,8 +47,8 @@ const CSS = `
 .rb-slot.used { fill: var(--accent-soft, var(--surface)); stroke: var(--orange); stroke-width: 2; stroke-dasharray: none; }
 .rb-head { fill: var(--orange); }
 .rb-tail { fill: var(--arches); }
-.rb-old { fill: var(--dim); font-size: 9px; font-family: var(--mono); opacity: 0.8; text-decoration: line-through; }
-.rb-badge { font-size: 10px; font-weight: 700; font-family: var(--sans); fill: var(--text); }
+.rb-old { fill: var(--dim); font-size: max(9px, calc(9px / var(--fig-k, 1))); font-family: var(--mono); opacity: 0.8; text-decoration: line-through; }
+.rb-badge { font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; font-family: var(--sans); fill: var(--text); }
 .rb-row { stroke: var(--border); stroke-width: 1; }
 `;
 
@@ -152,9 +152,9 @@ if (count == 0) {   // 0 == 0: empty
   const rows: [string, string][] = [
     ["head (interrupt writes here)", String(r.head)],
     ["tail (main reads here)", String(r.tail)],
-    [lockFree ? "in the buffer: (head + 8 - tail) % 8" : "count", String(r.count)],
+    [lockFree ? "(head + 8 - tail) % 8" : "count", String(r.count)],
     ["dropped because full", String(r.dropped)],
-    ["next sample from the interrupt", String(r.v)],
+    ["next sample to put", String(r.v)],
     ["main got last", r.got === null ? "--" : String(r.got)],
   ];
   const badge = empty ? "EMPTY" : full ? "FULL" : `${r.count} of ${capacity} used`;
@@ -162,14 +162,7 @@ if (count == 0) {   // 0 == 0: empty
   return (
     <figure className="figure" aria-label="Interactive ring buffer with a producer and a consumer">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Variant</span>
-          <button className="fig-opt" aria-pressed={!lockFree} onClick={() => { setLockFree(false); setR(fresh()); }}>with count</button>
-          <button className="fig-opt" aria-pressed={lockFree} onClick={() => { setLockFree(true); setR(fresh()); }}>lock-free, no count</button>
-        </div>
-      </div>
-      <svg viewBox="0 0 420 264" role="img" aria-label={`Ring buffer of 8 slots, ${lockFree ? "lock-free variant" : "variant with a count"}. head is ${r.head}, tail is ${r.tail}, ${r.count} samples inside${empty ? ", empty" : full ? ", full" : ""}. Slots in use: ${Array.from({ length: BUF_SIZE }, (_, k) => k).filter(used).map((k) => `slot ${k} holds ${r.buf[k]}`).join(", ") || "none"}. ${r.dropped} samples dropped.`}>
+      <svg viewBox="0 0 420 232" role="img" aria-label={`Ring buffer of 8 slots, ${lockFree ? "lock-free variant" : "variant with a count"}. head is ${r.head}, tail is ${r.tail}, ${r.count} samples inside${empty ? ", empty" : full ? ", full" : ""}. Slots in use: ${Array.from({ length: BUF_SIZE }, (_, k) => k).filter(used).map((k) => `slot ${k} holds ${r.buf[k]}`).join(", ") || "none"}. ${r.dropped} samples dropped.`}>
         {Array.from({ length: BUF_SIZE }, (_, k) => {
           const [vx, vy] = pt(66, mid(k));
           const [ix, iy] = pt(83, mid(k));
@@ -195,24 +188,33 @@ if (count == 0) {   // 0 == 0: empty
         ))}
         <rect x={266} y={196} width={148} height={24} rx={4} className={`fig-box ${empty || full ? "hot" : ""}`} />
         <text x={340} y={212} textAnchor="middle" className="rb-badge">{badge}</text>
-        <text x={266} y={236} className="fig-label dim">Bright slots with a solid edge hold</text>
-        <text x={266} y={247} className="fig-label dim">samples that wait for main. Dashed</text>
-        <text x={266} y={258} className="fig-label dim">slots are free (old numbers remain).</text>
       </svg>
+      <div className="fig-step" role="status">
+        <p>{status}</p>
+        <pre><code>{code}</code></pre>
+      </div>
       <div className="fig-controls row">
         <button className="btn small primary" onClick={() => setR(put(r, lockFree))}>Put (interrupt)</button>
         <button className="btn small" onClick={() => setR(get(r))}>Get (main)</button>
         <button className="btn small" onClick={() => setR(fresh())} disabled={r.last === ""}>Reset</button>
       </div>
-      <div className="fig-step" role="status">
-        <p>{status}</p>
-        <pre><code>{code}</code></pre>
+      <div className="fig-controls">
+        <div>
+          <span>Variant</span>
+          <button className="fig-opt" aria-pressed={!lockFree} onClick={() => { setLockFree(false); setR(fresh()); }}>with count</button>
+          <button className="fig-opt" aria-pressed={lockFree} onClick={() => { setLockFree(true); setR(fresh()); }}>lock-free, no count</button>
+        </div>
       </div>
       <figcaption>
-        The interrupt puts samples 1, 2, 3, ... in at head. Main takes them out at tail, in the same order. Both indexes only move forward and wrap from slot 7 to slot 0.
+        The interrupt puts samples 1, 2, 3, ... in at head. Main takes them out at tail, in the same order. Both indexes only move forward and wrap from slot 7 to slot 0. Bright slots with a solid edge hold samples that wait for main; dashed slots are free (their old numbers remain).
       </figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "ring-buffer", Component: RingBuffer };
+export const figure = {
+  id: "ring-buffer",
+  title: "Ring buffer (circular queue)",
+  description: "Put samples in and take them out one at a time to watch head and tail chase each other round eight slots, and what happens when the buffer is full or empty.",
+  Component: RingBuffer,
+};

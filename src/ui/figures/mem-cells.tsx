@@ -42,4 +42,9 @@ function MemCells() {
   );
 }
 
-export const figure = { id: "mem-cells", Component: MemCells };
+export const figure = {
+  id: "mem-cells",
+  title: "Memory as numbered boxes",
+  description: "Run a short program line by line and watch each variable's value land in its own numbered box.",
+  Component: MemCells,
+};

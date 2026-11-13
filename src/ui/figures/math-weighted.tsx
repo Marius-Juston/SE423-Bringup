@@ -83,4 +83,9 @@ function MathWeighted() {
   );
 }
 
-export const figure = { id: "math-weighted", Component: MathWeighted };
+export const figure = {
+  id: "math-weighted",
+  title: "Weighted average of two estimates",
+  description: "Change how much each of two disagreeing numbers is trusted and see the combined value lean towards the more certain one.",
+  Component: MathWeighted,
+};

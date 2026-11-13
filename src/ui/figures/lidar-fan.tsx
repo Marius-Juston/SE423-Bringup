@@ -67,6 +67,7 @@ function LidarFan() {
         .lfan-wall { stroke: var(--text); stroke-width: 2; fill: none; }
         .lfan-robot { fill: var(--surface); stroke: var(--text); stroke-width: 1.4; }
         .lfan-nose { fill: var(--text); }
+        .lfan pre { font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
       `}</style>
       <svg
         ref={svg}
@@ -126,6 +127,14 @@ function LidarFan() {
         <text x="414" y="14" textAnchor="end" className="fig-label dim">seen from above</text>
         <text x="414" y="25" textAnchor="end" className="fig-label dim">− right, + left</text>
       </svg>
+      <div className="fig-step" role="status">
+        <p>
+          Point <strong>{i}</strong> is step 3 × {i} + 44 = <strong>{step}</strong> of the mirror. Step {FRONT_STEP} looks straight ahead, so this point looks {Math.abs(deg) < 0.6 ? "almost straight ahead: " : ""}<strong>{Math.abs(deg).toFixed(2)}°</strong> {deg < 0 ? "to the right (a negative angle)" : "to the left (a positive angle)"}.
+          {room ? (mm[i] >= MIN_MM ? ` In this room it hits something ${mm[i]} mm (${(mm[i] / 304.8).toFixed(2)} ft) away.` : " Nothing is within 4095 mm in this direction.") : ""}
+          {i === 113 ? " No point looks exactly ahead: 113 is the closest." : ""}
+        </p>
+        <pre><code>{`angle = (3*${i} + 44)*0.3515625 - 135;  // ${deg.toFixed(2)}`}</code></pre>
+      </div>
       <div className="fig-controls">
         <div>
           <span>Point i</span>
@@ -148,17 +157,14 @@ function LidarFan() {
           <button className="fig-opt" aria-pressed={room} onClick={() => setRoom(true)}>in a room</button>
         </div>
       </div>
-      <div className="fig-step" role="status">
-        <p>
-          Point <strong>{i}</strong> is step 3 × {i} + 44 = <strong>{step}</strong> of the mirror. Step {FRONT_STEP} looks straight ahead, so this point looks {Math.abs(deg) < 0.6 ? "almost straight ahead: " : ""}<strong>{Math.abs(deg).toFixed(2)}°</strong> {deg < 0 ? "to the right (a negative angle)" : "to the left (a positive angle)"}.
-          {room ? (mm[i] >= MIN_MM ? ` In this room it hits something ${mm[i]} mm (${(mm[i] / 304.8).toFixed(2)} ft) away.` : " Nothing is within 4095 mm in this direction.") : ""}
-          {i === 113 ? " No point looks exactly ahead: 113 is the closest." : ""}
-        </p>
-        <pre><code>{`angle = (3*${i} + 44)*0.3515625 - 135;  // ${deg.toFixed(2)}`}</code></pre>
-      </div>
-      <figcaption>One scan seen from above: 228 points, 1.05° apart, counted from the far right (i = 0) round to the far left (i = 227). Nothing is measured in the 120° behind the robot. You can also drag in the picture to pick a point.</figcaption>
+      <figcaption>One scan seen from above: 228 points, 1.05° apart, counted from the far right (i = 0) round to the far left (i = 227). Nothing is measured in the 120° behind the robot. Pick a point with the slider (with the keyboard: Tab to it, then the arrow keys), with the Jump buttons, or by dragging in the picture.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "lidar-fan", Component: LidarFan };
+export const figure = {
+  id: "lidar-fan",
+  title: "LIDAR scan: which point looks where",
+  description: "Pick one of the 228 points of a scan and see which direction it looks in, the angle the code computes for it and what it measures in a room.",
+  Component: LidarFan,
+};

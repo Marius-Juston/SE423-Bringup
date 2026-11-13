@@ -129,4 +129,9 @@ function DacStaircase() {
   );
 }
 
-export const figure = { id: "dac-staircase", Component: DacStaircase };
+export const figure = {
+  id: "dac-staircase",
+  title: "DAC output staircase",
+  description: "Slide the number written to the DAC and see the output voltage it gives, the size of one step and what happens past the largest number.",
+  Component: DacStaircase,
+};

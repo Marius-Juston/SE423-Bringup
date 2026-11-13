@@ -36,7 +36,7 @@ function MathGrid() {
         .mgrid-slot.rowstart { border-left: 3px solid var(--text); }
         .mgrid-slot.inrow { border-color: var(--arches); border-width: 2px; color: var(--text); }
         .mgrid-slot.on { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
-        .mgrid-code { margin: 0.5rem 0 0; font-size: 0.82rem; }
+        .mgrid-code { margin: 0.5rem 0 0; font-size: 0.74rem; overflow-x: auto; }
         .mgrid-code b { color: var(--harvest); }
       `}</style>
       <p className="mgrid-title">The picture: {ROWS} rows by {COLS} columns. Click a cell.</p>
@@ -68,9 +68,9 @@ function MathGrid() {
         ))}
       </div>
       <pre className="mgrid-code"><code>
-        i   = row * COLS + col;   // {row} * {COLS} + {col} = <b>{sel}</b>{"\n"}
-        row = i / COLS;           // {sel} / {COLS} = <b>{row}</b>  (integer division){"\n"}
-        col = i % COLS;           // {sel} % {COLS} = <b>{col}</b>  (the remainder)
+        i   = row * COLS + col;  // {row} * {COLS} + {col} = <b>{sel}</b>{"\n"}
+        row = i / COLS;  // {sel} / {COLS} = <b>{row}</b>, whole part{"\n"}
+        col = i % COLS;  // {sel} % {COLS} = <b>{col}</b>, remainder
       </code></pre>
       <p className="fig-why" role="status">{status}</p>
       <figcaption>Rows are counted from the top and columns from the left, both from 0. Orange is the chosen cell, the blue outline is its row. The number in each cell is its index in the array.</figcaption>
@@ -78,4 +78,9 @@ function MathGrid() {
   );
 }
 
-export const figure = { id: "math-grid", Component: MathGrid };
+export const figure = {
+  id: "math-grid",
+  title: "A grid stored as one array",
+  description: "Click a cell to see its row and column turn into one array index, and the index turn back into row and column.",
+  Component: MathGrid,
+};

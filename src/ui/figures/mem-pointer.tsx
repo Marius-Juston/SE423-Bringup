@@ -65,4 +65,9 @@ function MemPointer() {
   );
 }
 
-export const figure = { id: "mem-pointer", Component: MemPointer };
+export const figure = {
+  id: "mem-pointer",
+  title: "Pointers",
+  description: "Run a short program line by line and follow the arrow from a pointer to the box whose address it holds.",
+  Component: MemPointer,
+};

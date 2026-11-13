@@ -88,20 +88,6 @@ function SetClearToggle() {
   return (
     <figure className="figure" aria-label="Interactive: SET, CLEAR and TOGGLE registers against read-modify-write on GPADAT">
       <style>{CSS}</style>
-      <div className="fig-controls">
-        <div>
-          <span>Write a 1</span>
-          <button className="sc-run" onClick={() => act("SET")}>GPASET</button>
-          <button className="sc-run" onClick={() => act("CLEAR")}>GPACLEAR</button>
-          <button className="sc-run" onClick={() => act("TOGGLE")}>GPATOGGLE</button>
-          <code>bit 22 only</code>
-        </div>
-        <div>
-          <span>Two lines</span>
-          <button className="fig-opt" aria-pressed={mode === "dat"} onClick={() => begin("dat")}>through GPADAT.bit</button>
-          <button className="fig-opt" aria-pressed={mode === "safe"} onClick={() => begin("safe")}>through GPASET and GPACLEAR</button>
-        </div>
-      </div>
       <svg viewBox="0 0 400 176" role="img" aria-label={`GPIO22: latch ${f.l22}, pin ${volts(f.p22)}${lag22 ? ", still changing" : ""}, LED1 ${f.p22 ? "lit" : "dark"}. GPIO31: latch ${f.l31}, pin ${volts(f.p31)}${lag31 ? ", still changing" : ""}.${f.copy ? ` The CPU's copy of GPADAT holds ${f.copy.c22} for bit 22 and ${f.copy.c31} for bit 31.` : ""}${f.stale ? " The copy of bit 22 is stale." : ""}`}>
         <text x="62" y="12" textAnchor="middle" className="fig-label dim">CPU's copy of GPADAT</text>
         <text x="197" y="12" textAnchor="middle" className="fig-label dim">output latch</text>
@@ -158,9 +144,28 @@ function SetClearToggle() {
           </span>
         </div>
       )}
+      <div className="fig-controls">
+        <div>
+          <span>Write a 1</span>
+          <button className="sc-run" onClick={() => act("SET")}>GPASET</button>
+          <button className="sc-run" onClick={() => act("CLEAR")}>GPACLEAR</button>
+          <button className="sc-run" onClick={() => act("TOGGLE")}>GPATOGGLE</button>
+          <code>bit 22 only</code>
+        </div>
+        <div>
+          <span>Two lines</span>
+          <button className="fig-opt" aria-pressed={mode === "dat"} onClick={() => begin("dat")}>through GPADAT.bit</button>
+          <button className="fig-opt" aria-pressed={mode === "safe"} onClick={() => begin("safe")}>through GPASET and GPACLEAR</button>
+        </div>
+      </div>
       <figcaption>Two pins of port A. SET, CLEAR and TOGGLE change only the bits you write as 1. A .bit write to GPADAT reads the whole port from the pins, changes one bit and writes all 32 bits back, so a pin that had not reached its new level yet gets its old level again.</figcaption>
     </figure>
   );
 }
 
-export const figure = { id: "set-clear-toggle", Component: SetClearToggle };
+export const figure = {
+  id: "set-clear-toggle",
+  title: "SET, CLEAR and TOGGLE against writing GPADAT",
+  description: "Run the same two pin changes with the SET/CLEAR/TOGGLE registers and with a write to GPADAT to see why the second can undo a pin that was still changing.",
+  Component: SetClearToggle,
+};
