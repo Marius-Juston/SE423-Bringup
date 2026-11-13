@@ -279,7 +279,9 @@ function installAdc(b: Board, letter: string): void {
         b.warn(
           b.line,
           "adc-no-result",
-          `${res}.ADCRESULT${s} was read before SOC${s} of ADC${L} finished a conversion, so it still holds 0. Read it after the conversion: in the ADC interrupt function, or once ADCINTFLG shows the SOC is done.`,
+          socLine[s]
+            ? `${res}.ADCRESULT${s} was read before SOC${s} of ADC${L} finished a conversion, so it still holds 0. Read it after the conversion: in the ADC interrupt function, or once ADCINTFLG shows the SOC is done.`
+            : `${res}.ADCRESULT${s} was read, but SOC${s} of ADC${L} was never set up (ADCSOC${s}CTL was not written), so no conversion fills it and it holds 0. Read the result of the SOC you configured.`,
         );
       return stored;
     };

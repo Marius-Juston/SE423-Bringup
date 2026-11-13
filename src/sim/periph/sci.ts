@@ -115,6 +115,29 @@ export class Sci {
     this.b.mem.writes++;
   }
 
+  /** Characters accepted but not yet on the wire, per port. */
+  backlog = [0, 0, 0, 0];
+
+  /**
+   * The course library's send: it keeps a software buffer (buffer.h:
+   * 1024 characters for SCIA, 136 for B and C, 512 for D) and drops what
+   * does not fit. Returns false when the character was dropped.
+   */
+  sendBuffered(port: number, ch: number): boolean {
+    const cap = [1024, 136, 136, 512][port];
+    if (this.backlog[port] >= cap) {
+      this.b.warn(
+        this.b.line,
+        `serial-flood-${port}`,
+        `The program prints faster than Serial${"ABCD"[port]} can send: its ${cap}-character buffer is full, so text is being lost. Print only when a flag asks for it (for example every 100 ms from a timer interrupt) and clear the flag after printing.`,
+      );
+      return false;
+    }
+    this.backlog[port]++;
+    this.send(port, ch, () => this.backlog[port]--);
+    return true;
+  }
+
   /** Queues one character; it leaves the pin after the ones already queued. */
   send(port: number, ch: number, done?: () => void): void {
     const b = this.b;

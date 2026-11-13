@@ -172,8 +172,10 @@ export function sameType(a: CType, b: CType): boolean {
 
 /** Closest name by edit distance, for "did you mean" messages. */
 export function closest(name: string, candidates: Iterable<string>): string | undefined {
+  // A one- or two-letter name is close to everything: a suggestion would only mislead.
+  if (name.length < 3) return undefined;
   let best: string | undefined;
-  let bestD = Math.max(2, Math.floor(name.length / 3)) + 1;
+  let bestD = Math.min(3, Math.max(1, Math.floor(name.length / 3))) + 1;
   const a = name.toLowerCase();
   for (const c of candidates) {
     const b = c.toLowerCase();

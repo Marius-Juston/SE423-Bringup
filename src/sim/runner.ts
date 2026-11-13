@@ -231,7 +231,8 @@ export function runProgram(spec: RunSpec): RunResult {
         const tr = (b.gpio.trace.get(p.pin) ?? []).filter((x) => x.t >= from && x.t <= to);
         if (tr.length < 3) {
           detail = `${p.name} changed ${tr.length} time${tr.length === 1 ? "" : "s"} in the test window, so it is not blinking.`;
-          if (!b.gpio.isOutput(p.pin)) detail += ` GPIO${p.pin} is not set as an output.`;
+          if (b.gpio.mux(p.pin) !== 0) detail += ` GPIO${p.pin} is handed to a peripheral in the pin mux, and that peripheral's signal did not change.`;
+          else if (!b.gpio.isOutput(p.pin)) detail += ` GPIO${p.pin} is not set as an output.`;
           break;
         }
         // Median gap between changes: start-up transitions do not skew it.
@@ -313,7 +314,7 @@ export function runProgram(spec: RunSpec): RunResult {
       case "signal": {
         const v = b.output(c.name, c.at !== undefined ? c.at * MS : undefined);
         if (v === undefined) {
-          detail = `${c.name} never produced a value.`;
+          detail = `${c.name} never produced a value: nothing drove it during the test. Check that the peripheral is switched on and that its pin is selected in the pin mux.`;
           break;
         }
         pass = (c.equals === undefined || Math.abs(v - c.equals) <= (c.tol ?? 1e-9)) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);

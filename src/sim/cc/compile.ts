@@ -286,6 +286,12 @@ export class Compiler {
       const rt = this.rt;
       return (v: number) => st(rt.fp + off, v);
     });
+    if (this.file === "user" && def.t.ret.k !== "void" && def.name !== "main" && !JSON.stringify(def.body).includes('"k":"return"'))
+      this.rt.warn(
+        def.line,
+        "missing-return",
+        `'${def.name}' promises to give back a value, but it has no return statement, so the caller gets a meaningless value. End it with return <value>; or declare it void.`,
+      );
     const body = this.stmt(def.body);
     f.frame = this.frame + (this.frame % 2);
     f.defined = true;
@@ -381,6 +387,12 @@ export class Compiler {
       case "empty":
         return { sync: () => 0 };
       case "expr": {
+        if (this.file === "user" && s.e.k === "bin" && ["==", "!=", "<", ">", "<=", ">="].includes(s.e.op))
+          this.rt.warn(
+            line,
+            "no-effect",
+            `This line compares two values with ${s.e.op} and then throws the answer away, so it does nothing.${s.e.op === "==" ? " To store a value use a single =." : ""}`,
+          );
         // A direct call to a user function runs as a generator so that the
         // simulation can pause inside it.
         if (s.e.k === "call" && s.e.f.k === "id" && !this.lookupLocal(s.e.f.name)) {
@@ -450,6 +462,12 @@ export class Compiler {
         return seq(body, rt);
       }
       case "if": {
+        if (this.file === "user" && s.a.k === "empty" && !s.b)
+          this.rt.warn(
+            line,
+            "empty-if",
+            "There is a semicolon right after the if (...), so the if controls nothing and the next line always runs. Remove that semicolon.",
+          );
         const c = this.cond(s.c);
         const a = this.stmt(s.a);
         const b = s.b ? this.stmt(s.b) : undefined;
@@ -1131,7 +1149,24 @@ export class Compiler {
       };
     }
     if (e.op === "=") {
-      const b = this.convert(this.rvalue(this.expr(e.b)), a.t, line, "assign");
+      const raw = this.rvalue(this.expr(e.b));
+      // A constant too big for a 16-bit variable or register loses its upper bits without a sound on the real chip.
+      if (raw.c !== undefined && a.t.k === "int" && a.t.w === 1 && !a.lv.bit && Number.isInteger(raw.c) && (raw.c > 65535 || raw.c < -32768 || (a.t.s && raw.c > 32767 && raw.t.k === "int" && raw.t.s))) {
+        const c = raw.c;
+        const rt = this.rt;
+        const g = raw.get;
+        raw.get = () => {
+          rt.warn(
+            line,
+            "const-overflow",
+            c > 65535 || c < -32768
+              ? `${c} does not fit in 16 bits (0 to 65535), so only the low 16 bits were stored: ${c & 0xffff}. Use a smaller value, or a 32-bit variable (int32_t, uint32_t).`
+              : `${c} does not fit in a signed 16-bit int (-32768 to 32767): it is stored as ${(c << 16) >> 16}. On this chip int is 16 bits; use int32_t for larger numbers.`,
+          );
+          return g();
+        };
+      }
+      const b = this.convert(raw, a.t, line, "assign");
       const bg = b.get;
       if (!a.lv.bit) {
         const st = this.storer(a.t);
@@ -1278,9 +1313,9 @@ export class Compiler {
     const is16s = it.w === 1 && it.s;
     const overflow = (v: number, sym: string, x: number, y: number) => {
       rt.warn(
-        rt.line,
+        rt.line || line,
         "int16-overflow",
-        `${x} ${sym} ${y} = ${v} does not fit in a 16-bit int (-32768 to 32767), so the result wrapped around to ${n(v)}. Make one operand 32-bit (for example ${x}L) or use int32_t.`,
+        `${x} ${sym} ${y} = ${v} does not fit in a 16-bit int (-32768 to 32767), so the result wrapped around to ${n(v)}. Make one operand 32-bit (for example ${x}L), or write ${x}.0 if the result is meant to be a float.`,
       );
     };
     switch (op) {

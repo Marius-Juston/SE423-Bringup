@@ -374,13 +374,14 @@ export function installLibrary(b: Board): void {
     const text = format(a, t, 1, line);
     if (b.isrDepth)
       b.warn(b.line, "print-in-isr", "serial_printf is slow. Calling it inside an interrupt function delays every other interrupt: set a flag here and print from the while(1) loop in main().");
-    for (const ch of text) b.sci.send(port, ch.charCodeAt(0));
+    for (const ch of text) if (!b.sci.sendBuffered(port, ch.charCodeAt(0))) break;
     return 0;
   });
   c.defineNative("__serial_send", (a, _t, line) => {
     const port = portOf(a[0], b.line);
-    for (let i = 0; i < a[2]; i++) b.sci.send(port, mem.peek(a[1] + i, 1) & 0xff);
-    return 0;
+    let i = 0;
+    for (; i < a[2]; i++) if (!b.sci.sendBuffered(port, mem.peek(a[1] + i, 1) & 0xff)) break;
+    return i;
   });
   c.defineNative("UART_printfLine", (a, t, line) => {
     const row = a[0];

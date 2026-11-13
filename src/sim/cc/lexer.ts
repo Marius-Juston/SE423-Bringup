@@ -266,6 +266,10 @@ export class Preprocessor {
           }
           body = body.slice(k + 1);
         }
+        if (!params && body[0]?.v === "=")
+          throw err(`#define takes no '=': write #define ${id.v} ${body.slice(1).map((b) => b.v).join(" ") || "10"}`);
+        if (body.length && body[body.length - 1].v === ";")
+          throw err(`Remove the ';' at the end of this #define. Everything after the name is pasted wherever ${id.v} is used, semicolon included.`);
         if (body.some((b) => b.v === "##" || (b.v === "#" && params)))
           throw err("The # and ## macro operators are not available in this game.");
         this.macros.set(id.v, { name: id.v, params, body });
