@@ -6,6 +6,7 @@ import { LevelView } from "./LevelView";
 import { Handbook } from "./Handbook";
 import { Sandbox } from "./Sandbox";
 import { Settings } from "./Settings";
+import { Figure } from "./figures";
 
 export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook" } | { name: "sandbox" } | { name: "settings" };
 
@@ -37,6 +38,19 @@ class Boundary extends Component<{ children: ReactNode; onReset: () => void }, {
 }
 
 export function App() {
+  // ?figure=<id> shows one figure on its own (used by tools/shot.mjs).
+  const only = new URLSearchParams(window.location.search).get("figure");
+  if (only) {
+    return (
+      <div style={{ maxWidth: 640, margin: "0 auto", padding: "1rem" }}>
+        <Figure id={only} />
+      </div>
+    );
+  }
+  return <Game />;
+}
+
+function Game() {
   const [view, setView] = useState<View>({ name: "map" });
   const save = useSave();
   const total = CHAPTERS.reduce((n, c) => n + c.levels.length, 0);
