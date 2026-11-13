@@ -79,7 +79,7 @@ function I2cBus() {
   const [mode, setMode] = useState<"hand" | "xfer">("hand");
   const [pull, setPull] = useState<boolean[][]>([[false, false], [false, false], [false, false]]);
   const [addr, setAddr] = useState(0x48);
-  const [read, setRead] = useState(false);
+  const [read, setRead] = useState(true);
   const [step, setStep] = useState(0);
   const { items, groups, slave } = build(addr, read);
   const s = Math.min(step, items.length - 1);

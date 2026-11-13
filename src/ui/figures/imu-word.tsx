@@ -122,7 +122,7 @@ function ImuWord() {
               {byteBox(216, y, r.b, read && (r.whole || (r.k === 0 && words === 1)))}
               {read && r.whole && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent)" }}>= {name(r.a!).replace(" high", "")}</text>}
               {read && r.a !== null && isTemp(r.a) && isTemp(r.b) && <text x={348} y={y + 10.5} className="fig-label dim">skip this word</text>}
-              {read && r.k === 0 && words > 1 && <text x={348} y={y + 10.5} className="fig-label dim">throw away</text>}
+              {read && r.k === 0 && words > 1 && <text x={348} y={y + 10.5} className="fig-label dim">{isHigh(reg) && !isTemp(reg) ? "half a reading" : "throw away"}</text>}
               {read && r.k === 0 && words === 1 && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent)" }}>& 0x00FF</text>}
             </g>
           );

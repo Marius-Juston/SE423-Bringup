@@ -11,7 +11,7 @@ import type { BenchView, ViewProps } from "./types";
 // (can.ts keeps no list of received frames).
 
 const CSS = `
-.bl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; font-size: 0.85rem; max-height: 15rem; overflow: auto; }
+.bl-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; font-size: 0.85rem; }
 .bl-list li { display: grid; grid-template-columns: 5.6rem 2.6rem 1fr; gap: 0.4rem; align-items: baseline; padding: 0.1rem 0.3rem; border-radius: 4px; }
 .bl-list li:last-child { background: var(--inset); }
 .bl-t { font-family: var(--mono); color: var(--dim); font-size: 0.78rem; text-align: right; }
@@ -19,13 +19,14 @@ const CSS = `
 .bl-bus.spi { color: var(--accent); }
 .bl-bus.i2c { color: var(--info); }
 .bl-bus.can { color: var(--ok); }
-.bl-list code { font-size: 0.82rem; }
+.bl-list code { font-size: 0.8rem; overflow-wrap: anywhere; }
 .bl-bad { color: var(--bad); font-weight: 700; }
 .bl-sum { color: var(--dim); font-size: 0.8rem; margin: 0.35rem 0 0; }
 `;
 
 const MS = 1e6;
-const MAX = 14;
+/** Lines shown (a line is one SPI transfer, one I2C transfer or one CAN frame). */
+const MAX = 6;
 const hex = (v: number, d: number) => "0x" + (v >>> 0).toString(16).toUpperCase().padStart(d, "0");
 
 interface SpiBusState {
@@ -48,21 +49,33 @@ function BusLog({ board, window: [, to] }: ViewProps) {
   const i2c = i2cOf(board)?.bus.log ?? [];
   const can = canOf(board);
 
-  // Only the tail of each log can end up among the last MAX lines.
-  let nSpi = 0;
-  for (let i = spi.length - 1; i >= 0 && nSpi < MAX; i--) {
-    const w = spi[i];
-    if (w.t > until) continue;
-    nSpi++;
+  // SPI: words that follow each other closely (same device) are one transfer.
+  const tail = spi.filter((w) => w.t <= until).slice(-MAX * 16);
+  let minGap = 100_000;
+  for (let i = 1; i < tail.length; i++) if (tail[i].t > tail[i - 1].t) minGap = Math.min(minGap, tail[i].t - tail[i - 1].t);
+  const groups: SpiWord[][] = [];
+  for (const w of tail) {
+    const g = groups[groups.length - 1];
+    const last = g?.[g.length - 1];
+    if (g && last && g.length < 16 && last.device === w.device && last.port === w.port && last.bits === w.bits && w.t - last.t <= 2.6 * minGap) g.push(w);
+    else groups.push([w]);
+  }
+  for (const g of groups.slice(-MAX)) {
+    const w = g[g.length - 1];
     const d = Math.ceil(w.bits / 4);
     const loop = !w.device && board.dev.get(`Spi${w.port}Regs.SPICCR`, "SPILBK") === 1;
+    const list = (f: (x: SpiWord) => number) => g.map((x) => hex(f(x), d)).join(" ");
     entries.push({
       t: w.t,
       bus: "spi",
       body: (
         <>
-          {w.bits}-bit word: sent <code>{hex(w.out, d)}</code>, received <code>{hex(w.in, d)}</code>{" "}
-          {w.device ? `from the ${w.device}` : loop ? "(loopback: its own word)" : <span className="bl-bad">(no chip select low: nobody answered)</span>}
+          {g.length} {w.bits}-bit word{g.length > 1 ? "s" : ""} {w.device ? `with the ${w.device}` : loop ? "in loopback" : ""}
+          {!w.device && !loop && <span className="bl-bad">with no chip select low: nobody answered</span>}
+          <br />
+          sent <code>{list((x) => x.out)}</code>
+          <br />
+          received <code>{list((x) => x.in)}</code>
         </>
       ),
     });
@@ -84,7 +97,7 @@ function BusLog({ board, window: [, to] }: ViewProps) {
               ; {x.data.length} byte{x.data.length > 1 ? "s" : ""} {x.read ? "from the device" : "to the device"}: <code>{x.data.map((v) => hex(v, 2)).join(" ")}</code>
             </>
           ) : null}
-          {x.stopped ? "; STOP" : <span className="bl-bad">; no STOP yet: the bus is still busy</span>}
+          {x.stopped ? "; STOP" : "; no STOP yet"}
         </>
       ),
     });

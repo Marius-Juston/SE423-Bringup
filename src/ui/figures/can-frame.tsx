@@ -40,7 +40,7 @@ const FIELDS: Field[] = [
 /** A CAN data frame, field by field, carrying the course's distance message. */
 function CanFrame() {
   const [sel, setSel] = useState("data");
-  const [dist, setDist] = useState(1234);
+  const [dist, setDist] = useState(500);
   const [sensor, setSensor] = useState(1);
   const id = `0x060B010${sensor}`;
   const bytes = [dist & 0xff, dist >> 8, 0x00, 0x00, 0x00, 0x80, 0x02, 0x00];

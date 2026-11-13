@@ -7,6 +7,7 @@ import type { BenchView, ViewProps } from "./types";
 // program has worked out, when it uses the course's variable names.
 
 const CSS = `
+.iv-svg { width: 100%; display: block; background: var(--inset); border: 1px solid var(--border); border-radius: 6px; }
 .iv-ring { fill: none; stroke: var(--border-strong); stroke-width: 1; }
 .iv-ring.g1 { stroke-dasharray: 3 3; }
 .iv-txt { fill: var(--text); font-size: 10px; font-family: var(--sans); }
@@ -60,8 +61,8 @@ function ImuView({ board }: ViewProps) {
   return (
     <div>
       <style>{CSS}</style>
-      <svg className="scope" viewBox="0 0 400 152" role="img" aria-label={`Acceleration X ${ax.toFixed(2)} g, Y ${ay.toFixed(2)} g, Z ${az.toFixed(2)} g. Turn rate about Z ${gz.toFixed(1)} degrees per second, ${turning}.`}>
-        <text x={8} y={13} className="iv-txt dim">acceleration, seen from above</text>
+      <svg className="iv-svg" viewBox="0 0 400 152" role="img" aria-label={`Acceleration X ${ax.toFixed(2)} g, Y ${ay.toFixed(2)} g, Z ${az.toFixed(2)} g. Turn rate about Z ${gz.toFixed(1)} degrees per second, ${turning}.`}>
+        <text x={8} y={13} className="iv-txt dim">X and Y, seen from above</text>
         <circle cx={CX} cy={CY} r={2 * G} className="iv-ring" />
         <circle cx={CX} cy={CY} r={G} className="iv-ring g1" />
         <line x1={CX - 2 * G} x2={CX + 2 * G} y1={CY} y2={CY} className="iv-ring" />
@@ -71,7 +72,7 @@ function ImuView({ board }: ViewProps) {
         <text x={CX + G + 2} y={CY + 11} className="iv-txt dim">1 g</text>
         <line x1={CX} y1={CY} x2={tipX} y2={tipY} stroke="var(--accent)" strokeWidth={2.5} />
         {head ? <path d={head} fill="var(--accent)" /> : <circle cx={CX} cy={CY} r={3.5} fill="var(--accent)" />}
-        <text x={8} y={146} className="iv-num">X {ax.toFixed(2)} g  Y {ay.toFixed(2)} g</text>
+        <text x={8} y={146} className="iv-num">X {ax.toFixed(2)} g, Y {ay.toFixed(2)} g</text>
         {/* Z */}
         <text x={ZX} y={13} textAnchor="middle" className="iv-txt dim">Z (up)</text>
         <line x1={ZX} x2={ZX} y1={zy(2)} y2={zy(-2)} className="iv-ring" />

@@ -825,6 +825,10 @@ This chapter covers the two buses the chip offers besides SPI: **I2C** for chips
 - **I2C**: 2 wires for **all** devices: **SDA** (data) and **SCL** (clock). The master makes the clock. The slave is chosen by a **7-bit address** sent as the first byte. 100 kbit/s, or 400 kbit/s in fast mode.
 - **CAN**: 2 wires (CANH and CANL) for all devices, carrying one signal as a voltage **difference**, which resists electrical noise. No clock wire: every node times the bits itself, as a UART does. No device addresses at all: each message carries an **identifier** that says what it contains. Up to 1 Mbit/s.
 
+Compare them in the figure: add a device and count the wires.
+
+{{figure:bus-compare}}
+
 ## Words from the lecture
 - **Synchronous**: a clock wire says when each bit is valid (SPI, I2C). **Asynchronous**: no clock wire (UART, CAN).
 - **Master / slave**: the master starts every transfer and the slave answers (SPI, I2C). On CAN every node may start a message.
@@ -832,6 +836,10 @@ This chapter covers the two buses the chip offers besides SPI: **I2C** for chips
 
 ## What makes sharing possible
 On a shared wire two devices can talk at once. If one drove the wire to 3.3 V while the other drove it to 0 V, that would be a short circuit. I2C and CAN avoid this in the same way: a device can only pull the bus to **0**. To send a 1 it lets go, and a resistor returns the bus to 1. A 0 from anyone wins. The next levels build on this one idea.
+
+Try it in the figure: let two devices pull the same line low, then release one of them.
+
+{{figure:i2c-bus}}
 
 ## On the robot
 - I2CB is on GPIO40 (SDAB) and GPIO41 (SCLB). In this game a temperature sensor answers at address 0x48 and a clock chip at 0x68.
@@ -881,6 +889,10 @@ An I2C pin is an **open-drain** output: inside the chip, one transistor can conn
 Something else must bring a released line back to 1: a **pull-up resistor** from the line to 3.3 V. The bus has two lines, so it has two resistors, **one for the whole bus**, not one per device.
 
 Every device connects to the **same** two lines: all SDA pins together, all SCL pins together. Nothing is chained from one device to the next.
+
+The figure shows the finished bus at work: close any switch and the whole line goes low.
+
+{{figure:i2c-bus}}
 
 Already in place (grey):
 
@@ -958,6 +970,10 @@ The rules:
 - **ACK** (ninth clock): the master lets go of SDA and the addressed device pulls it **low** to say "I am here". SDA staying high is a NACK: nobody answered.
 - **STOP** (P): SDA rises **while SCL is high**. So SDA must be low first.
 
+See the rules at work in the figure: choose "step through a transfer" and watch who pulls SDA at each bit.
+
+{{figure:i2c-bus}}
+
 The address is 0x48 = \`100 1000\` (7 bits). The master wants to **write**. The sensor is there and acknowledges.
 
 The columns are: idle, S, address bits 6 to 0, W (the R/W bit), A (the ACK bit), then the STOP: one cell with SCL low, one with SCL high, and idle again.
@@ -998,6 +1014,10 @@ Because every device can only pull low or let go, each line behaves like an AND 
 **Clock synchronisation.** A device may hold SCL low. SCL only goes high when everyone has let go, so the slowest device sets the low time. A slave uses this to make a fast master wait.
 
 **Arbitration.** I2C allows more than one master. If two start at the same moment, both send their address byte and both **read SDA back** after every bit. A master that sent a 1 (let go) but reads a 0 knows someone else is pulling the line. It has lost: it stops at once and tries again later. The other master notices nothing, and its message is not damaged.
+
+Try it in the figure: give the two masters different addresses and step through the bits.
+
+{{figure:i2c-arbitration}}
 `,
       questions: [
         {
@@ -1237,6 +1257,10 @@ The robot is meant to get a second temperature sensor at address **0x49**. It is
 
 With the code of the last level, the read of 0x49 would wait for ever: no device pulls SDA low in the ninth clock, so no byte ever arrives.
 
+See it in the figure: choose "step through a transfer" and the address 0x49.
+
+{{figure:i2c-bus}}
+
 ## What the chip does on a NACK
 When the address is not acknowledged the module sets \`I2CSTR.bit.NACK\` and **stops where it is, holding the bus**: SCL stays low and the bus stays busy. The program must do two things:
 
@@ -1383,6 +1407,10 @@ A data frame, in the order it is sent:
 - the **ACK** slot: the sender lets go, and every node that received the frame without error pulls the bus dominant
 - the end of frame: seven recessive bits
 
+Choose a field in the figure to see what it is for, and move the distance to watch the data bytes change.
+
+{{figure:can-frame}}
+
 Order the parts.
 `,
       steps: [
@@ -1412,6 +1440,10 @@ Order the parts.
 Two nodes may start a frame in the same instant. Both send their identifier, most significant bit first, and both **read the bus back** after every bit, exactly as two I2C masters do. A node that sent recessive (1) but reads dominant (0) has lost. It stops sending at once and becomes a receiver.
 
 The frame of the winner is not damaged, and no time is lost. Since 0 beats 1, **the lower identifier wins**: the identifier is also the priority of the message.
+
+Try it in the figure: set two identifiers and see which node gives way, and at which bit.
+
+{{figure:can-arbitration}}
 
 ## Acknowledge
 The ACK bit is pulled dominant by **every** node that received the frame correctly, not by one addressed device. A sender that sees no ACK knows that nobody heard it, and sends the frame again.
@@ -1569,6 +1601,10 @@ The identifier is 0x060B0101. \`CAN_MSG_FRAME_EXT\` says it has 29 bits, the 0 i
 2. **Interrupt.** CANB0 is **PIE group 9, interrupt 7**. Set its \`PIEIER9\` bit, and the group's bit in \`IER\`.
 
 3. **Decode.** In \`can_isr\`, compute \`dis_1\` in millimetres from \`dis_raw_1[0]\` (low byte) and \`dis_raw_1[1]\` (high byte).
+
+The figure shows the frame your code receives: bytes 0 and 1 are the distance.
+
+{{figure:can-frame}}
 
 The sensor sends every 100 ms. The tests turn its knob to 1234 mm and then to 300 mm.
 `,

@@ -154,9 +154,7 @@ On the robot, the PWM signal drives the amplifier's **direction** input. While t
 - **100 %**: full power in the positive direction.
 - **0 %**: full power in the negative direction.
 
-So "motor off" is not a quiet pin. It is a 20 kHz square wave at exactly 50 %. Try it in the figure: close the switches by hand to send current through the motor either way, then hand the bridge to one PWM pin and move the control effort.
-
-{{figure:h-bridge}}
+So "motor off" is not a quiet pin. It is a 20 kHz square wave at exactly 50 %.
 
 ## RC servo: the pulse width is an angle
 An RC servo has its own controller inside. It expects a pulse every 20 ms (**50 Hz**) and turns its arm to the angle the **width** of that pulse stands for. On the course's servos about 4 % duty is -90 degrees, 8 % is 0 degrees and 12 % is +90 degrees. The rest of the period carries no information. Try it in the figure: drag the falling edge of the pulse and watch the arm.
@@ -164,9 +162,8 @@ An RC servo has its own controller inside. It expects a pulse every 20 ms (**50 
 {{figure:servo-pulse}}
 
 ## Buzzer: the frequency is the note
-A piezo buzzer clicks on every edge. A square wave of 440 Hz sounds as the note A. Here the duty cycle stays at 50 % and you change the **period**. Try it in the figure: pick a note and see the counter's teeth get shorter as the pitch rises.
+A piezo buzzer clicks on every edge. A square wave of 440 Hz sounds as the note A. Here the duty cycle stays at 50 % and you change the **period**.
 
-{{figure:buzzer-tone}}
 `,
       questions: [
         {

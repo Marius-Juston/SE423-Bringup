@@ -164,6 +164,10 @@ The two must agree on three things, or the bits are read at the wrong moments:
 ## Full duplex: a swap
 There are two data wires, so on every clock cycle one bit goes out on SIMO **and** one bit comes in on SOMI. The slave's bit is shifted into the bottom of the master's shift register as the master's bit leaves the top. After 8 cycles the two registers have swapped contents.
 
+Try it in the figure: press "one clock" eight times and follow a bit round the ring.
+
+{{figure:spi-shift}}
+
 This has a consequence you will use in every program: **every word you send is also a word you receive**. To read from a sensor you must send something, often zeros, just to make the clock run. And when you only want to send, a word still arrives, and you must take it out of the receiver.
 `,
       questions: [
@@ -214,6 +218,10 @@ Rules for the wiring:
 - **Each slave needs its own chip select.** The course uses two plain GPIO outputs: GPIO66 for the MPU-9250 and GPIO29 for the DAN28027.
 
 Both slaves' outputs are wired to the same SOMI line. That only works because a slave that is not selected lets go of the line. If both chip selects were low at once, both would drive SOMI and the master would read garbage.
+
+Try it in the figure: pull one chip select low, then both, then neither.
+
+{{figure:spi-bus}}
 
 Place the eight wires.
 `,
@@ -590,6 +598,10 @@ A **FIFO** ("first in, first out") is a queue of 16 words. With the FIFOs enable
 - every word that arrives is added to the receive queue; \`SpibRegs.SPIFFRX.bit.RXFFST\` says how many are waiting
 - every read of \`SpibRegs.SPIRXBUF\` takes the oldest word out
 
+Try it in the figure: write three words, clock them out, then read them back in order.
+
+{{figure:spi-fifo}}
+
 ## Loopback
 \`SPILBK = 1\` joins SIMO to SOMI inside the chip, so the master receives exactly what it sends. It is a way to test a set-up without any device.
 
@@ -732,6 +744,10 @@ Two 16-bit words take 32 us at 1 MHz. Waiting for them in an empty loop wastes t
 - **Timer 0 interrupt, every 1 ms: start the transfer.** Pull the chip select low, say how many words to wait for, write the words to \`SPITXBUF\`, and return at once.
 - **SPIB receive interrupt: finish it.** The SPI raises this interrupt when the receive FIFO holds at least \`RXFFIL\` words: when \`RXFFST >= RXFFIL\`. Read the words, raise the chip select, clear the flag.
 
+Try it in the figure: set RXFFIL to 2, write two words and clock them out one at a time. The interrupt appears when the second word arrives.
+
+{{figure:spi-fifo}}
+
 \`SPIB_RX\` is interrupt **INT6.3**: PIE group 6, channel 3. The vector and the enables are already written in \`main()\`.
 
 ## Write the two functions
@@ -872,6 +888,10 @@ Two things are wrong:
 
 - **The interrupt level does not match the transfer.** \`SPIB_isr\` runs as soon as \`RXFFST >= RXFFIL\`. Count the words that are sent and compare with \`RXFFIL\`. If the interrupt comes too early, the last read finds the FIFO empty and returns an **old** word, and the real word arrives later and is still in the FIFO at the next transfer.
 - **The chip select is never raised.** A real device sees one endless transfer: it never learns where a message ends and the next begins. The chip select must go high after every transfer.
+
+Try the first mistake in the figure: set RXFFIL to 2, write 3 words and clock them out one at a time.
+
+{{figure:spi-fifo}}
 
 Fix both. Do not change what is sent.
 `,
@@ -1176,6 +1196,10 @@ With words shorter than 16 bits, the SPI sends the **top** bits of what you writ
 
 Received data is **right-justified**: the byte is in the lower 8 bits of \`SPIRXBUF\`. The upper 8 bits are not zero in general, they hold what was left in the shift register, so mask them off with \`& 0x00FF\`.
 
+Try it in the figure: with 8-bit words, write 0xA5 "as it is", then "shifted to the top".
+
+{{figure:spi-justify}}
+
 ## Write send24()
 \`send24(value)\` must:
 
@@ -1279,6 +1303,10 @@ ${spib({ loopback: true, char: "7  " })}
 Run it: \`a1\` is right, the others are not. Look at \`RXFFST\` in the register view after the program has run.
 
 Remember the rule from the first level: every word sent is a word received. The receive FIFO is a queue, and \`SPIRXBUF\` always hands out the **oldest** word in it. A word that is not read out stays there and is first in line next time.
+
+Try it in the figure: write two words, clock them out, read only one, then do the same again.
+
+{{figure:spi-fifo}}
 
 Fix \`ask()\`. Keep sending two words per call.
 `,

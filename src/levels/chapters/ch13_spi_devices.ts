@@ -147,6 +147,10 @@ The course sends 16-bit words, so each word is two of those bytes:
 - **Read** register 0x75: send \`0x8000 | 0x7500\` = \`0xF500\`. The upper byte of the word that comes back means nothing, because the device was still listening to the address. The **lower byte is the register's value**.
 - A second word in the same transfer covers the **next two** registers, and so on.
 
+Build the words in the figure: choose read or write and a register, then add words to see a burst.
+
+{{figure:imu-word}}
+
 ## Registers you will use
 - **0x75 WHO_AM_I**: always reads 0x71. Used to test the link.
 - **0x1B GYRO_CONFIG**, **0x1C ACCEL_CONFIG**: the measuring ranges. The course selects +-250 degrees per second and +-4 g.
@@ -159,6 +163,10 @@ A raw reading runs from -32768 to 32767 and full scale is the selected range. Th
 - accelerometer: \`raw * 4.0 / 32767.0\` g
 
 (The exact divisor is 32768. The course's 32767 differs by 0.003 %, far below the sensor's noise.)
+
+Move the raw count in the figure to see the value it stands for, at both ends of the range.
+
+{{figure:imu-scaling}}
 
 ## Limits
 The MPU-9250 accepts a clock of at most 1 MHz, reads data on the rising clock edge, and wants a short pause between transfers. The course waits 10 us.
@@ -431,6 +439,10 @@ After power-up the accelerometer measures +-2 g. The course changes that and swi
 2. Read them back with the given \`mpu_read\` into \`cfg1a\`, \`cfg1c\` and \`cfg1d\`. Reading back what you wrote is the standard check that a device was configured.
 
 \`main()\` then calls the given \`read_accel_z()\`. The board lies flat, so the Z axis feels 1 g. With the +-2 g range that reads 16384. With +-4 g the same 1 g is only a quarter of full scale: **8192**.
+
+See it in the figure: choose an accelerometer range, then press "1 g".
+
+{{figure:imu-scaling}}
 `,
       kit: "robot",
       durationMs: 2,

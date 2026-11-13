@@ -38,10 +38,10 @@ function HexIn({ label, value, digits, max, set }: { label: string; value: numbe
 }
 
 /** Two senders start together: the one that sends 1 and reads 0 backs off. */
-function I2cArbitration() {
-  const [can, setCan] = useState(false);
-  const [a, setA] = useState(0x48);
-  const [b, setB] = useState(0x68);
+export function Arbitration({ startCan = false }: { startCan?: boolean }) {
+  const [can, setCan] = useState(startCan);
+  const [a, setA] = useState(startCan ? 0x65a : 0x48);
+  const [b, setB] = useState(startCan ? 0x653 : 0x68);
   const [step, setStep] = useState(0);
   const n = can ? 11 : 7;
   const max = (1 << n) - 1;
@@ -152,6 +152,10 @@ function I2cArbitration() {
       <figcaption>A sender can only pull the bus to 0 or let go, so the bus is the AND of what everyone sends. Each sender compares what it sent with what it reads. The first one to send 1 and read 0 gives way, and the other's message goes through untouched: no collision, no lost time. The lower number always wins.</figcaption>
     </figure>
   );
+}
+
+function I2cArbitration() {
+  return <Arbitration />;
 }
 
 export const figure = { id: "i2c-arbitration", Component: I2cArbitration };

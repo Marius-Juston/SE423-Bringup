@@ -13,7 +13,7 @@ const CSS = `
 const SLAVES = [
   { name: "MPU-9250", cs: "GPIO66", reply: 0x0071, what: "its WHO_AM_I answer" },
   { name: "DAN28027", cs: "GPIO29", reply: 0x0800, what: "its ADC reading" },
-  { name: "a third slave", cs: "one more GPIO", reply: 0x1234, what: "its data" },
+  { name: "third slave", cs: "its GPIO", reply: 0x1234, what: "its data" },
 ];
 const hex4 = (v: number) => "0x" + v.toString(16).toUpperCase().padStart(4, "0");
 
@@ -35,10 +35,10 @@ function SpiBus() {
   const csX = (i: number) => 238 - i * 18;
   const masterH = csY(count - 1) + 12 - 14;
   const why = conflict
-    ? `Bus conflict: ${sel.map((s) => s.name).join(" and ")} are selected together, so ${sel.length === 2 ? "both" : "all"} drive SOMI. Where one sends 1 and another 0 the outputs fight, and the word the master reads is garbage. Only one chip select may be low at a time.`
+    ? `Bus conflict: the ${sel.map((s) => s.name).join(" and the ")} are selected together, so ${sel.length === 2 ? "both" : "all"} drive SOMI. Where one sends 1 and another 0 the outputs fight, and the word the master reads is garbage. Only one chip select may be low at a time.`
     : none
       ? "No chip select is low. Every slave ignores the clock and lets go of SOMI. Nothing drives the line, the pull-up holds it high, and a transfer reads all 1s: 0xFFFF. Seeing 0xFFFF usually means the chip select is not low."
-      : `Only ${sel[0].name} is selected (${sel[0].cs} low). It alone follows the clock and drives SOMI, so the master reads ${sel[0].what}, ${hex4(read)}. The other${count > 2 ? "s have" : " has"} let go of SOMI.`;
+      : `Only the ${sel[0].name} is selected (${sel[0].cs} low). It alone follows the clock and drives SOMI, so the master reads ${sel[0].what}, ${hex4(read)}. The other${count > 2 ? "s have" : " has"} let go of SOMI.`;
   return (
     <figure className="figure" aria-label="Interactive wiring diagram of one SPI master and several slaves">
       <style>{CSS}</style>
