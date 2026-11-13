@@ -128,7 +128,7 @@ export const ch05: Chapter = {
   number: 5,
   title: "Interrupts",
   blurb: "From a timer flag to your function: PIE, IER, EINT and PIEACK.",
-  requires: ["timers", "inputs"],
+  requires: ["timers"],
   course: ["L4", "Lab 1", "Lab 2", "HW2"],
   levels: [
     {
@@ -138,9 +138,9 @@ export const ch05: Chapter = {
       goal: "Learn what an interrupt is and the path a request takes to reach your function.",
       refs: [{ course: "L4" }, { trm: "3.4.1" }, { trm: "3.4.2" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
       brief: `
-So far your code asked the hardware the same question over and over: "has the time passed yet?" That is **polling**. The CPU is busy asking and can do nothing else.
+So far your code asked the hardware the same question over and over: "has the time passed yet?" That is **polling**, and while the CPU is asking it does nothing else.
 
-With an **interrupt** the hardware tells the CPU. When the event happens, the CPU pauses what it is doing, runs a function you wrote, and then continues exactly where it stopped. \`main()\` does not call that function. The hardware does.
+With an **interrupt** the hardware tells the CPU. When the event happens, the CPU pauses what it is doing, runs a function you wrote, and then continues exactly where it stopped. \`main()\` never calls that function. The hardware does.
 
 {{figure:polling-vs-interrupt}}
 
@@ -154,33 +154,28 @@ __interrupt void cpu_timer0_isr(void)
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 \`\`\`
-- It takes no parameters and returns nothing: nobody calls it, so nobody can pass or receive a value. It talks to the rest of the program through global variables.
-- \`__interrupt\` tells the compiler to save the CPU registers on entry, restore them on exit, and return with the special return-from-interrupt instruction.
+- \`__interrupt\` marks a function that the hardware calls. Such a function is also called an interrupt service routine, **ISR**.
+- It takes no parameters and returns nothing: nobody calls it, so nobody can pass or receive a value. It shares data with the rest of the program through global variables.
 - Keep it **short**. While it runs, other interrupts wait.
 
-It is also called an interrupt service routine, **ISR**.
-
 ## The path of a request
-Many more peripheral signals want the CPU's attention than the CPU has interrupt lines. The **PIE** (Peripheral Interrupt Expansion) block collects the peripheral signals into 12 **groups** of up to 16 **channels**. Group x feeds CPU interrupt INTx. Timer 0 is group 1, channel 7, written **INT1.7**.
+The chip has far more interrupt sources than the CPU has interrupt lines. The **PIE** (Peripheral Interrupt Expansion) block sorts them into 12 **groups** of up to 16 **channels**. Group x feeds CPU interrupt line INTx. Timer 0 is group 1, channel 7, written **INT1.7**.
 
 A request must pass every gate in this chain:
 
-1. The peripheral raises its request, and the flag bit \`PIEIFRx.y\` is set.
-2. \`PIEIERx.y\`, the enable bit for that one channel, must be 1.
-3. The group's \`PIEACK\` bit must be 0. When the request passes, the PIE sets this bit to 1, which blocks the whole group until your function clears it.
+1. The peripheral raises its request. The flag bit \`PIEIFRx.y\` is set.
+2. \`PIEIERx.y\`, the enable bit of that one channel, must be 1.
+3. The group's \`PIEACK\` bit must be 0. As the request passes, the PIE sets this bit, which blocks the whole group until your function clears it. That is the last line of the function above.
 4. The request sets the CPU flag bit \`IFR.x\`.
 5. The CPU enable bit \`IER.x\` must be 1.
 6. The global mask \`INTM\` must be 0. \`EINT;\` clears it, \`DINT;\` sets it.
 7. The CPU looks up the address of your function in the **vector table** (\`PieVectTable\`) and jumps to it.
 
-Miss one gate and nothing happens. There is no error message, your function just never runs. Most of this chapter is about finding the closed gate.
+One closed gate and nothing happens: no error message, the function just never runs. Most of this chapter is about finding the closed gate.
 
 {{figure:interrupt-path}}
 
-Try it in the figure: let the timer reach zero, see where the request stops, and open that gate with the line of C shown next to it. When the function has run once, let the timer reach zero again.
-
-## What the CPU does on the way in
-It saves its state on the stack, clears \`IFR.x\` and \`IER.x\`, **sets INTM** and clears EALLOW. Because INTM is set, an interrupt function is not interrupted by another one unless you allow it. When the function returns, the old state comes back.
+Try it in the figure: let the timer reach zero, see where the request stops, and open that gate with the line of C shown next to it.
 `,
       questions: [
         {
@@ -226,6 +221,8 @@ Timer 0 has just counted down to zero. Its interrupt is fully enabled and \`cpu_
 Timer 0 is PIE group 1, channel 7 (**INT1.7**), so the registers involved are \`PIEIFR1\`, \`PIEIER1\`, bit 1 of \`PIEACK\`, and the INT1 bits of \`IFR\` and \`IER\`.
 
 Order the steps. Think of the signal moving from the peripheral, through the PIE, to the CPU. Only after the CPU has accepted the interrupt does it save its state and look up where to jump.
+
+One step is new: on the way in, the CPU itself sets INTM. That is why an interrupt function is not interrupted by another one.
 `,
       steps: [
         "Timer 0 reaches zero and raises its interrupt request",
@@ -478,7 +475,7 @@ __interrupt void cpu_timer0_isr(void)
       watch: [],
       inspect: ["PieCtrlRegs.PIEIER1", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEACK", "CpuTimer0Regs.TCR"],
       hints: [
-        "All four lines are in the briefing. Each goes under its TODO.",
+        "All four lines are in the text of this level. Each goes under its TODO.",
         "If the run stops with a message about PieVectTable.TIMER0_INT, the gates are open but the vector is missing or not between EALLOW and EDIS.",
         "`PieVectTable.TIMER0_INT = &cpu_timer0_isr;` then `IER |= M_INT1;`, `PieCtrlRegs.PIEIER1.bit.INTx7 = 1;` and `EINT;`",
       ],
@@ -581,9 +578,12 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "isr", fn: "cpu_timer0_isr", min: 9, max: 11, label: "cpu_timer0_isr runs every 50 ms", hint: "It ran once: group 1 was never acknowledged, so the PIE holds back every later request." },
         { kind: "blink", led: "LED1", periodMs: 100, label: "LED1 blinks with a 100 ms period" },
         { kind: "reg", reg: "PieCtrlRegs.PIEACK", equals: 0, label: "No PIE group is left blocked at the end" },
-      ],
-      bonus: [
-        { kind: "max-lines", max: 33, label: "Minimal fix: one line added, nothing else changed", hint: "The whole fix is one line at the end of cpu_timer0_isr." },
+        {
+          kind: "source",
+          mustMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{[^}]*PIEACK",
+          label: "The acknowledge is inside cpu_timer0_isr",
+          hint: "Acknowledging from the while(1) loop seems to work, but it lets a new request in at any moment, not when the function is done.",
+        },
       ],
       watch: ["numTimer0calls"],
       inspect: ["PieCtrlRegs.PIEACK", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEIER1"],
@@ -718,9 +718,6 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "isr", fn: "cpu_timer1_isr", min: 4, max: 6, label: "cpu_timer1_isr still runs every 100 ms", hint: "Keep M_INT13 set. Use |= so one enable does not erase the other." },
         { kind: "blink", led: "BLUE", periodMs: 200, label: "The blue LED still blinks with a 200 ms period" },
       ],
-      bonus: [
-        { kind: "max-lines", max: 43, label: "Minimal fix: one line added, nothing else changed", hint: "One IER line is enough. The rest of the program is correct." },
-      ],
       inspect: ["PieCtrlRegs.PIEIER1", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEACK"],
       hints: [
         "The PIE side is complete. After a run, PIEACK shows group 1 already passed a request on to the CPU.",
@@ -728,105 +725,6 @@ __interrupt void cpu_timer1_isr(void)
         "Add `IER |= M_INT1;` next to `IER |= M_INT13;`.",
       ],
       takeaway: "PIEIER selects the channel, IER selects the group. A PIE interrupt needs both. Timers 1 and 2 need only IER.",
-    },
-    {
-      id: "int-vector-eallow",
-      kind: "code",
-      mode: "debug",
-      title: "The jump to nowhere",
-      goal: "The program stops at the first interrupt. Read the messages and fix the vector.",
-      refs: [{ trm: "3.4.6" }, { trm: "3.4.4" }, { course: "L4" }, { course: "Lab 2" }],
-      brief: `
-This time every gate is open, and that is the problem: the interrupt fires, and the CPU jumps to the wrong place.
-
-Run it. You get two messages:
-
-- an **error** on the line that writes the vector
-- the run **stops** 20 ms in, when timer 0 fires for the first time
-
-\`PieVectTable\` is a protected register block, like the pin mux registers. A write to it outside \`EALLOW;\` ... \`EDIS;\` is silently ignored by the chip. So the table still holds the default handler that \`InitPieVectTable()\` put there, and that is where the CPU goes. On the real board the default handler stops the program in the debugger. It looks like a crash, 20 ms after start.
-
-Once that works, the test also asks for LED1 to blink with a 40 ms period.
-`,
-      kit: "robot",
-      durationMs: 420,
-      starter: `${FREQ}
-
-__interrupt void cpu_timer0_isr(void);
-
-void main(void)
-{
-${INIT}
-
-${LED1}
-
-${PIE_INIT}
-
-    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
-
-    InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 20000);
-    CpuTimer0Regs.TCR.all = 0x4000;
-
-    IER |= M_INT1;
-    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
-    EINT;
-    ERTM;
-
-    while (1) {}
-}
-
-__interrupt void cpu_timer0_isr(void)
-{
-    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
-    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
-}
-`,
-      solution: `${FREQ}
-
-__interrupt void cpu_timer0_isr(void);
-
-void main(void)
-{
-${INIT}
-
-${LED1}
-
-${PIE_INIT}
-
-    EALLOW;  // This is needed to write to EALLOW protected registers
-    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
-    EDIS;    // This is needed to disable write to EALLOW protected registers
-
-    InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 20000);
-    CpuTimer0Regs.TCR.all = 0x4000;
-
-    IER |= M_INT1;
-    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
-    EINT;
-    ERTM;
-
-    while (1) {}
-}
-
-__interrupt void cpu_timer0_isr(void)
-{
-    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
-    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
-}
-`,
-      checks: [
-        { kind: "no-diagnostic", code: "eallow", label: "No write to a protected register is ignored" },
-        { kind: "isr", fn: "cpu_timer0_isr", min: 19, max: 22, label: "cpu_timer0_isr runs every 20 ms" },
-        { kind: "blink", led: "LED1", periodMs: 40, label: "LED1 blinks with a 40 ms period" },
-      ],
-      hints: [
-        "The error message names the register and the reason.",
-        "The vector write needs the same protection switch as the pin mux registers.",
-        "Put `EALLOW;` on the line before `PieVectTable.TIMER0_INT = &cpu_timer0_isr;` and `EDIS;` on the line after.",
-      ],
-      takeaway: "A program that dies a fixed time after start often has an enabled interrupt with no valid vector. Check the PieVectTable line and its EALLOW first.",
     },
     {
       id: "int-two-timers",
@@ -957,10 +855,6 @@ __interrupt void cpu_timer2_isr(void)
         { kind: "blink", led: "BLUE", periodMs: 200, label: "The blue LED blinks with a 200 ms period" },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the timing: no DELAY_US" },
         { kind: "no-dat-write", label: "Outputs are changed through TOGGLE" },
-      ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.5, label: "cpu_timer0_isr never takes more than 0.5 microseconds", hint: "Count, compare, toggle, acknowledge. No loops and no waiting in an interrupt function." },
-        { kind: "isr-time", fn: "cpu_timer2_isr", maxUs: 0.2, label: "cpu_timer2_isr never takes more than 0.2 microseconds", hint: "One TOGGLE write is all it needs." },
       ],
       watch: ["numTimer0calls"],
       hints: [
@@ -1143,12 +1037,13 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "blink", led: "LED1", periodMs: 50, label: "LED1 blinks with a 50 ms period (from cpu_timer1_isr)" },
         { kind: "var", name: "handled", equals: 5, label: "main did the work once for every 4th timer 1 interrupt", hint: "A huge number means the flag is never set back to 0. Zero means it is never set, or main never looks." },
         { kind: "var", name: "UARTPrint", equals: 0, label: "The flag is back at 0 after main used it" },
+        {
+          kind: "source",
+          mustMatch: "(?=[\\s\\S]*UARTPrint\\s*=\\s*1\\s*;)(?=[\\s\\S]*UARTPrint\\s*=\\s*0\\s*;)",
+          label: "cpu_timer1_isr raises UARTPrint and main sets it back to 0",
+          hint: "Do not count handled inside the interrupt function. It only sets the flag. The while(1) loop does the work.",
+        },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the timing: no DELAY_US" },
-      ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.5, label: "cpu_timer0_isr never takes more than 0.5 microseconds", hint: "It runs 1000 times a second: count, post on every 50th call, acknowledge, nothing else." },
-        { kind: "isr-time", fn: "cpu_timer1_isr", maxUs: 0.5, label: "cpu_timer1_isr never takes more than 0.5 microseconds" },
-        { kind: "max-lines", max: 72, label: "Done in 72 lines of code or fewer", hint: "Blank lines and comments do not count. One statement per line is enough: nothing needs to be repeated." },
       ],
       watch: ["numTimer0calls", "numTimer1calls", "numSWIcalls", "UARTPrint", "handled"],
       inspect: ["PieCtrlRegs.PIEIER1", "PieCtrlRegs.PIEIER12", "PieCtrlRegs.PIEACK"],
@@ -1158,6 +1053,299 @@ __interrupt void cpu_timer1_isr(void)
         "Timer 0: `if ((numTimer0calls % 50) == 0) { PieCtrlRegs.PIEIFR12.bit.INTx9 = 1; }`. Timer 1: `if ((numTimer1calls % 4) == 0) { UARTPrint = 1; }`. Periods are 1000 and 25000 microseconds.",
       ],
       takeaway: "Fast and exact work goes in a timer function, longer work in the software interrupt, slow work in main behind a flag. Every lab from here on has this shape.",
+    },
+    {
+      id: "int-vector-eallow",
+      tier: "practice",
+      kind: "code",
+      mode: "debug",
+      title: "The jump to nowhere",
+      goal: "The program stops at the first interrupt. Read the messages and fix the vector.",
+      refs: [{ trm: "3.4.6" }, { trm: "3.4.4" }, { course: "L4" }, { course: "Lab 2" }],
+      brief: `
+In this program every gate is open, and that is the problem: the interrupt fires, and the CPU jumps to the wrong place.
+
+Run it. You get two messages:
+
+- an **error** on the line that writes the vector
+- the run **stops** 20 ms in, when timer 0 fires for the first time
+
+\`PieVectTable\` is a protected register block, like the pin mux registers. A write to it outside \`EALLOW;\` ... \`EDIS;\` is silently ignored by the chip. So the table still holds the default handler that \`InitPieVectTable()\` put there, and that is where the CPU goes. On the real board the default handler stops the program in the debugger. It looks like a crash, 20 ms after start.
+
+Once that works, the test also asks for LED1 to blink with a 40 ms period.
+`,
+      kit: "robot",
+      durationMs: 420,
+      starter: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 20000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      solution: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    EALLOW;  // This is needed to write to EALLOW protected registers
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    EDIS;    // This is needed to disable write to EALLOW protected registers
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 20000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        { kind: "no-diagnostic", code: "eallow", label: "No write to a protected register is ignored" },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 19, max: 22, label: "cpu_timer0_isr runs every 20 ms" },
+        { kind: "blink", led: "LED1", periodMs: 40, label: "LED1 blinks with a 40 ms period" },
+      ],
+      hints: [
+        "The error message names the register and the reason.",
+        "The vector write needs the same protection switch as the pin mux registers.",
+        "Put `EALLOW;` on the line before `PieVectTable.TIMER0_INT = &cpu_timer0_isr;` and `EDIS;` on the line after.",
+      ],
+      takeaway: "A program that dies a fixed time after start often has an enabled interrupt with no valid vector. Check the PieVectTable line and its EALLOW first.",
+    },
+    {
+      id: "int-xint",
+      tier: "practice",
+      kind: "quiz",
+      title: "A pin that interrupts",
+      goal: "Read the set-up of an external interrupt, the kind HW4 uses for push buttons.",
+      refs: [{ course: "HW4" }, { trm: "3.15.6" }, { trm: "9.1" }, { trm: "3.4.5" }],
+      brief: `
+A timer is not the only thing that can interrupt the CPU. A pin can too. An **external interrupt** (XINT) fires when the level on a GPIO pin changes. A **falling edge** is a change from 1 to 0, a rising edge a change from 0 to 1. HW4 uses it for push buttons. Later a sensor chip uses it to say "I have new data".
+
+The chip has five, XINT1 to XINT5. In the PIE table XINT1 is INT1.4 and XINT2 is INT1.5. The course's XINTstarter project sets XINT1 up like this:
+\`\`\`c
+EALLOW;
+PieVectTable.XINT1_INT = &xint1_isr;
+EDIS;
+IER |= M_INT1;
+PieCtrlRegs.PIEIER1.bit.INTx4 = 1;
+GPIO_SetupXINT1Gpio(4);               // XINT1 watches GPIO4
+XintRegs.XINT1CR.bit.POLARITY = 0;    // 0: falling edge, 1: rising, 3: both
+XintRegs.XINT1CR.bit.ENABLE = 1;
+\`\`\`
+The pin itself is an ordinary input with its pull-up, wired to a push button that connects it to ground. It reads 1 while the button is released and 0 while it is pressed.
+
+The interrupt function ends with \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;\`, like every group 1 function.
+
+HW4 warns about one thing. The contacts of a cheap button **bounce**: they close, open and close again a few times within a few milliseconds. Every bounce is an edge.
+
+The simulator does not model XINT yet, so this level is questions only.
+`,
+      questions: [
+        {
+          prompt: "Which line enables **XINT2** in the PIE?",
+          options: ["`PieCtrlRegs.PIEIER1.bit.INTx4 = 1;`", "`PieCtrlRegs.PIEIER1.bit.INTx5 = 1;`", "`PieCtrlRegs.PIEIER2.bit.INTx1 = 1;`", "`PieCtrlRegs.PIEIER12.bit.INTx2 = 1;`"],
+          answer: 1,
+          why: "XINT2 is INT1.5: group 1, channel 5.",
+        },
+        {
+          prompt: "The button connects the pin to ground when pressed, the pull-up is on, and POLARITY is 0. When does `xint1_isr` run?",
+          options: ["All the time while the button is held", "At the moment the button is pressed", "At the moment the button is released", "On both"],
+          answer: 1,
+          why: "Pressing takes the pin from 1 to 0: a falling edge. An edge is a change, so holding the button causes nothing more.",
+        },
+        {
+          prompt: "`xint1_isr` runs once and never again. What is the most likely cause?",
+          options: ["POLARITY should be 1", "The function does not clear the group 1 PIEACK bit", "IER should use M_INT4", "GPIO4 has no pull-up"],
+          answer: 1,
+          why: "XINT1 goes through PIE group 1, so the function must end with PIEACK_GROUP1. M_INT1 is correct: IER uses the group number.",
+        },
+        {
+          prompt: "You press the button once and the counter in `xint1_isr` goes up by 3. Why?",
+          options: ["The interrupt is enabled three times", "The contacts bounced: each bounce is another falling edge", "The CPU runs every interrupt function three times", "The pull-up is too strong"],
+          answer: 1,
+          why: "A bouncing contact makes several edges within a few milliseconds, and each one is a request. The expert levels on debouncing show the cure.",
+        },
+      ],
+      hints: ["INTx.y: x is the group, y is the channel. XINT1 is INT1.4 and XINT2 is INT1.5.", "An edge is a change of level. Work out which way the level changes when the button goes down."],
+      takeaway: "An external interrupt is set up like any PIE interrupt (vector, PIEIER, IER, PIEACK), plus two things of its own: which pin it watches and which edge it reacts to.",
+    },
+    {
+      id: "int-xint-button",
+      kind: "code",
+      mode: "complete",
+      tier: "practice",
+      title: "A button that interrupts",
+      goal: "Make each press of PB3 run an interrupt function, with no polling in main.",
+      refs: [{ course: "HW4" }, { trm: "3.4.5" }],
+      brief: `
+So far a timer asked for the interrupt. A **pin** can ask too: that is an external interrupt, XINT. HW4 uses XINT1 and XINT2 on push buttons.
+
+Three things are new, the rest is the path you know:
+
+- **Which pin.** \`GPIO_SetupXINT1Gpio(159);\` connects XINT1 to GPIO159 (PB3).
+- **Which edge.** \`XintRegs.XINT1CR.bit.POLARITY\`: 0 is the falling edge, 1 the rising edge, 3 both. PB3 reads 1 when released and 0 when pressed, so a press is a falling edge.
+- **Switch it on.** \`XintRegs.XINT1CR.bit.ENABLE = 1;\`
+
+XINT1 is PIE group 1, channel 4. The vector \`XINT1_INT\` is already set.
+
+Finish the set-up and the interrupt function: every press adds 1 to \`presses\` and toggles LED1. The \`while (1)\` loop stays empty.
+`,
+      kit: "robot",
+      durationMs: 40,
+      watch: ["presses"],
+      stimuli: [
+        { at: 5, press: "PB3" },
+        { at: 12, release: "PB3" },
+        { at: 20, press: "PB3" },
+        { at: 27, release: "PB3" },
+        { at: 33, press: "PB3" },
+      ],
+      starter: `uint32_t presses = 0;
+
+__interrupt void xint1_isr(void);
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+
+    // LED1, off
+    GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+
+    // PB3: input with pull-up, reads 0 while pressed
+    GPIO_SetupPinMux(159, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(159, GPIO_INPUT, GPIO_PULLUP);
+
+    DINT;
+    InitPieCtrl();
+    IER = 0x0000;
+    IFR = 0x0000;
+    InitPieVectTable();
+
+    EALLOW;
+    PieVectTable.XINT1_INT = &xint1_isr;
+    EDIS;
+
+    // TODO 1: connect XINT1 to GPIO159 with GPIO_SetupXINT1Gpio
+    // TODO 2: falling edge (POLARITY = 0) and ENABLE = 1 in XintRegs.XINT1CR
+    // TODO 3: enable PIE group 1 channel 4, and INT1 in IER
+
+    EINT;
+
+    while (1) {}
+}
+
+__interrupt void xint1_isr(void)
+{
+    // TODO: count the press, toggle LED1, acknowledge PIE group 1
+}
+`,
+      solution: `uint32_t presses = 0;
+
+__interrupt void xint1_isr(void);
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+
+    // LED1, off
+    GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+
+    // PB3: input with pull-up, reads 0 while pressed
+    GPIO_SetupPinMux(159, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(159, GPIO_INPUT, GPIO_PULLUP);
+
+    DINT;
+    InitPieCtrl();
+    IER = 0x0000;
+    IFR = 0x0000;
+    InitPieVectTable();
+
+    EALLOW;
+    PieVectTable.XINT1_INT = &xint1_isr;
+    EDIS;
+
+    GPIO_SetupXINT1Gpio(159);
+    XintRegs.XINT1CR.bit.POLARITY = 0;    // falling edge: the moment of the press
+    XintRegs.XINT1CR.bit.ENABLE = 1;
+
+    PieCtrlRegs.PIEIER1.bit.INTx4 = 1;
+    IER |= M_INT1;
+
+    EINT;
+
+    while (1) {}
+}
+
+__interrupt void xint1_isr(void)
+{
+    presses++;
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        { kind: "var", name: "presses", equals: 3, label: "Three presses were counted", hint: "Counting 5 means both edges are counted: a release is a rising edge." },
+        { kind: "isr", fn: "xint1_isr", min: 3, max: 3, label: "The interrupt function ran once per press", hint: "Once only: the function must acknowledge PIE group 1 before it returns." },
+        { kind: "led", led: "LED1", at: 8, on: true, label: "LED1 turns on with the first press" },
+        { kind: "led", led: "LED1", at: 24, on: false, label: "LED1 turns off with the second press" },
+        { kind: "source", mustNotMatch: "GP[EF]DAT", label: "main does not poll the button" },
+      ],
+      bonus: [{ kind: "latency", led: "LED1", after: 33, withinUs: 1, label: "LED1 reacts within 1 microsecond of the press" }],
+      hints: [
+        "The path is the same as for the timer: a flag, the PIE enable for the channel, the CPU enable for the group, then EINT. Only the source of the request changed.",
+        "Group 1, channel 4: `PieCtrlRegs.PIEIER1.bit.INTx4 = 1;` and `IER |= M_INT1;`. The function ends with `PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;`.",
+        "Set-up: `GPIO_SetupXINT1Gpio(159); XintRegs.XINT1CR.bit.POLARITY = 0; XintRegs.XINT1CR.bit.ENABLE = 1;`",
+      ],
+      takeaway: "An external interrupt reacts within a microsecond and costs nothing while nothing happens. A real button also bounces, so real code adds debouncing; the simulated press here is clean.",
     },
     {
       id: "int-lost-ticks",
@@ -1181,7 +1369,7 @@ While an interrupt function runs, INTM is set and no other interrupt is taken. T
 So a function that runs longer than **two** timer periods loses interrupts, and a function that runs longer than one period makes the next one late.
 
 ## The fix
-Use the pattern from the last level. The interrupt function only decides **when**: it raises a flag. The \`while (1)\` loop in \`main()\` does the slow work and can be interrupted while it does.
+Use the flag pattern from the checkpoint. The interrupt function only decides **when**: it raises a flag. The \`while (1)\` loop in \`main()\` does the slow work and can be interrupted while it does.
 
 The sensor must still be read once every 10 ms. Do not change \`read_slow_sensor()\`.
 `,
@@ -1269,9 +1457,6 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "blink", led: "LED1", periodMs: 100, label: "LED1 blinks with a 100 ms period" },
         { kind: "var", name: "readings", min: 19, max: 20, label: "The sensor is still read every 10 ms", hint: "Call read_slow_sensor() from the while(1) loop each time the flag is set, and clear the flag." },
       ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 1, label: "cpu_timer0_isr never takes more than 1 microsecond", hint: "The test report shows the longest run. Anything slow belongs in main()." },
-      ],
       watch: ["ms", "readings"],
       inspect: ["PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEACK"],
       hints: [
@@ -1298,7 +1483,7 @@ Timer 0 interrupts every **1 ms** (already set up). Cut time into periods of **1
 - LED1 is **on** in the slots below \`onSlots\` and **off** in the others.
 - \`onSlots\` is **3** normally (30 %) and **8** while **PB1** is held down (80 %).
 
-PB1 is on GPIO157 (port E) and reads **0** while pressed. The tests hold it from 100 ms to 200 ms.
+PB1 is a push button on GPIO157 (port E). It is already set up as an input and reads **0** while pressed, **1** while released (chapter 3 explains why). The tests hold it from 100 ms to 200 ms.
 
 ## One period
 \`\`\`c
@@ -1393,9 +1578,6 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "isr", fn: "cpu_timer0_isr", min: 299, max: 301, label: "cpu_timer0_isr runs every 1 ms" },
         { kind: "no-dat-write", label: "LED1 is changed through SET and CLEAR" },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the timing: no DELAY_US" },
-      ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.6, label: "cpu_timer0_isr never takes more than 0.6 microseconds", hint: "No loops are needed: one step of the period per call." },
       ],
       watch: ["slot", "onSlots"],
       hints: [
@@ -1535,7 +1717,6 @@ __interrupt void cpu_timer0_isr(void)
       ],
       bonus: [
         { kind: "latency", led: "LED1", after: 100.7, withinUs: 2000, label: "LED1 reacts within 2 ms of the first contact (second press)", hint: "An open button cannot read closed by accident. React to the first closed sample, then refuse new presses until the pin has stayed open for longer than the bounce time." },
-        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.6, label: "The sampling function never takes more than 0.6 microseconds" },
       ],
       watch: ["presses"],
       hints: [

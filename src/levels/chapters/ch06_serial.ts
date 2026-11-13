@@ -147,7 +147,7 @@ export const ch06: Chapter = {
       goal: "Learn how a character travels over a serial line, then answer three questions.",
       refs: [{ course: "L4" }, { trm: "19.1" }, { trm: "19.6" }, { trm: "19.10" }],
       brief: `
-\`serial_printf\` sends text from the chip to a terminal on your PC. The peripheral that does it is the **SCI** (Serial Communications Interface), TI's name for a UART. This chip has four: SCIA to SCID.
+\`serial_printf\` sends text from the chip to a terminal on your PC. The peripheral that does it is a **UART** (universal asynchronous receiver/transmitter). TI calls its UART the **SCI** (Serial Communications Interface). This chip has four: SCIA to SCID.
 
 ## Asynchronous: no clock wire
 A UART link has one data wire in each direction: **TX** (transmit) and **RX** (receive), plus ground. There is no clock wire. Both sides must be set to the same speed beforehand, the **baud rate**, in bits per second. The course uses 115200.
@@ -166,15 +166,8 @@ That is 10 bits on the wire for 8 bits of data. The SCI can also add a parity bi
 
 Try it in the figure: type a character and follow each written bit to its place on the wire, then send two characters and change the baud rate.
 
-## ASCII: characters are numbers
-The 8 data bits are a number. ASCII is the table that says which number means which character:
-
-- \`'0'\` is 0x30 (48), and the digits follow in order: \`'4'\` is 0x34
-- \`'A'\` is 0x41 (65), \`'B'\` is 0x42, and so on
-- \`'a'\` is 0x61 (97): a lower-case letter is its upper-case letter plus 0x20
-- \`'\\r'\` (carriage return) is 0x0D and \`'\\n'\` (line feed) is 0x0A
-
-In C, single quotes make **one character**, which is just a number: \`'A'\` and \`0x41\` are the same value. Double quotes make a **string**: an array of characters with a 0 byte added after the last one to mark the end. So \`"x"\` takes two elements: \`'x'\` and 0.
+## What the 8 bits mean
+The 8 data bits are a number. Which number stands for which character is fixed by the **ASCII** table: \`'A'\` is 0x41, for example. The next level is about that table.
 
 ## Voltage levels
 On the chip's pins a 1 is 3.3 V and a 0 is 0 V. The older **RS-232** standard (the 9-pin PC serial port) sends the same frame with other voltages: a 1 is a negative voltage (-3 V to -15 V) and a 0 a positive one (+3 V to +15 V). It is inverted and swings both ways, so connecting it straight to a pin of the chip would damage the pin: a **transceiver** chip must sit in between.
@@ -214,15 +207,87 @@ You do not need one on the LaunchPad. Its USB port carries **SCIA** (TX on GPIO4
       takeaway: "Idle high, start bit 0, 8 data bits from bit 0 up, stop bit 1. Both ends only agree on the baud rate.",
     },
     {
+      id: "serial-ascii",
+      kind: "quiz",
+      title: "ASCII, strings and format codes",
+      goal: "Check that you can tell a character from a number and pick the right format code.",
+      refs: [{ course: "L4" }, { course: "HW1" }, { course: "Lab 1" }],
+      brief: `
+## ASCII: characters are numbers
+A serial line carries numbers. **ASCII** (American Standard Code for Information Interchange) is the table that says which number means which character:
+
+- \`'0'\` is 0x30 (48), and the digits follow in order: \`'5'\` is 0x35 (53)
+- \`'A'\` is 0x41 (65), \`'B'\` is 0x42, and so on to \`'Z'\`, 0x5A
+- \`'a'\` is 0x61 (97): a lower-case letter is its upper-case letter plus 0x20
+- \`'\\r'\` (carriage return) is 0x0D and \`'\\n'\` (line feed) is 0x0A
+
+In C, single quotes make **one character**, which is just a number: \`'A'\` and \`0x41\` are the same value. So \`'5'\` is 53, not five. To turn a digit character into its value, subtract \`'0'\`: \`'5' - '0'\` is 5.
+
+Double quotes make a **string**: an array of characters with a 0 added after the last one to mark the end. So \`"x"\` takes two elements: \`'x'\` and 0.
+
+## Format codes
+\`serial_printf\` replaces each code in the format string with the next value in the list. The code must match the **type** of the value. On this chip \`int\` is 16 bits:
+
+- \`%d\`: a 16-bit integer (\`int16_t\`, \`uint16_t\`, \`int\`)
+- \`%ld\`: a 32-bit integer (\`int32_t\`, \`uint32_t\`, \`long\`)
+- \`%f\`: a \`float\`. \`%.3f\` prints 3 digits after the decimal point
+- \`%c\`: one character, given as its ASCII number
+- \`%s\`: a string
+- \`%x\`: a 16-bit integer in hex
+
+A wrong code does not give a compile error. It prints a wrong number.
+
+End each line with \`\\r\\n\`: carriage return (back to the first column) and line feed (down one line).
+`,
+      questions: [
+        {
+          prompt: "`uint16_t c = '5';` What is stored in `c`?",
+          options: ["5", "53 (0x35)", "0x05", "Nothing: a character cannot be stored in an integer"],
+          answer: 1,
+          why: "'5' is the ASCII code of the character 5, which is 0x35 = 53.",
+        },
+        {
+          prompt: "`char word[] = \"hello\";` How many elements does `word` have?",
+          options: ["4", "5", "6", "10"],
+          answer: 2,
+          why: "Five letters plus the 0 byte that marks the end of the string.",
+        },
+        {
+          prompt: "`uint32_t numRXA = 70000;` Which line prints 70000?",
+          options: [
+            '`serial_printf(&SerialA, "%d\\r\\n", numRXA);`',
+            '`serial_printf(&SerialA, "%ld\\r\\n", numRXA);`',
+            '`serial_printf(&SerialA, "%f\\r\\n", numRXA);`',
+            '`serial_printf(&SerialA, "%c\\r\\n", numRXA);`',
+          ],
+          answer: 1,
+          why: "numRXA is 32 bits wide, so it needs %ld. With %d only 16 of its bits are printed: 4464.",
+        },
+        {
+          prompt: '`serial_printf(&SerialA, "%c%c", 0x32, 69);` What appears on the terminal?',
+          options: ["3269", "2E", "0x3269", "50 69"],
+          answer: 1,
+          why: "%c prints the character with that ASCII number: 0x32 is '2', two after '0'. 69 is 0x45, four after 'A' (0x41), so 'E'.",
+        },
+        {
+          prompt: "`float volts = 1.6504;` What does `%.2f` print for it?",
+          options: ["1.6504", "1.65", "1.7", "2"],
+          answer: 1,
+          why: ".2 asks for two digits after the decimal point, rounded.",
+        },
+      ],
+      hints: ["Count from the anchors in the list: '0' is 0x30 and 'A' is 0x41.", "Count the 0 at the end of a string.", "16-bit values take %d, 32-bit values take %ld."],
+    },
+    {
       id: "serial-frame-b",
       kind: "timing",
-      title: "Draw a B",
-      goal: "Draw what the TX pin does while the character 'B' is sent.",
+      title: "Draw an E",
+      goal: "Draw what the TX pin does while the character 'E' is sent.",
       refs: [{ course: "HW1" }, { course: "L4" }, { trm: "19.6" }],
       brief: `
-HW1 asks what an oscilloscope on the TX pin shows when a character is sent. Draw it for \`'B'\`.
+HW1 asks what an oscilloscope on the TX pin shows when characters are sent. Practise on \`'E'\`.
 
-\`'B'\` is 0x42, which is \`0100 0010\` in binary. Bit 7 is on the left and bit 0 on the right.
+\`'E'\` is 0x45, which is \`0100 0101\` in binary. Bit 7 is on the left and bit 0 on the right.
 
 The slots are: idle, the start bit, data bits **b0 to b7 in the order they are sent**, the stop bit, idle again. Click a cell to switch it between high and low.
 
@@ -234,13 +299,13 @@ Settings are the course's: 8 data bits, no parity, 1 stop bit.
           name: "TX (GPIO42)",
           editable: true,
           initial: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-          answer: [1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1],
+          answer: [1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1],
         },
       ],
       hints: [
         "The start bit is always low. The stop bit and the idle line are always high.",
-        "Read 0100 0010 from right to left: b0 = 0, b1 = 1, then four 0s, b6 = 1, b7 = 0.",
-        "Low cells: start, b0, b2, b3, b4, b5, b7. Everything else is high.",
+        "Read 0100 0101 from right to left: b0 = 1, b1 = 0, b2 = 1, then three 0s, b6 = 1, b7 = 0.",
+        "Low cells: start, b1, b3, b4, b5, b7. Everything else is high.",
       ],
       takeaway: "On the scope the bits appear in reverse of how you write the number, because bit 0 is sent first.",
     },
@@ -248,13 +313,13 @@ Settings are the course's: 8 data bits, no parity, 1 stop bit.
       id: "serial-frame-4b",
       kind: "timing",
       title: "Two characters back to back",
-      goal: "Draw the TX pin while '4' and then 'B' are sent with no pause, as in HW1.",
+      goal: "Draw the TX pin while '2' and then 'E' are sent with no pause.",
       refs: [{ course: "HW1" }, { trm: "19.6" }, { trm: "19.10" }],
       brief: `
-This is the HW1 exercise: the characters \`'4'\` and \`'B'\` are sent one right after the other at 115200 baud.
+HW1 has an exercise of this kind with two other characters. Here \`'2'\` and \`'E'\` are sent one right after the other at 115200 baud.
 
-- \`'4'\` is 0x34 = \`0011 0100\`. It is the **character** 4, not the number 4.
-- \`'B'\` is 0x42 = \`0100 0010\`.
+- \`'2'\` is 0x32 = \`0011 0010\`. It is the **character** 2, not the number 2.
+- \`'E'\` is 0x45 = \`0100 0101\`.
 
 When characters follow each other without a pause, the stop bit of one is followed directly by the start bit of the next. The stop bit is the only high time between them.
 
@@ -266,13 +331,13 @@ Each character has its own start bit (S), data bits 0 to 7 and stop bit (P). Eac
           name: "TX (GPIO42)",
           editable: true,
           initial: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-          answer: [1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1],
+          answer: [1, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1],
         },
       ],
       hints: [
         "Do one character at a time: start low, eight data bits from bit 0, stop high. The second character is the one from the previous level.",
-        "0x34 from bit 0 up is 0, 0, 1, 0, 1, 1, 0, 0.",
-        "First frame: low, low, low, high, low, high, high, low, low, high. Second frame: low, low, high, low, low, low, low, high, low, high.",
+        "0x32 from bit 0 up is 0, 1, 0, 0, 1, 1, 0, 0.",
+        "First frame: low, low, high, low, low, high, high, low, low, high. Second frame: low, high, low, high, low, low, low, high, low, high.",
       ],
       takeaway: "The start bit of every character lets the receiver line up again, so small differences between the two clocks never add up over a long message.",
     },
@@ -314,11 +379,11 @@ Each character is a frame of **10 bits**: start, 8 data, stop.
         },
         {
           id: "tchar",
-          label: "Time to send one character at 9600 baud",
+          label: "Time to send one character at 19200 baud",
           unit: "ms",
-          answer: 1.0417,
+          answer: 0.5208,
           tolPct: 1,
-          why: "10 bits x (1 / 9600) s = 10 / 9600 s = 1.04 ms. This is the HW1 question.",
+          why: "10 bits x (1 / 19200) s = 0.52 ms. HW1 asks you to explain the same sum for another baud rate.",
         },
         {
           id: "cps",
@@ -335,71 +400,6 @@ Each character is a frame of **10 bits**: start, 8 data, stop.
         "A character is 10 bits, so it takes 10 / baud seconds, and baud / 10 characters fit in a second.",
       ],
       takeaway: "A 40-character line takes about 3.5 ms at 115200 baud. That is far too long to spend inside an interrupt function.",
-    },
-    {
-      id: "serial-ascii",
-      kind: "quiz",
-      title: "Characters, strings and format codes",
-      goal: "Check that you can tell a character from a number and pick the right format code.",
-      refs: [{ course: "L4" }, { course: "HW1" }, { course: "Lab 1" }],
-      brief: `
-## Characters and strings
-\`'5'\` is the character 5, the number 0x35 (53). \`5\` is the number five. To turn a digit character into its value, subtract \`'0'\`: \`'5' - '0'\` is 5.
-
-A string in double quotes ends with a hidden 0 byte, so an array holding it needs one more element than the text has characters.
-
-## Format codes
-\`serial_printf\` replaces each code in the format string with the next value in the list. The code must match the **type** of the value. On this chip \`int\` is 16 bits:
-
-- \`%d\`: a 16-bit integer (\`int16_t\`, \`uint16_t\`, \`int\`)
-- \`%ld\`: a 32-bit integer (\`int32_t\`, \`uint32_t\`, \`long\`)
-- \`%f\`: a \`float\`. \`%.3f\` prints 3 digits after the decimal point
-- \`%c\`: one character, given as its ASCII number
-- \`%s\`: a string
-- \`%x\`: a 16-bit integer in hex
-
-A wrong code does not give a compile error. It prints a wrong number.
-
-End each line with \`\\r\\n\`: carriage return (back to the first column) and line feed (down one line).
-`,
-      questions: [
-        {
-          prompt: "`uint16_t c = '5';` What is stored in `c`?",
-          options: ["5", "53 (0x35)", "0x05", "Nothing: a character cannot be stored in an integer"],
-          answer: 1,
-          why: "'5' is the ASCII code of the character 5, which is 0x35 = 53.",
-        },
-        {
-          prompt: "`char word[] = \"hello\";` How many elements does `word` have?",
-          options: ["4", "5", "6", "10"],
-          answer: 2,
-          why: "Five letters plus the 0 byte that marks the end of the string.",
-        },
-        {
-          prompt: "`uint32_t numRXA = 70000;` Which line prints 70000?",
-          options: [
-            '`serial_printf(&SerialA, "%d\\r\\n", numRXA);`',
-            '`serial_printf(&SerialA, "%ld\\r\\n", numRXA);`',
-            '`serial_printf(&SerialA, "%f\\r\\n", numRXA);`',
-            '`serial_printf(&SerialA, "%c\\r\\n", numRXA);`',
-          ],
-          answer: 1,
-          why: "numRXA is 32 bits wide, so it needs %ld. With %d only 16 of its bits are printed: 4464.",
-        },
-        {
-          prompt: '`serial_printf(&SerialA, "%c%c", 0x34, 66);` What appears on the terminal?',
-          options: ["3466", "4B", "0x3466", "52 66"],
-          answer: 1,
-          why: "%c prints the character with that ASCII number: 0x34 is '4' and 66 (0x42) is 'B'.",
-        },
-        {
-          prompt: "`float volts = 1.6504;` What does `%.2f` print for it?",
-          options: ["1.6504", "1.65", "1.7", "2"],
-          answer: 1,
-          why: ".2 asks for two digits after the decimal point, rounded.",
-        },
-      ],
-      hints: ["Look up each character in the ASCII list of the first level.", "Count the hidden 0 byte at the end of a string.", "16-bit values take %d, 32-bit values take %ld."],
     },
     {
       id: "serial-print",
@@ -498,9 +498,6 @@ __interrupt void cpu_timer2_isr(void)
         },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the 32-bit values", hint: "Both values are uint32_t: use %ld." },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
-      ],
-      bonus: [
-        { kind: "isr-time", fn: "cpu_timer2_isr", maxUs: 0.3, label: "cpu_timer2_isr never takes more than 0.3 microseconds", hint: "Count, compare, set the flag. The report shows the longest run." },
       ],
       watch: ["UARTPrint", "numRXA"],
       hints: [
@@ -680,10 +677,6 @@ ${rxIsr(`        if (RXAdata == 'a') {
         },
         { kind: "no-dat-write", label: "The LED is changed through SET and CLEAR" },
       ],
-      bonus: [
-        { kind: "latency", led: "RED", after: 5.0868, withinUs: 1, label: "The LED changes within 1 microsecond of the end of the character", hint: "Switch the LED in RXAINT_recv_ready itself, straight after the character is read." },
-        { kind: "isr-time", fn: "RXAINT_recv_ready", maxUs: 0.6, label: "RXAINT_recv_ready never takes more than 0.6 microseconds" },
-      ],
       watch: ["RXAdata", "numRXA"],
       hints: [
         "A character constant is a number, so you can compare directly: `if (RXAdata == 'a')`.",
@@ -779,10 +772,6 @@ ${rxIsr(`        newChar = RXAdata;
           hint: "Set a flag in RXAINT_recv_ready and call serial_printf in the while(1) loop.",
         },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the values", hint: "%c for the character (16 bits), %ld for numRXA (32 bits)." },
-      ],
-      bonus: [
-        { kind: "isr-time", fn: "RXAINT_recv_ready", maxUs: 0.6, label: "RXAINT_recv_ready never takes more than 0.6 microseconds", hint: "Only save the character and set the flag there. The upper-case conversion can wait for main()." },
-        { kind: "max-lines", max: 50, label: "Done in 50 lines of code or fewer", hint: "Two globals, one if for the letters, one serial_printf." },
       ],
       watch: ["RXAdata", "numRXA"],
       hints: [
@@ -881,9 +870,6 @@ ${rxIsr(`        if (RXAdata >= '0' && RXAdata <= '9') {
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
         { kind: "no-diagnostic", code: "printf-type", label: "The format code matches the 32-bit value" },
       ],
-      bonus: [
-        { kind: "isr-time", fn: "RXAINT_recv_ready", maxUs: 1, label: "RXAINT_recv_ready never takes more than 1 microsecond", hint: "One multiplication and one addition per digit. Doubling and printing belong in main()." },
-      ],
       watch: ["RXAdata", "numRXA"],
       hints: [
         "Three globals: the number being built, the finished number, and a flag. Make the two numbers uint32_t.",
@@ -962,7 +948,6 @@ void main(void)
       ],
       bonus: [
         { kind: "source", mustMatch: "TXFFST", mustNotMatch: "DELAY_US", label: "No guessed delay: the loop waits on TXFFST", hint: "A delay that is right at 115200 baud is wrong at 9600. The status field is right at any speed." },
-        { kind: "max-lines", max: 13, label: "Minimal fix: one line added", hint: "One while loop with an empty body, in front of the write." },
       ],
       inspect: ["SciaRegs.SCIFFTX", "SciaRegs.SCICTL2"],
       hints: [

@@ -2,11 +2,13 @@ import type { Chapter } from "../types";
 
 const LED_SETUP = `    InitSysCtrl();
     InitGpio();
-    // LED1 (GPIO22) and LED2 (GPIO94) as outputs, both off
+    // LED1 (GPIO22), LED2 (GPIO94) and LED3 (GPIO95) as outputs, all off
     GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
     GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
     GPIO_SetupPinMux(94, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(94, GPIO_OUTPUT, GPIO_PUSHPULL);`;
+    GPIO_SetupPinOptions(94, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GPIO_SetupPinMux(95, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(95, GPIO_OUTPUT, GPIO_PUSHPULL);`;
 
 export const ch01: Chapter = {
   id: "registers",
@@ -30,8 +32,8 @@ Memory is a long row of 16-bit **words**, and every word has a number, its **add
 
 Each peripheral's registers sit together, starting at a **base address**. A register's address is the base plus its **offset**, the distance from the base counted in words:
 
-- \`GpioDataRegs\` starts at \`0x7F00\`. Its registers \`GPADAT\`, \`GPASET\`, \`GPACLEAR\`, \`GPATOGGLE\` are 32 bits each (two 16-bit words), so they sit at offsets 0, 2, 4 and 6.
-- \`CpuTimer0Regs\` starts at \`0x0C00\`: \`TIM\` at offset 0, \`PRD\` at 2, \`TCR\` at 4.
+- \`GpioDataRegs\` (the registers that drive the chip's pins) starts at \`0x7F00\`. Its registers \`GPADAT\`, \`GPASET\`, \`GPACLEAR\`, \`GPATOGGLE\` are 32 bits each (two 16-bit words), so they sit at offsets 0, 2, 4 and 6.
+- \`CpuTimer0Regs\` (a timer) starts at \`0x0C00\`: \`TIM\` at offset 0, \`PRD\` at 2, \`TCR\` at 4.
 
 {{figure:memory-map}}
 
@@ -44,10 +46,10 @@ TI's header files give every register a C name, so you never type addresses.
 GpioDataRegs.GPASET.all = 0x00000800;    // the whole register at once
 GpioDataRegs.GPASET.bit.GPIO11 = 1;      // one named field
 \`\`\`
-Both lines do the same thing: bit 11 is \`0x800\`. \`.all\` is the full value, \`.bit.NAME\` is one field.
+Both lines do the same thing: bit 11 is \`0x800\`. \`.all\` is the full value. \`.bit.NAME\` is one **field**: a group of one or more bits with one meaning.
 
 ## Protected registers
-Registers that could break the system if written by accident (pin configuration, clock settings and a few others) are **EALLOW-protected**. A write only takes effect between \`EALLOW;\` and \`EDIS;\`. Outside that pair the write is silently ignored: no error, nothing happens.
+Registers that could break the system if written by accident (pin configuration, clock settings and a few others) are **EALLOW-protected**. A write only takes effect between \`EALLOW;\` (enable allow) and \`EDIS;\` (disable). Outside that pair the write is silently ignored: no error, nothing happens.
 
 \`\`\`c
 EALLOW;
@@ -114,7 +116,7 @@ Give each address in hex.
       hints: [
         "Address = base + offset, and hex addition carries at 16: 8 + 2 = 0xA.",
         "Port B's four registers start right after port A's four, which take 4 x 2 = 8 words.",
-        "The answers are 0x0C04, 0x0C0A and 0x7F0A.",
+        "TCR of timer 0: 0x0C00 + 4. PRD of timer 1: 0x0C08 + 2. GPBSET: 0x7F00 + 8 for port B + 2 for SET. Write each sum in hex.",
       ],
     },
     {
@@ -156,12 +158,14 @@ Leave every other bit at 0. Then look at the hex value: you will recognise it fr
       brief: `
 The chip's pins are numbered GPIO0 to GPIO168 and grouped in **ports** of 32: port A is GPIO0 to GPIO31, port B is GPIO32 to GPIO63, port C is GPIO64 to GPIO95. Each port has its own registers, with the port letter in the name.
 
-The first lines of \`main\` start the chip and set up two pins so the program can drive them. The next chapter explains those lines. Writing a 1 to a pin's bit in a \`SET\` register drives that pin **high** (3.3 V), which lights these LEDs.
+A **pin** is one of the chip's metal contacts. The first lines of \`main\` start the chip and set up three pins so the program can drive the LEDs wired to them. The next chapter explains those lines. Writing a 1 to a pin's bit in a \`SET\` register drives that pin **high** (3.3 V), which lights its LED. Bits written as 0 change nothing.
 
 - **LED1** is on GPIO22, in port A. Turn it on by writing the right hex mask to \`GpioDataRegs.GPASET.all\`.
 - **LED2** is on GPIO94, in port C (GPIO64 to GPIO95). Turn it on with \`GpioDataRegs.GPCSET.bit.GPIO94\`.
 
-For the mask: bit 22 as hex. 22 = 20 + 2, bit 20 is \`0x00100000\`, and two bits further left multiplies by 4.
+For the mask: bit 22 as hex. 22 = 20 + 2, bit 20 is \`0x00100000\`, and two bits further left multiplies by 4. Or let C do it: \`1UL << 22\`. The \`UL\` makes the 1 a 32-bit value. A plain \`1\` is a 16-bit \`int\` and cannot be shifted that far.
+
+Light LED1 and LED2 only. LED3 (GPIO95) shares port C with LED2 and must stay off.
 `,
       kit: "robot",
       durationMs: 2,
@@ -190,9 +194,9 @@ ${LED_SETUP}
       checks: [
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "Bit 22 is 0x00400000." },
         { kind: "led", led: "LED2", at: 1.5, on: true, label: "LED2 is on" },
-        { kind: "source", mustMatch: "GPASET\\s*\\.\\s*all\\s*=", label: "LED1 uses GPASET.all" },
+        { kind: "source", mustMatch: "GPASET\\s*\\.\\s*all\\s*\\|?=", label: "LED1 uses GPASET.all" },
         { kind: "source", mustMatch: "GPCSET\\s*\\.\\s*bit\\s*\\.\\s*GPIO94\\s*=", label: "LED2 uses GPCSET.bit.GPIO94" },
-        { kind: "led", led: "LED3", at: 1.5, on: false, label: "No other LED was switched on" },
+        { kind: "led", led: "LED3", at: 1.5, on: false, label: "LED3 stays off: only the bits you mean are written", hint: "GPIO95 is LED3. A write to GPCSET must have a 1 only in the bit of GPIO94." },
       ],
       bonus: [
         {
@@ -204,8 +208,8 @@ ${LED_SETUP}
       ],
       hints: [
         "A mask for bit n is `1UL << n`, or work it out in hex: every 4 bits is one hex digit.",
-        "Bit 22: hex digit number 5 (bits 23 to 20) with value 4, so 0x00400000.",
-        "`GpioDataRegs.GPASET.all = 0x00400000;` and `GpioDataRegs.GPCSET.bit.GPIO94 = 1;`",
+        "Bit 22 sits in the hex digit that holds bits 23 to 20, as the value 4: 0x00400000.",
+        "`GpioDataRegs.GPASET.all = 1UL << 22;` (or `= 0x00400000;`) and `GpioDataRegs.GPCSET.bit.GPIO94 = 1;`",
       ],
       takeaway: "`.bit` is easier to read and harder to get wrong. `.all` is useful when several bits must change in one write.",
     },
@@ -282,23 +286,24 @@ Fix the program so LED1 lights.
     },
     {
       id: "reg-mux-field",
-      tier: "practice",
       kind: "register",
       title: "Two bits per pin",
-      goal: "Change two pin-mux fields of GPBMUX1 and leave every other field alone.",
+      goal: "Change two pin multiplexer fields of GPBMUX1 and leave every other field alone.",
       refs: [{ trm: "8.7" }, { trm: "8.9.2" }, { course: "L3" }],
       brief: `
-Not every field is one bit wide. \`GpioCtrlRegs.GPBMUX1\` selects what each of GPIO32 to GPIO47 is connected to, with **two bits per pin**: GPIO32 uses bits 1 to 0, GPIO33 bits 3 to 2, and so on. The value 0 means plain GPIO.
+The chip has more peripherals than pins, so most pins can do one of several jobs. A **pin multiplexer** (mux for short) is the selector switch behind each pin: it connects the pin either to plain input/output (GPIO) or to one of the peripherals.
+
+Not every field is one bit wide. \`GpioCtrlRegs.GPBMUX1\` holds the mux setting of GPIO32 to GPIO47, with **two bits per pin**: GPIO32 uses bits 1 to 0, GPIO33 bits 3 to 2, and so on. The value 0 means plain GPIO.
 
 The register reads \`0x00300010\`:
 
 - **GPIO34** (the LaunchPad's red LED) holds 1. The pin is switched to a peripheral, so the LED cannot be driven as a GPIO. It should be 0.
-- **GPIO42** (serial transmit) holds 3. That is correct. Leave it.
-- **GPIO43** (serial receive) holds 0. It should be 3, like GPIO42.
+- **GPIO42** holds 3: it is connected to the serial port's transmitter. That is correct. Leave it.
+- **GPIO43** holds 0. It should be 3, like GPIO42, to connect it to the serial port's receiver.
 
 Fix GPIO34 and GPIO43. Every other field must keep its value.
 
-(A full mux position has four bits. The upper two are in a second register, \`GPBGMUX1\`, with the same layout.)
+A full mux position has four bits, 0 to 15. The upper two are in a second register, \`GPBGMUX1\`, with the same layout. This puzzle only changes the lower two.
 `,
       reg: "GpioCtrlRegs.GPBMUX1",
       initial: 0x00300010,
@@ -312,7 +317,7 @@ Fix GPIO34 and GPIO43. Every other field must keep its value.
         "GPIO43 is bits 23 to 22. The value 3 means both bits on.",
         "Switch bit 4 off and bits 23 and 22 on. The value is 0x00F00000.",
       ],
-      takeaway: "GPIO_SetupPinMux(43, GPIO_MUX_CPU1, 15) does this for you: 15 is binary 1111, so it writes 3 to the GPBGMUX1 field and 3 to the GPBMUX1 field of GPIO43.",
+      takeaway: "The course code never writes these fields by hand. TI's helper GPIO_SetupPinMux(43, GPIO_MUX_CPU1, 15) does it: 15 is binary 1111, so it writes 3 to the GPBGMUX1 field and 3 to the GPBMUX1 field of GPIO43. Position 0 is plain GPIO.",
     },
     {
       id: "reg-raw",
@@ -370,7 +375,7 @@ ${LED_SETUP}
       checks: [
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "Bit 22 is 0x00400000." },
         { kind: "led", led: "LED2", at: 1.5, on: true, label: "LED2 is on", hint: "Each port takes 8 words. Port C is the third port, and SET is its second register." },
-        { kind: "led", led: "LED3", at: 1.5, on: false, label: "LED3 stays off", hint: "GPIO95 is bit 31 of port C. GPIO94 is bit 30." },
+        { kind: "led", led: "LED3", at: 1.5, on: false, label: "LED3 (GPIO95) stays off", hint: "GPIO95 is bit 31 of port C. GPIO94 is bit 30." },
         { kind: "source", mustNotMatch: "GpioDataRegs", label: "The name GpioDataRegs is not used" },
         { kind: "no-dat-write", label: "The pins are driven through SET registers, not DAT" },
       ],
@@ -544,8 +549,8 @@ void setField(Uint32 address, Uint16 shift, Uint16 width, Uint32 value)
     volatile Uint32 *reg = (volatile Uint32 *)address;
     Uint32 mask = ones(width) << shift;
 
-    EALLOW;                                             // needed by some registers, harmless for the rest
-    *reg = (*reg & ~mask) | ((value << shift) & mask);  // one read, one write
+    EALLOW;     // needed by some registers, harmless for the rest
+    *reg = (*reg & ~mask) | ((value << shift) & mask);
     EDIS;
 }
 
@@ -588,7 +593,6 @@ void main(void)
       ],
       bonus: [
         { kind: "source", mustNotMatch: "\\bif\\b|\\?|\\bswitch\\b", label: "No `if`, `?:` or `switch`: one formula for every width and register" },
-        { kind: "max-lines", max: 36, label: "In 36 lines or fewer" },
       ],
       hints: [
         "Turn the address into a pointer: `volatile Uint32 *reg = (volatile Uint32 *)address;`. Then `*reg` is the register.",

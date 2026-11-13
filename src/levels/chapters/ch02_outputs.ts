@@ -17,72 +17,33 @@ export const ch02: Chapter = {
     {
       id: "out-brief",
       kind: "brief",
-      title: "What it takes to drive a pin",
-      goal: "Learn what a GPIO pin is, and the three settings it needs before it can light an LED.",
-      refs: [{ course: "L3" }, { trm: "8.1" }, { trm: "8.2" }, { trm: "8.3" }, { trm: "8.7" }],
+      title: "What a GPIO pin is",
+      goal: "Learn what a GPIO pin is and what it can do, then answer three questions.",
+      refs: [{ course: "L3" }, { trm: "8.1" }, { trm: "8.2" }, { trm: "8.8" }],
       brief: `
 ## What a pin is
-The chip is a small black package with rows of metal contacts. Each contact is a **pin**. The pins are the only places where the chip touches the rest of the circuit. A **GPIO** pin (general-purpose input/output) is a pin that your software can connect to the outside world. "General purpose" means the pin has no fixed job: your code decides what it does.
+The chip is a small black package with rows of metal contacts. Each contact is a **pin**. The pins are the only places where the chip touches the rest of the circuit. A **GPIO** pin (general-purpose input/output) is a pin that your software controls. "General purpose" means the pin has no fixed job: your code decides what it does.
 
 {{figure:gpio-pin}}
 
-The figure shows one pin and everything the chip puts behind it. Come back to it as you read: flip each switch and watch the pin's voltage.
+The figure shows one pin and what the chip puts behind it. Flip its switches as you read, and watch the pin's voltage.
 
-## Two voltages, two directions
+## Two voltages
 A GPIO pin is **digital**: only two voltages count. About **3.3 V** is a logic 1, also called **high**. **0 V** is a logic 0, called **low**.
 
-A pin works in one of two directions:
+## Two directions
+- As an **output**, the chip **drives** the pin: it forces the voltage to 3.3 V or to 0 V. This is how a program switches an LED.
+- As an **input**, the chip only measures the voltage that the circuit outside puts on the pin. It changes nothing. This is how a program reads a push button.
 
-- As an **output**, the chip **drives** the pin: it forces the voltage to 3.3 V or to 0 V.
-- As an **input**, the chip only measures the voltage that the circuit outside puts on the pin. It changes nothing.
+After reset (power-up) every pin is an input.
 
 In the figure, make the pin an input with nothing connected. Nothing sets its voltage, so the value read is unpredictable: the pin **floats**. The **pull-up** is a weak resistor inside the chip that pulls such a pin up to 3.3 V. Chapter 3 uses it for buttons.
 
 ## A pin signals, it does not power
-One pin can deliver only a few milliamps of current. That is enough for an LED with its resistor, or for the input of another chip. It is not enough for a motor, which needs a separate driver circuit that the pin only switches on and off.
+One pin can deliver only a few milliamps of current. That is enough for an LED with its resistor, or for the input of another chip. It is not enough for a motor. A motor needs a separate driver circuit, and the pin only tells the driver what to do.
 
-## Pin numbers and ports
-In code a pin is named by its **GPIO number**, such as GPIO22. That number is not the pin's position on the chip's package or on the board's connectors. The board's documentation tells you which GPIO is wired to what.
-
-The chip has 169 GPIO signals, GPIO0 to GPIO168. They are grouped in **ports** of 32 that share one set of registers:
-
-- port **A**: GPIO0 to 31
-- port **B**: GPIO32 to 63
-- port **C**: GPIO64 to 95
-- port **D**: GPIO96 to 127
-- port **E**: GPIO128 to 159
-- port **F**: GPIO160 to 168
-
-The port letter appears in every register name: GPIO94 is controlled through \`GPC...\` registers.
-
-## Three settings per pin
-1. **Mux** (short for multiplexer, a selector switch): each pin can be a plain GPIO or carry the signal of one of the chip's peripherals (PWM, serial port, SPI...). Mux position 0 is plain GPIO.
-2. **Direction**: input (0, the state after reset) or output (1), one bit per pin in the \`GPxDIR\` register.
-3. **Output level**: the value the pin drives when it is an output. The chip remembers it in one bit per pin, the **output latch**.
-
-The course code sets the first two with TI's helper functions:
-\`\`\`c
-GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);                // GPIO22 is a plain GPIO
-GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);  // and an output
-\`\`\`
-\`GPIO_MUX_CPU1\` says which of the chip's two CPUs owns the pin: always CPU1 in this course. \`GPIO_PUSHPULL\` is the normal kind of output, one that can drive both high and low.
-
-## Changing the level: SET, CLEAR, TOGGLE
-\`\`\`c
-GpioDataRegs.GPASET.bit.GPIO22 = 1;     // drive high
-GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;   // drive low
-GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;  // flip
-\`\`\`
-You always write a **1**: to the SET register to go high, to the CLEAR register to go low. Writing 0 to these registers does nothing.
-
-\`GPxDAT\` reads the voltage on the pins: this is how a program reads an input. It can also be written, but avoid that for outputs: changing one bit rewrites the whole port from a reading that may be slightly out of date. A later level shows the damage.
-
-## Lit by a 1 or by a 0?
-It depends on how the LED is wired. The LEDs on the green robot board sit between the pin and 0 V, so they light when the pin is **high**. The two LEDs on the LaunchPad itself (blue on GPIO31, red on GPIO34) sit between 3.3 V and the pin, so they light when the pin is **low**.
-
-{{figure:led-wiring}}
-
-Try it in the figure: switch both pins between high and low and watch where current flows.
+## Pin numbers
+In code a pin is named by its **GPIO number**, such as GPIO22. That number is not the pin's position on the package or on the board's connectors. The board's documentation tells you which GPIO is wired to what. This chip has 169 of them, GPIO0 to GPIO168.
 `,
       questions: [
         {
@@ -92,40 +53,37 @@ Try it in the figure: switch both pins between high and low and watch where curr
           why: "An input only measures. The voltage comes from the circuit outside, or from the pull-up if nothing else sets it.",
         },
         {
+          prompt: "A pin is an input, nothing is connected to it, and its pull-up is off. What does the program read from it?",
+          options: ["Always 0", "Always 1", "An unpredictable value: the pin floats", "The last value the program wrote"],
+          answer: 2,
+          why: "Nothing sets the voltage, so the reading is noise. A pull-up or an outside circuit must give every input a defined level.",
+        },
+        {
           prompt: "Which of these can a GPIO output pin run directly?",
           options: ["A robot's drive motor", "An LED with its resistor", "A 12 V lamp", "A loudspeaker at full volume"],
           answer: 1,
           why: "A pin delivers a few milliamps at 3.3 V. That lights an LED. Anything bigger needs a driver circuit, and the pin only tells the driver what to do.",
         },
-        {
-          prompt: "Which register drives GPIO97 high?",
-          options: ["`GpioDataRegs.GPASET`", "`GpioDataRegs.GPCSET`", "`GpioDataRegs.GPDSET`", "`GpioDataRegs.GPESET`"],
-          answer: 2,
-          why: "GPIO96 to GPIO127 are port D.",
-        },
-        {
-          prompt: "GPIO22 is an output and currently high. What does `GpioDataRegs.GPASET.bit.GPIO22 = 0;` do?",
-          options: ["Drives the pin low", "Nothing", "Toggles the pin", "Makes the pin an input"],
-          answer: 1,
-          why: "Writing 0 to a SET register has no effect. To drive the pin low, write 1 to GPACLEAR.",
-        },
-        {
-          prompt: "The LaunchPad's red LED (GPIO34) lights when its pin is low. Which line turns it **on**?",
-          options: ["`GpioDataRegs.GPBSET.bit.GPIO34 = 1;`", "`GpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;`", "`GpioDataRegs.GPASET.bit.GPIO34 = 1;`", "`GpioDataRegs.GPBCLEAR.bit.GPIO34 = 0;`"],
-          answer: 1,
-          why: "CLEAR drives the pin low, and low lights this LED. GPIO34 is in port B.",
-        },
       ],
-      takeaway: "A GPIO pin is a contact whose job your code chooses: as an output it drives 3.3 V or 0 V, as an input it measures. To drive it: mux to GPIO, direction to output, then write 1 to SET, CLEAR or TOGGLE in the right port.",
+      takeaway: "A GPIO pin is a contact whose job your code chooses: as an output it drives 3.3 V or 0 V, as an input it measures. It carries signals, not power.",
     },
     {
       id: "out-ports",
       kind: "quiz",
       title: "Which port?",
-      goal: "Match the robot board's LEDs and buttons to their ports.",
+      goal: "Find the port, and so the register names, of the robot board's LEDs and buttons.",
       refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { trm: "8.9" }],
       brief: `
-Lab 1 asks which registers drive the LEDs on the robot board. Divide the GPIO number by 32 and drop the remainder: 0 is port A, 1 is B, 2 is C, 3 is D, 4 is E, 5 is F.
+The pins are grouped in **ports** of 32. The pins of a port share one set of registers, and the port letter is part of every register name: GPIO94 is in port C, so it is driven through \`GPCSET\` and \`GPCCLEAR\`.
+
+- port **A**: GPIO0 to 31
+- port **B**: GPIO32 to 63
+- port **C**: GPIO64 to 95
+- port **D**: GPIO96 to 127
+- port **E**: GPIO128 to 159
+- port **F**: GPIO160 to 168
+
+The quick way: divide the GPIO number by 32 and drop the remainder. 0 is port A, 1 is B, 2 is C, 3 is D, 4 is E, 5 is F. The remainder is the pin's bit number inside the port's registers.
 
 The robot board's LEDs are on GPIO22, 94, 95, 97 and 111. Its push buttons are on GPIO157, 158, 159 and 160.
 
@@ -140,6 +98,69 @@ Try it in the figure: drag the GPIO number across a port boundary and watch the 
         { prompt: "Push button 4 is on **GPIO160**. Which register do you read?", options: ["`GPDDAT`", "`GPEDAT`", "`GPFDAT`", "`GPADAT`"], answer: 2, why: "160 / 32 = 5: the first pin of port F. Buttons 1 to 3 and button 4 are in different registers." },
       ],
       hints: ["Integer-divide the GPIO number by 32.", "0 to 31 is A, 32 to 63 is B, 64 to 95 is C, 96 to 127 is D, 128 to 159 is E, 160 and up is F."],
+    },
+    {
+      id: "out-drive",
+      kind: "brief",
+      title: "What it takes to drive a pin",
+      goal: "Learn the three settings a pin needs before it can light an LED, then answer three questions.",
+      refs: [{ course: "L3" }, { trm: "8.2" }, { trm: "8.3" }, { trm: "8.7" }],
+      brief: `
+## Three settings per pin
+1. **Mux** (the pin multiplexer, a selector switch): the pin is a plain GPIO, or it carries the signal of one of the chip's peripherals (PWM, serial port...). Mux position 0 is plain GPIO.
+2. **Direction**: input (0, the state after reset) or output (1). One bit per pin in the \`GPxDIR\` register, where x is the port letter.
+3. **Output level**: the value the pin drives when it is an output. The chip keeps it in one bit per pin, the **output latch**.
+
+The course code sets the first two with TI's helper functions:
+\`\`\`c
+GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
+GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+\`\`\`
+The first line makes GPIO22 a plain GPIO (the last argument is the mux position). The second makes it an output. \`GPIO_MUX_CPU1\` says which of the chip's two CPUs owns the pin: always CPU1 in this course. \`GPIO_PUSHPULL\` is the normal kind of output, one that can drive both high and low.
+
+## Changing the level: SET, CLEAR, TOGGLE
+\`\`\`c
+GpioDataRegs.GPASET.bit.GPIO22 = 1;     // high
+GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;   // low
+GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;  // flip
+\`\`\`
+You always write a **1**: to SET to go high, to CLEAR to go low, to TOGGLE to flip. Writing 0 to these registers does nothing.
+
+\`GPxDAT\` reads the voltage on the pins. That is how a program reads an input. Do not use it to change outputs. A later level shows why.
+
+## Lit by a 1 or by a 0?
+That depends on how the LED is wired. The LEDs on the green robot board sit between the pin and 0 V, so they light when the pin is **high**. The two LEDs on the LaunchPad itself (blue on GPIO31, red on GPIO34) sit between 3.3 V and the pin, so they light when the pin is **low**.
+
+{{figure:led-wiring}}
+
+Try it in the figure: switch both pins between high and low and watch where current flows.
+`,
+      questions: [
+        {
+          prompt: "After reset, GPIO22 is a plain GPIO input. Which line makes it an output?",
+          options: [
+            "`GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);`",
+            "`GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);`",
+            "`GpioDataRegs.GPASET.bit.GPIO22 = 1;`",
+            "`GpioDataRegs.GPADAT.bit.GPIO22 = 1;`",
+          ],
+          answer: 1,
+          why: "GPIO_SetupPinOptions sets the direction. GPIO_SetupPinMux only selects the pin's job, and GPASET only loads the level that an output will drive.",
+        },
+        {
+          prompt: "GPIO22 is an output and currently high. What does `GpioDataRegs.GPASET.bit.GPIO22 = 0;` do?",
+          options: ["Drives the pin low", "Nothing", "Toggles the pin", "Makes the pin an input"],
+          answer: 1,
+          why: "Writing 0 to a SET register has no effect. To drive the pin low, write 1 to GPACLEAR.",
+        },
+        {
+          prompt: "The LaunchPad's red LED (GPIO34, port B) lights when its pin is low. Which line turns it **on**?",
+          options: ["`GpioDataRegs.GPBSET.bit.GPIO34 = 1;`", "`GpioDataRegs.GPBCLEAR.bit.GPIO34 = 1;`", "`GpioDataRegs.GPBTOGGLE.bit.GPIO34 = 0;`", "`GpioDataRegs.GPBCLEAR.bit.GPIO34 = 0;`"],
+          answer: 1,
+          why: "CLEAR drives the pin low, and low lights this LED. A 0 written to SET, CLEAR or TOGGLE does nothing.",
+        },
+      ],
+      takeaway: "To drive a pin: mux to GPIO, direction to output, then write 1 to SET, CLEAR or TOGGLE. Whether high or low lights an LED depends on its wiring.",
     },
     {
       id: "out-dir",
@@ -212,11 +233,8 @@ ${out(22)}
         { kind: "reg", reg: "GpioCtrlRegs.GPADIR", field: "GPIO22", equals: 1, label: "GPIO22 is an output" },
         { kind: "no-dat-write", label: "The pin is driven through SET, not DAT" },
       ],
-      bonus: [
-        { kind: "reg", reg: "GpioCtrlRegs.GPADIR", equals: 0x00400000, label: "GPIO22 is the only output in port A", hint: "Every pin you make an output drives its wire. Set up only what you use." },
-      ],
       hints: [
-        "Copy the two helper calls from the briefing with pin 22.",
+        "The two helper calls are written out in the task, with `pin` in place of 22.",
         "GPIO22 is in port A, so the register is GpioDataRegs.GPASET.",
         "`GpioDataRegs.GPASET.bit.GPIO22 = 1;`",
       ],
@@ -283,7 +301,6 @@ ${out(111)}
       ],
       bonus: [
         { kind: "duty", led: "LED2", pct: 0, tolPct: 0, label: "LED2 never lights, not even for an instant", hint: "Do not switch everything on first and then switch two LEDs off again." },
-        { kind: "max-lines", max: 21, label: "In 21 lines or fewer" },
       ],
       hints: [
         "Each LED needs GPIO_SetupPinMux and GPIO_SetupPinOptions, then one write to a SET or CLEAR register.",
@@ -484,7 +501,6 @@ ${out(34)}
       ],
       bonus: [
         { kind: "source", mustNotMatch: "\\bif\\b|\\?", label: "No `if` in the loop: TOGGLE does the work" },
-        { kind: "max-lines", max: 16, label: "In 16 lines or fewer" },
       ],
       hints: [
         "100 ms is 100000 microseconds.",
@@ -545,9 +561,6 @@ ${out(95)}
         { kind: "led", led: "LED3", at: 400, on: false, label: "LED3 is off at 400 ms" },
         { kind: "duty", led: "LED3", pct: 20, label: "LED3 is on 20% of the time", hint: "50 ms out of every 250 ms is 20%." },
         { kind: "no-dat-write", label: "The output is changed through SET and CLEAR" },
-      ],
-      bonus: [
-        { kind: "max-lines", max: 13, label: "In 13 lines or fewer" },
       ],
       hints: [
         "GPIO95 is 95 / 32 = 2 remainder 31: port C.",
@@ -794,7 +807,6 @@ void main(void)
           label: "One address formula for every port: no `switch`, no `if`, no register names",
           hint: "The port number is pin / 32, and each port's registers start 0x40 words after the previous port's.",
         },
-        { kind: "max-lines", max: 62, label: "In 62 lines or fewer" },
       ],
       hints: [
         "Three numbers describe a pin: its port (pin / 32), its bit in the port (pin % 32), and for the mux registers its field (pin % 16, two bits each) in register 1 or 2 ((pin % 32) / 16).",
@@ -923,7 +935,6 @@ void main(void)
           hint: "The SET register of a pin's port is at 0x7F00 + (pin / 32) x 8 + 2.",
         },
         { kind: "source", mustNotMatch: "GPIO_", label: "No TI GPIO helper at all, not even for the setup" },
-        { kind: "max-lines", max: 45, label: "In 45 lines or fewer" },
       ],
       hints: [
         "showWord: loop i from 0 to 15, test `(value >> i) & 1`, and switch the pin `ledPin[i]` on or off.",

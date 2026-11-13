@@ -13,13 +13,69 @@ export const ch00: Chapter = {
   course: ["L2", "L4", "Lab 2", "HW1"],
   levels: [
     {
+      id: "bits-first-light",
+      kind: "code",
+      mode: "complete",
+      title: "First light",
+      goal: "Change one character of a finished program so that LED1 lights.",
+      refs: [{ course: "Lab 1" }, { course: "L3" }],
+      brief: `
+Every level works the same way. Read the short text on this side. Try things with **Run** and watch the board. Press **Run tests** to check your work, and open a **hint** if you are stuck.
+
+This program is complete. It starts the chip and gets one LED ready. You do not need to understand those lines yet: chapters 1 and 2 teach them.
+
+One line decides if **LED1** lights. It writes a number to a piece of the chip's hardware. A **1** switches the LED on. Right now the program writes a **0**, which does nothing.
+
+Change the 0 to a 1. Press **Run** and look at LED1 on the board, then press **Run tests**.
+`,
+      kit: "robot",
+      durationMs: 2,
+      starter: `void main(void)
+{
+    // Start the chip (chapters 1 and 2 explain these lines)
+    InitSysCtrl();
+    InitGpio();
+    GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+
+    // LED1: a 1 switches it on. Change the 0 to a 1.
+    GpioDataRegs.GPASET.bit.GPIO22 = 0;
+
+    while (1) {}
+}
+`,
+      solution: `void main(void)
+{
+    // Start the chip (chapters 1 and 2 explain these lines)
+    InitSysCtrl();
+    InitGpio();
+    GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+
+    // LED1: a 1 switches it on. Change the 0 to a 1.
+    GpioDataRegs.GPASET.bit.GPIO22 = 1;
+
+    while (1) {}
+}
+`,
+      checks: [
+        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on", hint: "Find the line that ends in `= 0;` and make it `= 1;`." },
+      ],
+      hints: [
+        "Only one line needs to change, and only one character in it.",
+        "It is the line under the comment that starts with LED1.",
+        "`GpioDataRegs.GPASET.bit.GPIO22 = 1;`",
+      ],
+      takeaway: "You just wrote a 1 into a register, and a pin of the chip went to 3.3 V. The rest of this chapter is about the numbers you write. Chapters 1 and 2 are about where you write them.",
+    },
+    {
       id: "bits-brief",
       kind: "brief",
       title: "Why bits matter here",
-      goal: "Read how numbers are stored, then answer three questions.",
+      goal: "Read how numbers are written in binary and hex, then answer three questions.",
       refs: [{ course: "L2" }, { course: "L4" }],
       brief: `
-A **bit** is one binary digit: a 0 or a 1. The F28379D, the microcontroller on the course board, is controlled through **registers**: small pieces of memory inside the chip whose bits are wired to its hardware. Everything you do with the chip ends up as bits in a register: one bit turns an LED on, three bits pick a clock divider. So you need to move easily between binary, hex and decimal.
+A **bit** is one binary digit: a 0 or a 1. A **microcontroller** is a small computer on one chip. The one on the course board is the F28379D. You control it through **registers**: small pieces of memory inside the chip whose bits are wired to its hardware. One bit turns an LED on, three bits pick a clock divider. So you need to move easily between binary, hex and decimal.
 
 ## Hex is binary in groups of four
 **Binary** writes a number with the digits 0 and 1 only. **Hex** (hexadecimal) counts in sixteens: its digits are 0 to 9, then A to F for ten to fifteen. In C a hex number starts with \`0x\`.
@@ -30,30 +86,13 @@ One hex digit is exactly four bits. \`0xA5\` is \`1010 0101\`. Bit numbers start
 
 Try it in the figure: click bits and watch each hex digit follow its own four bits, and the decimal value add up from the weights.
 
-## The bit operators
-C has operators that work on every bit of a number at once:
-- \`a | b\` (OR): a result bit is 1 if it is 1 in \`a\` or in \`b\`
-- \`a & b\` (AND): a result bit is 1 only if it is 1 in both
-- \`a ^ b\` (XOR): a result bit is 1 if the two bits differ
-- \`~a\` (NOT): every bit is flipped
-- \`a << n\` and \`a >> n\` (shift): all bits move n places to the left or to the right
+## An int is 16 bits here
+On a PC an \`int\` has 32 bits. On this chip it has **16**, so it only reaches from -32768 to 32767. A result that does not fit silently **wraps around**: 65536 is taken off until it fits, so \`200 * 1000\` gives 3392, not 200000. The course code therefore names the size in the type:
 
-## The four mask moves
-A **mask** is a number whose 1 bits mark the bits you want to work on. With \`mask = 1 << n\` (a single 1 in position n):
-- **set** the bit: \`x |= mask;\`
-- **clear** it: \`x &= ~mask;\`
-- **toggle** it: \`x ^= mask;\`
-- **test** it: \`if (x & mask)\`
+- \`int16_t\`, \`uint16_t\`: 16 bits. The \`u\` means unsigned: no negative values, 0 to 65535.
+- \`int32_t\`, \`uint32_t\`: 32 bits, for bigger numbers. A constant becomes 32 bits with an \`L\`: \`1000L\`.
 
-{{figure:mask-ops}}
-
-Try it in the figure: pick an operation, click bits of the mask, and see which bits of \`x\` change and which C statement does it.
-
-## Two things that are different on this chip
-- An \`int\` is **16 bits** (-32768 to 32767). \`200 * 1000\` does not fit and silently wraps around. Use \`int32_t\`, \`uint32_t\` or a long constant (\`1000L\`) for bigger numbers.
-- A \`char\` is also 16 bits, and \`sizeof(char)\` is 1. The smallest piece of memory this CPU can reach on its own is 16 bits, called a **word**.
-
-Negative numbers use **two's complement**: to negate, flip every bit and add 1. In 16 bits, -1 is \`0xFFFF\`.
+The smallest piece of memory this CPU can reach is 16 bits, called a **word**. Even a \`char\` is 16 bits.
 `,
       questions: [
         {
@@ -63,19 +102,19 @@ Negative numbers use **two's complement**: to negate, flip every bit and add 1. 
           why: "Hex 2 is 0010 and hex 0 is 0000. Only bit 5 is set, and 2 to the power 5 is 32.",
         },
         {
-          prompt: "Which line clears bit 3 of `x` and leaves every other bit alone?",
-          options: ["`x = 0 << 3;`", "`x &= ~(1 << 3);`", "`x |= (1 << 3);`", "`x &= (1 << 3);`"],
-          answer: 1,
-          why: "~(1 << 3) is all ones except bit 3. AND keeps every bit where the mask is 1 and forces bit 3 to 0.",
+          prompt: "Which bit is set in `0x0400`?",
+          options: ["Bit 4", "Bit 8", "Bit 10", "Bit 12"],
+          answer: 2,
+          why: "The digit 4 is 0100 and sits in bits 11 to 8. Its single 1 is the third bit of that group: bit 10, worth 2 to the power 10 = 1024.",
         },
         {
           prompt: "On this chip, what does `int16_t n = 30000 + 10000;` store in `n`?",
           options: ["40000", "32767", "-25536", "It does not compile"],
           answer: 2,
-          why: "40000 is larger than 32767, the largest 16-bit signed value, so it wraps: 40000 - 65536 = -25536.",
+          why: "40000 is larger than 32767, the largest 16-bit signed value, so it wraps around: 40000 - 65536 = -25536. The next levels show why.",
         },
       ],
-      takeaway: "Hex digit = 4 bits; bit n = 2^n; OR sets, AND-with-NOT clears, XOR toggles, AND tests. And `int` is 16 bits here.",
+      takeaway: "One hex digit is 4 bits, and bit n is worth 2^n. An `int` is 16 bits on this chip, so say the size you need: int16_t, uint16_t, int32_t, uint32_t.",
     },
     {
       id: "bits-a5",
@@ -105,6 +144,26 @@ Split the hex number into digits first: \`0x00A5\` is the digits 0, 0, A, 5. Eac
       goal: "Starting from 0x00A5, apply `v |= (1 << 9);` and then `v &= ~0x0004;` by hand.",
       refs: [{ course: "L2" }, { course: "Lab 2" }],
       brief: `
+## The bit operators
+C has operators that work on every bit of a number at once:
+- \`a | b\` (OR): a result bit is 1 if it is 1 in \`a\` or in \`b\`
+- \`a & b\` (AND): a result bit is 1 only if it is 1 in both
+- \`a ^ b\` (XOR): a result bit is 1 if the two bits differ
+- \`~a\` (NOT): every bit is flipped
+- \`a << n\` and \`a >> n\` (shift): all bits move n places to the left or to the right
+
+## The four mask moves
+A **mask** is a number whose 1 bits mark the bits you want to work on. \`1 << n\` is a mask with a single 1 in position n:
+- **set** the bit (make it 1): \`x |= mask;\`
+- **clear** it (make it 0): \`x &= ~mask;\`
+- **toggle** it (flip it): \`x ^= mask;\`
+- **test** it: \`if (x & mask)\`
+
+{{figure:mask-ops}}
+
+Try it in the figure: pick an operation, click bits of the mask, and see which bits of \`x\` change and which C statement does it.
+
+## Your task
 Two C statements change a 16-bit variable \`v\` that starts at \`0x00A5\`:
 
 \`\`\`c
@@ -122,7 +181,7 @@ Make the bits show what \`v\` holds afterwards. Every bit that the two lines do 
         "`0x0004` is bit 2. `~0x0004` is every bit except bit 2, so the AND clears only bit 2.",
         "Turn bit 9 on and bit 2 off. The result is 0x02A1.",
       ],
-      takeaway: "This is how one field of a register is changed without disturbing its neighbours: OR to set, AND with the inverted mask to clear.",
+      takeaway: "OR sets, AND with the inverted mask clears, XOR toggles, AND tests. This is how one bit of a register is changed without disturbing its neighbours.",
     },
     {
       id: "bits-twos",
@@ -131,7 +190,7 @@ Make the bits show what \`v\` holds afterwards. Every bit that the two lines do 
       goal: "Convert between negative numbers and their bit patterns.",
       refs: [{ course: "L4" }, { course: "Lab 2" }],
       brief: `
-A signed N-bit number covers -2^(N-1) up to 2^(N-1) - 1. To negate a value: flip all bits, then add 1.
+Negative numbers are stored in **two's complement**: the top bit counts as negative. A signed N-bit number covers -2^(N-1) up to 2^(N-1) - 1. To negate a value: flip all bits, then add 1.
 
 Example in 16 bits: 1 is \`0x0001\`. Flipped: \`0xFFFE\`. Plus one: \`0xFFFF\`. So -1 is \`0xFFFF\`.
 
@@ -146,13 +205,13 @@ Answers may be typed in decimal or in hex (\`0x...\`).
       fields: [
         { id: "a", label: "The 16-bit pattern 0xFFFE read as an int16_t", answer: -2, why: "0xFFFE = 65534, and 65534 - 65536 = -2." },
         { id: "b", label: "-5 stored in 16 bits, as hex", format: "hex", answer: 0xfffb, why: "5 = 0x0005, flipped 0xFFFA, plus 1 = 0xFFFB." },
-        { id: "c", label: "Smallest value a 24-bit signed integer can hold", answer: -8388608, why: "-2^23 = -8388608 (Lab 2 warm-up)." },
-        { id: "d", label: "Largest value a 24-bit signed integer can hold", answer: 8388607, why: "2^23 - 1 = 8388607." },
+        { id: "c", label: "Smallest value a 20-bit signed integer can hold", answer: -524288, why: "-2^19 = -524288. Lab 2 opens with a question of this kind." },
+        { id: "d", label: "Largest value a 20-bit signed integer can hold", answer: 524287, why: "2^19 - 1 = 524287." },
       ],
       hints: [
         "For a pattern with the top bit set, subtract 2^16 = 65536 from its unsigned value.",
         "For -5: write 5 in hex with four digits, invert every digit (F minus the digit), then add 1.",
-        "A 24-bit signed range is -2^23 to 2^23 - 1, and 2^23 = 8388608.",
+        "A 20-bit signed range is -2^19 to 2^19 - 1, and 2^19 = 524288.",
       ],
     },
     {
@@ -165,34 +224,33 @@ Answers may be typed in decimal or in hex (\`0x...\`).
       brief: `
 A **byte** is 8 bits. Sensors often send a 16-bit reading as two bytes, one after the other. You will do this for real with the motion sensor (IMU) and the laser scanner (LIDAR) later, so build the tools now.
 
-For \`0xC492\` the high byte is \`0xC4\` and the low byte is \`0x92\`.
+For \`0x7E2B\` the high byte is \`0x7E\` and the low byte is \`0x2B\`.
 
 - Shifting right by 8 moves the high byte down: \`v >> 8\`.
 - \`& 0x00FF\` keeps only the low 8 bits.
 - Shifting left by 8 moves a byte up, and \`|\` joins two pieces.
 
-Complete the three functions. \`main\` already calls them and stores the results in global variables the tests read.
+Complete the three functions. \`main\` already calls each of them twice and stores the results in global variables the tests read. Press **Run tests** to check your work.
 `,
       kit: "launchpad",
       durationMs: 1,
-      watch: ["hi", "lo", "joined"],
-      starter: `uint16_t hi = 0;
-uint16_t lo = 0;
-uint16_t joined = 0;
+      watch: ["hi", "lo", "joined", "hi2", "lo2", "joined2"],
+      starter: `uint16_t hi, lo, joined;
+uint16_t hi2, lo2, joined2;
 
-// Return the upper 8 bits of v (for 0xC492: 0xC4).
+// Return the upper 8 bits of v (for 0x7E2B: 0x7E).
 uint16_t highByte(uint16_t v)
 {
     return 0;   // TODO
 }
 
-// Return the lower 8 bits of v (for 0xC492: 0x92).
+// Return the lower 8 bits of v (for 0x7E2B: 0x2B).
 uint16_t lowByte(uint16_t v)
 {
     return 0;   // TODO
 }
 
-// Build a 16-bit value from two bytes (0xA5 and 0x5D give 0xA55D).
+// Build a 16-bit value from two bytes (0x3C and 0xD1 give 0x3CD1).
 uint16_t combine(uint16_t high, uint16_t low)
 {
     return 0;   // TODO
@@ -200,15 +258,17 @@ uint16_t combine(uint16_t high, uint16_t low)
 
 void main(void)
 {
-    hi = highByte(0xC492);
-    lo = lowByte(0xC492);
-    joined = combine(0xA5, 0x5D);
+    hi = highByte(0x7E2B);
+    lo = lowByte(0x7E2B);
+    joined = combine(0x3C, 0xD1);
+    hi2 = highByte(0x90F4);
+    lo2 = lowByte(0x90F4);
+    joined2 = combine(0x81, 0x07);
     while (1) {}
 }
 `,
-      solution: `uint16_t hi = 0;
-uint16_t lo = 0;
-uint16_t joined = 0;
+      solution: `uint16_t hi, lo, joined;
+uint16_t hi2, lo2, joined2;
 
 uint16_t highByte(uint16_t v)
 {
@@ -227,16 +287,22 @@ uint16_t combine(uint16_t high, uint16_t low)
 
 void main(void)
 {
-    hi = highByte(0xC492);
-    lo = lowByte(0xC492);
-    joined = combine(0xA5, 0x5D);
+    hi = highByte(0x7E2B);
+    lo = lowByte(0x7E2B);
+    joined = combine(0x3C, 0xD1);
+    hi2 = highByte(0x90F4);
+    lo2 = lowByte(0x90F4);
+    joined2 = combine(0x81, 0x07);
     while (1) {}
 }
 `,
       checks: [
-        { kind: "var", name: "hi", equals: 0xc4, label: "highByte(0xC492) returns 0xC4 (196)" },
-        { kind: "var", name: "lo", equals: 0x92, label: "lowByte(0xC492) returns 0x92 (146)" },
-        { kind: "var", name: "joined", equals: 0xa55d, label: "combine(0xA5, 0x5D) returns 0xA55D (42333)" },
+        { kind: "var", name: "hi", equals: 0x7e, label: "highByte(0x7E2B) returns 0x7E (126)" },
+        { kind: "var", name: "hi2", equals: 0x90, label: "highByte(0x90F4) returns 0x90 (144)", hint: "The function must work on its argument v, not return a fixed number." },
+        { kind: "var", name: "lo", equals: 0x2b, label: "lowByte(0x7E2B) returns 0x2B (43)" },
+        { kind: "var", name: "lo2", equals: 0xf4, label: "lowByte(0x90F4) returns 0xF4 (244)" },
+        { kind: "var", name: "joined", equals: 0x3cd1, label: "combine(0x3C, 0xD1) returns 0x3CD1 (15569)" },
+        { kind: "var", name: "joined2", equals: 0x8107, label: "combine(0x81, 0x07) returns 0x8107 (33031)" },
       ],
       bonus: [
         { kind: "source", mustNotMatch: "[*/%]", label: "Shifts and masks only: no multiply, divide or remainder", hint: "Multiplying by 256 works, but `<< 8` says what you mean and costs the CPU less." },
@@ -256,7 +322,7 @@ void main(void)
       goal: "Find the two bugs that make this program print the wrong number.",
       refs: [{ course: "HW1" }, { course: "Lab 1" }, { course: "L4" }],
       brief: `
-A timer on this chip counts 200 times per microsecond. This program works out how many counts make one millisecond (it should be 200000) and prints it on the serial terminal, the text window next to the board.
+A timer on this chip counts 200 times per microsecond. \`toCounts(microseconds)\` works out how many counts a time takes. \`main\` calls it for 1000 us (it should give 200000) and for 500 us (100000), and prints both on the serial terminal, the text window next to the board.
 
 The first three lines of \`main\` start the chip and its serial port. Leave them as they are.
 
@@ -269,52 +335,67 @@ Run it and look at the terminal and at the messages under the editor. There are 
 
 Try it in the figure: press the example \`200 * 1000\`, see where the result lands, then make the second operand a long.
 
-Fix the program so that it prints \`counts = 200000\`.
+Fix the program so that it prints \`200000 and 100000\`.
 `,
       kit: "launchpad",
       durationMs: 20,
       starter: `uint32_t counts = 0;
+uint32_t half = 0;
+
+// Timer counts in a time given in microseconds
+uint32_t toCounts(int microseconds)
+{
+    int countsPerMicrosecond = 200;
+
+    return countsPerMicrosecond * microseconds;
+}
 
 void main(void)
 {
 ${SERIAL_SETUP}
 
-    int countsPerMicrosecond = 200;
-    int microseconds = 1000;
+    counts = toCounts(1000);
+    half = toCounts(500);
 
-    counts = countsPerMicrosecond * microseconds;
-
-    serial_printf(&SerialA, "counts = %d\\r\\n", counts);
+    serial_printf(&SerialA, "%d and %d\\r\\n", counts, half);
 
     while (1) {}
 }
 `,
       solution: `uint32_t counts = 0;
+uint32_t half = 0;
+
+// Timer counts in a time given in microseconds
+uint32_t toCounts(int microseconds)
+{
+    int countsPerMicrosecond = 200;
+
+    return (uint32_t)countsPerMicrosecond * microseconds;
+}
 
 void main(void)
 {
 ${SERIAL_SETUP}
 
-    int countsPerMicrosecond = 200;
-    int microseconds = 1000;
+    counts = toCounts(1000);
+    half = toCounts(500);
 
-    counts = (uint32_t)countsPerMicrosecond * microseconds;
-
-    serial_printf(&SerialA, "counts = %ld\\r\\n", counts);
+    serial_printf(&SerialA, "%ld and %ld\\r\\n", counts, half);
 
     while (1) {}
 }
 `,
       checks: [
-        { kind: "var", name: "counts", equals: 200000, label: "counts holds 200000", hint: "The multiplication itself overflows. Make one operand 32 bits wide before multiplying." },
-        { kind: "serial", includes: "counts = 200000\r\n", label: "The terminal shows: counts = 200000", hint: "%d prints 16 bits. counts is a uint32_t." },
+        { kind: "var", name: "counts", equals: 200000, label: "toCounts(1000) returns 200000", hint: "The multiplication itself overflows. Make one operand 32 bits wide before multiplying." },
+        { kind: "var", name: "half", equals: 100000, label: "toCounts(500) returns 100000", hint: "The function must compute the result from its argument." },
+        { kind: "serial", includes: "200000 and 100000\r\n", label: "The terminal shows: 200000 and 100000", hint: "%d prints 16 bits. Both values are uint32_t." },
         { kind: "no-diagnostic", code: "int16-overflow", label: "No 16-bit overflow" },
         { kind: "no-diagnostic", code: "printf-type", label: "The format matches the value's size" },
       ],
       bonus: [
         {
           kind: "source",
-          mustMatch: "\\bint\\s+countsPerMicrosecond\\b[\\s\\S]*\\bint\\s+microseconds\\b",
+          mustMatch: "\\(\\s*int\\s+microseconds\\s*\\)[\\s\\S]*\\bint\\s+countsPerMicrosecond\\b",
           label: "Both inputs are still `int`: the multiplication itself is fixed",
           hint: "Leave the two declarations alone and widen one operand where the multiplication happens.",
         },
@@ -322,7 +403,7 @@ ${SERIAL_SETUP}
       hints: [
         "Read the two warnings under the editor: each names a line and what went wrong.",
         "Storing into a uint32_t does not help if the multiplication already happened in 16 bits. Cast one operand: `(uint32_t)countsPerMicrosecond * microseconds`, or declare the variables as int32_t.",
-        "Change `%d` to `%ld` in the format string.",
+        "Change both `%d` to `%ld` in the format string.",
       ],
       takeaway: "The type of a calculation is decided by its operands, not by where the result goes. And on this chip `%d` is for 16-bit values, `%ld` for 32-bit ones.",
     },
@@ -334,7 +415,7 @@ ${SERIAL_SETUP}
       goal: "Write functions that place three settings into one 16-bit word, and read one back.",
       refs: [{ course: "L2" }, { course: "Lab 3" }],
       brief: `
-A register packs several settings into one word. This one copies the layout of the PWM control register you will meet later:
+A register packs several settings into one word. Each setting has its own group of bits, called a **field**. This word is modelled on a PWM control register you will meet later:
 
 - **mode** uses bits 1 to 0 (values 0 to 3)
 - **divider** uses bits 12 to 10 (values 0 to 7)
@@ -404,7 +485,6 @@ void main(void)
       ],
       bonus: [
         { kind: "source", mustNotMatch: "\\bif\\b|\\?", label: "No `if` and no `?:`: masks do all the limiting" },
-        { kind: "max-lines", max: 18, label: "In 18 lines or fewer", hint: "Each function can be a single return statement." },
       ],
       hints: [
         "For each field: mask the value to the field's width, then shift it to the field's lowest bit. OR the three results.",
@@ -578,7 +658,7 @@ void main(void)
 Some devices send the least significant bit first while your code expects the most significant bit first. The fix is to mirror the word: bit 0 becomes bit 15, bit 1 becomes bit 14, and so on.
 
 - \`0x0001\` becomes \`0x8000\`
-- \`0xC492\` becomes \`0x4923\`
+- \`0xB3C1\` becomes \`0x83CD\`
 
 Write \`reverse16(v)\`.
 
@@ -600,7 +680,7 @@ void main(void)
 {
     a = reverse16(0x0001);
     b = reverse16(0x00A5);
-    c = reverse16(0xC492);
+    c = reverse16(0xB3C1);
     d = reverse16(0x1234);
     e = reverse16(0xFFFE);
     while (1) {}
@@ -621,7 +701,7 @@ void main(void)
 {
     a = reverse16(0x0001);
     b = reverse16(0x00A5);
-    c = reverse16(0xC492);
+    c = reverse16(0xB3C1);
     d = reverse16(0x1234);
     e = reverse16(0xFFFE);
     while (1) {}
@@ -630,7 +710,7 @@ void main(void)
       checks: [
         { kind: "var", name: "a", equals: 0x8000, label: "reverse16(0x0001) is 0x8000" },
         { kind: "var", name: "b", equals: 0xa500, label: "reverse16(0x00A5) is 0xA500" },
-        { kind: "var", name: "c", equals: 0x4923, label: "reverse16(0xC492) is 0x4923" },
+        { kind: "var", name: "c", equals: 0x83cd, label: "reverse16(0xB3C1) is 0x83CD" },
         { kind: "var", name: "d", equals: 0x2c48, label: "reverse16(0x1234) is 0x2C48" },
         { kind: "var", name: "e", equals: 0x7fff, label: "reverse16(0xFFFE) is 0x7FFF" },
       ],
@@ -722,7 +802,6 @@ void main(void)
       ],
       bonus: [
         { kind: "source", mustNotMatch: "float|double|/", label: "Integers only: no float and no division" },
-        { kind: "max-lines", max: 20, label: "In 20 lines or fewer" },
       ],
       hints: [
         "`(int32_t)a * b` gives the full product. It is the Q15 answer times 32768, so it has to come down by 15 bits.",
@@ -831,7 +910,6 @@ ${SERIAL_SETUP}
         { kind: "source", mustNotMatch: "\"[^\"\\n]*%[-0-9]*l?[dux]|sprintf", label: "No %d, %ld, %u or sprintf" },
       ],
       bonus: [
-        { kind: "max-lines", max: 40, label: "In 40 lines or fewer" },
         { kind: "source", mustNotMatch: "2147483648|0x80000000", label: "No special case for the most negative value", hint: "Take the magnitude as a uint32_t: `rest = 0 - rest;` is well defined for unsigned numbers." },
       ],
       hints: [

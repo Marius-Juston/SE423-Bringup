@@ -103,7 +103,7 @@ In this level the prescaler is 0, so the counter ticks on every clock cycle of *
 - PRD = period x 200 000 000 - 1, with the period in seconds
 - \`ConfigCpuTimer(&CpuTimer0, 200, us)\` writes PRD = 200 x us - 1
 
-Lab 2 asks for the longest period a CPU timer can have. \`PRD\` is a 32-bit unsigned number, so its largest value is 2^32 - 1 = 4294967295.
+How long can a period be? \`PRD\` is a 32-bit unsigned number, so its largest value is 2^32 - 1 = 4294967295.
 `,
       fields: [
         { id: "a", label: "PRD for a period of 1 ms", answer: 199999, why: "1 ms is 200000 clock cycles of 5 ns. PRD is one less: 199999." },
@@ -111,7 +111,7 @@ Lab 2 asks for the longest period a CPU timer can have. \`PRD\` is a 32-bit unsi
           id: "b",
           label: "PRD after ConfigCpuTimer(&CpuTimer0, 200, 10000);",
           answer: 1999999,
-          why: "200 x 10000 - 1 = 1999999. That is a period of 10 ms, the timer 0 setting of the Lab 1 starter code.",
+          why: "200 x 10000 - 1 = 1999999. That is a period of 10 ms, the timer 0 setting of the course starter code.",
         },
         { id: "c", label: "Period when PRD = 49999", unit: "ms", answer: 0.25, tolPct: 0.5, why: "(49999 + 1) x 5 ns = 250000 ns = 0.25 ms." },
         {
@@ -302,16 +302,6 @@ ${out(22)}
         { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", equals: 0, label: "Timer 0 is running" },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the waiting, not DELAY_US" },
       ],
-      bonus: [
-        {
-          kind: "blink",
-          led: "LED1",
-          periodMs: 200,
-          tolPct: 0.01,
-          label: "No drift: the blink period is 200 ms to within 0.01 %",
-          hint: "Only the timer decides the rate. Do not restart or reconfigure it inside the loop.",
-        },
-      ],
       inspect: ["CpuTimer0Regs.TIM", "CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR"],
       hints: [
         "100 ms is 100000 microseconds. The first argument is the address of the timer's variable: `&CpuTimer0`.",
@@ -325,10 +315,10 @@ ${out(22)}
       kind: "code",
       mode: "debug",
       title: "A thousand times too fast",
-      goal: "LED1 should change every 250 ms. It looks permanently half lit. Fix the timer setup.",
+      goal: "LED1 should change every 400 ms. It looks permanently half lit. Fix the timer setup.",
       refs: [{ course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.8" }],
       brief: `
-The author wanted LED1 to change every **250 ms**, which is a blink period of 500 ms. On the board the LED just glows dimly, and the scope shows it switching thousands of times a second.
+The author wanted LED1 to change every **400 ms**, which is a blink period of 800 ms. On the board the LED just glows dimly, and the scope shows it switching thousands of times a second.
 
 The polling loop is correct. The problem is in the timer setup. Check each argument of \`ConfigCpuTimer\` against what the function expects:
 
@@ -336,10 +326,10 @@ The polling loop is correct. The problem is in the timer setup. Check each argum
 - the clock frequency in **MHz**
 - the period in **microseconds**
 
-Lab 2 asks for the same period, 0.25 seconds, for CPU Timer 2.
+Lab 2 has you set a period like this for CPU Timer 2.
 `,
       kit: "robot",
-      durationMs: 2000,
+      durationMs: 3300,
       starter: `void main(void)
 {
 ${INIT}
@@ -347,7 +337,7 @@ ${INIT}
 ${out(22)}
 
     InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 200, 250);   // 250 ms
+    ConfigCpuTimer(&CpuTimer0, 200, 400);   // 400 ms
     CpuTimer0Regs.TCR.all = 0x4000;
 
     while (1) {
@@ -365,7 +355,7 @@ ${INIT}
 ${out(22)}
 
     InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 200, 250000);   // 250 ms = 250000 us
+    ConfigCpuTimer(&CpuTimer0, 200, 400000);   // 400 ms = 400000 us
     CpuTimer0Regs.TCR.all = 0x4000;
 
     while (1) {
@@ -380,31 +370,23 @@ ${out(22)}
         {
           kind: "blink",
           led: "LED1",
-          periodMs: 500,
-          label: "LED1 blinks with a 500 ms period",
-          hint: "Compare the measured period with 500 ms. The ratio tells you which unit is wrong.",
+          periodMs: 800,
+          label: "LED1 blinks with an 800 ms period",
+          hint: "Compare the measured period with 800 ms. The ratio tells you which unit is wrong.",
         },
         {
           kind: "reg",
           reg: "CpuTimer0Regs.PRD",
-          equals: 49999999,
-          label: "Timer 0 is set to 250 ms (PRD = 49999999)",
+          equals: 79999999,
+          label: "Timer 0 is set to 400 ms (PRD = 79999999)",
           hint: "PRD = 200 x (period in microseconds) - 1.",
-        },
-      ],
-      bonus: [
-        {
-          kind: "max-lines",
-          max: 16,
-          label: "A one-number fix: the program is still 16 lines of code",
-          hint: "Do not add a line. One argument of one call is wrong.",
         },
       ],
       inspect: ["CpuTimer0Regs.PRD", "CpuTimer0Regs.TCR"],
       hints: [
         "The LED blinks exactly 1000 times too fast. Which unit conversion is a factor of 1000?",
         "The third argument is in microseconds, not milliseconds.",
-        "`ConfigCpuTimer(&CpuTimer0, 200, 250000);`",
+        "`ConfigCpuTimer(&CpuTimer0, 200, 400000);`",
       ],
       takeaway: "ConfigCpuTimer takes MHz and microseconds. When a rate is off by a round factor such as 1000, look for a unit mistake first.",
     },
@@ -470,14 +452,6 @@ ${out(22)}
         },
         { kind: "pin", pin: 22, at: 0.9, level: 0, label: "GPIO22 is still low just before the first period ends" },
         { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 199999, label: "Timer 0 is still set to 1 ms (PRD = 199999)" },
-      ],
-      bonus: [
-        {
-          kind: "max-lines",
-          max: 16,
-          label: "A one-character fix: the program is still 16 lines of code",
-          hint: "Do not add a line. Change the value written to TIF.",
-        },
       ],
       inspect: ["CpuTimer0Regs.TCR", "CpuTimer0Regs.TIM"],
       hints: [

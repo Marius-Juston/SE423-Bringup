@@ -75,69 +75,41 @@ export const ch03: Chapter = {
       goal: "Learn what a pin does as an input, why it needs a pull-up, and what a push button makes it read.",
       refs: [{ course: "L3" }, { course: "Lab 2" }, { trm: "8.2" }, { trm: "8.8" }, { trm: "8.9" }],
       brief: `
-A GPIO pin is a metal contact on the chip that your program controls. It can work in two directions, and you choose which.
+In chapter 2 the chip drove a pin. Now it listens. As an **input**, a pin drives nothing: the chip only **measures** the voltage that the circuit outside puts on it. The result is one bit, the pin's **level**: near 3.3 V reads **1** (high), near 0 V reads **0** (low). The 0 V point of a circuit is called **ground**, or GND.
 
-- As an **output** (the last chapter) the chip **pushes** a voltage onto the pin: 3.3 V or 0 V.
-- As an **input** the chip pushes nothing. It only **measures** the voltage that the circuit outside puts on the pin.
-
-The measurement gives one bit, the pin's **level**:
-
-- near 3.3 V reads as **1** (high)
-- near 0 V reads as **0** (low). The 0 V point of a circuit is called **ground**, or GND.
-
-After reset every pin is an input.
-
-## A pin connected to nothing
-An input can only report what the outside circuit gives it. If nothing is connected, nothing sets the voltage. The pin behaves like a loose wire: its voltage drifts with every bit of electrical noise nearby. Such a pin is **floating**. It reads 0 or 1 at random, and two reads in a row can disagree.
-
-A push button on its own has this problem. A **push button** is a switch: its two sides are connected only while it is pressed. Put one side on the pin and the other on ground:
+## A push button alone is not enough
+A **push button** is a **passive** part: it has no power of its own and produces no voltage. It is a switch whose two sides are connected only while it is pressed. The robot board's buttons sit between the pin and ground.
 
 - pressed: the pin is connected to ground. It reads 0.
-- released: the pin is connected to nothing. It floats.
+- released: the pin is connected to nothing. It **floats**: its voltage drifts with electrical noise, and it reads 0 or 1 at random.
 
 {{figure:gpio-pin}}
 
-Try it in the figure: make the pin an input, switch the pull-up off, and connect nothing. Watch what \`GPxDAT\` reads. Then connect the button, and press and release it.
+Try it in the figure: input, pull-up off, button connected. Press and release it and watch what \`GPxDAT\` reads.
 
 ## The pull-up resistor
-The cure is to give the pin a default level. A **resistor** is a part that lets only a small current through. A **pull-up** is a large resistor between the pin and 3.3 V.
+The cure is a default level. A **resistor** lets only a small current through. A **pull-up** is a large resistor between the pin and 3.3 V.
 
-- Nothing else acts on the pin: the resistor brings it up to 3.3 V. It reads **1**. That is the default.
-- Something connects the pin to ground, such as a pressed button: a direct connection is far stronger than a large resistor, so the pin goes to 0 V and reads **0**. Nothing fights and nothing is harmed. Only a tiny current flows from 3.3 V through the resistor to ground.
+- released: only the resistor acts on the pin and brings it up to 3.3 V. It reads **1**.
+- pressed: the button's direct connection to ground is far stronger than the resistor. The pin goes to 0 V and reads **0**. Only a tiny current flows through the resistor, so nothing is harmed.
 
-So a pull-up decides the level only when nothing else does. People call that a **weak** pull.
-
-Try it in the figure: input, pull-up on, nothing connected. Then the button, released and pressed. The pin never floats now.
+So a pressed button reads 0. That feels backwards the first time. Switch the pull-up on in the figure and try the button again.
 
 ## Switching the pull-up on
-The chip has a pull-up built into every pin. You switch it on pin by pin. The register that controls it is \`GPxPUD\`, "pull-up **disable**", so its logic is upside down:
-
-- bit = 1: pull-up disabled. This is the state after reset, for every pin.
-- bit = 0: pull-up enabled.
-
-The helper function sets the direction and the pull-up in one call:
+Every pin has a pull-up built in, switched off after reset. Its register is \`GPxPUD\`, "pull-up **disable**", so the logic is upside down: bit = 1 is off (the state after reset), bit = 0 is on. The helper function sets direction and pull-up in one call:
 \`\`\`c
-GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);            // GPIO157 is a plain GPIO
-GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP); // input, pull-up enabled
+GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
+GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);
 \`\`\`
-\`InitGpio()\` does not enable any pull-up. Each input needs its own call.
-
-## A push button to ground
-The robot board's buttons connect the pin to **ground** when pressed. With the pull-up enabled:
-
-- released: only the pull-up acts on the pin. It reads **1**.
-- pressed: the button connects the pin to ground and wins over the pull-up. It reads **0**.
-
-So a pressed button reads 0. That feels backwards the first time.
 
 ## Reading the level
-Your program reads the measured level from the **data register** of the pin's port, \`GPxDAT\`. Each pin has one bit in it:
+Each pin has one bit in the data register of its port, \`GPxDAT\`:
 \`\`\`c
 if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
     // push button 1 is pressed
 }
 \`\`\`
-The push buttons are on GPIO157, 158, 159 and 160. The first three are in port E (\`GPEDAT\`). GPIO160 is the first pin of port F (\`GPFDAT\`).
+The four push buttons are on GPIO157, 158 and 159 (port E, \`GPEDAT\`) and GPIO160 (port F, \`GPFDAT\`).
 `,
       questions: [
         {
@@ -183,7 +155,7 @@ The push buttons are on GPIO157, 158, 159 and 160. The first three are in port E
             "`GpioDataRegs.GPADAT.bit.GPIO160 == 0`",
           ],
           answer: 2,
-          why: "160 / 32 = 5, so GPIO160 is in port F. A pressed button connects the pin to ground, which reads 0.",
+          why: "GPIO160 is the first pin of port F. A pressed button connects the pin to ground, which reads 0.",
         },
       ],
       takeaway: "An input only measures. A pull-up gives it a default of 1, and a button to ground overrides that with 0: 1 when released, 0 when pressed. Read it from GPxDAT of the right port.",
@@ -367,16 +339,6 @@ ${inp(157)}
         { kind: "reg", reg: "GpioCtrlRegs.GPEPUD", field: "GPIO157", equals: 0, label: "The pull-up of GPIO157 is enabled" },
         { kind: "no-dat-write", label: "GPxDAT is only read, never written" },
       ],
-      bonus: [
-        {
-          kind: "latency",
-          led: "LED1",
-          after: 3,
-          withinUs: 1,
-          label: "LED1 lights within 1 microsecond of the press",
-          hint: "Nothing in the loop should wait. Read the pin and write the LED, nothing else.",
-        },
-      ],
       inspect: ["GpioDataRegs.GPEDAT", "GpioCtrlRegs.GPEPUD"],
       hints: [
         "Copy the two set-up lines from the briefing. The button's pin is in port E, the LED's pin is in port A.",
@@ -452,14 +414,6 @@ ${out(22)}
         { kind: "reg", reg: "GpioCtrlRegs.GPEPUD", field: "GPIO157", equals: 0, label: "The pull-up of GPIO157 is enabled" },
       ],
       inspect: ["GpioCtrlRegs.GPEPUD", "GpioDataRegs.GPEDAT"],
-      bonus: [
-        {
-          kind: "max-lines",
-          max: 16,
-          label: "A one-word fix: the program is still 16 lines of code",
-          hint: "Do not add a line. One argument of one call is wrong.",
-        },
-      ],
       hints: [
         "The LED is fine while the button is pressed. It only misbehaves while the button is released.",
         "Open GPEPUD in the inspector: the bit of GPIO157 is still 1, so its pull-up is disabled.",
@@ -528,14 +482,6 @@ ${inp(158)}
         { kind: "led", led: "LED2", at: 7.5, on: false, label: "LED2 goes off when PB2 is released" },
         { kind: "led", led: "LED2", at: 10.5, on: true, label: "LED2 is on again on the second press" },
         { kind: "reg", reg: "GpioCtrlRegs.GPEPUD", field: "GPIO158", equals: 0, label: "The pull-up of GPIO158 is still enabled" },
-      ],
-      bonus: [
-        {
-          kind: "max-lines",
-          max: 16,
-          label: "A one-character fix: the program is still 16 lines of code",
-          hint: "Do not add a line. Change the value the pin is compared with.",
-        },
       ],
       hints: [
         "What does the pin read while the button is released? What does the code do with that value?",
@@ -757,14 +703,6 @@ ${inp(160)}
           label: "Built from the two Lab 2 functions: int16_t ReadSwitches(void) and void SetLEDsOnOff(int16_t LEDvalue)",
           hint: "Read all four buttons into one number in the first function. Act on that number in the second.",
         },
-        {
-          kind: "latency",
-          led: "LED3",
-          after: 6,
-          withinUs: 2,
-          label: "LED3 lights within 2 microseconds of the press of PB3",
-          hint: "The loop should do nothing but read the buttons and write the LEDs.",
-        },
       ],
       hints: [
         "Set-up: four times the output pair of calls (22, 94, 95, 97), four times the input pair with GPIO_PULLUP (157 to 160).",
@@ -856,16 +794,6 @@ ${inp(157)}
         { kind: "led", led: "LED1", at: 10, on: false, label: "LED1 is off after the second press" },
         { kind: "steady", led: "LED1", from: 12.5, to: 23, on: true, label: "LED1 stays on during and after the long third press", hint: "Toggle in the same if that counts, so it happens once per press." },
         { kind: "led", led: "LED1", at: 26, on: false, label: "LED1 is off after the fourth press" },
-      ],
-      bonus: [
-        {
-          kind: "latency",
-          led: "LED1",
-          after: 12,
-          withinUs: 1,
-          label: "LED1 changes within 1 microsecond of the press",
-          hint: "These buttons do not bounce, so no delay is needed anywhere.",
-        },
       ],
       hints: [
         "Keep a variable with the level read on the previous pass. Start it at 1, the released level.",
@@ -1266,12 +1194,6 @@ ${SETUP_BUTTONS}
           withinUs: 3,
           label: "LED5 lights within 3 microseconds of the last press",
           hint: "No delays: these buttons do not bounce. Keep the work per pass small.",
-        },
-        {
-          kind: "max-lines",
-          max: 80,
-          label: "Compact: 80 lines of code or fewer",
-          hint: "Keep the code in an array and the position in one variable. One test then serves every step.",
         },
       ],
       hints: [
