@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "../Icon";
 import type { WiringLevel } from "../../levels/types";
 
@@ -9,6 +9,33 @@ export function Wiring({ level, onPass, onMiss }: { level: WiringLevel; onPass: 
   const [sel, setSel] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const root = useRef<HTMLDivElement>(null);
+  // Terminals are placed on a 100 x 60 grid, but a long label beside a
+  // terminal near an edge would run out of the frame. Measure everything
+  // drawn and widen the view to hold it, with a small margin.
+  const content = useRef<SVGGElement>(null);
+  const [box, setBox] = useState("0 0 100 60");
+  useLayoutEffect(() => {
+    const fit = () => {
+      const g = content.current;
+      if (!g) return;
+      let b: DOMRect;
+      try {
+        b = g.getBBox();
+      } catch {
+        return;
+      }
+      if (!b.width || !b.height) return;
+      const pad = 2.5;
+      const x0 = Math.min(0, b.x - pad);
+      const y0 = Math.min(0, b.y - pad);
+      const x1 = Math.max(100, b.x + b.width + pad);
+      const y1 = Math.max(60, b.y + b.height + pad);
+      setBox(`${+x0.toFixed(1)} ${+y0.toFixed(1)} ${+(x1 - x0).toFixed(1)} ${+(y1 - y0).toFixed(1)}`);
+    };
+    fit();
+    // The label widths change when the course font arrives.
+    void document.fonts?.ready.then(fit);
+  }, [level]);
   const node = (id: string) => level.nodes.find((n) => n.id === id)!;
   const click = (id: string) => {
     setMsg(null);
@@ -37,7 +64,8 @@ export function Wiring({ level, onPass, onMiss }: { level: WiringLevel; onPass: 
   };
   return (
     <div className="wiring" ref={root}>
-      <svg viewBox="0 0 100 60" role="group" aria-label="Circuit. Select two terminals to connect them.">
+      <svg viewBox={box} role="group" aria-label="Circuit. Select two terminals to connect them.">
+        <g ref={content}>
         {(level.fixed ?? []).map(([a, b], i) => (
           <line key={`f${i}`} className="fixed" x1={node(a).x} y1={node(a).y} x2={node(b).x} y2={node(b).y} />
         ))}
@@ -65,9 +93,16 @@ export function Wiring({ level, onPass, onMiss }: { level: WiringLevel; onPass: 
                 </>
               )}
               {part.label && (
-                <text x={0} y={part.kind === "button" ? -6.2 : -3} textAnchor="middle" transform={Math.abs(deg) > 45 ? `rotate(${-deg}) translate(${deg > 0 ? 7 : -7} 3.8)` : undefined}>
-                  {part.label}
-                </text>
+                Math.abs(deg) > 45 ? (
+                  // An upright part: the label sits beside it, never on top of it.
+                  <text x={0} y={0} textAnchor={deg > 0 ? "start" : "end"} transform={`rotate(${-deg}) translate(${(deg > 0 ? 1 : -1) * (part.kind === "button" ? 6.2 : 3.2)} 1)`}>
+                    {part.label}
+                  </text>
+                ) : (
+                  <text x={0} y={part.kind === "button" ? -6.2 : -3} textAnchor="middle">
+                    {part.label}
+                  </text>
+                )
               )}
             </g>
           );
@@ -104,6 +139,7 @@ export function Wiring({ level, onPass, onMiss }: { level: WiringLevel; onPass: 
             </text>
           </g>
         ))}
+        </g>
       </svg>
       <p className="hint-text" role="status">
         {sel ? `${node(sel).label} is selected: now select the terminal to connect it to (or select it again to cancel).` : "Select one terminal, then another, to add a wire. Grey wires are already in place."}

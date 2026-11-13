@@ -1580,10 +1580,10 @@ Add the six missing wires.
         { id: "scl", label: "SCL line", x: 60, y: 40, side: "right" },
         { id: "msda", label: "GPIO40 (SDAB)", x: 10, y: 28, side: "top" },
         { id: "mscl", label: "GPIO41 (SCLB)", x: 10, y: 40, side: "bottom" },
-        { id: "tsda", label: "Sensor SDA", x: 28, y: 54, side: "bottom" },
+        { id: "tsda", label: "Sensor SDA", x: 22, y: 54, side: "bottom" },
         { id: "tscl", label: "Sensor SCL", x: 42, y: 54, side: "bottom" },
-        { id: "csda", label: "Clock SDA", x: 66, y: 54, side: "bottom" },
-        { id: "cscl", label: "Clock SCL", x: 80, y: 54, side: "bottom" },
+        { id: "csda", label: "Clock SDA", x: 64, y: 54, side: "bottom" },
+        { id: "cscl", label: "Clock SCL", x: 84, y: 54, side: "bottom" },
       ],
       parts: [
         { kind: "resistor", a: "r1", b: "sda", label: "R1" },
