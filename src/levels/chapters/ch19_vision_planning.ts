@@ -132,7 +132,7 @@ uint16_t mask[NPIX];      // 1 where the pixel is the target colour
 uint16_t area = 0;        // M00: number of pixels in the mask
 float cx = 0;             // centroid column
 float cy = 0;             // centroid row
-float turn = 0;           // turn command, as PIcontrol takes it: positive = turn right
+float turn = 0;           // turn command: positive = turn right
 
 // Results of the three test images, copied by main
 int area1 = -1, maskCount = 0;
@@ -225,7 +225,7 @@ ${maskArray("mask", picture)}
 uint16_t area = 0;        // M00
 float cx = 0;             // centroid column: M10 / M00
 float cy = 0;             // centroid row:    M01 / M00
-float turn = 0;           // as PIcontrol takes it: positive = turn right
+float turn = 0;           // turn command: positive = turn right
 
 // Results copied by main: the mask above, then the same mask mirrored left to right
 int area1 = -1;
@@ -730,6 +730,7 @@ const ASTAR_MAIN = `    hTest = heuristic(1, 5, 4, 1);
 
     // 1. Two ways through the wall: the short one is muddy
     retDry = astar(5, 1, 0, 1);
+    gDry = g[0 * COLS + 1];
     costDry = check_path(5, 1, 0, 1);
 
     // 2. A straight run along the bottom row: the heuristic should keep the search in it
@@ -748,6 +749,7 @@ const ASTAR_MAIN = `    hTest = heuristic(1, 5, 4, 1);
 const ASTAR_RESULT_GLOBALS = `
 int hTest = -1;         // heuristic(1, 5, 4, 1)
 int retDry = -1;        // return value with both gaps open
+int gDry = -1;          // g of the goal cell after that search
 int costDry = -1;       // cost of the path that was written
 int expandedLine = -1;  // cells expanded on the straight run from (5, 0) to (5, 6)
 int retMud = -1;        // return value with only the muddy gap left
@@ -960,7 +962,7 @@ const followProgram = (body: string) => `#define CENTRE_COL 80.0f   // the image
 #define KP_VISION 0.01f
 #define TURN_MAX 0.6f
 
-// What the wheel speed controller receives (chapter 16):
+// The two commands for the wheels, as in the wall follower:
 float vref = 0;            // forward speed, ft/s
 float turn = 0;            // positive: left wheel faster, the robot turns RIGHT
 
@@ -1017,139 +1019,228 @@ export const ch19: Chapter = {
       goal: "Learn how a camera image becomes a number the robot can steer with.",
       refs: [{ course: "L17" }, { course: "HW5" }],
       brief: `
-The robot's camera answers one question many times per second: **where is the golf ball?** The answer comes out of four stages: sensor, filtering, features, control.
+The robot's camera answers one question many times per second: **where is the golf ball?** This chapter builds the answer in small steps, then plans a route to the ball.
 
-The code in this chapter is plain C with no registers. It assumes \`for\` loops, pointers, and an image stored row after row in one array: pixel (row, col) is element \`row * COLS + col\`.
+## A picture is numbers
+A camera image is a grid of small squares called **pixels**. Each pixel holds three numbers from 0 to 255: how much **red**, **green** and **blue** light it received (R, G, B). (255, 128, 0) is orange, (160, 160, 160) is grey, (0, 0, 0) is black.
 
-## Sensor: the Bayer filter
-A camera pixel measures brightness only. To see colour, each pixel sits behind a red, green or blue filter. In the **Bayer** layout every 2 x 2 block has **two green**, one red and one blue pixel. The two colours a pixel did not measure are estimated from its neighbours (**demosaicing**), so that every pixel ends up with R, G and B from 0 to 255.
+## Which pixels are the ball?
+The obvious test, "R above 200", fails as soon as a shadow falls on the ball: all three numbers drop together. So the same colour is written a second way, called **HSL**:
 
-## Filtering: which pixels have the ball's colour?
-"R above 200" fails as soon as a shadow falls on the ball: all three numbers drop together. **HSL** separates colour from brightness:
-
-- **Hue** H: the colour itself, as an angle. 0 degrees is red, 120 green, 240 blue, and 360 is red again.
+- **Hue** H: which colour it is, as a position on a colour circle in degrees. 0 is red, 120 green, 240 blue, and 360 is red again.
 - **Saturation** S: how strong the colour is. 0 is grey, 1 is pure colour.
 - **Lightness** L: 0 is black, 1 is white.
 
-A shadow lowers L and leaves H almost unchanged. So you test H, and ask for enough S, because grey has no meaningful hue. The result is a **mask**: 1 where the pixel has the target colour, 0 elsewhere.
-
-Press Shadow in the figure: R, G and B all change, and the hue stays.
+A shadow lowers L and leaves H almost unchanged. Press Shadow in the figure: R, G and B all change, and the hue stays.
 
 {{figure:hsl-picker}}
 
-The lecture's HSV and the lab camera's LAB thresholds rest on the same idea.
+So the test is on H, and it asks for enough S as well, because grey has no real hue. A test that compares a number with a fixed limit is called a **threshold**. The result is a **mask**: a second grid with 1 where the pixel has the target colour and 0 everywhere else.
 
-## Features: blobs and the centroid
-A **blob** is a group of mask pixels that touch. Small blobs are noise: an **area filter** drops every blob below a minimum number of pixels. For the blob that is left, three sums called **moments** give its size and position:
+## From the mask to the wheels
+1. Count the 1s: the **area**. A few scattered 1s are noise, not a ball.
+2. Find the middle of the 1s: the **centroid**.
+3. Steer: if the centroid is right of the middle of the image, turn right.
 
-- M00 = number of pixels (the **area**)
-- M10 = sum of the column numbers of its pixels
-- M01 = sum of the row numbers
+The next levels take these one at a time: how a grid is stored in C, the centroid, then the whole function.
 
-The **centroid**, the blob's centre, is the average position: column M10 / M00, row M01 / M00. The robot steers on how far it is from the middle column of the image.
+The lecture's HSV and the lab camera's LAB thresholds rest on the same idea as HSL.
 `,
       questions: [
         {
-          prompt: "In a Bayer sensor, how do the numbers of red, green and blue pixels compare?",
-          options: ["Equal numbers of each", "Twice as many green as red, and as many blue as red", "Twice as many red as green", "Only green pixels, colour is computed"],
+          prompt: "A pixel holds R = 200, G = 200, B = 200. What does it look like?",
+          options: ["Bright red", "Light grey: the three colours are equally strong", "Black", "Orange"],
           answer: 1,
-          why: "Each 2 x 2 block holds two green, one red and one blue pixel.",
+          why: "Equal amounts of red, green and blue give no colour at all, only brightness: grey. Its saturation is 0.",
         },
         {
           prompt: "A shadow falls on half of the orange ball. Which test still finds the whole ball?",
           options: ["R > 200", "R + G + B > 300", "Hue between 15 and 45 degrees, with saturation above 0.5", "Lightness above 0.4"],
           answer: 2,
-          why: "The shadow lowers R, G, B and the lightness. The hue depends on the ratio between the channels, which stays the same.",
+          why: "The shadow lowers R, G, B and the lightness. The hue depends on the ratio between the three numbers, which stays the same.",
         },
         {
-          prompt: "A blob has M00 = 20, M10 = 900 and M01 = 300. Where is its centroid?",
-          options: ["Column 45, row 15", "Column 15, row 45", "Column 900, row 300", "Column 20, row 20"],
-          answer: 0,
-          why: "Column = M10 / M00 = 900 / 20 = 45. Row = M01 / M00 = 300 / 20 = 15.",
+          prompt: "The mask of an image holds 1 at 14 pixels and 0 at all the others. What does that tell you?",
+          options: [
+            "The image is 14 pixels wide",
+            "14 pixels passed the colour test: the area of the target is 14",
+            "The ball is at column 14",
+            "The image has 14 colours",
+          ],
+          answer: 1,
+          why: "The mask marks the pixels that have the target colour. Counting its 1s gives the area.",
         },
       ],
-      takeaway: "Threshold on hue to get a mask, keep the big blob, take its centroid from the moments, and steer on the centroid's offset from the image centre.",
+      takeaway: "A pixel is three numbers. Threshold its hue and saturation to get a mask, find the middle of the mask, and steer on how far that is from the middle of the image.",
     },
     {
-      id: "vis-hsl-calc",
+      id: "vis-grid",
       kind: "calc",
-      title: "The same ball, lit and in shadow",
-      goal: "Convert three pixels from RGB to HSL by hand and see what a shadow changes.",
-      refs: [{ course: "L17" }],
+      title: "Maths you need: a grid in one array",
+      goal: "Convert between the row and column of a pixel and its place in the array that stores the image.",
+      refs: [{ course: "L17" }, { course: "HW5" }],
       brief: `
-Three pixels, with R, G, B already scaled to the range 0 to 1:
+An image has rows and columns. C memory is one long line. So the image is stored **row after row** in one array: all of row 0, then all of row 1, and so on. The maps later in this chapter are stored the same way.
 
-- **Pixel 1**, the orange ball in the light: R = 0.8, G = 0.4, B = 0.0
-- **Pixel 2**, the same ball in a shadow, every channel halved: R = 0.4, G = 0.2, B = 0.0
-- **Pixel 3**, the blue ball: R = 0.2, G = 0.4, B = 0.8
+Rows are counted from the top and columns from the left, both from 0. For an image with \`COLS\` columns:
 
-## The formulas
-Let max and min be the largest and smallest of R, G, B, and d = max - min. A grey pixel has d = 0. The more colourful the pixel, the further its channels are apart.
+\`\`\`c
+i = row * COLS + col;    // from (row, col) to the place in the array
+\`\`\`
 
-- **Lightness** is halfway between the brightest and the darkest channel: L = (max + min) / 2
-- **Saturation** compares the spread d with the largest spread that is possible at this lightness: S = d / (1 - |2L - 1|)
-- **Hue** starts at the angle of the largest channel (red 0, green 120, blue 240) and leans up to 60 degrees towards the stronger of the other two:
-  - R largest: H = 60 x (G - B) / d
-  - G largest: H = 60 x ((B - R) / d + 2)
-  - B largest: H = 60 x ((R - G) / d + 4)
+Why: before the pixel lie \`row\` complete rows of \`COLS\` pixels each, and then \`col\` pixels of its own row.
 
-H is in degrees. If it comes out negative, add 360.
+**Worked example**, 6 columns: the pixel in row 1, column 2 has 1 complete row before it (6 pixels) and 2 pixels before it in its own row. i = 1 x 6 + 2 = 8.
 
-Work out the fields, then compare pixel 1 and pixel 2.
+The way back uses integer division, which drops the remainder, and \`%\`, which keeps only the remainder:
+
+\`\`\`c
+row = i / COLS;    // 8 / 6 = 1
+col = i % COLS;    // 8 % 6 = 2
+\`\`\`
+
+Click cells in the figure and watch all three lines.
+
+{{figure:math-grid}}
+
+To visit every pixel, the code uses two loops, one inside the other. The outer loop goes down the rows, the inner one along each row:
+
+\`\`\`c
+for (row = 0; row < ROWS; row++) {
+    for (col = 0; col < COLS; col++) {
+        i = row * COLS + col;
+        // ... use img[i] ...
+    }
+}
+\`\`\`
+
+## The exercise
+The camera image of this chapter has **8 rows and 12 columns**.
 `,
       fields: [
-        { id: "l1", label: "Pixel 1: lightness L", answer: 0.4, tolPct: 1, why: "max = 0.8, min = 0. L = (0.8 + 0) / 2 = 0.4." },
-        { id: "s1", label: "Pixel 1: saturation S", answer: 1, tolPct: 1, why: "d = 0.8. S = 0.8 / (1 - |0.8 - 1|) = 0.8 / 0.8 = 1." },
-        { id: "h1", label: "Pixel 1: hue H", unit: "degrees", answer: 30, tolPct: 1, why: "R is the largest: H = 60 x (0.4 - 0) / 0.8 = 30. Orange, between red (0) and yellow (60)." },
-        { id: "l2", label: "Pixel 2: lightness L", answer: 0.2, tolPct: 1, why: "max = 0.4, min = 0. L = 0.2: half as light as pixel 1." },
-        { id: "h2", label: "Pixel 2: hue H", unit: "degrees", answer: 30, tolPct: 1, why: "H = 60 x (0.2 - 0) / 0.4 = 30. Halving every channel halves G - B and d alike, so the hue does not move." },
-        { id: "s3", label: "Pixel 3: saturation S", answer: 0.6, tolPct: 1, why: "max = 0.8, min = 0.2, d = 0.6, L = 0.5. S = 0.6 / (1 - 0) = 0.6." },
-        { id: "h3", label: "Pixel 3: hue H", unit: "degrees", answer: 220, tolPct: 1, why: "B is the largest: H = 60 x ((0.2 - 0.4) / 0.6 + 4) = 60 x 3.667 = 220. A little before pure blue at 240." },
+        { id: "n", label: "Number of elements in the array that stores the image", answer: 96, why: "8 rows of 12 pixels: 8 x 12 = 96. In the code this is NPIX = ROWS * COLS." },
+        { id: "idx", label: "Index of the pixel in row 3, column 7", answer: 43, why: "3 complete rows are before it: 3 x 12 = 36. Then 7 more: 36 + 7 = 43." },
+        { id: "last", label: "Index of the last pixel (row 7, column 11)", answer: 95, why: "7 x 12 + 11 = 95. The array has 96 elements, numbered 0 to 95." },
+        { id: "row", label: "Row of array element 30", answer: 2, why: "30 / 12 = 2 in integer division (2 x 12 = 24, and 36 would be too much)." },
+        { id: "col", label: "Column of array element 30", answer: 6, why: "30 % 12 = 6: what is left after the 24 pixels of rows 0 and 1." },
       ],
       hints: [
-        "Start every pixel with max, min and d.",
-        "Pixel 3 has L = 0.5, so 1 - |2L - 1| is 1 and S is simply d.",
-        "Pixel 3: (R - G) / d = -0.2 / 0.6 = -0.333, plus 4 is 3.667, times 60.",
+        "Count the complete rows that come before the pixel. Each one holds 12 pixels.",
+        "Index = row x 12 + column. For the way back, ask how many times 12 fits into the index (the row) and what is left over (the column).",
+        "Row 3, column 7: 3 x 12 + 7. Element 30: 30 = 2 x 12 + 6.",
       ],
-      takeaway: "The shadow halved R and L, and left H at 30 degrees. That is why you threshold on hue. The figure in the briefing computes these formulas for any pixel.",
+      takeaway: "`i = row * COLS + col` going in, `row = i / COLS` and `col = i % COLS` coming back. Always COLS, never ROWS: a row is COLS pixels long.",
+    },
+    {
+      id: "vis-centroid",
+      kind: "calc",
+      title: "Maths you need: the average position",
+      goal: "Compute the centroid of a few mask pixels as the average of their columns and of their rows.",
+      refs: [{ course: "L17" }, { course: "HW5" }],
+      brief: `
+The robot steers on **where** the ball is in the image. A ball covers many pixels, so "where" means the middle of them: the **centroid**. It is the **average** position of the pixels in the mask.
+
+The average of several numbers is their sum divided by how many there are. The average of 2, 3 and 7 is (2 + 3 + 7) / 3 = 4.
+
+For the mask, do that twice: once with the column numbers of its pixels, once with their row numbers.
+
+**Worked example.** Four pixels are 1: (row 1, column 2), (row 1, column 3), (row 2, column 2) and (row 2, column 3).
+
+- How many: 4
+- Column numbers added up: 2 + 3 + 2 + 3 = 10. Average column: 10 / 4 = 2.5
+- Row numbers added up: 1 + 1 + 2 + 2 = 6. Average row: 6 / 4 = 1.5
+
+The centroid is at column 2.5, row 1.5: in the middle of the four pixels. The figure starts with this example. Click pixels on and off and watch the dot.
+
+{{figure:math-centroid}}
+
+The lecture and the lab camera call the three sums **moments** and give them names:
+
+- **M00**: the number of pixels in the mask. This is also the **area**.
+- **M10**: the sum of their column numbers.
+- **M01**: the sum of their row numbers.
+
+So the centroid column is M10 / M00 and the centroid row is M01 / M00.
+
+Two things to try in the figure:
+
+- Press "Add a far pixel". One stray pixel pulls the centroid away from the ball. That is why noise in the mask matters.
+- Press Clear. With no pixel, M00 is 0 and there is nothing to divide by.
+
+## The exercise
+A mask has 1s at five pixels: (row 2, column 4), (row 2, column 5), (row 2, column 6), (row 3, column 5) and (row 4, column 5).
+`,
+      fields: [
+        { id: "m00", label: "M00, the area", answer: 5, why: "Five pixels are 1." },
+        { id: "m10", label: "M10, the column numbers added up", answer: 25, why: "4 + 5 + 6 + 5 + 5 = 25." },
+        { id: "m01", label: "M01, the row numbers added up", answer: 13, why: "2 + 2 + 2 + 3 + 4 = 13." },
+        { id: "cx", label: "Centroid column", answer: 5, tolPct: 1, why: "M10 / M00 = 25 / 5 = 5. The shape is a T, symmetric about column 5." },
+        { id: "cy", label: "Centroid row", answer: 2.6, tolPct: 1, why: "M01 / M00 = 13 / 5 = 2.6. Not a whole number: the centroid lies between rows 2 and 3, nearer the bar of the T." },
+        { id: "big", label: "Another blob has M00 = 20 and M10 = 900. Its centroid column", answer: 45, tolPct: 1, why: "900 / 20 = 45. You do not need the pixels, only the sums." },
+        { id: "off", label: "A centroid is at column 7.5 in an image whose middle is column 6. How far right of the middle is it?", unit: "columns", answer: 1.5, tolPct: 1, why: "7.5 - 6 = 1.5. Positive: the ball is to the right. This difference is what the robot steers on in the next level." },
+      ],
+      hints: [
+        "Write the five pixels in two lists: their columns (4, 5, 6, 5, 5) and their rows (2, 2, 2, 3, 4).",
+        "Add up each list. The count is 5.",
+        "Centroid column = 25 / 5. Centroid row = 13 / 5.",
+      ],
+      takeaway: "The centroid is an average: add up the columns and divide by the count, the same for the rows. M00, M10 and M01 are just the names of the count and the two sums.",
     },
     {
       id: "vis-target",
       kind: "code",
-      mode: "write",
+      mode: "complete",
       title: "Find the ball",
       goal: "Threshold a small camera image into a mask, compute area and centroid from the moments, and turn towards the ball.",
       refs: [{ course: "L17" }, { course: "HW5" }],
       brief: `
-The image is 8 rows by 12 columns, stored as three arrays \`img_r\`, \`img_g\`, \`img_b\`. It shows a grey floor, an orange golf ball that is half in shadow, a blue ball, yellow tape, a red cone and a pale wooden wall. \`rgb_to_hsl\` is given: it applies the formulas of the last level.
+Now put the pieces together. The image is 8 rows by 12 columns, stored as three arrays \`img_r\`, \`img_g\` and \`img_b\`, each with one number per pixel. It shows a grey floor, an orange golf ball that is half in shadow, a blue ball, yellow tape, a red cone and a pale wooden wall.
 
-Write \`find_target()\`. This is what the lab's first camera script does, pixel by pixel.
+Complete \`find_target()\`, about 100 lines down in the editor, below the image data. This is what the lab's first camera script does, pixel by pixel.
+
+**Given, do not change:** the two loops over every pixel, and the call of \`rgb_to_hsl()\`. After that call \`h\` holds the pixel's hue in degrees and \`s\` its saturation from 0 to 1. The function hands back three results through pointers, which is why the call passes \`&h, &s, &l\`. Its inside is the practice level "rgb_to_hsl".
 
 ## 1. Mask
-For every pixel, convert to HSL. The pixel belongs to the target when
+The pixel belongs to the target when
 
 - its hue is between \`H_MIN\` and \`H_MAX\` (15 to 45 degrees), **and**
 - its saturation is at least \`S_MIN\` (0.5). The wooden wall has an orange hue too, but it is pale.
 
-Store 1 or 0 in \`mask[]\`.
+"Between" is two comparisons in C: \`h >= H_MIN && h <= H_MAX\`. Store 1 or 0 in \`mask[i]\`.
 
 ## 2. Moments
-While you scan, add up for the pixels in the mask: M00 (1 per pixel), M10 (the pixel's **column**) and M01 (its **row**). Use \`float\` sums.
+For every pixel that is in the mask, add 1 to \`m00\`, its **column** to \`m10\` and its **row** to \`m01\`. The sums are \`float\`, so that the divisions keep their fraction.
 
-## 3. Results
+## 3. Results, after the loops
 - \`area\` = M00
 - \`cx\` = M10 / M00 and \`cy\` = M01 / M00
 - \`turn = KP_TURN * (cx - CENTRE_COL);\`
 
-\`turn\` goes to the wheel speed controller, where a **positive** value makes the left wheel faster, so the robot turns **right**. A ball to the right of the centre has \`cx\` above \`CENTRE_COL\`, which gives a positive turn: towards the ball.
+\`turn\` is the turn command you used in the wall follower: a **positive** value makes the left wheel faster, so the robot turns **right**. \`cx - CENTRE_COL\` says how far the ball is from the middle of the image. \`KP_TURN\` is a constant that sets how strongly the robot reacts, called a **gain**. Check the sign with one number: a ball at column 9 gives 0.5 x (9 - 6) = +1.5, a right turn, towards the ball.
 
-An image without the ball has M00 = 0. Do not divide then: set \`turn\` to 0.
+An image without the ball has M00 = 0, and a division by 0 gives garbage. Divide only when M00 is above 0, and set \`turn\` to 0 otherwise.
 
 \`main\` runs your function on three images: the one in the code, the same one mirrored (ball on the left), and one with only floor.
 `,
       kit: "robot",
       durationMs: 40,
-      starter: targetProgram(`    // 1. mask  2. moments  3. area, cx, cy, turn`),
+      starter: targetProgram(`    int row, col, i;
+    float h, s, l;                      // one pixel: hue, saturation, lightness
+    float m00 = 0, m10 = 0, m01 = 0;    // the three sums, 0 on every call
+
+    for (row = 0; row < ROWS; row++) {
+        for (col = 0; col < COLS; col++) {
+            i = row * COLS + col;
+            rgb_to_hsl(img_r[i], img_g[i], img_b[i], &h, &s, &l);   // given
+
+            // TODO 1: mask[i] = 1 if h and s say "target colour", else 0
+            // TODO 2: for a target pixel, add to m00, m10 and m01
+            mask[i] = 0;    // replace this line
+        }
+    }
+
+    // TODO 3: area. Then, only if m00 is above 0: cx, cy and turn.
+    //         Otherwise turn = 0.`),
       solution: targetProgram(`    int row, col, i;
     float h, s, l;
     float m00 = 0, m10 = 0, m01 = 0;
@@ -1178,27 +1269,27 @@ An image without the ball has M00 = 0. Do not divide then: set \`turn\` to 0.
         turn = 0;
     }`),
       checks: [
-        { kind: "var", name: "area1", equals: 14, label: "Image 1: area is 14, the whole orange ball, lit and shadowed", hint: "7: a brightness test crept in. 18: the pale wall is included, check the saturation. More: check the hue limits." },
-        { kind: "var", name: "maskCount", equals: 14, label: "Image 1: mask[] holds 14 ones", hint: "Store 1 or 0 in mask[i] for every pixel." },
-        { kind: "var", name: "cx1", ...range(7.5), label: "Image 1: centroid column is 7.5", hint: "M10 sums the column numbers." },
-        { kind: "var", name: "cy1", ...range(3.2857), label: "Image 1: centroid row is about 3.29", hint: "M01 sums the row numbers. Use float sums so the division keeps its fraction." },
-        { kind: "var", name: "turn1", ...range(0.75), label: "Image 1: turn is +0.75, the ball is right of centre", hint: "-0.75 has the sign reversed: use cx - CENTRE_COL." },
-        { kind: "var", name: "area2", equals: 14, label: "Image 2 (mirrored): area is still 14", hint: "The sums must start at 0 on every call." },
-        { kind: "var", name: "cx2", ...range(3.5), label: "Image 2: centroid column is 3.5" },
-        { kind: "var", name: "turn2", ...range(-1.25), label: "Image 2: turn is -1.25, the ball is left of centre" },
-        { kind: "var", name: "area3", equals: 0, label: "Image 3 (floor only): area is 0" },
-        { kind: "var", name: "turn3", ...range(0, 0.001), label: "Image 3: turn is 0, and nothing was divided by zero", hint: "Divide only when M00 is above 0, and set turn to 0 otherwise." },
+        { kind: "var", name: "area1", equals: 14, label: "Image 1: area is 14, the whole orange ball, lit and shadowed", hint: "0: nothing is stored in mask[] or added to m00 yet, or area is never set. 7: a brightness test crept in. 18: the pale wall is included, so also ask for s >= S_MIN. 20: C has no `15 <= h <= 45`, write two comparisons joined with &&. 96: every pixel counts, so look for a `;` directly after `if (...)`." },
+        { kind: "var", name: "maskCount", equals: 14, label: "Image 1: mask[] holds 14 ones", hint: "0 while the area is right: the starter's line `mask[i] = 0;` still runs after your if and wipes the 1. Store 1 for a target pixel and 0 only in the else branch. Otherwise fix the area first." },
+        { kind: "var", name: "cx1", ...range(7.5), label: "Image 1: centroid column is 7.5", hint: "Fix the area first. Exactly 7: the sums are integers, so the division dropped the fraction. Keep m00, m10 and m01 as float. About 3.29: rows and columns are swapped, m10 adds col. 0: cx is never set." },
+        { kind: "var", name: "cy1", ...range(3.2857), label: "Image 1: centroid row is about 3.29", hint: "Fix the area first. Exactly 3: integer sums, keep them float. 7.5: rows and columns are swapped, m01 adds row." },
+        { kind: "var", name: "turn1", ...range(0.75), label: "Image 1: turn is +0.75, the ball is right of centre", hint: "-0.75: the sign is reversed, use cx - CENTRE_COL. Any other value: fix the centroid column first, turn follows from it." },
+        { kind: "var", name: "area2", equals: 14, label: "Image 2 (mirrored): area is still 14", hint: "If image 1 is right and this is 28, the sums did not start at 0 on the second call: keep them as local variables set to 0." },
+        { kind: "var", name: "cx2", ...range(3.5), label: "Image 2: centroid column is 3.5", hint: "Fix image 1 first: the same code runs on both images." },
+        { kind: "var", name: "turn2", ...range(-1.25), label: "Image 2: turn is -1.25, the ball is left of centre", hint: "0.5 x (3.5 - 6) = -1.25. Fix image 1 first: the same code runs on both images." },
+        { kind: "var", name: "area3", equals: 0, label: "Image 3 (floor only): area is 0", hint: "Set area from m00 on every call, also when m00 is 0." },
+        { kind: "var", name: "turn3", ...range(0, 0.001), label: "Image 3: turn is 0, and nothing was divided by zero", hint: "NaN means \"not a number\": the result of 0 / 0. Divide only when m00 is above 0, and set turn to 0 otherwise. A value left over from image 2 means the else branch is missing." },
       ],
       bonus: [
         { kind: "max-steps", max: STEPS_TARGET, label: "Lean: mask and moments in one loop over each image, at most 7400 statements in all", hint: "A second loop over the image for the moments costs about 200 extra statements per image." },
       ],
       watch: ["area", "cx", "cy", "turn", "area1", "cx1", "turn1", "cx2", "turn2", "turn3"],
       hints: [
-        "Two nested loops over row and col, with `i = row * COLS + col;`. Declare the three sums inside the function so that every call starts at 0.",
-        "`rgb_to_hsl(img_r[i], img_g[i], img_b[i], &h, &s, &l);` converts one pixel. The test is on h (two limits) and s (one limit), joined with `&&`.",
+        "TODO 1 and 2 are one `if` with an `else`, placed after the given call. The condition has three parts joined with `&&`: h at least H_MIN, h at most H_MAX, s at least S_MIN.",
+        "`if (h >= H_MIN && h <= H_MAX && s >= S_MIN) { ... } else { mask[i] = 0; }`. In the if branch set the mask to 1 and add to the three sums: 1, the column, the row.",
         "Inside the if: `mask[i] = 1; m00 += 1; m10 += col; m01 += row;` (else `mask[i] = 0;`). After the loops: `area = (uint16_t)m00;` and, if m00 > 0, the two divisions and the turn line, else `turn = 0;`.",
       ],
-      takeaway: "Seven of the fourteen ball pixels are in shadow, and the hue test finds them all. One pass over the image gives mask, area and centroid together.",
+      takeaway: "Seven of the fourteen ball pixels are in shadow, and the hue test finds them all. One pass over the image gives mask, area and centroid together, and the test for M00 = 0 keeps an empty image from steering the robot.",
     },
     {
       id: "vis-follow",
@@ -1208,16 +1299,16 @@ An image without the ball has M00 = 0. Do not divide then: set \`turn\` to 0.
       goal: "The robot turns away from the ball and spins when there is none. Fix the code that turns the camera's numbers into vref and turn.",
       refs: [{ course: "L17" }, { course: "HW5" }],
       brief: `
-On the robot you do not process pixels yourself. The camera finds the blobs and sends, for the largest one, its **area** in pixels and the **column** and row of its centroid. When it finds nothing it sends zeros. The image is 160 columns wide, so the centre is column 80.
+On the robot you do not process pixels yourself. The camera does what you just wrote, with one refinement: it groups mask pixels that touch into **blobs** and measures each blob on its own. For the largest blob it sends the **area** in pixels and the **column** and row of the centroid. When it finds nothing it sends zeros. One camera picture is called a **frame**. It is 160 columns wide, so the centre is column 80.
 
-\`follow()\` runs once per camera frame and sets the two inputs of the wheel speed controller:
+\`follow()\` runs once per frame and sets the two commands for the wheels, the same two as in the wall follower:
 
 - \`vref\`: the forward speed.
 - \`turn\`: **positive makes the left wheel faster, so the robot turns right.**
 
 ## What it should do
-- **A ball is in view** (area at least \`MIN_AREA\`): drive at 1.0 ft/s and steer towards it with \`turn\` proportional to the distance of the centroid from the centre column, limited to -\`TURN_MAX\` ... \`TURN_MAX\`.
-- **No ball** (area below \`MIN_AREA\`): stop. \`vref = 0\` and \`turn = 0\`. A few lit pixels are glare, not a ball. This is the area filter at work.
+- **A ball is in view** (area at least \`MIN_AREA\`): drive at 1.0 ft/s and steer towards it: \`turn\` is \`KP_VISION\` times the distance of the centroid from the centre column, limited to the range from -\`TURN_MAX\` to \`TURN_MAX\`.
+- **No ball** (area below \`MIN_AREA\`): stop. \`vref = 0\` and \`turn = 0\`. A few lit pixels are glare, not a ball. Ignoring blobs that are too small is called an **area filter**.
 
 ## What it does
 Two things go wrong on the floor:
@@ -1245,15 +1336,15 @@ On the real robot the ball also leaves the picture just before the robot drives 
         vref = 0.0f;
     }`),
       checks: [
-        { kind: "var", name: "turnRight", ...range(0.4), label: "Ball at column 120: turn is +0.4, to the right", hint: "A ball on the right has a column above 80 and needs a positive turn." },
-        { kind: "var", name: "turnLeft", ...range(-0.5), label: "Ball at column 30: turn is -0.5, to the left" },
-        { kind: "var", name: "turnFar", ...range(-0.6), label: "Ball at column 5: turn is limited to -0.6" },
+        { kind: "var", name: "turnRight", ...range(0.4), label: "Ball at column 120: turn is +0.4, to the right", hint: "-0.4: the sign is reversed. A ball on the right has a column above 80 and needs a positive turn: 0.01 x (120 - 80)." },
+        { kind: "var", name: "turnLeft", ...range(-0.5), label: "Ball at column 30: turn is -0.5, to the left", hint: "+0.5: the sign is reversed. 0.01 x (30 - 80) = -0.5." },
+        { kind: "var", name: "turnFar", ...range(-0.6), label: "Ball at column 5: turn is limited to -0.6", hint: "-0.75: the two lines that limit turn to TURN_MAX are gone. +0.6: the sign is reversed." },
         { kind: "var", name: "turnCentre", ...range(0, 0.001), label: "Ball at column 80: turn is 0" },
-        { kind: "var", name: "vrefCentre", ...range(1), label: "Ball in view: vref is 1.0" },
+        { kind: "var", name: "vrefCentre", ...range(1), label: "Ball in view: vref is 1.0", hint: "Set vref to 1.0 in the branch where a ball is in view." },
         { kind: "var", name: "turnNone", ...range(0, 0.001), label: "Nothing found (area 0, column 0): turn is 0", hint: "Column 0 is not a ball at the left edge. Test the area before you use the column." },
-        { kind: "var", name: "vrefNone", ...range(0, 0.001), label: "Nothing found: vref is 0" },
+        { kind: "var", name: "vrefNone", ...range(0, 0.001), label: "Nothing found: vref is 0", hint: "vref keeps its last value until you change it. Set it to 0 in the branch for \"no ball\"." },
         { kind: "var", name: "turnGlare", ...range(0, 0.001), label: "A blob of 12 pixels is ignored: turn is 0", hint: "Compare the area with MIN_AREA, not with 0." },
-        { kind: "var", name: "vrefGlare", ...range(0, 0.001), label: "A blob of 12 pixels is ignored: vref is 0" },
+        { kind: "var", name: "vrefGlare", ...range(0, 0.001), label: "A blob of 12 pixels is ignored: vref is 0", hint: "12 is below MIN_AREA: this frame must take the \"no ball\" branch and stop." },
       ],
       watch: ["turnRight", "turnLeft", "turnFar", "turnNone", "vrefNone", "turnGlare"],
       hints: [
@@ -1264,6 +1355,60 @@ On the real robot the ball also leaves the picture just before the robot drives 
       takeaway: "Check that there is a target before you steer on it, and check the sign of a new control law once by hand with one number.",
     },
     {
+      id: "plan-queue",
+      kind: "calc",
+      title: "Maths you need: a queue",
+      goal: "Follow a queue made of an array and two indexes: what goes in first comes out first.",
+      refs: [{ course: "L18" }, { course: "HW6" }],
+      brief: `
+The robot now knows where the ball is. Next it needs a route around the obstacles. The search for a route has to remember which places it still has to look at, **in the order it found them**. The tool for that is a **queue**.
+
+A queue is a waiting line. New arrivals join at the back, and the one that has waited longest leaves from the front: **first in, first out**.
+
+In C a queue is an array and two indexes:
+
+- \`tail\`: the next free place at the back.
+- \`head\`: the place of the oldest element still waiting.
+
+\`\`\`c
+int queue[8];
+int head = 0;
+int tail = 0;
+
+queue[tail] = 17;  tail++;     // add 17 at the back
+queue[tail] = 4;   tail++;     // add 4 behind it
+x = queue[head];   head++;     // take the oldest: x is 17
+\`\`\`
+
+Nothing is moved or erased. Taking an element only moves \`head\` past it.
+
+**Worked example.** After the three lines above, \`tail\` is 2 (two were added) and \`head\` is 1 (one was taken). \`tail - head\` = 1 element is still waiting: \`queue[1]\`, the 4.
+
+The queue is **empty** when \`head == tail\`: everything that was added has been taken.
+
+Try it in the figure: add three, take two, and say which letter comes out before you press.
+
+{{figure:math-queue}}
+
+## The exercise
+A queue starts empty, with \`head = 0\` and \`tail = 0\`. The program adds 5, then 9, then 2. It takes one element. It adds 7. It takes one more element.
+`,
+      fields: [
+        { id: "first", label: "The first element taken", answer: 5, why: "5 was added first, so it leaves first." },
+        { id: "second", label: "The second element taken", answer: 9, why: "After 5, the oldest one waiting is 9. The 7 that was added in between joined at the back." },
+        { id: "head", label: "head at the end", answer: 2, why: "head counts the elements taken: two." },
+        { id: "tail", label: "tail at the end", answer: 4, why: "tail counts the elements added: 5, 9, 2 and 7." },
+        { id: "wait", label: "Number of elements still waiting", answer: 2, why: "tail - head = 4 - 2 = 2: the 2 and the 7." },
+        { id: "next", label: "The element that would be taken next", answer: 2, why: "queue[head] = queue[2], the third one added: 2." },
+      ],
+      hints: [
+        "Write the array down: queue[0] = 5, queue[1] = 9, queue[2] = 2, and later queue[3] = 7.",
+        "Every add moves tail one place on. Every take reads queue[head] and moves head one place on.",
+        "Takes: queue[0] = 5, then queue[1] = 9. Afterwards head = 2 and tail = 4.",
+      ],
+      takeaway: "Add at tail, take at head, empty when they are equal. A queue hands things back in the order they arrived, which is what makes the next level's search find the shortest path.",
+    },
+    {
       id: "plan-bfs",
       kind: "code",
       mode: "write",
@@ -1271,11 +1416,16 @@ On the real robot the ball also leaves the picture just before the robot drives 
       goal: "Write BFS with an array as the queue and return the length of the shortest path on a grid.",
       refs: [{ course: "L18" }, { course: "HW6" }],
       brief: `
-Once the robot knows where the ball is, it needs a route around the obstacles. The floor is stored as a **grid map** of free and blocked cells, and the robot steps up, down, left or right to a free neighbour (**4-connectivity**).
+The floor is stored as a **grid map**: a grid of cells, each free or blocked, in one array like the image. The robot steps from a cell to a free **neighbour**: up, down, left or right.
 
-**Breadth-first search (BFS)** explores in rings around the start: every cell 1 step away, then 2 steps, and so on. Cells that were found and not yet looked at form the **frontier**. BFS keeps it in a queue, oldest first, so the first time it reaches a cell is along a shortest path.
+**Breadth-first search (BFS)** finds the shortest route by exploring in rings around the start: first every cell 1 step away, then every cell 2 steps away, and so on. When a ring reaches the goal, its number is the length of the shortest path.
 
-The map is one array of characters, row after row, as in the course's planner. \`'x'\` is an obstacle, \`'0'\` is free, and \`canTravel(row, col)\` tests a cell.
+The queue keeps the rings in order: cells found earlier are nearer to the start, and the queue hands them back first. To **expand** a cell means to take it out of the queue and look at its four neighbours. Choose BFS in the figure, press Step and watch the queue.
+
+{{figure:search-explorer}}
+
+## The map
+\`'x'\` is an obstacle, \`'0'\` is free. \`canTravel(row, col)\` is given: it returns 1 for a free cell and 0 for an obstacle or a place outside the map. A cell is named by one number, its index \`row * COLS + col\`.
 
 \`\`\`
 000x000
@@ -1286,35 +1436,33 @@ The map is one array of characters, row after row, as in the course's planner. \
 0x0x0x0
 \`\`\`
 
-Write \`bfs()\`. It returns the number of steps of the shortest path, or **-1** when the goal cannot be reached. A cell is one number, \`row * COLS + col\`, so \`row = cell / COLS\` and \`col = cell % COLS\`.
+## Write bfs()
+It returns the number of steps of the shortest path, or **-1** when the goal cannot be reached. The starter declares the variables. \`dist[]\` holds each cell's number of steps from the start, and -1 means "not reached yet".
 
-1. Set \`dist[]\` to -1 everywhere: "not reached". \`dist\` is both the visited mark and the answer.
-2. Put the start cell in the queue with \`dist = 0\`.
-3. While the queue is not empty:
-   - take the **oldest** cell out,
-   - if it is the goal, return its \`dist\` (the **early exit**),
-   - for each of its four neighbours that \`canTravel\` and has \`dist == -1\`: set its \`dist\` to the current cell's \`dist + 1\` and add it to the queue.
+1. Set \`dist[]\` to -1 everywhere.
+2. Give the start cell \`dist\` 0 and add it to the queue.
+3. While the queue is not empty (\`head < tail\`):
+   - take the oldest cell out: \`cur\`,
+   - if \`cur\` is the goal, return \`dist[cur]\`,
+   - for each of its four neighbours that \`canTravel\` and still has \`dist\` -1: set its \`dist\` to \`dist[cur] + 1\` and add it to the queue.
 4. The queue ran empty: return -1.
 
-Each cell enters the queue at most once, so an array and two indexes are enough. The queue is empty when \`head == tail\`.
+The test "still -1" matters. Without it the search steps back to cells it already knows, again and again.
+
+## The four neighbours
+\`dRow\` and \`dCol\` hold the row and column change of the four directions (up, left, right, down), so one loop visits them all:
 
 \`\`\`c
-queue[tail] = cell;  tail++;     // add at the back
-cell = queue[head];  head++;     // take from the front
+for (k = 0; k < 4; k++) {
+    row = cur / COLS + dRow[k];
+    col = cur % COLS + dCol[k];
+    // (row, col) is one neighbour of cur
+}
 \`\`\`
 
-Two small arrays give the four neighbours in a loop:
+Example: \`cur\` = 9 is row 1, column 2 on this 7-column map. k = 0 gives row 0, column 2, the cell above.
 
-\`\`\`c
-int dRow[4] = {-1, 0, 0, 1};
-int dCol[4] = {0, -1, 1, 0};
-\`\`\`
-
-The figure runs this loop on this map: choose BFS, press Step and follow the queue.
-
-{{figure:search-explorer}}
-
-\`main\` calls your function for four goals from the top left corner. Then it removes two walls, so that several routes exist, and asks for the way from (4, 0) to (0, 4).
+\`main\` searches four goals from the top left corner, then removes two walls and asks for the way from (4, 0) to (0, 4).
 `,
       kit: "robot",
       durationMs: 30,
@@ -1325,7 +1473,20 @@ int lenRound = -2;      // to (0, 4): around the wall
 int lenFar = -2;        // to (4, 5)
 int lenNone = -2;       // to (5, 6): walled in
 int lenOpen = -2;       // (4, 0) to (0, 4) with two walls removed`,
-        body: `    return 0;`,
+        body: `    int dRow[4] = {-1, 0, 0, 1};    // up, left, right, down: row change
+    int dCol[4] = {0, -1, 1, 0};    // and column change
+    int head = 0;                   // queue: the oldest waiting cell
+    int tail = 0;                   // queue: the next free place
+    int goal = rowEnd * COLS + colEnd;
+    int i, k, cur, row, col, next;
+
+    // 1. dist[] = -1 everywhere
+    // 2. the start cell: dist 0, add it to the queue
+    // 3. while the queue is not empty:
+    //      take the oldest cell, test for the goal,
+    //      then look at its four neighbours
+    // 4. no path
+    return 0;`,
         main: `    lenNear = bfs(0, 0, 0, 2);
     lenRound = bfs(0, 0, 0, 4);
     lenFar = bfs(0, 0, 4, 5);
@@ -1355,22 +1516,22 @@ int lenOpen = -2;       // (4, 0) to (0, 4) with two walls removed`,
     lenOpen = bfs(4, 0, 0, 4);`,
       }),
       checks: [
-        { kind: "var", name: "lenNear", equals: 2, label: "(0, 0) to (0, 2): 2 steps" },
-        { kind: "var", name: "lenRound", equals: 8, label: "(0, 0) to (0, 4): 8 steps, around the wall", hint: "4 would be the Manhattan distance, straight through the obstacle: use canTravel. -1: reset dist[] at the start of every call." },
-        { kind: "var", name: "lenFar", equals: 9, label: "(0, 0) to (4, 5): 9 steps" },
-        { kind: "var", name: "lenNone", equals: -1, label: "(0, 0) to (5, 6): no path, returns -1", hint: "When the queue runs empty without meeting the goal, return -1." },
+        { kind: "var", name: "lenNear", equals: 2, label: "(0, 0) to (0, 2): 2 steps", hint: "0 in every test: the function still ends in the starter's `return 0;`. 0 here only: a new cell gets dist[cur] + 1, and a cell that already has a dist must not get another (test dist == -1 before you write). -1: the loop never meets the goal. Did the start cell go into the queue, and does the loop run while head < tail?" },
+        { kind: "var", name: "lenRound", equals: 8, label: "(0, 0) to (0, 4): 8 steps, around the wall", hint: "4: the search walked straight through the obstacle, so test canTravel(row, col) before you use a neighbour. -1 while the first search works: set dist[] back to -1 at the start of every call. Another small number: the row is cur / COLS and the column cur % COLS, COLS in both." },
+        { kind: "var", name: "lenFar", equals: 9, label: "(0, 0) to (4, 5): 9 steps", hint: "Fix the two searches above first. A smaller number means the search crossed a wall or the edge of the map: check canTravel and COLS." },
+        { kind: "var", name: "lenNone", equals: -1, label: "(0, 0) to (5, 6): no path, returns -1", hint: "When the queue runs empty without meeting the goal, return -1. If the loop is `while (1)`, it never notices the empty queue and reads past the end of the array: use `while (head < tail)`." },
         { kind: "var", name: "lenOpen", equals: 8, label: "With two walls removed, (4, 0) to (0, 4): 8 steps, the shortest of several routes", hint: "A longer answer means the cells are not taken out oldest first. Taking the newest cell (a stack) finds a path, but not the shortest." },
       ],
       bonus: [
-        { kind: "max-steps", max: STEPS_BFS, label: "Early exit: the five searches take at most 4800 statements", hint: "Without the early exit every call explores the whole map before it answers." },
+        { kind: "max-steps", max: STEPS_BFS, label: "Early exit: the five searches take at most 4800 statements", hint: "Return dist[cur] as soon as the goal is taken out of the queue. Without this early exit every call explores the whole map before it answers. Hundreds of thousands of statements: cells enter the queue again and again, so test dist == -1." },
       ],
       watch: ["lenNear", "lenRound", "lenFar", "lenNone", "lenOpen"],
       hints: [
-        "Reset dist[] at the start of every call: the function is called five times.",
-        "Loop `while (head < tail)`. Take `cur = queue[head]; head++;`, test for the goal, then loop k from 0 to 3 over the neighbours.",
-        "Neighbour: `row = cur / COLS + dRow[k]; col = cur % COLS + dCol[k];` and if `canTravel(row, col)` and `dist[row * COLS + col] == -1`, set its dist and append it.",
+        "Steps 1 and 2 first: a `for` loop that sets every `dist[i]` to -1, then `cur = rowStart * COLS + colStart; dist[cur] = 0; queue[tail] = cur; tail++;`.",
+        "Step 3: `while (head < tail) {` take `cur = queue[head]; head++;`, then `if (cur == goal) return dist[cur];`, then the loop over k from the brief.",
+        "Inside the k loop: `if (canTravel(row, col)) { next = row * COLS + col; if (dist[next] == -1) { dist[next] = dist[cur] + 1; queue[tail] = next; tail++; } }`. After the while loop: `return -1;`.",
       ],
-      takeaway: "BFS reaches every cell first along a shortest path, so the first dist written is final. That is also why one visit per cell is enough.",
+      takeaway: "BFS reaches every cell first along a shortest path, so the first dist written is final and one visit per cell is enough. Places joined by steps, like these cells and their neighbours, are called a **graph**, and BFS is the simplest graph search.",
     },
     {
       id: "plan-fgh",
@@ -1379,26 +1540,26 @@ int lenOpen = -2;       // (4, 0) to (0, 4) with two walls removed`,
       goal: "Compute heuristics and f = g + h for a few cells and decide which one A* expands next.",
       refs: [{ course: "L18" }, { course: "HW6" }],
       brief: `
-BFS spreads in every direction, also away from the goal. **A*** (say "A star") looks first where the goal will probably be reached soonest. For every frontier cell it keeps two numbers:
+BFS spreads in every direction, also away from the goal. **A*** (say "A star") looks first where the goal will probably be reached soonest. The cells that were found and are still waiting to be expanded are called the **frontier**. BFS takes the oldest one. A* keeps two numbers for each:
 
-- **g**: the cost of the path found so far from the start to this cell. With every step costing 1, g is the number of steps.
-- **h**: a **heuristic**, a quick estimate of the cost still to go, computed as if there were no obstacles.
+- **g**: the cost of the path found so far from the start to this cell. With every step costing 1, g is the number of steps (BFS called it \`dist\`).
+- **h**: a **heuristic**, a quick guess of the cost still to go, computed as if there were no obstacles.
 
 A* always expands the frontier cell with the smallest **f = g + h**: the estimated cost of the whole trip through that cell.
 
-Two relatives use one number each. **Dijkstra's algorithm** orders the frontier by g alone, and with equal step costs it behaves like BFS. **Greedy best-first** search orders by h alone: it is fast, and its path is not always the shortest.
-
-Step BFS, Greedy and A* in the figure and watch which frontier cell each one takes next. The map "greedy trap" shows greedy search finding a longer path.
+Step BFS and A* in the figure and watch which frontier cell each one takes next. Greedy, the third search there, uses h alone: on the map "greedy trap" that gives a longer path.
 
 {{figure:search-explorer}}
 
 ## The heuristic
-For a cell that is dr rows and dc columns from the goal:
+For a cell that is dr rows and dc columns away from the goal (count both as positive numbers):
 
 - **Manhattan** distance: dr + dc, the number of steps on an empty grid
-- **Euclidean** distance: the square root of (dr x dr + dc x dc), the straight line
+- **Euclidean** distance: the straight line, the square root of (dr x dr + dc x dc) by Pythagoras
 
-A* returns a shortest path when h **never overestimates** the true remaining cost. Such a heuristic is called **admissible**. The reason: a cell on the best path then never looks more expensive than that path really is, so A* cannot finish along a worse path first. Both distances are admissible on a 4-connected grid. Manhattan is closer to the truth, so A* expands fewer cells with it.
+A* returns a shortest path when h **never overestimates** the true remaining cost. Such a heuristic is called **admissible**. The reason: a cell on the best path then never looks more expensive than that path really is, so A* cannot finish along a worse path first. Both distances are admissible when the robot moves in four directions. Manhattan is closer to the truth, so A* expands fewer cells with it.
+
+**Worked example.** The goal is at row 2, column 6. A cell at row 5, column 1 was reached in 3 steps. It is 3 rows and 5 columns away: h = 3 + 5 = 8, and f = 3 + 8 = 11.
 
 ## The exercise
 The goal is the cell at **row 2, column 6**. Three cells are on the frontier:
@@ -1417,7 +1578,11 @@ Use the Manhattan distance for f.
         { id: "fc", label: "f of cell C", answer: 8, why: "h = 2 rows + 2 columns = 4. f = 4 + 4 = 8." },
         { id: "next", label: "Which cell does A* expand next? (1 = A, 2 = B, 3 = C)", answer: 2, why: "B has the smallest f. Greedy search would see A and B as equally good (h = 3), and Dijkstra would see B and C as equally good (g = 4)." },
       ],
-      hints: ["h for each cell: rows apart plus columns apart, to row 2, column 6.", "f = g + h. A* takes the smallest f."],
+      hints: [
+        "h for each cell: rows apart plus columns apart, to row 2, column 6.",
+        "Cell A is in the goal's row (0 rows apart) and 3 columns away: h = 3. Then f = g + h.",
+        "f is 5 + 3 for A, 4 + 3 for B and 4 + 4 for C. A* takes the smallest f.",
+      ],
       takeaway: "g is what the path has cost, h is what it will probably still cost, and A* always continues the path with the smallest total.",
     },
     {
@@ -1441,16 +1606,16 @@ xxmx0xx
 
 The wall has two gaps. The near one is mud (\`'m'\`): driving into it costs \`MUD_COST\` (6). Every other step costs 1. \`stepCost(row, col)\` returns the cost of entering a cell.
 
-Each cell has
+The whole function is given except six lines. Each cell has
 
 - \`g[]\`: the cost of the best path found so far from the start,
-- \`parent[]\`: the cell that path came from (-1 for the start),
+- \`parent[]\`: the cell that path came from (-1 for the start). Following the parents from the goal back to the start gives the path itself,
 - \`state[]\`: 0 not seen yet, 1 in the **open set** (the frontier), 2 **closed** (expanded, finished).
 
 The loop: take the open cell with the smallest f. If it is the goal, follow the parents back and return 1. Otherwise close it and look at its neighbours. A neighbour that is new, or that is now reached more cheaply than before, gets the new \`g\` and the new \`parent\` and goes into the open set.
 
 ## The six gaps
-1. \`heuristic\`: the **Manhattan** distance, with \`abs()\`. It stays admissible with mud, because no step costs less than 1.
+1. \`heuristic\`: the **Manhattan** distance. \`abs(x)\` gives a whole number without its sign: \`abs(-3)\` is 3. It turns "rows apart" into a positive count whichever cell is higher. The estimate stays admissible with mud, because no step costs less than 1.
 2. \`f = g + h\` for open cell \`i\`. Its row is \`i / COLS\`, its column \`i % COLS\`.
 3. The open set is empty and the goal was never reached: there is **no path**. Return 0.
 4. \`newG\`: the cost of reaching \`next\` through \`cur\`.
@@ -1459,7 +1624,7 @@ The loop: take the open cell with the smallest f. If it is the goal, follow the 
 
 \`main\` plans from (5, 1) to (0, 1), then closes the dry gap and plans again, and finally closes the mud gap too.
 
-The robot's planner runs on the Raspberry Pi with every step costing 1 and keeps the open set in a heap. Scanning an array, as here, is slower and easier to read. The A* mode of the figure in the last two levels runs this same loop.
+The robot's own planner runs this loop with every step costing 1. The A* mode of the figure in the last two levels runs it too.
 `,
       kit: "robot",
       durationMs: 40,
@@ -1482,21 +1647,65 @@ The robot's planner runs on the Raspberry Pi with every step costing 1 and keeps
       }),
       solution: astarProgram({ rows: MUD, globals: ASTAR_RESULT_GLOBALS, main: ASTAR_MAIN, ...ASTAR_OK }),
       checks: [
-        { kind: "var", name: "hTest", equals: 7, label: "heuristic(1, 5, 4, 1) is 7 (3 rows + 4 columns)" },
+        { kind: "var", name: "hTest", equals: 7, label: "heuristic(1, 5, 4, 1) is 7 (3 rows + 4 columns)", hint: "Gap 1. A value of 1 or -1: the differences were added with their signs. Put abs() around each difference, then add." },
         { kind: "var", name: "retDry", equals: 1, label: "A* reports a path from (5, 1) to (0, 1)" },
-        { kind: "var", name: "costDry", equals: 11, label: "The path goes round through the dry gap: cost 11", hint: "12: the path goes through the mud, so g does not add up the real cost (gaps 2 and 4). -1: the stored path is not a chain of neighbouring free cells from goal to start (gaps 5 and 6)." },
-        { kind: "var", name: "expandedLine", min: 1, max: 8, label: "On the straight run along the bottom row, A* expands at most 8 cells", hint: "f must include the heuristic (gap 2). Without it the search spreads over the whole floor." },
+        { kind: "var", name: "gDry", equals: 11, label: "g of the goal is 11: g adds up the cost of every step from the start", hint: "Gap 4. 1: newG is only the cost of the last step. Add it to the cost so far, g[cur]. 0: newG is still 0. 7 or 12: every step was counted as 1, use stepCost(row, col)." },
+        { kind: "var", name: "costDry", equals: 11, label: "The path goes round through the dry gap: cost 11", hint: "12: the path goes through the mud, so g does not add up the real cost (gaps 2 and 4). -1: the stored path is not a chain of neighbouring free cells from goal to start (gap 5: the parent of next is cur; gap 6: step to parent[cur])." },
+        { kind: "var", name: "expandedLine", min: 1, max: 8, label: "On the straight run along the bottom row, A* expands at most 8 cells", hint: "Gap 2. f must be g[i] plus the heuristic. Without the heuristic the search spreads over the whole floor. If it is there, check its arguments: the row of cell i is i / COLS and its column is i % COLS, in that order." },
         { kind: "var", name: "retMud", equals: 1, label: "With the dry gap closed there is still a path" },
-        { kind: "var", name: "costMud", equals: 12, label: "It goes through the mud: cost 12" },
-        { kind: "var", name: "retBlocked", equals: 0, label: "With both gaps closed, A* returns 0: no path" },
+        { kind: "var", name: "costMud", equals: 12, label: "It goes through the mud: cost 12", hint: "-1: the path is not stored correctly (gaps 5 and 6). Another number: g does not add up the step costs (gap 4)." },
+        { kind: "var", name: "retBlocked", equals: 0, label: "With both gaps closed, A* returns 0: no path", hint: "Gap 3. The function's comment says what each return value means: 1 is \"found\"." },
       ],
-      watch: ["hTest", "retDry", "costDry", "expandedLine", "retMud", "costMud", "retBlocked"],
+      watch: ["hTest", "retDry", "gDry", "costDry", "expandedLine", "retMud", "costMud", "retBlocked"],
       hints: [
-        "Gaps 1, 2 and 4 are one expression each, and each uses a function that is already there: abs(), heuristic(), stepCost().",
+        "Gaps 1, 2 and 4 are one expression each, and each uses a function that is already there: abs(), heuristic(), stepCost(). If the run stops with \"This code never finishes\", the parents do not lead back to the start: look at gap 5.",
         "Gap 2 adds g[i] and the heuristic from cell i to (rowEnd, colEnd). Gap 4 adds the cost so far at cur and the cost of entering (row, col). Gap 3 must differ from the 1 that means found.",
-        "Gap 2: `f = g[i] + heuristic(i / COLS, i % COLS, rowEnd, colEnd);` Gap 4: `newG = g[cur] + stepCost(row, col);` Gap 5: `parent[next] = cur;` Gap 6: `cur = parent[cur];`",
+        "Gap 1: `return abs(rowCurr - rowGoal) + abs(colCurr - colGoal);` Gap 2: `f = g[i] + heuristic(i / COLS, i % COLS, rowEnd, colEnd);` Gap 3: `return 0;` Gap 4: `newG = g[cur] + stepCost(row, col);` Gap 5: `parent[next] = cur;` Gap 6: `cur = parent[cur];`",
       ],
       takeaway: "The path with the fewest steps crossed the mud and cost 12. A* found the longer, cheaper one. An empty open set means the goal is unreachable: the caller must check the return value before it uses the path.",
+    },
+    {
+      id: "map-log",
+      kind: "calc",
+      title: "Maths you need: the logarithm",
+      goal: "Use the one property of the logarithm the robot's map depends on: it turns multiplying into adding.",
+      refs: [{ course: "L24-25" }],
+      brief: `
+The last topic of this chapter is a map the robot builds itself. Its arithmetic needs one tool from beyond school algebra: the **logarithm**. This level is only about that tool.
+
+Some quantities grow by **multiplying**: 1, 3, 9, 27, 81. The logarithm of a number says how many multiplying steps it is away from 1. On a ruler of logarithms those five numbers are evenly spaced.
+
+The **natural logarithm**, written **ln**, counts steps of the factor e = 2.718..., a fixed number like pi. You never work it out by hand: a calculator has an \`ln\` key, and C has \`log()\`. What you need are its rules:
+
+- **ln(a x b) = ln a + ln b.** Multiplying numbers adds their logarithms.
+- **ln 1 = 0.** Multiplying by 1 changes nothing.
+- A number above 1 has a positive logarithm, a number between 0 and 1 a negative one: ln(1 / a) = -ln a.
+- **exp()** undoes ln: exp(ln a) = a. It is written e^x, it is the \`e^x\` key, and \`exp()\` in C.
+
+**Worked example.** ln 2 = 0.693 and ln 3 = 1.099. Their sum is 1.792, and that is ln 6, because 2 x 3 = 6. Going back: exp(1.792) = 6.
+
+Try pairs in the figure, also 1/4 times 4.
+
+{{figure:math-log}}
+
+Why the robot cares: its map multiplies a number by a factor for every LIDAR beam, thousands of times. With logarithms each of those is one addition, and the stored numbers stay small.
+
+## The exercise
+Use these values: ln 2 = 0.693, ln 3 = 1.099, ln 9 = 2.197. The rules are enough: no calculator needed.
+`,
+      fields: [
+        { id: "ln18", label: "ln 18", answer: 2.89, tolPct: 1, why: "18 = 2 x 9, so ln 18 = ln 2 + ln 9 = 0.693 + 2.197 = 2.890." },
+        { id: "ln4", label: "ln 4", answer: 1.386, tolPct: 1, why: "4 = 2 x 2, so ln 4 = 0.693 + 0.693 = 1.386." },
+        { id: "lnq", label: "ln 0.25 (0.25 is 1 / 4)", answer: -1.386, tolPct: 1, why: "ln(1 / 4) = -ln 4 = -1.386. Numbers below 1 have negative logarithms." },
+        { id: "ln81", label: "ln 81", answer: 4.394, tolPct: 1, why: "81 = 9 x 9, so ln 81 = 2.197 + 2.197 = 4.394." },
+        { id: "exp", label: "exp(4.394), also written e^4.394", answer: 81, tolPct: 1, why: "exp undoes ln, and ln 81 = 4.394. So exp(4.394) = 81." },
+      ],
+      hints: [
+        "Write each number as a product of 2s, 3s and 9s, then add the logarithms of the factors.",
+        "18 = 2 x 9. 4 = 2 x 2. 81 = 9 x 9. And 1 / 4 has the logarithm of 4 with a minus sign.",
+        "The last field needs no arithmetic: exp() takes you back from a logarithm to its number, and you just found the number whose logarithm is 4.394.",
+      ],
+      takeaway: "ln turns a product into a sum, and exp turns the sum back. ln 1 = 0, numbers above 1 are positive, numbers below 1 negative.",
     },
     {
       id: "map-logodds",
@@ -1505,29 +1714,43 @@ The robot's planner runs on the Raspberry Pi with every step costing 1 and keeps
       goal: "Convert between probability and log-odds and apply the occupancy update by hand.",
       refs: [{ course: "L24-25" }],
       brief: `
-The maps so far were given. A robot that builds its own map keeps, for every cell, the **probability p** that the cell is occupied, and corrects it with every LIDAR beam. This is an **occupancy grid**: p = 0.5 means "never seen", near 1 is a wall, near 0 is free floor.
+The maps so far were given. A robot that builds its own map keeps, for every cell, a **probability** p that the cell is occupied. A probability is a number from 0 (certainly not) to 1 (certainly): 0.5 means "no idea", near 1 is a wall, near 0 is free floor. Such a map is an **occupancy grid**, and every LIDAR beam corrects it.
 
-Correcting p directly needs a multiplication and a division for every beam, and the values crowd towards 0 and 1 where a float runs out of digits. So the map stores the **log-odds** instead. The odds of p are p / (1 - p): 0.8 has odds 4, "four to one". The log-odds is the natural logarithm of that:
+## Odds
+The same belief can be written as **odds**: how many times more likely "occupied" is than "free".
+
+odds = p / (1 - p)
+
+p = 0.8 gives 0.8 / 0.2 = 4, "four to one". p = 0.5 gives 1, an even chance. p = 0.2 gives 0.25.
+
+Odds are handy because new evidence simply **multiplies** them: a reading that speaks 9 to 1 for a wall multiplies the cell's odds by 9.
+
+## Log-odds
+Thousands of multiplications are slow, and the numbers run away towards 0 or become huge. So the map stores the logarithm of the odds, the **log-odds** l, and adds:
 
 l = ln( p / (1 - p) )
 
-p = 0.5 gives l = 0. Positive means probably occupied, negative probably free. The way back is
+p = 0.5 gives l = ln 1 = 0. Positive means probably occupied, negative probably free. The way back to a probability is
 
 p = 1 - 1 / (1 + e^l)
 
-The logarithm turns the multiplications into additions. Taking in a measurement is now
+Taking in one measurement is one addition:
 
 l_new = l_old + l_sensor - l_0
 
 - l_sensor is the log-odds of what the sensor just said about the cell,
-- l_0 is the log-odds of the prior, the belief before any measurement. With a prior of 0.5, l_0 = 0.
+- l_0 is the log-odds of the belief before any measurement, the **prior**. With a prior of 0.5, l_0 = 0.
 
-The figure shows one cell with a weaker sensor than the exercise (0.8 for a hit, 0.3 for a pass-through). Send beams and watch the log-odds add up while the probability follows.
+**Worked example.** The sensor says "occupied with p = 0.8": odds 4, l_sensor = ln 4 = 1.386. A cell at l = 0 goes to 1.386 after one such beam and to 2.772 after two. Back to a probability: e^2.772 = 16, so p = 1 - 1 / 17 = 0.941.
+
+The figure does this for one cell, with 0.8 for a hit and 0.3 for a pass-through. Send beams and watch the log-odds add up while the probability follows.
 
 {{figure:log-odds}}
 
 ## The exercise
-A cell starts at p = 0.5. The sensor model says: when the beam **ends** in a cell (a hit), the cell is occupied with p = 0.9. When the beam **passes through** a cell, the cell is occupied with p = 0.2.
+A cell starts at p = 0.5. This sensor is surer of itself. When the beam **ends** in a cell (a hit), the cell is occupied with p = 0.9. When the beam **passes through** a cell, it is occupied with p = 0.2.
+
+You need: ln 9 = 2.197, ln 0.25 = -1.386, e^4.394 = 81, e^3.008 = 20.25.
 `,
       fields: [
         { id: "locc", label: "l_sensor for a hit (p = 0.9)", answer: 2.197, tolPct: 1, why: "ln(0.9 / 0.1) = ln 9 = 2.197." },
@@ -1537,7 +1760,11 @@ A cell starts at p = 0.5. The sensor model says: when the beam **ends** in a cel
         { id: "l3", label: "Log-odds after two hits and one pass-through", answer: 3.008, tolPct: 1, why: "4.394 - 1.386 = 3.008." },
         { id: "p3", label: "Probability after two hits and one pass-through", answer: 0.953, tolPct: 0.3, why: "e^3.008 = 20.25, so p = 1 - 1/21.25 = 0.953. One contrary reading lowers the belief and does not erase it." },
       ],
-      hints: ["Odds are p / (1 - p): 0.9 gives 9, 0.2 gives 0.25.", "Updates add. With l_0 = 0 the cell's log-odds is the sum of all l_sensor values.", "e^4.394 is 9 x 9 = 81."],
+      hints: [
+        "Odds are p / (1 - p): 0.9 gives 0.9 / 0.1 = 9, and 0.2 gives 0.2 / 0.8 = 0.25. Their logarithms are in the list at the end of the brief.",
+        "Updates add. With l_0 = 0 the cell's log-odds is the sum of all l_sensor values: two hits are 2.197 + 2.197.",
+        "For the probability use p = 1 - 1 / (1 + e^l) with e^4.394 = 81 and e^3.008 = 20.25: 1 - 1 / 82 and 1 - 1 / 21.25.",
+      ],
       takeaway: "In log-odds, evidence adds. A cell needs several agreeing beams to become certain and several contrary ones to change its mind.",
     },
     {
@@ -1558,7 +1785,7 @@ A colour only counts when it is strong: saturation of **50 or more**.
 - **Orange**, hue 15 to 45: the target, one cell. Store its position in \`targetRow\` and \`targetCol\`, or -1 in both if there is none.
 - **Blue**, hue 200 to 260: an obstacle.
 
-Everything else is free floor: grey, yellow tape, a red cone, pale wood and a pale blue reflection are in the picture to test your thresholds.
+Everything else is free floor: grey, yellow tape, a red cone, pale wood and a pale blue reflection are in the picture to test your thresholds. "Hue 15 to 45" is two comparisons joined with \`&&\`, as in "Find the ball".
 
 Fill \`map[]\` with \`'x'\` for obstacles and \`'0'\` for free cells, and count the obstacles in \`numObstacles\`.
 
@@ -1662,17 +1889,17 @@ void look_and_plan(void)
     }
 }`),
       checks: [
-        { kind: "var", name: "row1", equals: 0, label: "Scene 1: the target is in row 0" },
+        { kind: "var", name: "row1", equals: 0, label: "Scene 1: the target is in row 0", hint: "-1: no cell passed the orange test (hue 15 to 45 and saturation at least 50), or targetRow was never set. The row of cell i is i / COLS. 1: the pale wood was taken for the target, check the saturation." },
         { kind: "var", name: "col1", equals: 6, label: "Scene 1: the target is in column 6", hint: "The pale wood at (1, 1) has an orange hue and a saturation of only 20." },
         { kind: "var", name: "obstacles1", equals: 10, label: "Scene 1: the map has 10 obstacle cells", hint: "11: the pale blue reflection is not an obstacle. Fewer: both shades of blue (hue 205 and 225) count." },
         { kind: "var", name: "steps1", equals: 13, label: "Scene 1: the shortest path has 13 steps", hint: "11 is the distance without obstacles. The path has to go round the blue boxes." },
-        { kind: "led", led: "LED1", at: 5, on: true, label: "Scene 1: LED1 is on, a path was found" },
+        { kind: "led", led: "LED1", at: 5, on: true, label: "Scene 1: LED1 is on, a path was found", hint: "Switch the LED on with GPASET when steps is 0 or more." },
         { kind: "var", name: "row2", equals: 1, label: "Scene 2: the target is now in row 1", hint: "Start every call from scratch: the old target is gone." },
-        { kind: "var", name: "col2", equals: 4, label: "Scene 2: the target is in column 4" },
+        { kind: "var", name: "col2", equals: 4, label: "Scene 2: the target is in column 4", hint: "The column of cell i is i % COLS. Start every call from scratch." },
         { kind: "var", name: "obstacles2", equals: 9, label: "Scene 2: 9 obstacle cells", hint: "Set numObstacles to 0 at the start of every call." },
-        { kind: "var", name: "steps2", equals: 8, label: "Scene 2: the shortest path has 8 steps" },
-        { kind: "var", name: "obstacles3", equals: 11, label: "Scene 3: 11 obstacle cells" },
-        { kind: "var", name: "steps3", equals: -1, label: "Scene 3: the target is closed in, steps is -1" },
+        { kind: "var", name: "steps2", equals: 8, label: "Scene 2: the shortest path has 8 steps", hint: "A blue box was taken away: write '0' into map[] for every cell that is not an obstacle, so that old 'x' marks do not stay." },
+        { kind: "var", name: "obstacles3", equals: 11, label: "Scene 3: 11 obstacle cells", hint: "Fix scenes 1 and 2 first. A count that keeps growing means numObstacles is not set to 0 at the start of every call." },
+        { kind: "var", name: "steps3", equals: -1, label: "Scene 3: the target is closed in, steps is -1", hint: "bfs() returns -1 when the queue runs empty. Store what it returns in steps." },
         { kind: "led", led: "LED1", at: 35, on: false, label: "Scene 3: LED1 is off, there is no path", hint: "Switch the LED off with GPACLEAR when steps is -1." },
       ],
       watch: ["targetRow", "targetCol", "numObstacles", "steps", "steps1", "steps2", "steps3"],
@@ -1682,6 +1909,54 @@ void look_and_plan(void)
         "If you no longer have your BFS: set dist[] to -1, put the start in queue[] with dist 0, then `while (head < tail)` take `cur = queue[head]; head++;`, return dist[cur] at the goal, and for the four neighbours that canTravel and have dist -1 set dist to dist[cur] + 1 and append them. Return -1 after the loop.",
       ],
       takeaway: "Perception turns pixels into a map and a goal. Planning turns the map and the goal into a path. The robot's software has the same two halves.",
+    },
+    {
+      id: "vis-hsl-calc",
+      kind: "calc",
+      tier: "practice",
+      title: "The same ball, lit and in shadow",
+      goal: "Convert three pixels from RGB to HSL by hand and see what a shadow changes.",
+      refs: [{ course: "L17" }],
+      brief: `
+The camera gives R, G and B. The colour test needs H, S and L. Here you do that conversion by hand, the way \`rgb_to_hsl\` does it.
+
+Three pixels, with R, G, B already divided by 255, so each is between 0 and 1:
+
+- **Pixel 1**, the orange ball in the light: R = 0.8, G = 0.4, B = 0.0
+- **Pixel 2**, the same ball in a shadow, every channel halved: R = 0.4, G = 0.2, B = 0.0
+- **Pixel 3**, the blue ball: R = 0.2, G = 0.4, B = 0.8
+
+## The formulas
+Let max and min be the largest and smallest of R, G, B, and d = max - min. A grey pixel has d = 0. The more colourful the pixel, the further its channels are apart.
+
+- **Lightness** is halfway between the brightest and the darkest channel: L = (max + min) / 2
+- **Saturation** compares the spread d with the largest spread that is possible at this lightness: S = d / (1 - |2L - 1|). The bars mean the **absolute value**: the number without its sign, so |-0.2| is 0.2 and |0.2| is 0.2.
+- **Hue** starts at the angle of the largest channel (red 0, green 120, blue 240) and leans up to 60 degrees towards the stronger of the other two:
+  - R largest: H = 60 x (G - B) / d
+  - G largest: H = 60 x ((B - R) / d + 2)
+  - B largest: H = 60 x ((R - G) / d + 4)
+
+H is in degrees. If it comes out negative, add 360.
+
+**Worked example**, R = 0.6, G = 0.9, B = 0.3: max = 0.9 (green), min = 0.3, d = 0.6. L = (0.9 + 0.3) / 2 = 0.6. S = 0.6 / (1 - |1.2 - 1|) = 0.6 / 0.8 = 0.75. G is the largest: H = 60 x ((0.3 - 0.6) / 0.6 + 2) = 60 x 1.5 = 90, a yellowish green.
+
+Work out the fields, then compare pixel 1 and pixel 2.
+`,
+      fields: [
+        { id: "l1", label: "Pixel 1: lightness L", answer: 0.4, tolPct: 1, why: "max = 0.8, min = 0. L = (0.8 + 0) / 2 = 0.4." },
+        { id: "s1", label: "Pixel 1: saturation S", answer: 1, tolPct: 1, why: "d = 0.8. S = 0.8 / (1 - |0.8 - 1|) = 0.8 / 0.8 = 1." },
+        { id: "h1", label: "Pixel 1: hue H", unit: "degrees", answer: 30, tolPct: 1, why: "R is the largest: H = 60 x (0.4 - 0) / 0.8 = 30. Orange, between red (0) and yellow (60)." },
+        { id: "l2", label: "Pixel 2: lightness L", answer: 0.2, tolPct: 1, why: "max = 0.4, min = 0. L = 0.2: half as light as pixel 1." },
+        { id: "h2", label: "Pixel 2: hue H", unit: "degrees", answer: 30, tolPct: 1, why: "H = 60 x (0.2 - 0) / 0.4 = 30. Halving every channel halves G - B and d alike, so the hue does not move." },
+        { id: "s3", label: "Pixel 3: saturation S", answer: 0.6, tolPct: 1, why: "max = 0.8, min = 0.2, d = 0.6, L = 0.5. S = 0.6 / (1 - 0) = 0.6." },
+        { id: "h3", label: "Pixel 3: hue H", unit: "degrees", answer: 220, tolPct: 1, why: "B is the largest: H = 60 x ((0.2 - 0.4) / 0.6 + 4) = 60 x 3.667 = 220. A little before pure blue at 240." },
+      ],
+      hints: [
+        "Start every pixel with max, min and d.",
+        "Pixel 3 has L = 0.5, so 1 - |2L - 1| is 1 and S is simply d.",
+        "Pixel 3: (R - G) / d = -0.2 / 0.6 = -0.333, plus 4 is 3.667, times 60.",
+      ],
+      takeaway: "The shadow halved R and L, and left H at 30 degrees. That is why you threshold on hue. The figure in the briefing computes these formulas for any pixel.",
     },
     {
       id: "vis-rgb2hsl",
@@ -1818,14 +2093,16 @@ In C, the type of a division is decided by its **operands**, not by the variable
       goal: "Count the colour sites of a Bayer sensor and demosaic one pixel by averaging its neighbours.",
       refs: [{ course: "L17" }],
       brief: `
-A 640 x 480 sensor has 307200 photosites. Each one sits behind one colour filter in the Bayer pattern, which repeats this 2 x 2 block:
+So far every pixel came with R, G and B. The sensor does not deliver that. A camera pixel measures brightness only, so each one sits behind a red, a green or a blue filter and measures just that colour. The layout of the filters is the **Bayer** pattern.
+
+A 640 x 480 sensor has 307200 pixels. The pattern repeats this 2 x 2 block:
 
 \`\`\`
 G R
 B G
 \`\`\`
 
-So a **red** site has green neighbours above, below, left and right, and blue neighbours on its four diagonals.
+So a **red** pixel (a red "site") has green neighbours above, below, left and right, and blue neighbours on its four diagonals.
 
 **Demosaicing** fills in the two colours a site did not measure. The simplest method is the average of the nearest sites of that colour.
 
@@ -1968,7 +2245,7 @@ stack[sp] = pixel;  sp++;        // push
 sp--;  pixel = stack[sp];        // pop
 \`\`\`
 
-A recursive flood fill does the same with the call stack. On a microcontroller with a small stack, your own array is the safer choice.
+A **stack** is the opposite of a queue: the element added last comes out first, like a pile of plates. For a flood fill the order does not matter, and a stack needs one index only.
 
 ## Write find_blobs()
 - \`numRaw\`: the number of blobs of any size.
@@ -2169,7 +2446,7 @@ Bug 1 and Bug 2 are **complete**: they reach the goal whenever a path exists, an
 Four searches, one skeleton. They differ only in **which frontier cell is expanded next**.
 
 - **BFS**: the oldest one (a queue). Shortest path when every step costs the same.
-- **Dijkstra**: the one with the smallest cost so far, g (a priority queue). Shortest path for any non-negative step costs. It explores in all directions.
+- **Dijkstra**: the one with the smallest cost so far, g. Shortest path for any non-negative step costs. It explores in all directions.
 - **Greedy best-first**: the one with the smallest estimate to the goal, h. Fast, and easily led into a dead end. The path is not guaranteed to be the shortest.
 - **A***: the one with the smallest f = g + h. Shortest path whenever h is **admissible** (never more than the true remaining cost), usually with far fewer expansions than Dijkstra.
 
@@ -2478,21 +2755,23 @@ with \`L_FREE\` as l_sensor for a miss and \`L_OCC\` for the hit cell.
       goal: "Check the ideas behind scan matching, Monte Carlo localisation and loop closure.",
       refs: [{ course: "L24-25" }],
       brief: `
-Mapping needs to know where the robot is. Localisation needs a map. Doing both at once is **SLAM**, simultaneous localisation and mapping. Dead reckoning alone will not do: every small error is added to the next pose and never taken out again. Three ideas from the lecture, in outline.
+Mapping needs to know where the robot is. Finding out where the robot is (**localisation**) needs a map. Doing both at once is **SLAM**, simultaneous localisation and mapping.
+
+The robot's **pose** is its position and the direction it faces. It can estimate its pose by adding up how far its wheels have turned, which is called **odometry**. That alone will not do: every small error is added to the next pose and never taken out again. Three ideas from the lecture, in outline.
 
 ## Scan matching (ICP)
-Two LIDAR scans taken a moment apart show the same walls, shifted and turned by the robot's own motion. **Iterative closest point** recovers that motion: pair every point of the new scan with the nearest point of the old one, compute the rotation and shift that bring the pairs together, apply them, and repeat until nothing moves. It needs a starting guess that is roughly right (odometry gives one), and it commits to a single answer.
+Two LIDAR scans taken a moment apart show the same walls, shifted and turned by the robot's own motion. **Iterative closest point** recovers that motion: pair every point of the new scan with the nearest point of the old one, compute the turn and the shift that bring the pairs together, apply them, and repeat until nothing moves. It needs a starting guess that is roughly right (odometry gives one), and it commits to a single answer.
 
 ## Monte Carlo localisation
 When the robot could be in several places, keep many guesses, called **particles**. Each is one possible pose.
 
-1. **Start.** With no idea at all the belief is **uniform**: |X| possible poses, each with probability 1 / |X|.
+1. **Start.** With no idea at all the belief is **uniform**: every pose is equally likely. If there are |X| possible poses (|X| is just their number), each has probability 1 / |X|, so that all of them together add up to 1.
 2. **Move.** Every particle is moved as the odometry says, plus a little random noise.
 3. **Weigh.** If the robot were at this pose, how well would the scan it just took match the map?
 4. **Resample.** Draw a new set, with a chance proportional to the weight. Good guesses are copied, poor ones disappear.
 
 ## Pose graph and loop closure
-Scan matching still drifts over a long drive. A **pose graph** stores the robot's poses as nodes, joined by edges that say "this pose is this far from that one", like springs. When the robot recognises a place it has been before, this **loop closure** adds a spring between two poses that are far apart in time, and an optimiser spreads the collected error over the whole loop.
+Scan matching still drifts over a long drive. A **pose graph** stores the robot's poses as nodes, joined by edges that say "this pose is this far from that one", like springs. When the robot recognises a place it has been before, this **loop closure** adds a spring between two poses that are far apart in time, and a program called an optimiser spreads the collected error over the whole loop.
 `,
       questions: [
         {
@@ -2504,7 +2783,7 @@ Scan matching still drifts over a long drive. A **pose graph** stores the robot'
             "It measures the wheel speeds",
           ],
           answer: 1,
-          why: "Closest points, then the best rigid motion for those pairs. The pairs improve as the scans come closer, which is why it iterates.",
+          why: "Closest points, then the best turn and shift for those pairs. The pairs improve as the scans come closer, which is why it iterates.",
         },
         {
           prompt: "ICP is started with a guess that is 90 degrees wrong in a square room. What is the likely result?",
@@ -2709,10 +2988,10 @@ int astar8(int rowStart, int colStart, int rowEnd, int colEnd)
       mode: "write",
       tier: "expert",
       title: "Two-pass labelling",
-      goal: "Label the blobs of a mask in two raster scans with an equivalence table, without a stack or a queue.",
+      goal: "Label the blobs of a mask in two row-by-row scans with an equivalence table, without a stack or a queue.",
       refs: [{ course: "L17" }],
       brief: `
-A flood fill jumps around the image and needs a stack as large as the biggest blob. A camera delivers pixels row by row, and the classic way to label blobs in that order needs only the row above. It is the **two-pass** algorithm.
+A flood fill (the practice level "Blobs and the area filter") jumps around the image and needs a stack as large as the biggest blob. A camera delivers pixels row by row, and the classic way to label blobs in that order needs only the row above. It is the **two-pass** algorithm.
 
 ## Pass 1: provisional labels
 Scan the image row by row, left to right. For each mask pixel look at two neighbours that have already been labelled: the pixel **above** and the pixel to the **left**.

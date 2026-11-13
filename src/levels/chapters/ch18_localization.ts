@@ -56,11 +56,11 @@ ${isr.replace(/^\n+|\s+$/g, "")}
 
 const BENCH = `
 ## The test bench
-The simulator's robot (functions starting with \`tb_\`) stands in for your encoder, gyro and OptiTrack code.
+The simulator's robot (functions starting with \`tb_\`) stands in for the real robot's sensors and motors.
 
 - \`tb_left_speed()\`, \`tb_right_speed()\`: wheel speeds, ft/s. The wheels are **0.6 ft** apart (\`WHEEL_BASE\`).
 - \`tb_set_effort(uLeft, uRight)\`: control efforts, -10 to 10.
-- \`tb_report_pose(x, y, theta)\`: your pose estimate (ft, ft, rad). The tests compare it with the true pose.
+- \`tb_report_pose(x, y, theta)\`: hands your pose estimate (ft, ft, rad) to the bench. The tests compare it with the true pose.
 `;
 
 const POSE_GLOBALS = `float vLeft = 0;      // wheel speeds, ft/s
@@ -380,41 +380,34 @@ export const ch18: Chapter = {
       id: "loc-brief",
       kind: "brief",
       title: "Two frames and a pose",
-      goal: "Learn the robot and world frames, the rotation that connects them, and how a robot keeps track of its pose.",
+      goal: "Learn what coordinates, the robot frame, the world frame and a pose are.",
       refs: [{ course: "L15" }, { course: "HW4" }],
       brief: `
-A sensor on the robot says "golf ball 3 ft ahead, 1.5 ft to the right". Where is that in the room? That depends on where the robot is and which way it points.
+A sensor on the robot says "golf ball 3 ft ahead, 1.5 ft to the right". Where is that in the room? That depends on where the robot is and which way it points. This chapter is about keeping track of both.
+
+## Coordinates
+A pair of **coordinates** (x, y) names a point by two distances from a fixed starting point, the **origin**: x along one direction (the x axis), then y along the direction a quarter turn to the left of it (the y axis). The point (2, 1) is "2 along x, then 1 along y". A negative number means the opposite direction.
 
 ## Two frames
-The **world frame** is fixed to the room. The **robot frame** (body frame) is fixed to the robot: origin between the wheels, **x straight ahead, y to the robot's left**.
+A **frame** is a choice of origin and axes. The robot uses two.
 
-The robot's **pose** is its position (x, y) in the world frame and its heading **theta**: the angle from the world x axis to the robot's x axis, counter-clockwise positive, in radians.
+- The **world frame** is fixed to the room: its origin is a mark on the floor, and it never moves.
+- The **robot frame** (or body frame) is fixed to the robot and moves with it: origin between the wheels, **x straight ahead, y to the robot's left**. "3 ft ahead, 1.5 ft to the right" is the point (3, -1.5) in the robot frame.
 
-## From robot frame to world frame
-Turn the point by the heading, then shift it by the robot's position:
+## The pose
+The robot's **pose** is three numbers in the world frame: its position (x, y) and its **heading** theta, the angle from the world x axis to the direction the robot points. Counter-clockwise is positive and the unit is radians, as in chapter 16.
 
-- x_world = x_robot cos(theta) - y_robot sin(theta) + x_of_robot
-- y_world = x_robot sin(theta) + y_robot cos(theta) + y_of_robot
-
-The sine and cosine terms are a **rotation** by theta, the last term is a **translation**. HW4 packs both into one matrix, the **homogeneous transformation**. Drag and turn the robot in the figure to see it work.
+Drag and turn the robot in the figure. The point keeps its robot coordinates, and its world coordinates change.
 
 {{figure:frames}}
 
-## Dead reckoning
-The robot finds its pose by adding up its own motion. For two driven wheels a distance b apart (**differential drive**):
+## What this chapter builds
+1. **Dead reckoning**: the robot works out its own pose by adding up the motion of its wheels. Small errors add up too, so the estimate slowly **drifts** away from the truth.
+2. **Transforms**: converting a point from one frame to the other.
+3. A **Kalman filter**: blending the drifting estimate with a measurement from outside.
+4. **Move to XY**: driving to a point of the room.
 
-- forward speed **V = (vL + vR) / 2**: the average of the wheels
-- turn rate **omega = (vR - vL) / b**: a faster right wheel swings the robot left, which is positive
-
-Every millisecond: \`theta += omega * dt\`, \`x += V * cos(theta) * dt\`, \`y += V * sin(theta) * dt\`. This is **dead reckoning**.
-
-## Why that is not enough
-Every step has a small error, and the errors add up: the estimate **drifts**.
-
-- **Systematic** errors push the same way every time: a gyro that reads 0.05 rad/s when the robot is still (its **bias**). They can be measured and removed.
-- **Random** errors differ every time: a slipping wheel, noise. They can only be filtered.
-
-So the robot also needs information that does not drift: a **landmark** (something whose place in the room is known) or the lab's OptiTrack cameras. The Kalman filter, built later in this chapter, mixes the two.
+Each needs a little maths you may not have met. A short "Maths you need" level comes right before it is used.
 `,
       questions: [
         {
@@ -424,105 +417,101 @@ So the robot also needs information that does not drift: a **landmark** (somethi
           why: "Robot x points straight ahead, so robot y points to the robot's left. HW4 uses the same convention.",
         },
         {
-          prompt: "The left wheel runs at 0.8 ft/s and the right wheel at 1.2 ft/s. What does the robot do?",
-          options: [
-            "It moves forward at 1.0 ft/s while turning right",
-            "It moves forward at 1.0 ft/s while turning left",
-            "It moves forward at 2.0 ft/s in a straight line",
-            "It spins on the spot",
-          ],
-          answer: 1,
-          why: "V = (0.8 + 1.2) / 2 = 1.0 ft/s. omega = (1.2 - 0.8) / b is positive: counter-clockwise, a left turn.",
+          prompt: "A ball lies 2 ft ahead of the robot and 0.5 ft to its right. What are its coordinates in the robot frame?",
+          options: ["(0.5, 2)", "(2, 0.5)", "(2, -0.5)", "(-0.5, 2)"],
+          answer: 2,
+          why: "x is the distance ahead: 2. y is positive to the left, so 0.5 ft to the right is y = -0.5.",
         },
         {
-          prompt: "A gyro reads 0.01 rad/s too much, all the time. After integrating it for 100 s, how wrong is the heading?",
-          options: ["0.01 rad", "0.1 rad, then it stops growing", "1 rad, and still growing", "Nothing: the error averages out"],
-          answer: 2,
-          why: "A constant bias integrates to a ramp: 0.01 rad/s x 100 s = 1 rad, about 57 degrees. This is gyro drift. Random noise averages out; a bias does not.",
+          prompt: "The robot stands at (4, 1) in the world with heading 0: it points along the world x axis. A ball is at (1, 0) in the robot frame. Where is the ball in the world?",
+          options: ["(1, 0)", "(5, 1)", "(4, 2)", "(3, 1)"],
+          answer: 1,
+          why: "The ball is 1 ft straight ahead. With heading 0, ahead is the world x direction: (4 + 1, 1) = (5, 1). For any other heading you need the maths of the next levels.",
         },
       ],
-      takeaway: "Pose = position + heading. Sensors on the robot speak robot frame; the room speaks world frame; a rotation and a translation connect them. Dead reckoning adds up small steps, and small errors.",
+      takeaway: "Pose = position + heading. Sensors on the robot speak robot frame (x ahead, y left); the room speaks world frame.",
     },
     {
-      id: "loc-transform",
+      id: "loc-sincos",
       kind: "calc",
-      title: "Rotate, translate, and back",
-      goal: "Transform points between the robot frame and the world frame by hand, in both directions.",
-      refs: [{ course: "HW4" }, { course: "L15" }],
+      title: "Maths you need: sine and cosine",
+      goal: "Split a move of a given length and direction into how far it goes along x and how far along y.",
+      refs: [{ course: "L15" }],
       brief: `
-HW4 asks for these two transforms by hand. Practise them here with other numbers.
+The robot points in direction theta and drives a short distance d. How far did it move along the world's x axis, and how far along y? Every level from here on needs this answer. It is what sine and cosine are for.
 
-## Robot frame to world frame
-Rotate by the heading theta, then add the robot's position (Tx, Ty):
+## Across and up
+Draw the move as an arrow of length d at the angle theta. Replace it by two moves: **across** (along x), then **up** (along y).
 
-- x_world = x cos(theta) - y sin(theta) + Tx
-- y_world = x sin(theta) + y cos(theta) + Ty
+- across = d x cos(theta)
+- up = d x sin(theta)
 
-## World frame to robot frame
-Undo the two steps in the opposite order, like taking off shoes and socks: **subtract** the robot's position, then rotate **back** by theta:
+\`cos(theta)\` and \`sin(theta)\` are two numbers between -1 and 1 that depend only on the angle: the share of the length that goes across, and the share that goes up. A calculator has both, and so does C.
 
-- dx = x_world - Tx, dy = y_world - Ty
-- x_robot = dx cos(theta) + dy sin(theta)
-- y_robot = -dx sin(theta) + dy cos(theta)
+Move the arrow in the figure and watch the two parts.
 
-Rotating back is rotating by -theta, which only flips the signs of the two sines. In matrix words: the inverse of a rotation matrix is its transpose.
+{{figure:math-sincos}}
 
-In the robot frame, positive y is to the robot's **left**. A negative y means the point is on its right.
+## Values worth knowing
+- 0 degrees: cos = 1, sin = 0. All of it goes across.
+- 90 degrees (a quarter turn left, 1.571 rad): cos = 0, sin = 1. All of it goes up.
+- 180 degrees (a half turn): cos = -1, sin = 0. All of it goes across, backwards.
+- 30 degrees: cos = 0.866, sin = 0.5. At 60 degrees the two swap. At 45 degrees both are 0.707.
 
-In the figure, switch the point to "stays in the room" to see the inverse written out with numbers.
+A negative result means the opposite direction: backwards along x, or down along y.
 
-{{figure:frames}}
+## Worked example
+Heading 30 degrees, the robot drives 2 ft. Across: 2 x 0.866 = 1.732 ft. Up: 2 x 0.5 = 1.0 ft. From (1, 1) it arrives at (2.732, 2.0).
 
-Angles are given in degrees: set your calculator to degree mode.
+## In C
+\`cos(theta)\` and \`sin(theta)\` take the angle in **radians**. \`cos(90)\` is not 0: it is the cosine of 90 radians. Convert degrees first: \`cos(deg * PI / 180.0)\`.
 `,
       fields: [
-        { id: "a", label: "The point (2, 1) rotated by 90 degrees: x", answer: -1, tolPct: 1, why: "x = 2 cos 90 - 1 sin 90 = 0 - 1 = -1. A quarter turn to the left sends (2, 1) to (-1, 2)." },
-        { id: "b", label: "The point (3, 2) rotated by 60 degrees: y", answer: 3.598, tolPct: 0.5, why: "y = 3 sin 60 + 2 cos 60 = 2.598 + 1 = 3.598." },
-        {
-          id: "c",
-          label: "Ball at (3.0, -1.5) in the robot frame, robot at (4.0, 1.0), theta = 40 degrees. Ball's world x",
-          answer: 7.2623,
-          tolPct: 0.1,
-          why: "x = 3.0 cos 40 - (-1.5) sin 40 + 4.0 = 2.2981 + 0.9642 + 4.0 = 7.2623. Note the sign: minus y sin(theta) with a negative y is a plus.",
-        },
-        { id: "d", label: "Robot at (1, 2) heading 90 degrees, ball at (3, 5) in the world: ball's x in the robot frame", answer: 3, tolPct: 1, why: "dx = 2, dy = 3. x_robot = 2 cos 90 + 3 sin 90 = 3. The robot looks along world y, and the ball is 3 ft further along world y: 3 ft ahead." },
-        { id: "e", label: "Same case: ball's y in the robot frame", answer: -2, tolPct: 1, why: "y_robot = -2 sin 90 + 3 cos 90 = -2. Negative: the ball is 2 ft to the robot's right." },
-        {
-          id: "f",
-          label: "Ball at (1.5, 2.0) in the world, robot at (4.0, 1.0), theta = 150 degrees. Ball's y in the robot frame",
-          answer: 0.384,
-          tolPct: 1,
-          why: "dx = 1.5 - 4.0 = -2.5, dy = 2.0 - 1.0 = 1.0. y_robot = 2.5 sin 150 + 1.0 cos 150 = 1.25 - 0.866 = 0.384. Positive: the ball is on the robot's left.",
-        },
+        { id: "ax", label: "A move of 3 ft at 60 degrees: how far across (along x)", unit: "ft", answer: 1.5, tolPct: 1, why: "3 x cos 60 = 3 x 0.5 = 1.5 ft." },
+        { id: "ay", label: "The same move: how far up (along y)", unit: "ft", answer: 2.598, tolPct: 1, why: "3 x sin 60 = 3 x 0.866 = 2.598 ft." },
+        { id: "b", label: "The robot is at (5, 1), heading 180 degrees, and drives 2 ft. Its new x", unit: "ft", answer: 3, tolPct: 1, why: "cos 180 = -1: across = 2 x (-1) = -2. New x = 5 - 2 = 3. It drove backwards along the x axis." },
+        { id: "c", label: "A move of 2 ft at -30 degrees (30 degrees to the right): how far up", unit: "ft", answer: -1, tolPct: 1, why: "sin(-30) = -0.5, so up = 2 x (-0.5) = -1 ft: the move goes down. cos(-30) is still +0.866." },
+        { id: "d", label: "In C, theta = 0.5236 (30 degrees in radians). Value of 4 * cos(theta)", answer: 3.464, tolPct: 1, why: "cos(0.5236 rad) = cos 30 degrees = 0.866, and 4 x 0.866 = 3.464." },
       ],
       hints: [
-        "Decide the direction first. A point known in the robot frame: rotate, then add. A point known in the world: subtract, then rotate back.",
-        "cos 90 = 0 and sin 90 = 1; cos 60 = 0.5 and sin 60 = 0.866; cos 40 = 0.76604 and sin 40 = 0.64279; cos 150 = -0.866 and sin 150 = 0.5.",
-        "Last field: dx = -2.5, dy = 1.0, and y_robot = -dx sin(theta) + dy cos(theta).",
+        "across = length x cos(angle), up = length x sin(angle). Set your calculator to degrees for the first four fields.",
+        "cos 60 = 0.5, sin 60 = 0.866, cos 180 = -1, sin(-30) = -0.5.",
+        "For the new x, add the across part to the old x: 5 + 2 x cos 180.",
       ],
-      takeaway: "Out: rotate, then add. Back: subtract, then rotate the other way. The order matters, and the sign of the robot-frame y tells left from right.",
+      takeaway: "cos is the share of a move that goes along x, sin the share that goes along y. In C both take radians.",
     },
     {
       id: "loc-dead",
       kind: "code",
       mode: "write",
       title: "Dead reckoning",
-      goal: "Keep track of the robot's pose by integrating its wheel speeds every millisecond.",
+      goal: "Keep track of the robot's pose by adding up its wheel motion every millisecond.",
       refs: [{ course: "L15" }, { course: "Lab 3" }],
       brief: `
-The interrupt function already drives the robot: straight, then on a left arc, then stop. Add the code that keeps track of where it is.
+**Dead reckoning** is how the robot tracks its own pose with nothing but its wheels: start from a known pose and add up every small move. It is the running sum of chapter 16 ("adding up over time"), done three times.
 
-Every 1 ms:
+The robot has two driven wheels a distance b apart (a **differential drive**). From the two wheel speeds:
 
-1. Read both wheel speeds into \`vLeft\` and \`vRight\`.
-2. Forward speed: \`V = (vLeft + vRight) / 2\`.
-3. Turn rate: \`omega = (vRight - vLeft) / WHEEL_BASE\`.
-4. Take one small step of 0.001 s (the **rectangle rule**: speed x time step):
-   - \`theta = theta + omega * 0.001\`
-   - \`x = x + V * cos(theta) * 0.001\`
-   - \`y = y + V * sin(theta) * 0.001\`
+- forward speed **V = (vLeft + vRight) / 2**: the middle of the robot moves at the average of the wheels
+- turn rate **omega = (vRight - vLeft) / b**, in rad/s, as in chapter 16
 
-\`x\`, \`y\` and \`theta\` are globals that start at 0: the robot starts at the origin, looking along the world x axis.
+In one time step of 0.001 s the robot turns by omega x 0.001 and drives V x 0.001 ft in the direction theta. The previous level splits that small move into across and up:
+
+\`\`\`c
+theta = theta + omega * 0.001;
+x = x + V * cos(theta) * 0.001;
+y = y + V * sin(theta) * 0.001;
+\`\`\`
+
+Adding "speed x time step" like this is called the **rectangle rule**.
+
+## What to do
+The interrupt function already drives the robot: straight, then on a left arc, then stop. Add the code that keeps track of where it is:
+
+1. Read both wheel speeds into \`vLeft\` and \`vRight\` (\`tb_left_speed()\`, \`tb_right_speed()\`).
+2. Update \`theta\`, then \`x\` and \`y\`, as above. \`WHEEL_BASE\` is b. Write the average as \`0.5 * (vLeft + vRight)\`.
+
+\`x\`, \`y\` and \`theta\` are globals that start at 0: the robot starts at the origin, pointing along the world x axis. \`theta\` is already in radians: do not convert it.
 
 Try it in the figure: set the two wheel speeds and see the path these three sums produce, then let one encoder read 1 % too much.
 
@@ -555,10 +544,10 @@ ${DRIVE}
       ),
       checks: [
         { kind: "signal", name: "TB_X_FT", at: 1500, equals: 1.44, tol: 0.01, label: "The robot really drove 1.44 ft straight in the first 1.5 s" },
-        { kind: "var", name: "x", at: 1500, min: 1.42, max: 1.46, label: "Your x agrees after the straight part (1.44 ft)", hint: "x adds V * cos(theta) * 0.001 on every pass, with V the average of the two wheel speeds." },
-        { kind: "var", name: "theta", min: 1.48, max: 1.52, label: "Your heading after the arc is about 1.49 rad", hint: "omega = (vRight - vLeft) / WHEEL_BASE. Swapped wheels give -1.49." },
+        { kind: "var", name: "x", at: 1500, min: 1.42, max: 1.46, label: "Your x agrees after the straight part (1.44 ft)", hint: "0: the wheel speeds are never read, or the average is written (1/2) * ..., which is 0 in C: write 0.5. About 0.001: x must add to its own old value, x = x + ... About 1400: the `* 0.001` is missing. Nearly 0 with y growing: sin and cos are swapped." },
+        { kind: "var", name: "theta", min: 1.48, max: 1.52, label: "Your heading after the arc is about 1.49 rad", hint: "omega = (vRight - vLeft) / WHEEL_BASE. Swapped wheels give -1.49; about 0.89 means the division by WHEEL_BASE is missing." },
         { kind: "signal", name: "TB_EST_ERR_RAD", max: 0.01, label: "Heading estimate within 0.01 rad of the truth at the end" },
-        { kind: "signal", name: "TB_EST_ERR_FT", max: 0.02, label: "Position estimate within 0.02 ft of the truth at the end", hint: "sin and cos take the heading in radians, and each step is multiplied by 0.001 s." },
+        { kind: "signal", name: "TB_EST_ERR_FT", max: 0.02, label: "Position estimate within 0.02 ft of the truth at the end", hint: "x uses cos(theta), y uses sin(theta). theta is already in radians: do not convert it. Each step is multiplied by 0.001 s." },
       ],
       watch: ["vLeft", "vRight", "x", "y", "theta"],
       hints: [
@@ -569,113 +558,166 @@ ${DRIVE}
       takeaway: "Three sums, one thousand times a second, and the robot knows where it is. On this bench the wheels never slip, so the estimate stays good. On the floor it slowly goes wrong, which is why the rest of the chapter exists.",
     },
     {
-      id: "loc-gyro",
-      kind: "code",
-      mode: "complete",
-      title: "Gyro bias: measure it, remove it",
-      goal: "Average the gyro while the robot stands still and subtract that offset before integrating.",
-      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      id: "loc-rotate-math",
+      kind: "calc",
+      title: "Maths you need: turning a point",
+      goal: "Rotate a point by an angle, first as two lines of arithmetic and then as a matrix.",
+      refs: [{ course: "L15" }, { course: "HW4" }],
       brief: `
-A rate gyro reads **true turn rate + bias + noise**. The bias is a small constant: the reading when the robot is not turning at all. This one reads about 0.05 rad/s at rest. Integrate that for 7 seconds and the heading is off by 0.35 rad (20 degrees) although the robot never moved.
+A point is known in the robot frame: "2 ft ahead, 1 ft to the left", the point (2, 1). The robot's heading is theta. Which way is that in the room? To answer, you **rotate** the point by theta.
 
-## The cure
-A bias is a systematic error, so it can be measured. At start-up the course code keeps the robot still, adds up the gyro readings for a while, and divides by their number. That average is the bias (the noise averages out). From then on it is subtracted from every reading.
+## Two legs
+Walk to the point in two legs: x ahead, then y to the left. Turn the robot by theta and both legs turn with it.
 
-## What to do
-The function below has two phases, like the robot's code:
+- The "ahead" leg, of length x, now points in the direction theta. It reaches x cos(theta) across and x sin(theta) up: the previous maths level.
+- The "left" leg, of length y, points a quarter turn further left. A quarter turn swaps the two parts and flips one sign: it reaches -y sin(theta) across and y cos(theta) up.
 
-- **First second** (calls 1 to 1000): the robot stands still. Add each reading to \`gyro_sum\`. On call 1000, set \`gyro_offset = gyro_sum / 1000.0\`.
-- **After that**: subtract \`gyro_offset\` from the reading before it is integrated. The integration is already written, with the **trapezoid rule** the course code uses: the average of this reading and the previous one, times the time step.
+Add the legs:
 
-The robot then spins left for 2 seconds and stands still again until the end. Watch \`theta\` during the last seconds: it must not creep.
-${BENCH}
-- \`tb_gyro_z()\`: turn rate in rad/s, counter-clockwise positive, with bias and noise.
+- **x' = x cos(theta) - y sin(theta)**
+- **y' = x sin(theta) + y cos(theta)**
+
+Turn the point in the figure and watch the two legs.
+
+{{figure:math-rotate}}
+
+## Worked example
+(2, 1) rotated by 30 degrees (cos = 0.866, sin = 0.5):
+
+- x' = 2 x 0.866 - 1 x 0.5 = 1.232
+- y' = 2 x 0.5 + 1 x 0.866 = 1.866
+
+## The same thing as a matrix
+Lectures and HW4 write the four numbers as a table, the **rotation matrix**:
+
+\`\`\`c
+R = [ cos(theta)  -sin(theta) ]
+    [ sin(theta)   cos(theta) ]
+\`\`\`
+
+"R times (x, y)" means: in each row, multiply the first entry by x and the second by y, and add. Row 1 gives x', row 2 gives y'. It is nothing new, only a compact way to write the two lines. Switch the figure to "a matrix" to see it with numbers.
+
+Angles are given in degrees here: set your calculator to degree mode.
 `,
-      kit: "robot",
-      durationMs: 8000,
-      stimuli: [
-        { at: 0, set: "TB_GYRO_BIAS", value: 0.05 },
-        { at: 0, set: "TB_GYRO_NOISE", value: 0.01 },
+      fields: [
+        { id: "a", label: "The point (2, 1) rotated by 90 degrees: new x", answer: -1, tolPct: 1, why: "x' = 2 cos 90 - 1 sin 90 = 0 - 1 = -1. A quarter turn to the left sends (2, 1) to (-1, 2): what was ahead is now to the left." },
+        { id: "a2", label: "The point (1, 0) rotated by 45 degrees: new x", answer: 0.707, tolPct: 1, why: "x' = 1 x cos 45 - 0 = 0.707. A point straight ahead only has the 'ahead' leg, so this is the across part of the previous level." },
+        { id: "a3", label: "The point (0, 1) rotated by 30 degrees: new x", answer: -0.5, tolPct: 1, why: "x' = 0 - 1 x sin 30 = -0.5. The 'left' leg leans backwards along x when the robot turns left." },
+        { id: "b", label: "The point (3, 2) rotated by 60 degrees: new y", answer: 3.598, tolPct: 0.5, why: "y' = 3 sin 60 + 2 cos 60 = 2.598 + 1 = 3.598." },
+        { id: "m", label: "For 60 degrees the matrix is [0.5 -0.866; 0.866 0.5]. Row 1 times (4, 2)", answer: 0.268, tolPct: 2, why: "0.5 x 4 + (-0.866) x 2 = 2 - 1.732 = 0.268. That is x' of the point (4, 2)." },
       ],
-      starter: prog(
-        `float gyro = 0;        // gyro reading, rad/s
-float gyro_old = 0;    // reading of the previous call
-float gyro_sum = 0;    // sum of the readings during calibration
-float gyro_offset = 0; // the bias found by the calibration
-float theta = 0;       // heading, rad
-uint32_t numTimer0calls = 0;`,
-        `
-    numTimer0calls++;
-    gyro = tb_gyro_z();
-
-    if (numTimer0calls <= 1000) {
-        // Calibration: the robot stands still
-
-    } else {
-        // Remove the bias
-
-        // Integrate with the trapezoid rule
-        theta = theta + (gyro + gyro_old) * 0.0005;
-        gyro_old = gyro;
-
-        // Spin left for 2 s, then stand still
-        if (numTimer0calls <= 3000) {
-            tb_set_effort(-3.0, 3.0);
-        } else {
-            tb_set_effort(0.0, 0.0);
-        }
-    }
-
-    tb_report_pose(0.0, 0.0, theta);`,
-      ),
-      solution: prog(
-        `float gyro = 0;        // gyro reading, rad/s
-float gyro_old = 0;    // reading of the previous call
-float gyro_sum = 0;    // sum of the readings during calibration
-float gyro_offset = 0; // the bias found by the calibration
-float theta = 0;       // heading, rad
-uint32_t numTimer0calls = 0;`,
-        `
-    numTimer0calls++;
-    gyro = tb_gyro_z();
-
-    if (numTimer0calls <= 1000) {
-        // Calibration: the robot stands still
-        gyro_sum = gyro_sum + gyro;
-        if (numTimer0calls == 1000) {
-            gyro_offset = gyro_sum / 1000.0;
-        }
-    } else {
-        // Remove the bias
-        gyro = gyro - gyro_offset;
-
-        // Integrate with the trapezoid rule
-        theta = theta + (gyro + gyro_old) * 0.0005;
-        gyro_old = gyro;
-
-        // Spin left for 2 s, then stand still
-        if (numTimer0calls <= 3000) {
-            tb_set_effort(-3.0, 3.0);
-        } else {
-            tb_set_effort(0.0, 0.0);
-        }
-    }
-
-    tb_report_pose(0.0, 0.0, theta);`,
-      ),
-      checks: [
-        { kind: "var", name: "gyro_offset", min: 0.048, max: 0.052, label: "The calibration finds the bias: about 0.05 rad/s", hint: "Add every reading of the first 1000 calls to gyro_sum, then divide by 1000.0 on call 1000." },
-        { kind: "source", mustMatch: "gyro_sum\\s*(\\+=|=\\s*gyro_sum\\s*\\+|=\\s*gyro\\s*\\+\\s*gyro_sum)", label: "The bias is measured, not typed in: the readings are added to gyro_sum" },
-        { kind: "signal", name: "TB_EST_ERR_RAD", at: 3500, max: 0.02, label: "Heading within 0.02 rad of the truth after the spin" },
-        { kind: "signal", name: "TB_EST_ERR_RAD", max: 0.02, label: "Still within 0.02 rad after standing for 4.5 s: no drift", hint: "The heading creeps by 0.05 rad every second: subtract gyro_offset from gyro before the integration." },
-      ],
-      watch: ["gyro", "gyro_offset", "theta"],
       hints: [
-        "Two places need code: inside the calibration branch, and right after the comment 'Remove the bias'.",
-        "Calibration: `gyro_sum = gyro_sum + gyro;` and, when numTimer0calls == 1000, `gyro_offset = gyro_sum / 1000.0;`",
-        "Then `gyro = gyro - gyro_offset;` before the trapezoid line.",
+        "x' = x cos - y sin, and y' = x sin + y cos. Write the numbers under the letters.",
+        "cos 90 = 0 and sin 90 = 1; cos 45 = 0.707; sin 30 = 0.5; cos 60 = 0.5 and sin 60 = 0.866.",
+        "A matrix row times (x, y): first entry x x, plus second entry x y.",
       ],
-      takeaway: "Keep the robot still at start-up and you get the gyro's bias for free. The course code waits 2 s, then averages 2000 samples this way before the robot may move. What the calibration cannot remove is a bias that changes later, as the sensor warms up.",
+      takeaway: "Rotating a point is two lines: x' = x cos - y sin, y' = x sin + y cos. A rotation matrix is those two lines written as a table.",
+    },
+    {
+      id: "loc-transform",
+      kind: "calc",
+      title: "Rotate, shift, and back",
+      goal: "Transform points between the robot frame and the world frame by hand, in both directions.",
+      refs: [{ course: "HW4" }, { course: "L15" }],
+      brief: `
+HW4 asks for these two transforms by hand. Practise them here with other numbers.
+
+## Robot frame to world frame
+The robot sees a point at (x, y) in its own frame. Rotate it by the heading theta (previous level), then shift it by the robot's position (Tx, Ty). Shifting is also called a **translation**:
+
+- x_world = x cos(theta) - y sin(theta) + Tx
+- y_world = x sin(theta) + y cos(theta) + Ty
+
+Example: the robot is at (4, 1) with heading 90 degrees and sees a ball at (2, 0), straight ahead. Rotated: (0, 2). Shifted: (4, 3). The ball is 2 ft further along world y.
+
+## World frame to robot frame
+Undo the two steps in the opposite order, like taking off shoes and socks: **subtract** the robot's position, then rotate **back** by theta:
+
+- dx = x_world - Tx, dy = y_world - Ty
+- x_robot = dx cos(theta) + dy sin(theta)
+- y_robot = -dx sin(theta) + dy cos(theta)
+
+Rotating back is rotating by -theta, which only flips the signs of the two sines.
+
+In the robot frame, positive y is to the robot's **left**. A negative y means the point is on its right.
+
+In the figure, switch the point to "stays in the room" to see the inverse written out with numbers.
+
+{{figure:frames}}
+
+Angles are given in degrees: set your calculator to degree mode. HW4 packs "rotate, then shift" into one 3 x 3 matrix; the practice level "One matrix for rotate and shift" shows how.
+`,
+      fields: [
+        { id: "z", label: "Robot at (4.0, 1.0), heading 0. Ball at (3.0, -1.5) in the robot frame. Ball's world x", answer: 7, tolPct: 0.5, why: "With heading 0, cos = 1 and sin = 0: nothing turns. x = 3.0 + 4.0 = 7.0." },
+        {
+          id: "c",
+          label: "Ball at (3.0, -1.5) in the robot frame, robot at (4.0, 1.0), theta = 40 degrees. Ball's world x",
+          answer: 7.2623,
+          tolPct: 0.1,
+          why: "x = 3.0 cos 40 - (-1.5) sin 40 + 4.0 = 2.2981 + 0.9642 + 4.0 = 7.2623. Note the sign: minus y sin(theta) with a negative y is a plus.",
+        },
+        { id: "d", label: "Robot at (1, 2) heading 90 degrees, ball at (3, 5) in the world: ball's x in the robot frame", answer: 3, tolPct: 1, why: "dx = 2, dy = 3. x_robot = 2 cos 90 + 3 sin 90 = 3. The robot looks along world y, and the ball is 3 ft further along world y: 3 ft ahead." },
+        { id: "e", label: "Same case: ball's y in the robot frame", answer: -2, tolPct: 1, why: "y_robot = -2 sin 90 + 3 cos 90 = -2. Negative: the ball is 2 ft to the robot's right." },
+        {
+          id: "f",
+          label: "Ball at (1.5, 2.0) in the world, robot at (4.0, 1.0), theta = 150 degrees. Ball's y in the robot frame",
+          answer: 0.384,
+          tolPct: 1,
+          why: "dx = 1.5 - 4.0 = -2.5, dy = 2.0 - 1.0 = 1.0. y_robot = 2.5 sin 150 + 1.0 cos 150 = 1.25 - 0.866 = 0.384. Positive: the ball is on the robot's left.",
+        },
+      ],
+      hints: [
+        "Decide the direction first. A point known in the robot frame: rotate, then add. A point known in the world: subtract, then rotate back.",
+        "cos 90 = 0 and sin 90 = 1; cos 40 = 0.76604 and sin 40 = 0.64279; cos 150 = -0.866 and sin 150 = 0.5.",
+        "Last field: dx = -2.5, dy = 1.0, and y_robot = -dx sin(theta) + dy cos(theta).",
+      ],
+      takeaway: "Out: rotate, then add. Back: subtract, then rotate the other way. The order matters, and the sign of the robot-frame y tells left from right.",
+    },
+    {
+      id: "loc-spread",
+      kind: "calc",
+      title: "Maths you need: average and spread",
+      goal: "Describe a set of noisy sensor readings with two numbers: their mean and their variance.",
+      refs: [{ course: "L20-21" }, { course: "HW6" }],
+      brief: `
+Dead reckoning drifts, so the robot needs a second opinion: a sensor that measures its position from outside. But every sensor is a little wrong, and differently each time. Ask a distance sensor the same question five times: 2.1, 1.9, 2.2, 1.8, 2.0 ft. The small random part is called **noise**. Two numbers describe such readings.
+
+## The mean
+The **mean** is the average: add the readings and divide by how many there are.
+
+(2.1 + 1.9 + 2.2 + 1.8 + 2.0) / 5 = 2.0 ft
+
+Noise is as often above as below, so it largely cancels in the mean. The mean is the best single guess.
+
+## The variance
+How far do the readings scatter round the mean? Take each reading's distance from the mean, square it (so above and below both count as positive), and average the squares:
+
+- distances from the mean: 0.1, -0.1, 0.2, -0.2, 0
+- squared: 0.01, 0.01, 0.04, 0.04, 0
+- average: 0.10 / 5 = 0.02
+
+That is the **variance**: 0.02. Its square root, 0.14 ft, is the **standard deviation**: the typical error of one reading. A small variance means the readings agree: a sensor you can trust.
+
+In the figure, take more readings, then make the sensor noisier. Then switch on a **bias**: a constant error, the same on every reading. Averaging removes noise, but not a bias.
+
+{{figure:math-spread}}
+
+## The bell curve
+Pile up many noisy readings and they form a bell shape, the **Gaussian**: most readings near the mean, few far away, about two thirds within one standard deviation. A Gaussian is described completely by its mean and its variance. That is why the filter of the next levels stores just those two numbers.
+`,
+      fields: [
+        { id: "m", label: "Four readings: 3.0, 3.4, 2.6, 3.0 ft. Their mean", unit: "ft", answer: 3.0, tolPct: 0.5, why: "(3.0 + 3.4 + 2.6 + 3.0) / 4 = 12.0 / 4 = 3.0 ft." },
+        { id: "v", label: "Their variance", answer: 0.08, tolPct: 1, why: "Distances from the mean: 0, 0.4, -0.4, 0. Squared: 0, 0.16, 0.16, 0. Average: 0.32 / 4 = 0.08." },
+        { id: "sd", label: "Their standard deviation", unit: "ft", answer: 0.283, tolPct: 1, why: "sqrt(0.08) = 0.283 ft: a single reading is typically about 0.28 ft from the mean." },
+        { id: "r", label: "A position sensor is typically off by 0.2 ft (its standard deviation). Its variance", answer: 0.04, tolPct: 1, why: "Variance = standard deviation squared = 0.2 x 0.2 = 0.04. You will meet this number as R." },
+        { id: "bias", label: "A gyro on a robot that stands still reads 0.06, 0.04, 0.05, 0.05 rad/s. Its bias (the mean of the readings)", unit: "rad/s", answer: 0.05, tolPct: 1, why: "(0.06 + 0.04 + 0.05 + 0.05) / 4 = 0.05 rad/s. The robot is not turning, so the whole mean is bias. The course code measures the gyro's bias exactly this way at start-up." },
+      ],
+      hints: [
+        "Mean: add up, divide by the count.",
+        "Variance: subtract the mean from each reading, square each result, and take the mean of the squares.",
+        "Standard deviation = square root of the variance; variance = standard deviation x itself.",
+      ],
+      takeaway: "Mean: the best single guess. Variance: how much to trust it (small is good). Averaging removes noise but never a bias.",
     },
     {
       id: "loc-kf-calc",
@@ -684,30 +726,28 @@ uint32_t numTimer0calls = 0;`,
       goal: "Do one predict step and one update step of a 1-D Kalman filter by hand.",
       refs: [{ course: "L20-21" }, { course: "HW6" }],
       brief: `
-Forget matrices for now. The robot drives along a line and wants to know one number: its position x.
+Forget matrices for now. The robot drives along a line and wants one number: its position x. It has dead reckoning, which drifts, and a position sensor, which is noisy. A **Kalman filter** blends the two.
 
-It never knows x exactly. It keeps a **belief**: a best guess (the **mean**) and how unsure that guess is (the **variance**, the square of the typical error). A small variance means "quite sure".
-
-The filter repeats two steps.
+The filter never claims to know x exactly. It keeps a **belief**: a best guess (the **mean**) and how unsure that guess is (the **variance** of the previous level). It repeats two steps.
 
 ## Predict: the robot moves
 The wheels say the robot moved by u. The guess moves with it. But the wheels are not perfect, so the robot is now a bit **less** sure:
 
 - mean = mean + u
-- variance = variance + q (q: variance added by the move, the **process noise**)
+- variance = variance + q (q: the variance one move adds, the **process noise**)
 
 ## Update: a measurement arrives
-A sensor says "you are at z". It is not perfect either: its variance is r. The filter moves the guess part of the way towards the measurement. How far is the **Kalman gain**:
+A sensor says "you are at z", with variance r. Now there are two numbers for the same thing: the prediction and the measurement. Blend them with a **weighted average**: each gets a share of the say, and the surer one gets the larger share. The share of the measurement is the **Kalman gain** K:
 
 - K = variance / (variance + r)
-- mean = mean + K (z - mean)
+- mean = mean + K (z - mean), which is the same as (1 - K) x mean + K x z
 - variance = (1 - K) variance
 
-Read the gain as trust: the new mean is a weighted average, (1 - K) of the prediction plus K of the measurement. If the belief is very unsure (large variance) and the sensor is good (small r), K is close to 1: take the measurement. If the belief is already good and the sensor is poor, K is close to 0: keep the prediction. After an update the variance is always **smaller**: a measurement can only add information.
+K lies between 0 and 1. Prediction very unsure and sensor good: K is close to 1, take the measurement. Prediction good and sensor poor: K is close to 0, keep the prediction. Both equally unsure: K = 0.5, the plain average. After an update the variance is always **smaller**: a measurement can only add information.
 
-Go through one round in the figure, then move the two variances and watch the gain.
+Move the two variances in the figure and watch where the blend lands.
 
-{{figure:kalman-1d}}
+{{figure:math-weighted}}
 
 ## Your turn
 The belief is: mean 2.0 ft, variance 0.5. The robot moves u = 1.0 ft, with process noise q = 0.3. Then a measurement z = 3.6 ft arrives, with r = 0.2.
@@ -741,18 +781,22 @@ Turn the two steps of the previous level into two functions. The belief lives in
 
 One thing to watch in \`kf_update\`: the gain is computed from the variance **before** it is reduced, so the order of the lines matters.
 
+The figure shows the same round as bell curves: the belief slides and widens when the robot moves, then narrows when the measurement arrives.
+
+{{figure:kalman-1d}}
+
 \`main\` runs two rounds. The first uses the numbers of the previous level, so you know what to expect: mean 3.48, variance 0.16. The second starts from there with a new measurement.
 
-These are the equations HW6 writes with matrices, for a state with one entry. The filter in the robot's code has the same shape: its predict step is x = x + B u and P = P + Q, its update uses K = P / (P + R), only with 3 x 3 matrices for x, y and theta.
+These are the equations HW6 writes with matrices, for one number. The filter in the robot's code has the same shape, with x, y and theta together and 3 x 3 matrices in place of single numbers.
 `,
       kit: "robot",
       durationMs: 2,
       starter: KF_MAIN(KF_EMPTY),
       solution: KF_MAIN(KF_FUNCTIONS),
       checks: [
-        { kind: "var", name: "x1", min: 3.479, max: 3.481, label: "Round 1: the mean is 3.48 ft", hint: "3.0 means the update did nothing; 3.6 means the gain is 1. K = kf_p / (kf_p + r)." },
+        { kind: "var", name: "x1", min: 3.479, max: 3.481, label: "Round 1: the mean is 3.48 ft", hint: "2.0: nothing is written yet. 3.0: the update did nothing. 3.12: the gain is upside down, it is kf_p / (kf_p + r). 2.52: the mean moved away from z, use (z - kf_x). 3.43: kf_predict must add q to kf_p. 3.72: brackets, kf_p / (kf_p + r)." },
         { kind: "var", name: "p1", min: 0.1599, max: 0.1601, label: "Round 1: the variance is 0.16", hint: "Compute the gain before you change kf_p, and reduce kf_p after you have used it." },
-        { kind: "var", name: "kf_k", min: 0.6969, max: 0.6971, label: "Round 2: the gain is 0.46 / 0.66 = 0.697" },
+        { kind: "var", name: "kf_k", min: 0.6969, max: 0.6971, label: "Round 2: the gain is 0.46 / 0.66 = 0.697", hint: "0: the gain must be stored in the global kf_k, not in a new local variable." },
         { kind: "var", name: "kf_x", min: 4.2845, max: 4.2852, label: "Round 2: the mean is 4.2848 ft" },
         { kind: "var", name: "kf_p", min: 0.1393, max: 0.1395, label: "Round 2: the variance is 0.1394" },
       ],
@@ -775,7 +819,7 @@ These are the equations HW6 writes with matrices, for a state with one entry. Th
 This is HW6 in one dimension. The robot drives along the x axis at about 1 ft/s. It has two sources of information, and each has a problem:
 
 - **Dead reckoning** from the wheel speeds, every 1 ms. Smooth, but it only measures **change**. The robot was put down 2 ft away from where the code thinks it starts, and dead reckoning will never notice.
-- **Position fixes** (the lab's OptiTrack cameras; here \`tb_gps_x()\`), 100 times a second. Absolute, but each one is off by about 0.2 ft, at random.
+- **Position fixes**, 100 times a second. A fix is one measured position from outside the robot: in the lab from cameras on the ceiling (the OptiTrack system), here from \`tb_gps_x()\`. It does not drift, but each fix is off by about 0.2 ft, at random.
 
 ## What to do
 In the interrupt function, as the robot's own code does:
@@ -783,7 +827,7 @@ In the interrupt function, as the robot's own code does:
 1. **Every call**: predict. The robot moved \`v * 0.001\` ft since the last call. Use the process noise \`Q\`.
 2. **Only when a new fix has arrived**: update. \`tb_gps_new()\` returns 1 once for every new fix. Read it with \`tb_gps_x()\` into \`z\` and use the measurement noise \`R\`. Using the same fix twice would count one piece of information as two.
 
-\`R\` is the variance of a fix: 0.2 x 0.2 = 0.04. \`Q\` is the variance one millisecond of dead reckoning adds: tiny. The filter starts with \`kf_p = 100\`: "I have no idea where I am".
+\`R\` is the variance of a fix: standard deviation squared, 0.2 x 0.2 = 0.04. \`Q\` is the variance one millisecond of dead reckoning adds: tiny. The filter starts with \`kf_p = 100\`: "I have no idea where I am".
 
 ## What to look for
 The first fix pulls the estimate almost all the way to the truth, because the filter is so unsure. Then the gain falls, and the estimate becomes several times more accurate than a single fix.
@@ -844,9 +888,9 @@ float z = 0;          // last position fix, ft`,
         { functions: KF_FUNCTIONS },
       ),
       checks: [
-        { kind: "signal", name: "TB_EST_ERR_FT", at: 100, max: 0.3, label: "After 0.1 s the estimate has found the robot (it started 2 ft off)", hint: "Still 2 ft off: the update never runs. Call kf_update when tb_gps_new() returns 1." },
+        { kind: "signal", name: "TB_EST_ERR_FT", at: 100, max: 0.3, label: "After 0.1 s the estimate has found the robot (it started 2 ft off)", hint: "Still 2 ft off: the update never runs. Call kf_update when tb_gps_new() returns 1. Far more than 2 ft: kf_predict takes the distance moved in one call, v * 0.001, not the speed v." },
         { kind: "signal", name: "TB_GPS_RMS_FT", min: 0.15, label: "The raw fixes are off by about 0.2 ft" },
-        { kind: "signal", name: "TB_EST_RMS_FT", max: 0.06, label: "From 2 s on, the estimate is off by less than 0.06 ft: several times better than a fix", hint: "About 0.2 ft: the estimate just follows the fixes. Predict on every call with v * 0.001, and update with R, not with 0." },
+        { kind: "signal", name: "TB_EST_RMS_FT", max: 0.06, label: "From 2 s on, the estimate is off by less than 0.06 ft: several times better than a fix", hint: "About 0.2 ft: the estimate just follows the fixes. Q belongs in kf_predict and R in kf_update, not the other way round. 1 ft or more: kf_predict must run on every call (with v * 0.001), not only when a fix arrives." },
         { kind: "var", name: "kf_p", max: 0.005, label: "The filter knows it is sure: the variance is below 0.005" },
         { kind: "var", name: "kf_p", min: 0.0004, label: "Each fix is used once: the variance settles near 0.0006", hint: "A variance near 0.0002 means every fix went through kf_update about ten times. Update only when tb_gps_new() returns 1." },
         { kind: "isr", fn: "cpu_timer0_isr", min: 5990, label: "The filter runs every millisecond" },
@@ -860,6 +904,49 @@ float z = 0;          // last position fix, ft`,
       takeaway: "Fast, smooth, drifting dead reckoning plus slow, noisy, absolute fixes give an estimate better than both. The robot's real filter does this for x, y and theta at once, with 3 x 3 matrices in place of these single numbers. A Kalman filter is the best possible blend only when the system is linear and the noise is Gaussian; otherwise it is still a good one.",
     },
     {
+      id: "loc-atan2",
+      kind: "calc",
+      title: "Maths you need: the direction to a point",
+      goal: "Work out how far away a target is, in which direction, and how far the robot must turn to face it.",
+      refs: [{ course: "L15" }],
+      brief: `
+To drive to a point the robot needs two things: how far away it is, and in which direction. Both come from the difference between the target and the robot:
+
+dx = x_target - x_robot, dy = y_target - y_robot
+
+## Distance
+dx and dy are the two short sides of a right-angled triangle, and the straight line to the target is its long side. Pythagoras gives its length: **dist = sqrt(dx x dx + dy x dy)**. In C, \`sqrt()\` is the square root.
+
+## Direction
+Sine and cosine turn an angle into "across and up". Now you have across (dx) and up (dy) and want the angle back. That is \`atan2(dy, dx)\`: the angle of the arrow from the robot to the target, measured like a heading (from the world x axis, counter-clockwise positive, in radians). It lies between -PI and PI. Mind the order: dy comes first.
+
+Why not the calculator's plain atan(dy / dx)? The division loses the signs: a target ahead and to the left (dx = 1, dy = 1) and one behind and to the right (-1, -1) both give dy / dx = 1. \`atan2\` gets both numbers and keeps them. On a calculator: take atan(dy / dx), and if dx is negative add PI (or subtract PI, to stay between -PI and PI).
+
+Move the target in the figure, also behind the origin.
+
+{{figure:math-atan2}}
+
+## Worked example
+Robot at (1, 1), target at (3, 2): dx = 2, dy = 1. dist = sqrt(4 + 1) = 2.236 ft. Direction = atan2(1, 2) = 0.464 rad (26.6 degrees).
+
+## How far to turn
+The robot's heading is theta and the direction to the target is alpha. It must turn left by alpha - theta. One trap: directions repeat after a full turn. With theta = 3.0 and alpha = -3.0 the difference is -6.0, "turn right almost a full circle". Adding 2 PI gives +0.283: a small left turn that ends in the same direction. The rule: if adding or subtracting 2 PI (6.283) makes the difference smaller in size, do it.
+`,
+      fields: [
+        { id: "dist", label: "Robot at (0, 0), target at (3, 4). Distance", unit: "ft", answer: 5, tolPct: 0.5, why: "sqrt(3 x 3 + 4 x 4) = sqrt(25) = 5 ft." },
+        { id: "a1", label: "Robot at (0, 0), target at (2, 2). Direction atan2(dy, dx)", unit: "rad", answer: 0.785, tolPct: 1, why: "dx = dy, so the arrow is at 45 degrees: 0.785 rad." },
+        { id: "a2", label: "Target at (-1, 1): behind and to the left. Direction", unit: "rad", answer: 2.356, tolPct: 1, why: "Plain atan(1 / -1) gives -0.785. dx is negative, so add PI: 2.356 rad (135 degrees)." },
+        { id: "a3", label: "Target at (0, -2): straight to the right of a robot that faces along x. Direction", unit: "rad", answer: -1.571, tolPct: 1, why: "A quarter turn clockwise: -PI / 2 = -1.571 rad. (dy / dx would divide by zero; atan2 has no such problem.)" },
+        { id: "t", label: "Heading theta = 2.6 rad, direction to the target alpha = -2.356 rad. Turn to the left, the short way round", unit: "rad", answer: 1.327, tolPct: 1, why: "alpha - theta = -4.956. Adding 2 PI gives 1.327 rad, which is smaller in size: turn left by 1.327 rad, not right by 4.956." },
+      ],
+      hints: [
+        "Distance: square dx and dy, add, take the square root.",
+        "Direction: atan(dy / dx) on the calculator, in radians; when dx is negative add PI = 3.142.",
+        "Last field: -2.356 - 2.6 = -4.956. Compare its size with -4.956 + 6.283.",
+      ],
+      takeaway: "dist = sqrt(dx x dx + dy x dy) and direction = atan2(dy, dx). Before you use a difference of two angles, bring it to the short way round by adding or subtracting 2 PI.",
+    },
+    {
       id: "loc-xy",
       kind: "code",
       mode: "debug",
@@ -870,9 +957,9 @@ float z = 0;          // last position fix, ft`,
 The final project hands you \`xy_control\` (file \`user_xy.c\`). You call it every millisecond with your pose and a target point, and it sets \`vref\` and \`turn\` for the speed controller. You will tune and debug around it for weeks, so know how it works.
 
 ## What it does
-1. \`dist\` and \`alpha\`: the distance and the direction to the target, \`alpha = atan2(dy, dx)\`.
-2. **Turn error** = heading minus wanted direction. The course's \`turn\` is **positive for a right turn**. A robot that points further left (counter-clockwise) than \`alpha\` must turn right, so the error must be positive then. Careful: this is the reverse of the "wanted minus measured" habit of chapter 16.
-3. **Shortest way**: headings 3.0 and -3.0 rad are only 0.28 rad apart, yet their difference is 6. If adding or subtracting 2 PI makes the error smaller, use that.
+1. \`dist\` and \`alpha\`: the distance and the direction to the target, as in the previous level.
+2. **Turn error** = heading minus wanted direction: \`theta - alpha\`. The course's \`turn\` is **positive for a right turn** (chapter 16). A robot that points further left than \`alpha\` must turn right, so the error must be positive then. Careful: this is the reverse of the previous level's "alpha - theta, positive = left".
+3. **Shortest way**: if adding or subtracting 2 PI makes the error smaller in size, use that. \`fabs()\` gives the size.
 4. \`vref\` is 1 ft/s, or \`dist\` when closer than 1 ft: the robot slows down as it arrives.
 5. \`turn = 2 * vref * turnerror\`: steer in proportion to the error. If \`turn\` is larger than \`turn_thres\`, \`vref\` becomes 0: spin on the spot first, drive afterwards.
 6. Inside \`target_radius_near\` it stops steering (close to the target the direction swings wildly) and returns 1. Inside \`target_radius\` it stops.
@@ -880,7 +967,7 @@ The final project hands you \`xy_control\` (file \`user_xy.c\`). You call it eve
 ## What to do
 A teammate retyped the turn-error part and made two slips. The robot stands at the origin with heading 2.6 rad. The target is (-2, -2): behind it, on its left. It should turn left by 1.3 rad and drive there. Instead it twitches on the spot.
 
-Fix the turn error inside \`xy_control\`. The rest of the function is the course's.
+Fix the turn error inside \`xy_control\` (look for the comment "turn error"). The rest of the function is the course's and is given: you do not need to change it. Its first lines bring the heading between -PI and PI (\`floor\` and \`ceil\` round down and up to a whole number).
 
 The global \`turned\` adds up how far the robot has turned: 1.3 rad the short way, 5 rad the long way round. \`speed_control(vref, turn)\` is the PI speed controller of chapter 16 with the course's steering coupling. The code works in feet; one floor tile of the course is 1 ft.
 `,
@@ -978,7 +1065,7 @@ ${BENCH}`,
         { kind: "signal", name: "TB_X_FT", min: -0.3, max: 0.3, label: "Back at the start: x within 0.3 ft of 0" },
         { kind: "signal", name: "TB_Y_FT", min: -0.3, max: 0.3, label: "Back at the start: y within 0.3 ft of 0" },
         { kind: "signal", name: "TB_VLEFT", min: -0.02, max: 0.02, label: "The robot has stopped" },
-        { kind: "signal", name: "TB_EST_ERR_FT", max: 0.05, label: "Your pose estimate agrees with the truth within 0.05 ft", hint: "x and y add V * cos(theta) * 0.001 and V * sin(theta) * 0.001, with V the average wheel speed." },
+        { kind: "signal", name: "TB_EST_ERR_FT", max: 0.05, label: "Your pose estimate agrees with the truth within 0.05 ft", hint: "No value at all: call tb_report_pose(x, y, theta) on every pass. Otherwise: x and y add V * cos(theta) * 0.001 and V * sin(theta) * 0.001, with V the average wheel speed." },
       ],
       bonus: [
         { kind: "signal", name: "TB_X_FT", min: -0.15, max: 0.15, label: "Stops within 0.15 ft of the start in x (choose the target radius)" },
@@ -991,6 +1078,116 @@ ${BENCH}`,
         "After the xy_control call from the brief: `if (near == 1 && statePos < NUMWAYPOINTS - 1) { statePos++; }`",
       ],
       takeaway: "Speed control below, a pose estimate beside it, way points on top: this is the shape of the robot's navigation code. The final project adds the Kalman filter to keep the pose honest, and obstacle avoidance between the way points.",
+    },
+    {
+      id: "loc-gyro",
+      kind: "code",
+      mode: "complete",
+      tier: "practice",
+      title: "Practice: gyro bias, measure it and remove it",
+      goal: "Average the gyro while the robot stands still and subtract that offset before integrating.",
+      refs: [{ course: "L15" }, { course: "Lab 5" }],
+      brief: `
+The robot also carries a **gyro** (gyroscope): a sensor chip that measures the turn rate directly, in rad/s. Adding its readings up gives the heading without using the wheels at all. But a gyro reads **true turn rate + bias + noise**. The bias is a small constant: the reading when the robot is not turning at all. This one reads about 0.05 rad/s at rest. Integrate that for 7 seconds and the heading is off by 0.35 rad (20 degrees) although the robot never moved.
+
+## The cure
+A bias is the same on every reading, so it can be measured. At start-up the course code keeps the robot still, adds up the gyro readings for a while, and divides by their number. That mean is the bias: the noise averages out, as in the level "Maths you need: average and spread". From then on it is subtracted from every reading.
+
+## What to do
+The function below has two phases, like the robot's code:
+
+- **First second** (calls 1 to 1000): the robot stands still. Add each reading to \`gyro_sum\`. On call 1000, set \`gyro_offset = gyro_sum / 1000.0\`.
+- **After that**: subtract \`gyro_offset\` from the reading before it is integrated. The integration is already written (given). It uses the **trapezoid rule** of the course code: the average of this reading and the previous one, times the time step. That is a little more accurate than the rectangle rule.
+
+The robot then spins left for 2 seconds and stands still again until the end. Watch \`theta\` during the last seconds: it must not creep.
+${BENCH}
+- \`tb_gyro_z()\`: turn rate in rad/s, counter-clockwise positive, with bias and noise.
+`,
+      kit: "robot",
+      durationMs: 8000,
+      stimuli: [
+        { at: 0, set: "TB_GYRO_BIAS", value: 0.05 },
+        { at: 0, set: "TB_GYRO_NOISE", value: 0.01 },
+      ],
+      starter: prog(
+        `float gyro = 0;        // gyro reading, rad/s
+float gyro_old = 0;    // reading of the previous call
+float gyro_sum = 0;    // sum of the readings during calibration
+float gyro_offset = 0; // the bias found by the calibration
+float theta = 0;       // heading, rad
+uint32_t numTimer0calls = 0;`,
+        `
+    numTimer0calls++;
+    gyro = tb_gyro_z();
+
+    if (numTimer0calls <= 1000) {
+        // Calibration: the robot stands still
+
+    } else {
+        // Remove the bias
+
+        // Integrate with the trapezoid rule
+        theta = theta + (gyro + gyro_old) * 0.0005;
+        gyro_old = gyro;
+
+        // Spin left for 2 s, then stand still
+        if (numTimer0calls <= 3000) {
+            tb_set_effort(-3.0, 3.0);
+        } else {
+            tb_set_effort(0.0, 0.0);
+        }
+    }
+
+    tb_report_pose(0.0, 0.0, theta);`,
+      ),
+      solution: prog(
+        `float gyro = 0;        // gyro reading, rad/s
+float gyro_old = 0;    // reading of the previous call
+float gyro_sum = 0;    // sum of the readings during calibration
+float gyro_offset = 0; // the bias found by the calibration
+float theta = 0;       // heading, rad
+uint32_t numTimer0calls = 0;`,
+        `
+    numTimer0calls++;
+    gyro = tb_gyro_z();
+
+    if (numTimer0calls <= 1000) {
+        // Calibration: the robot stands still
+        gyro_sum = gyro_sum + gyro;
+        if (numTimer0calls == 1000) {
+            gyro_offset = gyro_sum / 1000.0;
+        }
+    } else {
+        // Remove the bias
+        gyro = gyro - gyro_offset;
+
+        // Integrate with the trapezoid rule
+        theta = theta + (gyro + gyro_old) * 0.0005;
+        gyro_old = gyro;
+
+        // Spin left for 2 s, then stand still
+        if (numTimer0calls <= 3000) {
+            tb_set_effort(-3.0, 3.0);
+        } else {
+            tb_set_effort(0.0, 0.0);
+        }
+    }
+
+    tb_report_pose(0.0, 0.0, theta);`,
+      ),
+      checks: [
+        { kind: "var", name: "gyro_offset", min: 0.048, max: 0.052, label: "The calibration finds the bias: about 0.05 rad/s", hint: "Add every reading of the first 1000 calls to gyro_sum, then divide by 1000.0 on call 1000." },
+        { kind: "source", mustMatch: "gyro_sum\\s*(\\+=|=\\s*gyro_sum\\s*\\+|=\\s*gyro\\s*\\+\\s*gyro_sum)", label: "The bias is measured, not typed in: the readings are added to gyro_sum" },
+        { kind: "signal", name: "TB_EST_ERR_RAD", at: 3500, max: 0.02, label: "Heading within 0.02 rad of the truth after the spin", hint: "About 0.12 off: the bias is not removed. About 0.25 off: it is added, not subtracted. Write `gyro = gyro - gyro_offset;` before the integration." },
+        { kind: "signal", name: "TB_EST_ERR_RAD", max: 0.02, label: "Still within 0.02 rad after standing for 4.5 s: no drift", hint: "The heading creeps by 0.05 rad every second: subtract gyro_offset from gyro before the integration." },
+      ],
+      watch: ["gyro", "gyro_offset", "theta"],
+      hints: [
+        "Two places need code: inside the calibration branch, and right after the comment 'Remove the bias'.",
+        "Calibration: `gyro_sum = gyro_sum + gyro;` and, when numTimer0calls == 1000, `gyro_offset = gyro_sum / 1000.0;`",
+        "Then `gyro = gyro - gyro_offset;` before the trapezoid line.",
+      ],
+      takeaway: "Keep the robot still at start-up and you get the gyro's bias for free. The course code waits 2 s, then averages 2000 samples this way before the robot may move. What the calibration cannot remove is a bias that changes later, as the sensor warms up.",
     },
     {
       id: "loc-rotate",
@@ -1209,6 +1406,61 @@ void main(void)
       takeaway: "Subtract, then rotate back. The sign of the robot-frame y tells left from right, and atan2(yb, xb) is the angle the robot would have to turn to face the point.",
     },
     {
+      id: "loc-matrix",
+      kind: "calc",
+      tier: "practice",
+      title: "Practice: one matrix for rotate and shift",
+      goal: "Multiply a matrix by a list of numbers, and read HW4's homogeneous transformation as rotate, then shift.",
+      refs: [{ course: "HW4" }, { course: "L15" }],
+      brief: `
+HW4 and Lecture 15 write transforms as matrices. A **matrix** is a table of numbers. A **vector** is a list of numbers written as a column, such as a point (x, y).
+
+## Matrix times vector
+Each row of the matrix makes one number of the result: multiply the row's entries by the vector's entries, one by one, and add.
+
+\`\`\`c
+[ 2  1 ] [ 3 ]   [ 2 x 3 + 1 x 4 ]   [ 10 ]
+[ 0  5 ] [ 4 ] = [ 0 x 3 + 5 x 4 ] = [ 20 ]
+\`\`\`
+
+The rotation matrix of the level "Maths you need: turning a point" is used exactly like this. In the figure, switch to "a matrix".
+
+{{figure:math-rotate}}
+
+## Rotate and shift in one matrix
+A 2 x 2 matrix can rotate but it cannot shift: there is nowhere to put Tx and Ty. The trick is to give every point a third entry that is always 1, and to use a 3 x 3 matrix, the **homogeneous transformation**:
+
+\`\`\`c
+    [ cos  -sin  Tx ]            [ x ]
+T = [ sin   cos  Ty ]    point = [ y ]
+    [  0     0    1 ]            [ 1 ]
+\`\`\`
+
+- Row 1: x cos - y sin + Tx x 1. That is "rotate, then shift" for x.
+- Row 2: x sin + y cos + Ty x 1. The same for y.
+- Row 3: 0 + 0 + 1 = 1. It only keeps the third entry at 1.
+
+So T times a robot-frame point is the world-frame point: nothing but the two lines you already use. The gain is that two transforms in a row (camera to robot, robot to world) become one matrix times another.
+
+## Example
+Robot at (4, 1), heading 90 degrees (cos = 0, sin = 1). T = [0 -1 4; 1 0 1; 0 0 1]. The ball at (2, 0) in the robot frame: row 1 gives 0 x 2 - 1 x 0 + 4 = 4, row 2 gives 1 x 2 + 0 x 0 + 1 = 3. World: (4, 3).
+`,
+      fields: [
+        { id: "m1", label: "[1 2; 3 4] times (5, 6): first number of the result", answer: 17, why: "Row 1: 1 x 5 + 2 x 6 = 17." },
+        { id: "m2", label: "[1 2; 3 4] times (5, 6): second number", answer: 39, why: "Row 2: 3 x 5 + 4 x 6 = 39." },
+        { id: "t1", label: "T = [0 -1 4; 1 0 1; 0 0 1] times the point (1, 2, 1): world x", answer: 2, why: "Row 1: 0 x 1 + (-1) x 2 + 4 x 1 = 2." },
+        { id: "t2", label: "The same: world y", answer: 2, why: "Row 2: 1 x 1 + 0 x 2 + 1 x 1 = 2. The point 1 ft ahead and 2 ft to the left of a robot at (4, 1) that faces along world y is at (2, 2)." },
+        { id: "t3", label: "Robot at (2, 3) with heading 180 degrees. Entry in row 1, column 1 of its T", answer: -1, why: "That entry is cos(theta) = cos 180 = -1." },
+        { id: "t4", label: "The same T: entry in row 2, column 3", answer: 3, why: "The third column holds the robot's position: Tx = 2 in row 1 and Ty = 3 in row 2." },
+      ],
+      hints: [
+        "One row at a time: multiply entry by entry, then add.",
+        "For T, do not forget the third entry of the point, which is always 1: it brings in Tx and Ty.",
+        "T = [cos -sin Tx; sin cos Ty; 0 0 1]. cos 180 = -1, sin 180 = 0.",
+      ],
+      takeaway: "A matrix times a vector is one sum of products per row. The homogeneous transformation is the rotation matrix with the robot's position in a third column: rotate, then shift, in one multiplication.",
+    },
+    {
       id: "loc-units",
       kind: "code",
       mode: "debug",
@@ -1217,7 +1469,7 @@ void main(void)
       goal: "Fix a dead-reckoning function that mixes degrees with radians and never wraps its heading.",
       refs: [{ course: "L15" }, { course: "Lab 5" }],
       brief: `
-This robot takes its heading from the gyro. Like the course's gyro code, it works in **degrees**: the rate is converted to degrees per second and integrated into \`angle_deg\`. The robot drives a little more than three quarters of a circle to the left.
+This robot takes its heading from the gyro, the sensor that measures the turn rate. Like the course's gyro code, it works in **degrees**: the rate is converted to degrees per second and integrated into \`angle_deg\`. The robot drives a little more than three quarters of a circle to the left.
 
 The position estimate is far off. Two things are wrong.
 
@@ -1444,7 +1696,7 @@ uint32_t numTimer0calls = 0;`,
       goal: "Blend the gyro heading with the encoder heading so the result does not drift when the gyro's bias changes.",
       refs: [{ course: "L15" }],
       brief: `
-The start-up calibration of the level "Gyro bias" removes the bias the gyro has at start-up. In this run the bias **changes after 3 seconds** (sensors warm up). The gyro heading \`theta_gyro\` starts to drift again, and no start-up calibration can help.
+The start-up calibration of the practice level "Gyro bias" removes the bias the gyro has at start-up. In this run the bias **changes after 3 seconds** (sensors warm up). The gyro heading \`theta_gyro\` starts to drift again, and no start-up calibration can help.
 
 There is a second heading: \`theta_enc\`, integrated from the wheel speeds. It has no bias. Its weakness is different: its single readings are rough, and on a real floor every wheel slip turns it a little for good.
 
@@ -1565,11 +1817,11 @@ Dead reckoning drifts. A **landmark** is something the robot can recognise and w
 ## From a sighting to a position
 The LIDAR or the camera gives the landmark's position in the **robot frame**. You know the transform:
 
-landmark_world = R(theta) landmark_robot + robot_position
+landmark_world = (landmark_robot rotated by theta) + robot_position
 
 This time the left side is known and the robot's position is not. Solve for it:
 
-**robot_position = landmark_world - R(theta) landmark_robot**
+**robot_position = landmark_world - (landmark_robot rotated by theta)**
 
 So: rotate the sighting by the heading, then subtract it from the landmark's known position. The heading is taken from the gyro here. One point landmark cannot correct the heading; that needs a second landmark or the direction of a wall.
 
@@ -1740,6 +1992,8 @@ float eTheta = 0;     // heading error, rad`,
       refs: [{ course: "L20-21" }, { course: "HW6" }],
       brief: `
 Now there are no wheel speeds. The only sensor is the position fix, 100 times a second, off by about 0.1 ft each time. Estimate **two** things from it: the position and the **velocity**. Dividing the difference of two fixes by 0.01 s would give a velocity that is off by more than 10 ft/s. The filter does far better.
+
+This level uses matrices: do the practice level "One matrix for rotate and shift" first if a matrix times a list of numbers is new to you. The **state** is the list of numbers the filter estimates. The **covariance matrix** P plays the part of the variance: P00 is the variance of the position, P11 that of the velocity, and P01 = P10 says how errors in the two go together.
 
 ## The model
 State: position p and velocity v. In a step of length dt the position grows by v dt. The velocity stays, plus an unknown change with variance qv. Only the position is measured:

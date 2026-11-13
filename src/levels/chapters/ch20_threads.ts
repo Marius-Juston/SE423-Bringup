@@ -68,6 +68,46 @@ __interrupt void cpu_timer0_isr(void)
 }
 `;
 
+// ---------------------------------------------------------------- pair
+const pairProgram = (read: string) => `__interrupt void cpu_timer0_isr(void);
+
+// The robot's position. The robot drives along a straight line on which
+// y is always twice x. The interrupt changes both, so pos_y == 2 * pos_x.
+int32_t pos_x = 0;
+int32_t pos_y = 0;
+
+uint32_t reads = 0;       // how many times main read the position
+uint32_t mixed = 0;       // reads whose x and y do not belong together
+
+void main(void)
+{
+    int32_t x;
+    int32_t y;
+    uint32_t i;
+
+${setup(20)}
+
+    for (i = 0; i < 20000; i++) {
+${read}
+        if (y != 2 * x) {
+            mixed++;
+        }
+        reads++;
+    }
+
+    DINT;
+    while (1) {}
+}
+
+// Every 20 us: the robot has moved one step along its line
+__interrupt void cpu_timer0_isr(void)
+{
+    pos_x = pos_x + 1;
+    pos_y = pos_y + 2;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`;
+
 // ---------------------------------------------------------------- torn read
 const tornProgram = (read: string) => `__interrupt void cpu_timer0_isr(void);
 
@@ -251,12 +291,12 @@ int buf_get(uint16_t *v)
     return 1;
 }`;
 
-const ringChecks = (minReceived: number) => [
+const ringChecks = (minReceived: number, lockFree = false) => [
   { kind: "var" as const, name: "produced", equals: 60, label: "The interrupt produced 60 samples", hint: "If this is far below 60, interrupts were left disabled somewhere." },
-  { kind: "var" as const, name: "order_errors", equals: 0, label: "No sample arrives twice or out of order", hint: "A full buffer must refuse the new sample. Writing anyway overwrites the oldest one and scrambles the order." },
-  { kind: "var" as const, name: "missing", equals: 0, label: "Every sample is either received or counted as dropped" },
+  { kind: "var" as const, name: "order_errors", equals: 0, label: "No sample arrives twice or out of order", hint: "Three usual causes. An index that does not wrap: both need `% BUF_SIZE`, not `% (BUF_SIZE - 1)` and not a plain `++`. A full buffer that is not refused: `if (count == BUF_SIZE) return 0;` comes first in buf_put. Or the wrong order: store in `buf[head]` first, then move head." },
+  { kind: "var" as const, name: "missing", equals: 0, label: "Every sample is either received or counted as dropped", hint: lockFree ? "The indexes do not match what is in the buffer. buf_put moves head only when it stored a sample, buf_get moves tail only when it handed one out, and both wrap with `% BUF_SIZE`." : "count does not match what is in the buffer. buf_put adds 1 to count for every sample it stores, buf_get subtracts 1 for every sample it hands out, and neither changes count when it returns 0." },
   { kind: "var" as const, name: "dropped", min: 1, max: 60 - minReceived, label: "The full case happens and is reported (a few samples dropped while main was busy)", hint: "buf_put must return 0 when the buffer is full, and only then." },
-  { kind: "var" as const, name: "received", min: minReceived, label: `Main received at least ${minReceived} samples` },
+  { kind: "var" as const, name: "received", min: minReceived, label: `Main received at least ${minReceived} samples`, hint: "If it is 0, buf_get always reports empty: check that buf_put really stores the sample and counts it, and that buf_get returns 1 after it filled *v." },
   { kind: "var" as const, name: "received", at: 15.5, min: 11, max: 15, label: "After 15 ms main has received 11 to 15 samples: they flow through the buffer as they are made" },
 ];
 
@@ -267,6 +307,13 @@ const RING_LOCK_CHECK = {
   mustMatch: "buf_get\\s*\\([^)]*\\)\\s*\\{(?:(?!\\n\\})[\\s\\S])*DINT(?:(?!\\n\\})[\\s\\S])*EINT",
   label: "buf_get changes count inside a critical section (DINT ... EINT)",
   hint: "count-- in main is a read-modify-write of a variable the interrupt also writes. Keep DINT; before it and EINT; after it, on every path.",
+};
+
+const RING_PUT_CHECK = {
+  kind: "source" as const,
+  mustNotMatch: "buf_put\\s*\\([^)]*\\)\\s*\\{(?:(?!\\n\\})[\\s\\S])*(DINT|EINT)",
+  label: "buf_put has no DINT or EINT: it runs inside the interrupt function",
+  hint: "Interrupts are already off while the interrupt function runs. EINT; in buf_put would switch them on again in the middle of it.",
 };
 
 // ---------------------------------------------------------------- logger
@@ -329,36 +376,36 @@ export const ch20: Chapter = {
       id: "thr-brief",
       kind: "brief",
       title: "Two things at once",
-      goal: "Learn what processes and threads are, what they share, and why shared data needs protection.",
+      goal: "Learn what processes and threads are, what they share, and how a shared counter loses an update.",
       refs: [{ course: "L13" }, { trm: "3.4.3" }],
       brief: `
-Your robot has two computers. The F28379D runs your C code directly. The Raspberry Pi runs Linux, which runs many programs at the same time. Lecture 13 is about the Pi. This chapter needs only the Interrupts chapter, so you can play it right after that one.
+Your robot has two computers. The F28379D runs your C code and nothing else. The second is a **Raspberry Pi**, a small computer that runs **Linux**. Linux is an **operating system**: a program that starts other programs and shares the processor among them, so that many run at the same time.
 
 ## Program, process, thread
 - A **program** is a file on disk: instructions, nothing running.
-- A **process** is a program that is running. Linux gives it its own memory: the code, the global variables, the **heap** (memory asked for while running) and a **stack** (local variables and return addresses). One process cannot see another's memory.
-- A **thread** is one path of execution inside a process. Each thread has its **own registers and its own stack**. All threads of a process **share** the code, the global variables and the heap.
+- A **process** is a program that is running. Linux gives it its own memory: the code, the global variables, the **heap** (memory the program asks for while it runs) and a **stack** (the local variables of the functions that are running now). One process cannot see another's memory.
+- A **thread** is one path through the code of a process: one "you are here". A process can have several. Each thread has its **own stack** and its **own CPU registers**: not the hardware registers of chapter 1, but the few working slots inside the processor that hold the numbers it is calculating with. All threads of a process **share** the code, the global variables and the heap.
 
-The Linux **scheduler** decides which thread runs, and can pause one between any two machine instructions. The Pi has four cores, so threads also run at the same instant.
+The part of Linux called the **scheduler** decides which thread runs. It can pause a thread between any two **machine instructions**, the small steps the compiler turns your C into. The Pi has four **cores** (four processors in one chip), so four threads can also run at the same instant.
 
 ## And on the microcontroller?
-This game simulates the F28379D, not Linux. That chip has no threads, but it has **interrupts**: \`main()\` is paused at an arbitrary instruction, an interrupt function runs, and \`main()\` continues. The two **interleave** and share every global variable. For shared data that is the same problem as two threads. Where the Linux tool differs, the level shows it.
+The F28379D has no threads, but it has **interrupts**: \`main()\` is paused at a point you do not choose, an interrupt function runs, and \`main()\` continues. The two take turns, they **interleave**, and they share every global variable. For shared data that is the same problem as two threads.
 
 ## The race
-\`counter += 1;\` looks like one step. The machine may do three: **read** the value from memory into a register, **add** 1 in the register, **write** the register back. If another thread, or an interrupt, changes \`counter\` between the read and the write, that change is overwritten and lost. The result depends on timing: a **race condition**. An operation that cannot be split is **atomic**.
+\`counter += 1;\` looks like one step. The machine may do three: **read** the value from memory into a CPU register, **add** 1 there, **write** the result back. If another thread, or an interrupt, changes \`counter\` in between, that change is overwritten and lost. The result depends on timing: a **race condition**.
 
 In the figure you are the scheduler. Step A once, run B to its end, then finish A.
 
 {{figure:lost-update}}
 
-The cure is to keep those steps together: a **mutex** (a lock) between threads, \`DINT;\` and \`EINT;\` (interrupts off, on) between \`main()\` and an interrupt. The figure has a switch for both. You will use them in the next levels.
+The cure is to keep the three steps together. The next levels show how.
 `,
       questions: [
         {
           prompt: "Two threads of the same process: which of these does each thread have for itself?",
           options: ["The global variables", "The heap", "The stack and the CPU registers", "The program code"],
           answer: 2,
-          why: "Each thread needs its own registers and its own stack to keep its place in the code and its local variables. Code, globals and heap are shared.",
+          why: "Each thread needs its own CPU registers and its own stack to keep its place in the code and its local variables. Code, globals and heap are shared.",
         },
         {
           prompt: "The F28379D core running your code has no threads. Why can a race condition still happen?",
@@ -383,7 +430,7 @@ The cure is to keep those steps together: a **mutex** (a lock) between threads, 
           why: "Both threads can read the same old value, and both write old + 1. One of the two additions is lost.",
         },
       ],
-      takeaway: "Threads share globals and heap, and main() and interrupt functions share globals. Anything shared that takes more than one machine step needs a critical section.",
+      takeaway: "Threads share globals and heap, and main() and interrupt functions share globals. A change of shared data that takes more than one machine step can lose an update.",
     },
     {
       id: "thr-shared",
@@ -394,21 +441,29 @@ The cure is to keep those steps together: a **mutex** (a lock) between threads, 
       brief: `
 Before you can protect shared data you have to know what is shared.
 
-A process starts with one thread, \`main\`. The \`pthread\` library starts more: \`pthread_create(&tid, NULL, job, NULL);\` starts a thread that runs the function \`job\`, and \`pthread_join(tid, NULL);\` waits until it has ended.
-
-- **Two processes**: nothing is shared, unless they ask Linux for a way to pass data: **shared memory** (a block both can see), a **pipe** (a one-way stream of bytes) or a **signal** (a short notice such as "stop"). The gain of sharing nothing is isolation: a process that crashes cannot damage the memory of another.
+- **Two processes**: nothing is shared, unless they ask Linux for **shared memory**, a block both can see. The gain of sharing nothing is isolation: a process that crashes cannot damage the memory of another.
 - **Two threads of one process**: code, global variables and heap are shared, so passing data is free. Local variables are not shared, because they live on each thread's own stack.
-- **main() and an interrupt function** on the microcontroller: global variables are shared. Local variables of the interrupt function live on the stack for the duration of that one call.
+- **main() and an interrupt function** on the microcontroller: global variables are shared. The local variables of the interrupt function exist only during that one call.
 
 A variable needs protection when **all three** are true:
 
-1. it is reachable from two execution paths (two threads, or main and an interrupt),
+1. two paths can reach it (two threads, or main and an interrupt),
 2. at least one of them writes it,
-3. the access is not atomic, or several variables must change together.
+3. the access takes more than one machine step, or several variables must change together.
 
-A local variable never needs protection. A constant never needs protection: nobody writes it.
+A local variable never needs protection. Neither does a constant: nobody writes it.
 
-On the Pi the course runs several processes side by side. \`serial_COMandOpti\` talks to the F28379D and to OptiTrack, and \`AstarApp\` plans paths. They exchange the robot pose and the path through named shared memory (\`shm_open\`, \`mmap\`), together with a **semaphore**: a counter that one side raises to say "new data is ready". You will build one later in this chapter.
+## How it looks on the Pi (to read, not to write)
+A process starts with one thread, \`main\`. The \`pthread\` library starts more:
+
+\`\`\`c
+pthread_create(&tid, NULL, job, NULL);   // start a thread that runs the function job
+pthread_join(tid, NULL);                 // wait until that thread has ended
+\`\`\`
+
+\`tid\` is a variable that identifies the new thread. \`NULL\` is a pointer to nothing and means "no special options" here.
+
+The course runs two processes on the Pi. \`serial_COMandOpti\` talks to the F28379D and to OptiTrack, the camera system that tells the robot where it is in the room. \`AstarApp\` plans a path through the room (A*, chapter 19). They pass the robot's position and the path through shared memory, together with a **semaphore**: a counter that one side raises to say "new data is ready". You will build one later in this chapter.
 `,
       questions: [
         {
@@ -421,7 +476,7 @@ On the Pi the course runs several processes side by side. \`serial_COMandOpti\` 
           prompt: "Two separate processes on the Pi each have a global `int count;`. Process A sets it to 5. What does process B read?",
           options: ["5", "Whatever B last wrote: each process has its own `count`", "0, always", "The read fails with an error"],
           answer: 1,
-          why: "Each process has its own memory. To share a value they must use shared memory, a pipe or another form of inter-process communication.",
+          why: "Each process has its own memory. To share a value they must ask Linux for shared memory.",
         },
         {
           prompt: "`main()` of a pthread program calls `pthread_create(&tid, NULL, job, NULL);` and later `pthread_join(tid, NULL);`. What does the second call do?",
@@ -435,7 +490,7 @@ On the Pi the course runs several processes side by side. \`serial_COMandOpti\` 
           why: "pthread_create starts the thread, pthread_join waits for it to end. Without the join, main can return, and the whole process ends, while the thread is still working.",
         },
         {
-          prompt: "`AstarApp` crashes on a bad pointer. `serial_COMandOpti` is a separate process. What happens to it?",
+          prompt: "`AstarApp` crashes because it used a pointer to the wrong address. `serial_COMandOpti` is a separate process. What happens to it?",
           options: [
             "It crashes too: they share the heap",
             "It keeps running: its memory is its own, so the crash cannot corrupt it",
@@ -446,7 +501,7 @@ On the Pi the course runs several processes side by side. \`serial_COMandOpti\` 
           why: "Each process has its own memory. This fault isolation is a main reason to split a system into processes. Had the two been threads of one process, the crash would have ended both.",
         },
         {
-          prompt: "The Pi's A* program and the program that talks to the F28379D are two processes. How does the course code pass the robot pose between them?",
+          prompt: "The Pi's path planner and the program that talks to the F28379D are two processes. How does the course code pass the robot's position between them?",
           options: [
             "Through a global variable",
             "Through the stack",
@@ -454,7 +509,7 @@ On the Pi the course runs several processes side by side. \`serial_COMandOpti\` 
             "It cannot: processes are isolated",
           ],
           answer: 2,
-          why: "AstarApp.c opens named shared memory and a named semaphore. The writer posts the semaphore when a complete new set of values is in the shared memory, and the reader takes it before reading.",
+          why: "AstarApp.c opens shared memory and a semaphore. The writer raises the semaphore when a complete new set of values is in the shared memory, and the reader takes it before reading.",
         },
       ],
       hints: ["Global or heap: shared between threads. Local: private.", "Two processes: private, unless they set up shared memory."],
@@ -468,7 +523,7 @@ On the Pi the course runs several processes side by side. \`serial_COMandOpti\` 
       goal: "Watch a counter lose updates between main and a timer interrupt, then protect it with DINT and EINT.",
       refs: [{ course: "L13" }, { trm: "3.4.3" }, { trm: "3.4.4" }],
       brief: `
-\`shared\` is a 32-bit counter. \`main()\` adds 1 to it 20000 times. The timer 0 interrupt function also adds 1 to it, every 50 microseconds. Each side counts its own additions in \`main_adds\` and \`isr_adds\`, so at the end
+\`shared\` is a counter. \`main()\` adds 1 to it 20000 times. The timer 0 interrupt function also adds 1 to it, every 50 microseconds. Each side counts its own additions in \`main_adds\` and \`isr_adds\`, so at the end
 
 \`\`\`c
 lost = (main_adds + isr_adds) - shared;
@@ -477,7 +532,7 @@ lost = (main_adds + isr_adds) - shared;
 should be 0.
 
 ## Why the loop has three lines
-An interrupt can start between any two machine instructions. The compiler is free to turn \`shared++;\` into three of them: load the value, add 1, store it back. Whether it does depends on the variable's type and the optimisation level (for a \`float\` it always does), and you cannot tell from the C source. This simulator runs one C statement as one step, so the program writes the three steps out as three statements:
+The compiler may turn \`shared++;\` into three machine instructions: read, add, write. You cannot tell from the C source whether it does. This simulator runs one C statement as one step, so the program writes the three steps as three statements:
 
 \`\`\`c
 tmp = shared;       // read
@@ -493,20 +548,18 @@ Try it in the figure: choose "main and an interrupt", step main() once and fire 
 
 ## What to do
 1. Press **Run** as it is. Look at \`lost\` in the watch list: it is not 0. Each lost update is one interrupt that landed between the read and the write.
-2. Make the three statements a **critical section**, a stretch of code that must not be interleaved with the other side: \`DINT;\` before them, \`EINT;\` after them. \`DINT\` sets the CPU's interrupt mask INTM, so no interrupt can start. A request that arrives meanwhile is not lost: its flag stays set, and the function runs right after \`EINT;\`.
+2. Make the three statements a **critical section**: a stretch of code that the other side must not interrupt. Put \`DINT;\` on the line before them and \`EINT;\` on the line after them. You know both from chapter 5: \`DINT;\` closes the last gate (INTM), so no interrupt can start, and \`EINT;\` opens it again. A request that arrives in between is not lost. Its flag stays set, and the function runs right after \`EINT;\`.
 
-Keep the critical section short. The interrupt waits for as long as it lasts.
+Keep a critical section short. The interrupt waits for as long as it lasts.
 
-## The same idea on Linux
-Between threads you cannot switch the other thread off. You use a **mutex** instead:
+## The same idea on Linux (to read)
+One thread cannot switch another thread off. Threads use a **mutex** instead, a lock that only one thread can hold at a time. A second thread that asks for it waits until the first gives it back:
 
 \`\`\`c
 pthread_mutex_lock(&lock);
 shared = shared + 1;
 pthread_mutex_unlock(&lock);
 \`\`\`
-
-\`DINT\` / \`EINT\` play the role of lock / unlock between main and the interrupt functions. One difference: \`EINT\` always switches interrupts on. It does not remember whether they were on before \`DINT\`.
 `,
       kit: "robot",
       durationMs: 20,
@@ -521,14 +574,14 @@ pthread_mutex_unlock(&lock);
         shared = tmp;       // write
         EINT;`),
       checks: [
-        { kind: "var", name: "lost", equals: 0, label: "No update is lost: shared equals main_adds + isr_adds", hint: "A positive number is the count of interrupts that landed between the read and the write. -1 means the loop did not finish." },
+        { kind: "var", name: "lost", equals: 0, label: "No update is lost: shared equals main_adds + isr_adds", hint: "A positive number is the count of interrupts that landed between the read and the write. So DINT; must be on the line before `tmp = shared;` and EINT; on the line after `shared = tmp;`, in that order. -1 means the loop did not finish." },
         { kind: "var", name: "main_adds", equals: 20000, label: "main added 1 exactly 20000 times" },
-        { kind: "isr", fn: "cpu_timer0_isr", min: 60, label: "The timer interrupt keeps running during the loop", hint: "EINT; must come after the write, inside the loop, or the interrupt stays switched off." },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 60, label: "The timer interrupt keeps running during the loop", hint: "Interrupts stayed off. Every pass of the loop needs both lines: DINT; before the read and EINT; after the write, inside the braces of the for loop." },
         {
           kind: "source",
           mustMatch: "for\\s*\\(\\s*i\\s*=\\s*0[\\s\\S]*?DINT\\s*;[\\s\\S]*?EINT\\s*;",
           label: "The update of shared inside the loop is between DINT; and EINT;",
-          hint: "Writing shared++; on one line hides the three steps in this simulator, but not on the chip. Guard the update with DINT; and EINT;.",
+          hint: "Both lines go inside the braces of the for loop: DINT; before the read, EINT; after the write. Around the whole loop they would switch the interrupt off for the entire run. Writing shared++; on one line hides the three steps in this simulator, but not on the chip.",
         },
         {
           kind: "source",
@@ -540,20 +593,92 @@ pthread_mutex_unlock(&lock);
       watch: ["shared", "main_adds", "isr_adds", "lost"],
       hints: [
         "Run it unchanged first and read `lost`.",
-        "The critical section is the read, the add and the write. `main_adds++` is not shared and can stay outside.",
+        "The critical section is the read, the add and the write. `main_adds++` is only used by main, so it can stay outside.",
         "`DINT;` on the line before `tmp = shared;` and `EINT;` on the line after `shared = tmp;`.",
       ],
       takeaway: "A read-modify-write of shared data is a critical section. On the microcontroller DINT/EINT guard it, on Linux a mutex does.",
     },
     {
+      id: "thr-copy",
+      kind: "code",
+      mode: "complete",
+      title: "Two values that belong together",
+      goal: "Copy a position (x and y) that the interrupt keeps changing, so that the two numbers always come from the same moment.",
+      refs: [{ course: "L13" }, { course: "Lab 1" }, { trm: "3.4.3" }],
+      brief: `
+In the last level main **changed** shared data. Here main only **reads** it, and there is still a race.
+
+The interrupt keeps the robot's position in two variables, \`pos_x\` and \`pos_y\`. The robot drives along a line on which y is always twice x, and the interrupt moves both, one after the other. So whenever main looks, \`pos_y == 2 * pos_x\` should hold.
+
+main copies them with two statements:
+
+\`\`\`c
+x = pos_x;
+y = pos_y;
+\`\`\`
+
+Suppose \`pos_x\` is 10 and \`pos_y\` is 20. main copies x = 10. Now the interrupt runs and moves the robot to (11, 22). main continues and copies y = 22. It holds (10, 22): a place where the robot never was. Each number is right on its own. Together they are wrong.
+
+## What to do
+1. Press **Run**. \`mixed\` counts the reads where y was not twice x. It is not 0.
+2. Make the two copies a critical section: \`DINT;\` before them, \`EINT;\` after them.
+
+## Copy first, then use
+Put **only the two copies** between \`DINT;\` and \`EINT;\`. The test and the counting work on main's own \`x\` and \`y\`, which the interrupt cannot touch, so they belong after \`EINT;\`.
+
+This is the pattern for printing as well. Printing takes milliseconds, and the values could change in the middle of a line. So: \`DINT;\`, copy the shared values into local variables, \`EINT;\`, then print the copies. Never print inside a critical section: every interrupt would wait for those milliseconds.
+`,
+      kit: "robot",
+      durationMs: 20,
+      starter: pairProgram(`        // TODO: make these two copies a critical section
+        x = pos_x;
+        y = pos_y;`),
+      solution: pairProgram(`        DINT;
+        x = pos_x;
+        y = pos_y;
+        EINT;`),
+      checks: [
+        { kind: "var", name: "mixed", equals: 0, label: "x and y always belong together: mixed is 0", hint: "A positive number counts the interrupts that landed between the two copies. DINT; goes on the line before `x = pos_x;` and EINT; on the line after `y = pos_y;`." },
+        { kind: "var", name: "reads", equals: 20000, label: "main read the position 20000 times", hint: "Fewer: the loop did not finish in time. Keep the loop as it is and only add the two lines." },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 150, label: "The interrupt keeps moving the robot during the loop", hint: "Interrupts stayed off. EINT; must come after the second copy, inside the braces of the for loop, on every pass." },
+        {
+          kind: "source",
+          mustMatch: "for\\s*\\(\\s*i\\s*=\\s*0[\\s\\S]*?DINT\\s*;[\\s\\S]*?pos_x[\\s\\S]*?pos_y[\\s\\S]*?EINT\\s*;",
+          label: "Inside the loop, both copies are between DINT; and EINT;",
+          hint: "Both lines go inside the for loop: DINT; x = pos_x; y = pos_y; EINT;",
+        },
+        {
+          kind: "source",
+          mustMatch: "pos_x = pos_x \\+ 1;\\s*pos_y = pos_y \\+ 2;",
+          label: "The interrupt function is unchanged",
+        },
+      ],
+      bonus: [
+        {
+          kind: "source",
+          mustMatch: "EINT\\s*;\\s*if\\s*\\(\\s*y\\s*!=",
+          label: "Short critical section: only the two copies are inside, the test comes after EINT;",
+          hint: "The test uses main's own x and y. Move EINT; up, to the line right after `y = pos_y;`.",
+        },
+      ],
+      watch: ["pos_x", "pos_y", "reads", "mixed"],
+      hints: [
+        "Run it unchanged first and read `mixed`.",
+        "The interrupt must not run between `x = pos_x;` and `y = pos_y;`. Which two lines from the last level keep it out?",
+        "`DINT;` on the line before `x = pos_x;` and `EINT;` on the line after `y = pos_y;`.",
+      ],
+      takeaway: "Reading can race too. Values that belong together are copied inside one short critical section, and then you work on (or print) the copies.",
+    },
+    {
       id: "thr-deadlock",
       kind: "quiz",
-      title: "Deadlock, and printing with care",
-      goal: "Recognise a deadlock from two locks, and see why printing is a shared resource.",
-      refs: [{ course: "L13" }, { course: "Lab 1" }],
+      title: "Deadlock",
+      goal: "Recognise a deadlock from two locks, and learn the rule that prevents it.",
+      refs: [{ course: "L13" }],
       brief: `
-## Deadlock
-Locks fix races and bring a new problem. Thread A and thread B both need two mutexes, \`m1\` and \`m2\`.
+Locks fix races and bring a new problem. This one belongs to the Pi, where threads use a mutex: \`pthread_mutex_lock(&m);\` takes the lock \`m\`, or waits until the thread that holds it gives it back.
+
+Thread A and thread B both need two mutexes, \`m1\` and \`m2\`, and take them in opposite orders:
 
 \`\`\`c
 // thread A                      // thread B
@@ -561,16 +686,22 @@ pthread_mutex_lock(&m1);         pthread_mutex_lock(&m2);
 pthread_mutex_lock(&m2);         pthread_mutex_lock(&m1);
 \`\`\`
 
-A takes \`m1\`. B takes \`m2\`. Now A waits for \`m2\`, which B holds, and B waits for \`m1\`, which A holds. Neither can ever continue. That is a **deadlock**. Like a race, it depends on timing: most runs work, one run in a thousand hangs.
+Follow one unlucky schedule:
 
-The standard cure: every thread takes the locks **in the same order** (always \`m1\` first, then \`m2\`). Then the situation above cannot arise.
+1. A takes \`m1\`.
+2. The scheduler pauses A and runs B. B takes \`m2\`.
+3. B asks for \`m1\`. A holds it, so B waits.
+4. A runs again and asks for \`m2\`. B holds it, so A waits.
 
-## Printing
-A terminal, a serial port and the LCD are shared resources too.
+Each waits for a lock that the other will only give back after it has continued. Neither ever continues. That is a **deadlock**. Nothing crashes and no error is printed. The two threads simply stop.
 
-- Two threads that print at the same time can mix their characters into one garbled line, unless a lock makes each line a critical section.
-- Printing is **slow**. At 115200 baud (bits per second, 10 bits per character) one character takes about 87 microseconds, so a 40-character line takes about 3.5 ms. Inside an interrupt function that is 3.5 ms during which every other interrupt waits. This is why the starter code only sets \`UARTPrint = 1;\` in the interrupt and calls \`serial_printf\` from \`while(1)\`.
-- The values you print may change while you print them. Copy shared values inside a short critical section, then print the copies.
+Like a race, it depends on timing. If A happens to take both locks before B starts, all is well. So most runs work, and one run in a thousand hangs.
+
+## The cure
+Every thread takes the locks **in the same order**: always \`m1\` first, then \`m2\`. Then a thread that holds \`m2\` already holds \`m1\`, and nobody else can be holding \`m1\` and waiting for \`m2\`.
+
+## On the microcontroller
+There is only one "lock", \`DINT;\`, so this deadlock cannot happen. A relative of it can: code that leaves a critical section without \`EINT;\`. Then the interrupt waits forever. You will repair one in "The lock that was never opened".
 `,
       questions: [
         {
@@ -596,30 +727,19 @@ A terminal, a serial port and the LCD are shared resources too.
           why: "With one fixed order, the thread that holds m1 is the only one that can ask for m2. A delay only changes how often the hang shows up.",
         },
         {
-          prompt: "Why does the course starter code print from `while(1)` and not from the timer interrupt function?",
+          prompt: "The program with the two opposite lock orders ran 500 times in testing without a hang. What does that tell you?",
           options: [
-            "serial_printf does not compile inside an interrupt function",
-            "Printing takes milliseconds, and during that time every other interrupt would wait",
-            "The serial port is switched off during interrupts",
-            "Interrupt functions cannot read global variables",
+            "The program is correct",
+            "Very little: the deadlock needs one particular timing, which may not have occurred yet",
+            "Deadlocks only happen on the first run",
+            "The mutexes are not being used",
           ],
           answer: 1,
-          why: "An interrupt function runs with interrupts disabled. Milliseconds of printing there delay the control loop and every other handler.",
-        },
-        {
-          prompt: "main prints `x` and `y`, two floats that the timer interrupt updates together. What is the safe way?",
-          options: [
-            "Print them directly: reading is always safe",
-            "DINT; copy both to local variables; EINT; then print the copies",
-            "DINT; print both; EINT;",
-            "Print each one twice",
-          ],
-          answer: 1,
-          why: "The copy takes microseconds, so interrupts are off only briefly, and the two values belong to the same update. Printing inside the critical section would block interrupts for milliseconds.",
+          why: "The hang needs B to run exactly between A's two lock calls. That is rare, not impossible. Timing bugs are found by reasoning about the code, not by counting good runs.",
         },
       ],
-      hints: ["Draw who holds which lock and who waits for which.", "How long does one character take at 115200 baud, and who has to wait meanwhile?"],
-      takeaway: "Take locks in one fixed order. Keep slow work such as printing out of interrupt functions and out of critical sections.",
+      hints: ["Draw who holds which lock and who waits for which.", "Which thread would have to continue for the other one's lock to be released?"],
+      takeaway: "A deadlock is two threads that each wait for a lock the other holds. Take locks in one fixed order, everywhere.",
     },
     {
       id: "thr-sem",
@@ -629,23 +749,29 @@ A terminal, a serial port and the LCD are shared resources too.
       goal: "Write post and wait so that the interrupt can hand jobs to main without losing any.",
       refs: [{ course: "L13" }, { course: "Lab 1" }, { trm: "3.4.3" }],
       brief: `
-You already know the flag pattern from the starter code: the interrupt sets \`UARTPrint = 1;\` and \`main()\` does the slow work. A flag has a weakness. If the interrupt fires three times while main is still busy, the flag is still just 1, and two jobs are forgotten.
+You know the flag pattern from chapter 5: the interrupt sets \`UARTPrint = 1;\` and \`main()\` does the slow work. A flag has a weakness. If the interrupt fires three times while main is still busy, the flag is still just 1, and two jobs are forgotten.
 
-A **semaphore** is a flag that can count. A mutex protects data, and the thread that locked it unlocks it. A semaphore passes a message: one side posts, the other waits.
+A **semaphore** is a flag that can count. It has two operations:
 
-- **post** (also called signal): add 1. "One more job is waiting."
-- **wait**: if the count is above 0, take 1 and go on. On Linux, \`sem_wait\` blocks the thread while the count is 0. A microcontroller's main loop must not block, so you will write the non-blocking form, like Linux's \`sem_trywait\`: take one if there is one, and say whether you got it.
+- **post**: add 1. "One more job is waiting."
+- **wait**: if the count is above 0, take 1 away and go on.
+
+Try both in the figure: ask for three jobs before main takes one.
+
+{{figure:sem-counter}}
+
+On Linux, \`sem_wait\` **blocks** while the count is 0: the scheduler puts the thread to sleep until somebody posts. A microcontroller's main loop must not stop, so you will write the form that never blocks, like Linux's \`sem_trywait\`: take one if there is one, and say whether you got it.
 
 ## The program
-The timer interrupt runs every 1 ms and posts 40 jobs in total. \`main()\` calls \`sem_trywait()\` in its loop and runs \`do_job()\` each time it returns 1. Most jobs take 0.2 ms, but every 8th takes 3.5 ms, so several posts arrive while main is busy.
+The timer interrupt runs every 1 ms and posts 40 jobs in total. \`main()\` calls \`sem_trywait()\` in its loop and runs \`do_job()\` each time it returns 1. Most jobs take 0.2 ms, but every 8th takes 3.5 ms, so several posts arrive while main is busy. \`slow_work()\` is given: it only uses up time.
 
 ## Write
 - \`void sem_post(void)\`: called from the interrupt function. Add 1 to \`sem\`.
 - \`int sem_trywait(void)\`: called from main. If \`sem\` is above 0, subtract 1 and return 1. Otherwise return 0.
 
-The subtraction in main is a read-modify-write of data the interrupt also writes, so "test, then subtract" is a critical section: \`DINT;\` before the test, \`EINT;\` after the subtraction, on **every** path out of the function.
+The subtraction in main is a read, a subtract and a write of data the interrupt also writes. So "test, then subtract" is a critical section: \`DINT;\` before the test, \`EINT;\` after the subtraction, on **every** path out of the function. A \`return\` between \`DINT;\` and \`EINT;\` would leave interrupts off for good.
 
-\`sem_post\` needs no \`DINT\`: while an interrupt function runs, interrupts are already off and main cannot run. It must not contain \`EINT\` either, which would switch interrupts back on in the middle of the interrupt function.
+\`sem_post\` needs neither. While an interrupt function runs, the CPU has already switched interrupts off (chapter 5), and main cannot run. An \`EINT;\` there would switch them back on in the middle of the interrupt function.
 
 The course's Pi programs use the same pair: \`serial_COMandOpti\` calls \`sem_post\` when new data is in the shared memory, and \`AstarApp\` calls \`sem_trywait\` in its loop.
 `,
@@ -681,9 +807,15 @@ int sem_trywait(void)
     return got;
 }`),
       checks: [
-        { kind: "var", name: "posted", equals: 40, label: "The interrupt posted 40 jobs" },
-        { kind: "var", name: "jobs", equals: 40, label: "main did all 40 jobs", hint: "Fewer than 40: posts that arrived during a long job were forgotten. sem must count them (sem++), not just be set to 1." },
-        { kind: "var", name: "sem", equals: 0, label: "No job is left waiting at the end" },
+        { kind: "var", name: "posted", equals: 40, label: "The interrupt posted 40 jobs", hint: "Stuck far below 40: interrupts were left off. Look for a `return` in sem_trywait that is reached after DINT; but before EINT;." },
+        { kind: "var", name: "jobs", equals: 40, label: "main did all 40 jobs", hint: "Fewer than 40: posts that arrived during a long job were forgotten. sem must count them (sem++), not just be set to 1. More than 40: sem_trywait returned 1 when nothing was waiting. Subtract and return 1 only if sem is above 0." },
+        { kind: "var", name: "sem", equals: 0, label: "No job is left waiting at the end", hint: "A huge number such as 65535 means sem went below 0 and wrapped around: test `sem > 0` before you subtract." },
+        {
+          kind: "source",
+          mustNotMatch: "sem_post\\s*\\(\\s*void\\s*\\)\\s*\\{[^}]*(DINT|EINT)",
+          label: "sem_post has no DINT or EINT: it runs inside the interrupt function",
+          hint: "Interrupts are already off while an interrupt function runs. EINT; in sem_post would switch them on again in the middle of it. sem_post is one statement.",
+        },
         { kind: "var", name: "jobs", at: 20.5, min: 16, max: 20, label: "After 20 ms main has done 16 to 20 jobs: it keeps up, and does not run ahead of the posts", hint: "Each job must be taken when it is posted, not counted up at the end." },
         { kind: "var", name: "jobs", at: 10.5, min: 6, max: 10, label: "After 10 ms main has done 6 to 10 jobs" },
         {
@@ -695,43 +827,96 @@ int sem_trywait(void)
       ],
       watch: ["sem", "posted", "jobs"],
       hints: [
-        "sem_post is one statement.",
-        "In sem_trywait use a local variable for the result, so there is a single `EINT;` and a single `return` at the end.",
+        "sem_post is one statement: add 1 to `sem`.",
+        "In sem_trywait keep the answer in a local variable (`int got = 0;`) and set it to 1 inside the `if`. Then there is a single `EINT;` and a single `return got;` at the end.",
         "`int got = 0; DINT; if (sem > 0) { sem--; got = 1; } EINT; return got;`",
       ],
       takeaway: "A flag remembers that something happened, a semaphore remembers how many times. post adds one, wait takes one.",
+    },
+    {
+      id: "thr-wrap",
+      kind: "calc",
+      title: "An array that goes round",
+      goal: "Work out where a ring buffer's two indexes point after some puts and gets.",
+      refs: [{ course: "L13" }],
+      brief: `
+A semaphore says how many jobs wait. Usually a job carries **data**: a sensor reading, a received character. The interrupt makes the data (it is the **producer**) and main uses it (the **consumer**), often a little later. In between, the data needs a place to wait, in order: first in, first out.
+
+That place is a **ring buffer**: an ordinary array plus two indexes and a count.
+
+\`\`\`c
+uint16_t buf[8];
+uint16_t head;    // where the producer writes next
+uint16_t tail;    // where the consumer reads next
+uint16_t count;   // how many values are waiting
+\`\`\`
+
+- **put**: store the value in \`buf[head]\`, move \`head\` one slot on, add 1 to \`count\`.
+- **get**: take the value from \`buf[tail]\`, move \`tail\` one slot on, subtract 1 from \`count\`.
+
+Both indexes only move forward. After slot 7, the last one, comes slot 0 again: the array is used as a ring. The remainder operator \`%\` from chapter 5 does that in one line:
+
+\`\`\`c
+head = (head + 1) % 8;
+\`\`\`
+
+Worked example: \`head\` is 3. Then 3 + 1 = 4, and 4 divided by 8 is 0 remainder **4**. \`head\` is 7: 7 + 1 = 8, and 8 divided by 8 is 1 remainder **0**. For every index below 7 the \`%\` changes nothing. At 7 it sends the index back to 0.
+
+Press Put and Get in the figure and watch \`head\` and \`tail\` chase each other round. Fill it completely, then empty it.
+
+{{figure:ring-buffer}}
+
+Two cases need care. With \`count\` at 0 the buffer is **empty**: there is nothing to get. With \`count\` at 8 it is **full**: a put would overwrite the oldest value, which nobody has read yet.
+
+For the fields below the buffer has 8 slots and starts empty, with \`head\`, \`tail\` and \`count\` all 0.
+`,
+      fields: [
+        { id: "next", label: "head is 5. Value of (head + 1) % 8", answer: 6, why: "6 divided by 8 is 0 remainder 6. Below the last slot the index simply goes up by one." },
+        { id: "wrap", label: "head is 7. Value of (head + 1) % 8", answer: 0, why: "8 divided by 8 is 1 remainder 0. After the last slot comes slot 0." },
+        { id: "head", label: "From empty: 6 puts, then 4 gets, then 4 more puts. Where is head now?", answer: 2, why: "head moved forward 10 times: 0, 1, ... 7, 0, 1, and it now points at slot 2. That is 10 % 8." },
+        { id: "tail", label: "Same sequence: where is tail?", answer: 4, why: "tail moved once per get: 4 times, from 0 to 4." },
+        { id: "count", label: "Same sequence: what is count?", answer: 6, why: "10 values went in and 4 came out: 6 are waiting, in slots 4, 5, 6, 7, 0 and 1." },
+        { id: "room", label: "How many more puts fit before the buffer is full?", answer: 2, why: "Full is count == 8, and 8 - 6 = 2. The third put would overwrite slot 4, the oldest value that is still waiting." },
+      ],
+      hints: [
+        "Play the sequence in the figure: 6 times Put, 4 times Get, 4 times Put.",
+        "An index moves one slot per call and goes from 7 back to 0. Count the moves and take the remainder of a division by 8.",
+        "10 puts: head = 10 % 8 = 2. 4 gets: tail = 4. count = 10 - 4.",
+      ],
+      takeaway: "A ring buffer is an array, two indexes that wrap with `% size`, and a count. head belongs to the producer, tail to the consumer.",
     },
     {
       id: "thr-ring",
       kind: "code",
       mode: "write",
       title: "Producer and consumer",
-      goal: "Write a ring buffer that carries samples from the timer interrupt to main, with the full and empty cases.",
+      goal: "Write the put and get functions of a ring buffer that carries samples from the timer interrupt to main, with the full and empty cases.",
       refs: [{ course: "L13" }, { trm: "3.4.3" }],
       brief: `
-A semaphore says how many jobs wait. Usually the jobs carry **data**: a sample, a received character. The interrupt (the **producer**) must store it somewhere until main (the **consumer**) has time. That store is a **ring buffer**: an array used as a queue.
-
-\`\`\`c
-uint16_t buf[BUF_SIZE];
-uint16_t head;    // where the producer writes next
-uint16_t tail;    // where the consumer reads next
-uint16_t count;   // how many samples are in the buffer
-\`\`\`
-
-Both indexes only move forward, and wrap from the last slot to slot 0: \`head = (head + 1) % BUF_SIZE;\`. The samples between \`tail\` and \`head\` are the ones that wait, oldest first.
-
-## Two special cases
-- **Empty** (\`count == 0\`): there is nothing to take. \`buf_get\` returns 0.
-- **Full** (\`count == BUF_SIZE\`): there is no room. \`buf_put\` returns 0 and stores nothing. Writing anyway would overwrite the oldest sample, which has not been read yet.
+Now write the ring buffer of the last level. The array \`buf\`, the indexes \`head\` and \`tail\`, and \`count\` are declared for you. \`BUF_SIZE\` is 8.
 
 ## Write
-- \`int buf_put(uint16_t v)\`: called by the interrupt. If full return 0. Otherwise store \`v\` at \`head\`, advance \`head\`, add 1 to \`count\`, return 1.
-- \`int buf_get(uint16_t *v)\`: called by main. If empty return 0. Otherwise copy the sample at \`tail\` into \`*v\`, advance \`tail\`, subtract 1 from \`count\`, return 1.
+\`int buf_put(uint16_t v)\`, called by the interrupt:
 
-\`count\` is written by both sides, so in \`buf_get\` everything from the test of \`count\` to its decrement is a critical section. Remember \`EINT;\` on the empty path too.
+1. If the buffer is full (\`count == BUF_SIZE\`), return 0 and store nothing.
+2. Store \`v\` in \`buf[head]\`.
+3. Move \`head\` on: \`head = (head + 1) % BUF_SIZE;\`
+4. Add 1 to \`count\` and return 1.
+
+\`int buf_get(uint16_t *v)\`, called by main:
+
+1. If the buffer is empty (\`count == 0\`), return 0.
+2. Copy \`buf[tail]\` into \`*v\`. \`v\` is a pointer to main's variable, so \`*v = buf[tail];\` writes the sample straight into it.
+3. Move \`tail\` on, with the same wrap.
+4. Subtract 1 from \`count\` and return 1.
+
+## Where the critical section is
+\`count\` is written by both sides. In \`buf_get\`, which runs in main, everything from the test of \`count\` to \`count--\` is a critical section: \`DINT;\` first, \`EINT;\` before **each** \`return\`, the early one for the empty case too.
+
+\`buf_put\` runs inside the interrupt function, where interrupts are already off. It needs no \`DINT\` and must not contain \`EINT\`.
 
 ## The test
-The interrupt produces samples 1, 2, 3 ... 60, one per millisecond, and counts a sample in \`dropped\` when \`buf_put\` returns 0. \`process()\` in main normally takes 0.2 ms. On sample 20 it takes 15 ms, so the 8-slot buffer fills and some samples must be dropped. That is acceptable. Losing a sample **without knowing**, or receiving one twice, is not.
+The interrupt produces the samples 1, 2, 3 ... 60, one per millisecond, and counts a sample in \`dropped\` when \`buf_put\` returns 0. \`process()\` in main is given. It normally takes 0.2 ms. On sample 20 it takes 15 ms, so the 8 slots fill up and some samples must be dropped. That is acceptable. Losing a sample **without knowing**, or receiving one twice, is not.
 `,
       kit: "robot",
       durationMs: 100,
@@ -752,10 +937,10 @@ int buf_get(uint16_t *v)
 }`,
       }),
       solution: ringProgram({ extraGlobals: "uint16_t count = 0;       // samples in the buffer", fill: "count", slowAt: 20, fns: RING_COUNT_SOLUTION }),
-      checks: [...ringChecks(45), RING_LOCK_CHECK],
+      checks: [...ringChecks(45), RING_LOCK_CHECK, RING_PUT_CHECK],
       watch: ["head", "tail", "count", "produced", "received", "dropped", "missing"],
       hints: [
-        "Write buf_put first: full test, store, advance head, count++.",
+        "Write buf_put first, one line per step of the briefing: `if (count == BUF_SIZE) { return 0; }`, `buf[head] = v;`, the wrap line, `count++;`, `return 1;`.",
         "buf_get mirrors it with tail and count--, wrapped in DINT / EINT. The early return for the empty case needs its own EINT.",
         "`DINT; if (count == 0) { EINT; return 0; } *v = buf[tail]; tail = (tail + 1) % BUF_SIZE; count--; EINT; return 1;`",
       ],
@@ -769,13 +954,13 @@ int buf_get(uint16_t *v)
       goal: "The interrupt stops producing almost at once. Find the path that leaves the critical section without EINT.",
       refs: [{ course: "L13" }, { trm: "3.4.3" }],
       brief: `
-This is the ring buffer from the last level, written by someone in a hurry. Run it: \`produced\` stays at 0 and main receives nothing. The timer is set up correctly and is still counting.
+This is the ring buffer from the last level, written by someone in a hurry. Run it: \`produced\` stays at 0 and main receives nothing. The timer is set up correctly, and its interrupt worked in the last level.
 
 A critical section has one rule that is easy to break: **every way out must unlock**. A function with an early \`return\` has more than one way out.
 
 Read \`buf_get\` and follow it the first time main calls it, when the buffer is still empty. Deleting \`DINT\` and \`EINT\` is not the fix: \`count--\` still needs its critical section.
 
-On Linux the same mistake is a thread that returns without calling \`pthread_mutex_unlock\`. Every other thread that wants the lock then waits forever.
+On Linux the same mistake is a thread that returns without calling \`pthread_mutex_unlock\`. Every other thread that wants the mutex then waits forever.
 `,
       kit: "robot",
       durationMs: 100,
@@ -810,7 +995,7 @@ int buf_get(uint16_t *v)
 }`,
       }),
       solution: ringProgram({ extraGlobals: "uint16_t count = 0;       // samples in the buffer", fill: "count", slowAt: 20, fns: RING_COUNT_SOLUTION }),
-      checks: [...ringChecks(45), RING_LOCK_CHECK],
+      checks: [...ringChecks(45), RING_LOCK_CHECK, RING_PUT_CHECK],
       watch: ["count", "produced", "received", "dropped"],
       hints: [
         "The first call of buf_get finds count == 0. Which statements run on that path?",
@@ -834,23 +1019,23 @@ Two words describe timing:
 - **Jitter**: how much that delay changes from one time to the next.
 
 ## The F28379D
-Nothing runs on it but your code. A timer interrupt function starts a fraction of a microsecond after the tick, every time. The worst case is known: the longest interrupt function or critical section that can be in its way. That is why you keep both short.
+Nothing runs on it but your code. A timer interrupt function starts a fraction of a microsecond after the tick. The worst case is known: the longest interrupt function or critical section in its way. That is why you keep both short.
 
 ## Linux on the Pi
-The scheduler shares four cores among hundreds of threads, and the kernel has its own work (network, SD card). A thread that asks to sleep 1 ms usually wakes after about 1.1 ms, and once in a while after 10 ms or more. The average is good. The **worst case is not guaranteed**: ordinary Linux is not a real-time system. Real-time kernels exist, but the course's Pi runs ordinary Linux.
+The scheduler shares four cores among hundreds of threads, and Linux has work of its own (the network, the SD card). A thread that asks to sleep 1 ms usually wakes after about 1.1 ms, and once in a while after 10 ms or more. The average is good. The **worst case is not guaranteed**: ordinary Linux is not a real-time system.
 
 ## Why a control loop cares
-The controller's maths assumes a fixed period:
+Speed is distance divided by time. The robot's code measures how far a wheel has turned (\`pos\`, in feet) once per millisecond and divides the change by that millisecond:
 
 \`\`\`c
-v = (pos - pos_old) / 0.001;     // assumes exactly 1 ms passed
+v = (pos - pos_old) / 0.001;     // feet per second, if exactly 1 ms passed
 \`\`\`
 
-If 3 ms really passed, the robot moved three times as far, and \`v\` comes out three times too large.
+Worked example: the wheel moved 0.002 ft since the last pass. 0.002 / 0.001 = 2 ft/s. If the pass came late and 3 ms really passed, the wheel moved three times as far, and \`v\` comes out three times too large.
 
 ## So the robot splits the work
-- **F28379D** (real time): PWM, encoders, the speed and steering control loop, reading sensors at a fixed rate.
-- **Pi** (not real time): A* path planning, the network link to LabVIEW and OptiTrack, anything large or slow that may be 50 ms late without harm.
+- **F28379D** (real time): driving the motors, measuring the wheels, the loop that holds speed and steering (the **control loop**), reading sensors at a fixed rate.
+- **Pi** (not real time): planning a path through the room (A*, chapter 19), the network link to the PC and to the OptiTrack cameras, anything large or slow that may be 50 ms late without harm.
 
 The two talk over a serial line. When the Pi is late, the F28379D keeps driving on the last command it received.
 `,
@@ -870,7 +1055,7 @@ The two talk over a serial line. When the Pi is late, the F28379D keeps driving 
           prompt: "A loop on the Pi sleeps 1 ms per pass. You measure the time of each pass: 1.1 ms nearly always, 12 ms once every few seconds. What is this, and what causes it?",
           options: [
             "A race condition in your code",
-            "Jitter: the scheduler or the kernel ran something else when your thread was due",
+            "Jitter: the scheduler ran something else when your thread was due",
             "A deadlock",
             "The Pi's clock is wrong",
           ],
@@ -888,14 +1073,14 @@ The two talk over a serial line. When the Pi is late, the F28379D keeps driving 
           options: [
             "In a thread on the Pi, because the Pi is faster",
             "In a timer interrupt function on the F28379D, because its period must be exact",
-            "In the A* process",
+            "In the path-planning process",
             "It does not matter",
           ],
           answer: 1,
           why: "The control loop needs a fixed period with almost no jitter. The F28379D gives that. The Pi's extra speed does not help a job that takes microseconds.",
         },
         {
-          prompt: "A* on the Pi usually takes 80 ms and sometimes 300 ms. Why is that acceptable?",
+          prompt: "Path planning (A*) on the Pi usually takes 80 ms and sometimes 300 ms. Why is that acceptable?",
           options: [
             "It is not: A* must move to the F28379D",
             "The robot stops and waits for every plan",
@@ -917,7 +1102,7 @@ The two talk over a serial line. When the Pi is late, the F28379D keeps driving 
       goal: "Build a logger: the timer interrupt samples a sensor, main sums and prints, and no sample is lost or used twice.",
       refs: [{ course: "L13" }, { course: "Lab 1" }, { course: "Lab 2" }, { trm: "3.4.3" }],
       brief: `
-Put the chapter together. The start-up code, the serial port and the "sensor" are given. The rest is yours. Paste your \`buf_put\` and \`buf_get\` from "Producer and consumer" into the marked places. The figure is a reminder of how the buffer works: press Put and Get.
+Put the chapter together. The start-up code, the serial port and the "sensor" are given. The rest is yours. Copy \`buf\`, \`head\`, \`tail\`, \`count\`, \`buf_put\` and \`buf_get\` from your "Producer and consumer" into the marked places. The figure is a reminder of how the buffer works.
 
 {{figure:ring-buffer}}
 
@@ -941,7 +1126,7 @@ serial_printf(&SerialA, "%d %ld\\r\\n", logged, sum);
 slow_work(30000);     // 3 ms: stands for writing a block to an SD card
 \`\`\`
 
-\`serial_printf\` prints to the serial terminal, like \`printf\`. Copy the line as it is: \`logged\` is 16 bits (\`%d\`) and \`sum\` is 32 bits (\`%ld\`).
+\`serial_printf\` works like \`printf\`, but sends the text over the board's serial port to a terminal on the PC (given here, explained in chapter 6). Copy the line as it is: \`logged\` is 16 bits (\`%d\`) and \`sum\` is 32 bits (\`%ld\`). "After every 10th" is the remainder test from chapter 5: \`if ((logged % 10) == 0)\`.
 
 ## What the tests look at
 - All 100 samples are logged, none dropped: \`logged\` is 100, \`dropped\` is 0, and \`sum\` is the sum of all 100 readings.
@@ -985,12 +1170,14 @@ uint16_t count = 0;`,
         }`,
       }),
       checks: [
-        { kind: "var", name: "produced", equals: LOG_N, label: "The interrupt produced 100 samples", hint: "Stuck at a small number: interrupts were left disabled on one path of your buffer code." },
-        { kind: "var", name: "logged", equals: LOG_N, label: "main logged 100 samples" },
-        { kind: "var", name: "dropped", equals: 0, label: "No sample was dropped" },
+        { kind: "var", name: "produced", equals: LOG_N, label: "The interrupt produced 100 samples", hint: "Stuck at a small number: interrupts were left disabled on one path of your buffer code. More than 100: wrap the interrupt's work in `if (produced < N_SAMPLES) { ... }`." },
+        { kind: "var", name: "logged", equals: LOG_N, label: "main logged 100 samples", hint: "main adds 1 to logged for every sample that buf_get hands it. If samples were dropped, repair that first." },
+        { kind: "var", name: "dropped", equals: 0, label: "No sample was dropped", hint: "The buffer filled up, so main was too slow. The print and slow_work(30000) belong inside `if ((logged % 10) == 0) { ... }`, not on every sample." },
         { kind: "var", name: "sum", equals: LOG_SUM, label: `sum is the sum of all 100 readings (${LOG_SUM})`, hint: "Too small: samples were lost or overwritten. Too large: a sample was read twice. Call read_sensor() after produced++." },
         { kind: "serial", includes: `100 ${LOG_SUM}\r\n`, label: "The last progress line shows 100 samples and the total" },
-        { kind: "serial", matches: "^10 \\d+\\r\\n20 \\d+\\r\\n", label: "A progress line is printed after every 10th sample" },
+        { kind: "serial", matches: "^10 \\d+\\r\\n20 \\d+\\r\\n", label: "A progress line is printed after every 10th sample", hint: "The first line must be the one for 10 samples. Test `(logged % 10) == 0` only right after `logged++`, inside the `if (buf_get(&v))` block. Outside it, the test is also true while logged is still 0." },
+        { kind: "source", mustMatch: "cpu_timer0_isr\\(void\\)\\s*\\{[\\s\\S]*buf_put\\s*\\(", label: "The interrupt function hands each reading to buf_put", hint: "The interrupt only reads the sensor and puts the reading into the buffer. The sum is main's job." },
+        { kind: "source", mustMatch: "while\\s*\\(\\s*1\\s*\\)\\s*\\{[\\s\\S]*buf_get\\s*\\(\\s*&[\\s\\S]*__interrupt void cpu_timer0_isr\\(void\\)\\s*\\{", label: "main takes the samples out with buf_get", hint: "In while(1): `if (buf_get(&v)) { ... }`. `&v` gives buf_get the address of main's variable v to fill." },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed from the interrupt function" },
         { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 10, label: "The interrupt function takes less than 10 microseconds" },
         { kind: "var", name: "logged", at: 30.5, min: 24, max: 30, label: "After 30 ms, 24 to 30 samples are logged: main follows the sensor through the buffer" },
@@ -1003,7 +1190,7 @@ uint16_t count = 0;`,
       ],
       watch: ["produced", "logged", "dropped", "sum"],
       hints: [
-        "Paste `buf`, `head`, `tail`, `count`, `buf_put` and `buf_get` from \"Producer and consumer\". Then the interrupt is a put, and main is a get followed by the sum.",
+        "Copy `buf`, `head`, `tail`, `count`, `buf_put` and `buf_get` from \"Producer and consumer\". Then the interrupt is a put, and main is a get followed by the sum. If the compiler says a name is not declared, the four variables are missing.",
         "If you no longer have the buffer. Put: `if (count == BUF_SIZE) return 0; buf[head] = v; head = (head + 1) % BUF_SIZE; count++; return 1;` Get: `DINT; if (count == 0) { EINT; return 0; } *v = buf[tail]; tail = (tail + 1) % BUF_SIZE; count--; EINT; return 1;`",
         "Interrupt: `if (produced < N_SAMPLES) { produced++; if (buf_put(read_sensor()) == 0) dropped++; }` main: `if (buf_get(&v)) { sum += v; logged++; if ((logged % 10) == 0) { serial_printf(...); slow_work(30000); } }`",
       ],
@@ -1055,16 +1242,30 @@ Put the steps in that order.
       kind: "calc",
       tier: "practice",
       title: "Counting interleavings",
-      goal: "Work out the result of unprotected increments for given schedules.",
+      goal: "Work out the result of unprotected increments for given schedules, and count how many schedules there are.",
       refs: [{ course: "L13" }],
       brief: `
-Two threads, A and B, run \`counter += 1;\` with **no** protection. Each increment is three machine steps: read (R), add (A), write (W). The add happens in the thread's own register, so only the order of reads and writes of \`counter\` matters for the result.
+Two threads, A and B, run \`counter += 1;\` with **no** protection. Each increment is three machine steps: read, add, write. The add happens in the thread's own CPU register, so only the order of the reads and writes of \`counter\` matters.
 
-An increment is lost whenever a thread writes a value that it computed from a read made **before** the other thread's write.
+An increment is lost whenever a thread writes a value that it worked out from a read made **before** the other thread's write.
 
-Work out each case by writing down the value in \`counter\` and in each thread's register after every step.
+For each case, write down three numbers after every step: \`counter\`, A's register, B's register.
 
-For the last two fields: with one increment per thread there are 6 machine steps. An interleaving is one way of merging A's three steps with B's three steps, keeping each thread's own order. The number of ways to choose which 3 of the 6 positions belong to A is "6 choose 3".
+## Counting the orders
+The last two fields ask in how many different orders the scheduler can run the steps. An order is called an **interleaving**. Each thread keeps its own order (read, add, write). The scheduler only chooses whose turn it is.
+
+Worked example with **two** steps per thread (A1 A2 and B1 B2): the possible orders are
+
+- A1 A2 B1 B2
+- A1 B1 A2 B2
+- A1 B1 B2 A2
+- B1 A1 A2 B2
+- B1 A1 B2 A2
+- B1 B2 A1 A2
+
+Six orders. There is a shortcut. The four steps fill four positions in a row, and an order is fixed once you say which two positions are A's. The first can be chosen in 4 ways, the second in 3, and each pair was counted twice (once in each order): 4 x 3 / 2 = **6**.
+
+With three steps per thread there are six positions and three of them are A's: 6 x 5 x 4 ways to pick them one after the other, and each set of three was counted 3 x 2 x 1 = 6 times.
 `,
       fields: [
         {
@@ -1089,7 +1290,7 @@ For the last two fields: with one increment per thread there are 6 machine steps
           id: "ways",
           label: "One increment per thread: number of different interleavings of the 6 machine steps",
           answer: 20,
-          why: "6 choose 3 = 6! / (3! x 3!) = 20.",
+          why: "(6 x 5 x 4) / (3 x 2 x 1) = 120 / 6 = 20. Mathematicians call this number \"6 choose 3\".",
         },
         {
           id: "good",
@@ -1101,7 +1302,7 @@ For the last two fields: with one increment per thread there are 6 machine steps
       hints: [
         "Track three numbers per step: counter, A's register, B's register.",
         "A thread that was paused after its read continues with the old value.",
-        "For the count of interleavings use 6! / (3! x 3!).",
+        "For the number of orders: (6 x 5 x 4) / (3 x 2 x 1).",
       ],
       takeaway: "Only 2 of the 20 orders are correct, yet in practice the program is right nearly every time, because the three steps are so short. That is what makes races hard to find by testing.",
     },
@@ -1114,9 +1315,9 @@ For the last two fields: with one increment per thread there are 6 machine steps
       goal: "main reads a 64-bit time stamp in two halves and sometimes gets nonsense. Make the read consistent.",
       refs: [{ course: "L13" }, { trm: "3.4.3" }],
       brief: `
-The F28379D loads or stores a 16-bit or a 32-bit variable (\`int\`, \`long\`, \`float\`) with one machine instruction, and an interrupt cannot split one instruction. Reading a single such variable is atomic.
+The F28379D reads or writes a 16-bit or a 32-bit variable (\`int\`, \`long\`, \`float\`) with one machine instruction, and an interrupt cannot split one instruction. An operation that cannot be split is called **atomic**. Reading one such variable is atomic.
 
-Anything larger is read in pieces: a 64-bit number, a struct, or two variables that belong together such as \`x\` and \`y\` of a pose. If an interrupt changes the value between the pieces, main gets one old piece and one new piece: a **torn read**.
+Anything larger is read in pieces: a 64-bit number, a struct, or two variables that belong together, like \`pos_x\` and \`pos_y\` in "Two values that belong together". If an interrupt changes the value between the pieces, main gets one old piece and one new piece: a **torn read**.
 
 Here the interrupt keeps a 64-bit time stamp. The simulator has no 64-bit type, so the program keeps the two 32-bit halves in two variables, which is also how the chip stores it. Main reads them one after the other:
 
@@ -1125,7 +1326,7 @@ lo = time_lo;       // first instruction
 hi = time_hi;       // second instruction
 \`\`\`
 
-The interrupt adds 0x20000000 to the time every 20 microseconds. Every 8th time the low half wraps to 0 and the high half goes up by one. If that happens between main's two reads, main combines the old low half (0xE0000000) with the new high half, and sees a time that is far too large. On the next pass the time seems to jump **backwards**. The loop counts those jumps in \`torn\`.
+The interrupt adds 0x20000000 to the time every 20 microseconds. Eight of those make 0x100000000, one more than 32 bits can hold. So every 8th time the low half wraps to 0, and the interrupt adds 1 to the high half: a **carry**, as when 99 + 1 turns two digits to 0 and carries 1 to the left. If that happens between main's two reads, main combines the old low half (0xE0000000) with the new high half, and sees a time that is far too large. On the next pass the time seems to jump **backwards**. The loop counts those jumps in \`torn\`.
 
 Run it: \`torn\` is not 0. Nothing is wrong with the time stamp itself. Only the read is broken.
 
@@ -1140,7 +1341,7 @@ Fix the read so that \`lo\` and \`hi\` always belong to the same value. Keep the
             lo = time_lo;
         } while (hi != time_hi);    // a carry came in between: read again`),
       checks: [
-        { kind: "var", name: "torn", equals: 0, label: "The time never jumps backwards (no torn read)", hint: "The two reads must not be separated by an interrupt." },
+        { kind: "var", name: "torn", equals: 0, label: "The time never jumps backwards (no torn read)", hint: "The interrupt must not run between the two reads. Either put DINT; before them and EINT; after them, or read again when the high half changed meanwhile." },
         { kind: "var", name: "reads", min: 2000, label: "main keeps reading the time" },
         { kind: "isr", fn: "cpu_timer0_isr", min: 300, label: "The tick interrupt keeps running", hint: "Interrupts must be enabled again right after the two reads." },
         { kind: "var", name: "time_hi", min: 16, label: "The clock keeps counting" },
@@ -1240,7 +1441,7 @@ int buf_get(uint16_t *v)
 }`,
       }),
       checks: [
-        ...ringChecks(45),
+        ...ringChecks(45, true),
         { kind: "source", mustNotMatch: "DINT[\\s\\S]*DINT|EINT[\\s\\S]*EINT", label: "No critical section: DINT and EINT appear only in the start-up code" },
         { kind: "source", mustNotMatch: "\\bcount\\b", label: "No shared counter named count" },
       ],
@@ -1261,7 +1462,7 @@ int buf_get(uint16_t *v)
       refs: [{ course: "L13" }, { trm: "3.4.5" }],
       brief: `
 ## Priority inversion
-Three threads with priorities **high**, **medium** and **low**. The scheduler always runs the highest-priority thread that is ready.
+A **priority** is a rank the programmer gives a thread. Take three threads with priorities **high**, **medium** and **low**. This scheduler always runs the highest-priority thread that is ready. If a higher one becomes ready, it takes the processor away from the one that is running: it **preempts** it.
 
 1. Low locks a mutex and starts a short critical section.
 2. High becomes ready, preempts low, and asks for the same mutex. It must wait for low.
