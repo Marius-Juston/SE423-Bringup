@@ -403,8 +403,21 @@ export function installLibrary(b: Board): void {
     return text.length;
   });
 
-  const f1 = (name: string, f: (x: number) => number) => c.defineNative(name, (a) => Math.fround(f(a[0])));
-  const f2 = (name: string, f: (x: number, y: number) => number) => c.defineNative(name, (a) => Math.fround(f(a[0], a[1])));
+  // Library maths is far slower than one statement. The costs are nominal,
+  // like the 50 ns statement: about 200 CPU cycles (1 us) for the functions
+  // the run-time library computes by series or iteration, 50 cycles for a
+  // square root, nothing extra for the trivial ones. They exist so that
+  // "keep sin() out of the 1 ms interrupt" shows up in an interrupt's time.
+  const SLOW = new Set(["sin", "cos", "tan", "sinf", "cosf", "tanf", "asin", "acos", "atan", "exp", "log", "log10", "atan2", "atan2f", "pow", "powf", "fmod"]);
+  const costOf = (name: string) => (SLOW.has(name) ? 1000 : name.startsWith("sqrt") ? 250 : 0);
+  const f1 = (name: string, f: (x: number) => number) => {
+    const ns = costOf(name);
+    c.defineNative(name, (a) => ((b.now += ns), Math.fround(f(a[0]))));
+  };
+  const f2 = (name: string, f: (x: number, y: number) => number) => {
+    const ns = costOf(name);
+    c.defineNative(name, (a) => ((b.now += ns), Math.fround(f(a[0], a[1]))));
+  };
   f1("sin", Math.sin); f1("cos", Math.cos); f1("tan", Math.tan);
   f1("sinf", Math.sin); f1("cosf", Math.cos); f1("tanf", Math.tan);
   f1("asin", Math.asin); f1("acos", Math.acos); f1("atan", Math.atan);

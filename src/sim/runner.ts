@@ -69,6 +69,8 @@ export interface CheckResult {
   pass: boolean;
   detail: string;
   hint?: string;
+  /** The measured number behind the check, when it has one (for personal bests). */
+  value?: number;
 }
 
 export interface RunResult {
@@ -181,6 +183,7 @@ export function runProgram(spec: RunSpec): RunResult {
   const evaluate = (c: Check, into: CheckResult[]): void => {
     let pass = false;
     let detail = "";
+    let value: number | undefined;
     if (!res.ran && c.kind !== "source" && c.kind !== "max-lines") {
       into.push({ label: c.label, pass: false, detail: "Not checked: the program stopped with an error.", hint: c.hint });
       return;
@@ -319,6 +322,7 @@ export function runProgram(spec: RunSpec): RunResult {
         }
         pass = (c.equals === undefined || Math.abs(v - c.equals) <= (c.tol ?? 1e-9)) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
         const want = c.equals !== undefined ? `${c.equals}${c.tol ? ` (within ${c.tol})` : ""}` : c.min === undefined ? `at most ${c.max}` : c.max === undefined ? `at least ${c.min}` : `${c.min} to ${c.max}`;
+        value = v;
         detail = `${c.name} was ${+v.toPrecision(5)}${c.at !== undefined ? ` at ${fmtMs(c.at)}` : ""}${pass ? "" : `, expected ${want}`}.`;
         break;
       }
@@ -368,6 +372,7 @@ export function runProgram(spec: RunSpec): RunResult {
           break;
         }
         const worst = Math.max(...runs.map((x) => x.dur)) / 1000;
+        value = worst;
         pass = worst <= c.maxUs;
         detail = `The longest run of ${c.fn} took ${worst.toFixed(2)} us${pass ? "" : `, the budget is ${c.maxUs} us`}.`;
         break;
@@ -406,7 +411,7 @@ export function runProgram(spec: RunSpec): RunResult {
         break;
       }
     }
-    into.push({ label: c.label, pass, detail, hint: pass ? undefined : c.hint });
+    into.push({ label: c.label, pass, detail, hint: pass ? undefined : c.hint, value });
   };
   for (const c of spec.checks ?? []) evaluate(c, res.checks);
   for (const c of spec.bonus ?? []) evaluate(c, res.bonus);
