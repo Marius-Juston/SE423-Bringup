@@ -8,6 +8,7 @@ import { KITS, findPart, type Kit } from "./world/kits";
 import { setWorldObjects } from "./plugins/lidar";
 import type { RobotWorld } from "./plugins/robot_world";
 import type { Obstacle } from "./world/terrain";
+import { tourAt, waypoints, type PathSet, type Waypoint } from "./tour";
 
 /** An input of the signal bus set when the board powers up (the world a level puts the robot in). */
 export interface LiveSetup {
@@ -35,12 +36,19 @@ export class LiveSession {
   load = 1;
   private gen: Generator<void, void> | null = null;
   private pressed = new Set<string>();
+  /** The poses the level's test puts the LIDAR robot at; the live run drives round them. */
+  private path: Waypoint[] = [];
+  /** Simulated time at which the tour began (it is restarted when switched on again). */
+  private tourFrom = 0;
+  private tourAtNs = -Infinity;
+  /** The robot is being driven round the test's poses. Moving it by hand switches this off. */
+  touring = false;
 
   /**
    * `setup` are inputs set at power-up, in order: the room, the start pose
    * and the goal of the level, so a live run begins in the level's world.
    */
-  constructor(kitId: string, source: string, private setup: LiveSetup[] = []) {
+  constructor(kitId: string, source: string, private setup: LiveSetup[] = [], script: readonly PathSet[] = []) {
     this.board = new Board(kitId);
     // Minutes of running must not fill the memory: about a second of a fast PWM pin, a minute of a 1 kHz signal.
     this.board.historyLimit = 60_000;
@@ -48,6 +56,8 @@ export class LiveSession {
     const b = this.board;
     for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);
     for (const s of setup) b.setInput(s.set, s.value, 0);
+    this.path = waypoints(script);
+    this.touring = this.path.length > 1;
     try {
       b.load(source);
       this.gen = b.run();
@@ -72,6 +82,29 @@ export class LiveSession {
     return this.board.now / MS;
   }
 
+  /** True when the level's test moves the robot, so there is a path to drive round. */
+  get hasTour(): boolean {
+    return this.path.length > 1;
+  }
+
+  /** Starts (from the first pose) or stops the drive round the test's poses. */
+  setTour(on: boolean): void {
+    this.touring = on && this.hasTour;
+    if (this.touring) {
+      this.tourFrom = this.board.now / MS;
+      this.tour(true);
+    }
+  }
+
+  /** Puts the robot where the tour has it now. Only inputs that changed are set. */
+  private tour(force = false): void {
+    const b = this.board;
+    // Every 10 ms of simulated time is smooth to the eye and costs little.
+    if (!this.touring || (!force && b.now - this.tourAtNs < 10 * MS)) return;
+    this.tourAtNs = b.now;
+    for (const [name, v] of tourAt(this.path, b.now / MS - this.tourFrom)) if (b.inputs.get(name) !== v) b.setInput(name, v);
+  }
+
   /** Advances by up to realMs of wall time worth of simulation, within a CPU budget. */
   step(realMs: number, budgetMs = 10): void {
     if (!this.gen) return;
@@ -83,6 +116,7 @@ export class LiveSession {
     try {
       // Small slices so the budget is respected even in busy loops.
       while (b.now < target) {
+        this.tour();
         b.runUntil(this.gen, Math.min(target, b.now + 0.05 * MS));
         if (performance.now() - start > budgetMs) break;
       }
@@ -168,6 +202,7 @@ export class LiveSession {
   placeRobot(x: number, y: number, theta: number, kind: "world" | "bench" | "scan"): void {
     if (![x, y, theta].every(Number.isFinite)) return;
     const b = this.board;
+    this.touring = false;
     if (kind === "world") this.world?.place(x, y, theta);
     else if (kind === "bench") {
       b.setInput("TB_SET_X_FT", x);
@@ -188,6 +223,7 @@ export class LiveSession {
   /** Back to the world this run started in: its room, start pose and goal, and no placed objects. */
   resetWorld(kind: "world" | "bench" | "scan"): void {
     const b = this.board;
+    this.touring = false;
     setWorldObjects(b, []);
     const given = new Map(this.setup.map((s) => [s.set, s.value]));
     for (const name of ["WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS", "LIDAR_ROOM"]) if (b.inputs.has(name) || given.has(name)) b.setInput(name, given.get(name) ?? 0);

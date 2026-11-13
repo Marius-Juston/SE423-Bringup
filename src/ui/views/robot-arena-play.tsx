@@ -195,6 +195,12 @@ export function ArenaPlayground({
           </div>
         </>
       )}
+      {session.hasTour && (
+        <div className="arena-row">
+          <button className="btn small" aria-pressed={session.touring} onClick={() => { session.setTour(!session.touring); onWorld(); }}>Drive the test's path</button>
+          <span className="arena-check">{session.touring ? "The robot goes round the poses the tests put it at. Move it yourself to stop." : "Off: the robot stays where you put it."}</span>
+        </div>
+      )}
       <div className="arena-row">
         <button className="btn small" onClick={onReset}>Reset world</button>
         <span className="arena-check">Back to the level's own room, start pose and goal, without placed objects.</span>

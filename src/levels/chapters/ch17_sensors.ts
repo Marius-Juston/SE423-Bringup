@@ -2117,7 +2117,7 @@ The parser calls \`scan_done()\`, which sets the flag \`newScan\`. Printing is s
 \`\`\`
 
 ## The run
-The robot is in a corridor 3 ft wide and 32 ft long. The tests move it: at the start, near the far end, right up to the end wall, turned left by 90 degrees, and facing back the way it came. Where the corridor is longer than the sensor can see, the front reads 18.70 ft.
+This program decides (\`vref\` and \`turn\`) but does not drive: nothing here is connected to the wheels, so the robot does not move by itself. That connection is made in the capstone. Here the robot is in a corridor 3 ft wide and 32 ft long, and the tests put it at five places: at the start, near the far end, right up to the end wall, turned left by 90 degrees, and facing back the way it came. Where the corridor is longer than the sensor can see, the front reads 18.70 ft. Under **Run** the robot is driven slowly round the same five places, so you can watch the distances, the state and the turn command change; drag it in the robot arena to try a place of your own.
 `,
       kit: "robot",
       durationMs: 560,

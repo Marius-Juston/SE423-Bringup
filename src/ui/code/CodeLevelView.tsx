@@ -14,7 +14,7 @@ import { Icon } from "../Icon";
 import { VIEWS } from "../views";
 import { ArenaContext, type ArenaInfo } from "../views/robot-arena-context";
 import { ArenaPreview } from "../views/robot-arena";
-import { worldSetup } from "../views/robot-arena-model";
+import { setStimuli, worldSetup } from "../views/robot-arena-model";
 import { Guard } from "../Markdown";
 import { findLevel } from "../../levels/index";
 import { compareBests, measure, type BestNote } from "../bests";
@@ -152,14 +152,16 @@ export function CodeLevelView({
   }, [live, speed]);
 
   const running = !!live?.running;
-  // A live run begins in the level's world: its room, start pose and goal (the test's later stimuli are not replayed).
+  // A live run begins in the level's world: its room, start pose and goal. Of the test's later stimuli only
+  // the poses it puts the LIDAR robot at are used: the live run drives the robot round them.
   const setup = useMemo(() => worldSetup(level.stimuli), [level]);
-  const start = () => setLive(new LiveSession(level.kit, code, setup));
+  const script = useMemo(() => setStimuli(level.stimuli), [level]);
+  const start = () => setLive(new LiveSession(level.kit, code, setup, script));
   const stop = () => setLive(null);
   /** Stepping works from a stopped board too: it powers up paused at the first line. */
   const session = (): LiveSession => {
     if (live?.running) return live;
-    const s = new LiveSession(level.kit, code, setup);
+    const s = new LiveSession(level.kit, code, setup, script);
     s.paused = true;
     setLive(s);
     return s;

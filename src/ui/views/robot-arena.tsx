@@ -8,6 +8,7 @@ import { WHEEL_BASE } from "../../sim/plugins/plant";
 import { MAX_OBJECTS, clearance, insideBox, objectTouches, snap, tidyObject, type Obstacle, type World } from "../../sim/world/terrain";
 import { usePanelSize } from "../Panel";
 import { usePref } from "../prefs";
+import { replayAt, waypoints } from "../../sim/tour";
 import { ArenaContext } from "./robot-arena-context";
 import {
   NAMED_POINTS,
@@ -149,6 +150,10 @@ type Grab =
   | { what: "obj"; i: number; from: Pt; orig: Obstacle }
   | { what: "size"; i: number };
 
+/** Replay speed for a short test run, so that it takes about four seconds to watch: 1, or a slow-motion factor. */
+const slowFor = (endMs: number): number => (endMs >= 3000 ? 1 : Math.max(0.01, +(endMs / 4000).toPrecision(2)));
+const speedName = (speed: number): string => (speed === 1 ? "" : speed > 1 ? ` at ${speed}x` : ` in slow motion, ${speed}x`);
+
 function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board | null; nowMs: number; live: boolean; preview?: Scene }) {
   const ctx = useContext(ArenaContext);
   const size = usePanelSize();
@@ -167,6 +172,8 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
   const [tool, setTool] = useState<Tool>("move");
   const [selected, setSelected] = useState<number | null>(null);
   const sets = useMemo(() => setStimuli(ctx?.stimuli), [ctx?.stimuli]);
+  // The poses the test puts a LIDAR robot at: the replay glides between them instead of jumping.
+  const path = useMemo(() => waypoints(sets), [sets]);
   const lidarState = board?.plugins.get("lidar") as LidarState | undefined;
   const lidarUsed = !!board && board.inputsUsed.has("LIDAR_ROOM");
   const kind: SceneKind | undefined = board ? sceneKind(board.outputs, lidarUsed) : preview ? "world" : undefined;
@@ -183,12 +190,12 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
   useEffect(() => {
     if (live || !board || endMs <= 0 || played.current === board) return;
     played.current = board;
-    if (kind === "scan" || kind === undefined) return;
+    if (kind === undefined || (kind === "scan" && path.length < 2)) return;
     if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    setSpeed(endMs > 8000 ? 4 : 1);
+    setSpeed(endMs > 8000 ? 4 : slowFor(endMs));
     setReplayT(0);
     setPlaying(true);
-  }, [board, live, endMs, kind]);
+  }, [board, live, endMs, kind, path]);
 
   // The replay clock: the only animation this view runs itself, started by Play or by a fresh test run.
   useEffect(() => {
@@ -213,12 +220,14 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
 
   const scene: Scene | undefined = useMemo(() => {
     if (!board || !kind) return preview;
-    const input = live ? (name: string) => board.inputs.get(name) : (name: string) => inputAt(sets, name, tMs) ?? (sets.some((s) => s.set === name) ? undefined : board.inputs.get(name));
+    // A glide takes about 0.3 s on the screen, whatever the replay speed.
+    const glide = path.length > 1 ? replayAt(path, tMs, 300 * speed) : undefined;
+    const input = live ? (name: string) => board.inputs.get(name) : (name: string) => glide?.get(name) ?? inputAt(sets, name, tMs) ?? (sets.some((s) => s.set === name) ? undefined : board.inputs.get(name));
     const src: SceneSource = { outputs: board.outputs, input, world: live ? worldOf(board) : worldFor(input), worldOn: kind === "world", lidar: lidarUsed };
     return sceneAt(src, kind, tMs, { trailFromMs: live ? trailFrom : 0, withLidar: scanMode !== "off" || kind === "scan" });
     // `rev` counts playground changes made while the program is paused (the time does not move then).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board, kind, tMs, live, sets, trailFrom, scanMode, rev, preview]);
+  }, [board, kind, tMs, live, sets, path, speed, trailFrom, scanMode, rev, preview]);
 
   // The program's own x, y and theta, when the level watches them: its belief, next to the truth.
   const estTrail = useRef<Pt[]>([]);
@@ -491,7 +500,11 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
             <button className="btn small" onClick={() => { if (!playing && tMs >= endMs) setReplayT(0); setPlaying(!playing); }} aria-label={playing ? "Pause the replay" : "Play the replay"}>
               {playing ? "Pause" : "Play"}
             </button>
-            <button className="btn small ghost" aria-pressed={speed === 4} onClick={() => setSpeed(speed === 4 ? 1 : 4)} title="Replay four times faster than it happened">4x speed</button>
+            {endMs >= 3000 ? (
+              <button className="btn small ghost" aria-pressed={speed === 4} onClick={() => setSpeed(speed === 4 ? 1 : 4)} title="Replay four times faster than it happened">4x speed</button>
+            ) : (
+              <button className="btn small ghost" aria-pressed={speed < 1} onClick={() => setSpeed(speed < 1 ? 1 : slowFor(endMs))} title={`The run lasted ${(endMs / 1000).toFixed(2)} s: slow motion stretches it to about four seconds`}>Slow motion</button>
+            )}
             <output>{(tMs / 1000).toFixed(2)} / {(endMs / 1000).toFixed(2)} s</output>
           </div>
           <input
@@ -513,10 +526,11 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
               ))}
             </div>
           )}
-          <p className="arena-hint">Replay of the test run{playing ? ` (playing${speed === 4 ? " at 4x" : ""})` : ""}: drag the slider or use the arrow keys.{marks.length ? " The marks are the moments the tests look at." : ""}</p>
+          <p className="arena-hint">Replay of the test run{playing ? ` (playing${speedName(speed)})` : ""}: drag the slider or use the arrow keys.{marks.length ? " The marks are the moments the tests look at." : ""}</p>
         </div>
       )}
       {play && scene && <ArenaPlayground large={size === "large"} session={play} board={board!} kind={kind} scene={s} objects={objects} tool={tool} setTool={setTool} selected={selected} setSelected={setSelected} placeRobot={placeRobot} moveGoal={moveGoal} setObjects={setObjects} onReset={() => { play.resetWorld(kind); setTrailFrom(play.timeMs); estTrail.current = []; setSelected(null); changed(); }} onWorld={() => { setTrailFrom(play.timeMs); setSelected(null); changed(); }} />}
+      {play?.touring && <p className="arena-hint" data-arena-tour>The robot is driving round the poses the tests put it at, so you can watch your program react. Drag the robot to place it yourself.</p>}
       {!play && !board && <p className="arena-hint">The level's world before the program runs. Press <strong>Run</strong> to watch it live and to move the robot, the goal and the walls yourself; <strong>Run tests</strong> to check your program and replay the run.</p>}
       {!play && board && live && <p className="arena-hint">The program has stopped. Press <strong>Run</strong> again to use the playground.</p>}
     </>
