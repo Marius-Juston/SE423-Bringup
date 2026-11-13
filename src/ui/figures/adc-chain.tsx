@@ -1,8 +1,8 @@
 // One ADC conversion from trigger to interrupt. TRM chapter 11: SOC
-// configuration 11.5 (ADCSOCxCTL: TRIGSEL Table 11-32, 0Bh = ePWM4 ADCSOCA;
+// configuration 11.5 (ADCSOCxCTL: TRIGSEL Table 11-32, 0Dh = 13 = ePWM5 ADCSOCA;
 // CHSEL; ACQPS, window = ACQPS + 1 SYSCLK cycles), result formula 11.4.5,
 // interrupts 11.9 (ADCINTSEL1N2.INT1SEL / INT1E). The ePWM pulse: TRM 15.10,
-// ETSEL.SOCASEL = 2 (counter equals period), ETPS.SOCAPRD = 1 (first event),
+// ETSEL.SOCASEL = 1 (counter equals zero), ETPS.SOCAPRD = 1 (first event),
 // ETSEL.SOCAEN. Same numbers as the level's code (ch08) and
 // src/sim/plugins/adc.ts + epwm.ts.
 import { useState } from "react";
@@ -15,19 +15,19 @@ const STEPS: { title: string; text: string; code: string; hot: string[] }[] = [
   {
     title: "Idle",
     text: "Nothing happens until a trigger arrives. SOC0 is a configuration slot, not a converter: it holds three answers. When? (TRIGSEL) Which pin? (CHSEL) How long to sample? (ACQPS) Press Next to fire the trigger.",
-    code: "// when: ePWM4 SOCA\nAdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 11;\n// which pin: ADCINA4\nAdcaRegs.ADCSOC0CTL.bit.CHSEL = 4;\n// how long: 100 SYSCLK cycles\nAdcaRegs.ADCSOC0CTL.bit.ACQPS = 99;",
+    code: "// when: ePWM5 SOCA\nAdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 13;\n// which pin: ADCINA4\nAdcaRegs.ADCSOC0CTL.bit.CHSEL = 4;\n// how long: 100 SYSCLK cycles\nAdcaRegs.ADCSOC0CTL.bit.ACQPS = 99;",
     hot: [],
   },
   {
     title: "1. The trigger fires",
-    text: "ePWM4's counter reaches the point chosen in ETSEL and it sends one pulse on its SOCA line. The ePWM is used here only as a precise clock: the pulse says when, nothing more. A CPU timer or a software write can pulse the same way.",
-    code: "// pulse when the counter equals the period\nEPwm4Regs.ETSEL.bit.SOCASEL = 2;\n// on every such event\nEPwm4Regs.ETPS.bit.SOCAPRD = 1;\n// enable the SOCA pulse\nEPwm4Regs.ETSEL.bit.SOCAEN = 1;",
+    text: "ePWM5's counter reaches the point chosen in ETSEL and it sends one pulse on its SOCA line. The ePWM is used here only as a precise clock: the pulse says when, nothing more. A CPU timer or a software write can pulse the same way.",
+    code: "// pulse when the counter equals zero\nEPwm5Regs.ETSEL.bit.SOCASEL = 1;\n// on every such event\nEPwm5Regs.ETPS.bit.SOCAPRD = 1;\n// enable the SOCA pulse\nEPwm5Regs.ETSEL.bit.SOCAEN = 1;",
     hot: ["trig", "w-trig"],
   },
   {
     title: "2. SOC0 wakes up",
-    text: "Every SOC listens to exactly one trigger. SOC0's TRIGSEL is 11, which means ePWM4 SOCA, so this pulse marks SOC0 as pending. SOCs with another TRIGSEL ignore it.",
-    code: "AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 11;",
+    text: "Every SOC listens to exactly one trigger. SOC0's TRIGSEL is 13, which means ePWM5 SOCA, so this pulse marks SOC0 as pending. SOCs with another TRIGSEL ignore it.",
+    code: "AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 13;",
     hot: ["soc"],
   },
   {
@@ -74,7 +74,7 @@ function AdcChain() {
         {/* triggers */}
         <text x="42" y="14" textAnchor="middle" className="fig-label dim">WHEN</text>
         <rect x="6" y="20" width="72" height="26" rx="4" className={`fig-box ${on("trig")}`} />
-        <text x="42" y="31" textAnchor="middle" className="fig-label">ePWM4</text>
+        <text x="42" y="31" textAnchor="middle" className="fig-label">ePWM5</text>
         <text x="42" y="42" textAnchor="middle" className="fig-label dim">SOCA pulse</text>
         <rect x="6" y="52" width="72" height="18" rx="4" className="fig-box" strokeDasharray="3 2" />
         <text x="42" y="64" textAnchor="middle" className="fig-label dim">CPU timer</text>
@@ -85,7 +85,7 @@ function AdcChain() {
         <text x="146" y="14" textAnchor="middle" className="fig-label dim">16 SLOTS</text>
         <rect x="106" y="20" width="80" height="50" rx="4" className={`fig-box ${on("soc")}`} />
         <text x="146" y="32" textAnchor="middle" className="fig-label">SOC0</text>
-        <text x="146" y="44" textAnchor="middle" className="fig-value small">TRIGSEL 11</text>
+        <text x="146" y="44" textAnchor="middle" className="fig-value small">TRIGSEL 13</text>
         <text x="146" y="55" textAnchor="middle" className="fig-value small">CHSEL 4</text>
         <text x="146" y="66" textAnchor="middle" className="fig-value small">ACQPS 99</text>
         <rect x="106" y="74" width="80" height="14" rx="3" className="fig-box" strokeDasharray="3 2" />
@@ -142,7 +142,7 @@ function AdcChain() {
         <button className="btn small" onClick={() => setI(0)} disabled={i === 0}>Reset</button>
         <span className="fig-dots" aria-hidden="true">{STEPS.map((_, k) => (<i key={k} className={k === i ? "on" : ""} />))}</span>
       </div>
-      <figcaption>One conversion, from trigger to interrupt. In this example ePWM4 triggers SOC0, which measures pin ADCINA4. The pin is at 1.2 V, so the result is 4096 x 1.2 / 3.0 = 1638. Dashed boxes are the triggers, slots and results this example does not use.</figcaption>
+      <figcaption>One conversion, from trigger to interrupt. In this example ePWM5 triggers SOC0, which measures pin ADCINA4. The pin is at 1.2 V, so the result is 4096 x 1.2 / 3.0 = 1638. Dashed boxes are the triggers, slots and results this example does not use.</figcaption>
     </figure>
   );
 }

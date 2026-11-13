@@ -103,6 +103,9 @@ const MC_INTPND = 0x2000;
 const MC_MSGLST = 0x4000;
 const MC_NEWDAT = 0x8000;
 
+/** Frames kept in CanModule.received. */
+export const RECEIVED_MAX = 200;
+
 export interface CanFrame {
   id: number;
   extended: boolean;
@@ -125,6 +128,8 @@ export class CanModule {
   sent: (CanFrame & { t: number })[] = [];
   /** Frames stored in a message object. */
   stored = 0;
+  /** The most recent frames stored in a message object (at most RECEIVED_MAX), oldest first. */
+  received: { t: number; id: number; extended: boolean; data: number[]; obj: number }[] = [];
   onTx: ((f: CanFrame, t: number) => void)[] = [];
   onStart: (() => void)[] = [];
   private statusPending = false;
@@ -379,6 +384,8 @@ export class CanModule {
       if (mctl & MC_RXIE) mctl |= MC_INTPND;
       o.mctl = mctl;
       b.publish("CAN_RX_FRAMES", ++this.stored);
+      this.received.push({ t: b.now, id: f.extended ? f.id & ARB_ID : f.id & 0x7ff, extended: f.extended, data: f.data.slice(0, 8).map((x) => x & 0xff), obj: i });
+      if (this.received.length > RECEIVED_MAX) this.received.shift();
       break;
     }
     b.mem.writes++;

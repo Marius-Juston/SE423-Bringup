@@ -251,7 +251,7 @@ function HBridge() {
               <button className="fig-opt" onClick={() => setU(0)}>stop (0)</button>
             </div>
           </div>
-          <pre><code>{`setEPWM1A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// CMPA = (${us} + 10) * 2500 / 20.0 = ${cmpa}   (${pct(duty)})`}</code></pre>
+          <pre><code>{`setEPWM1A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// -10 is 0 % duty, 0 is 50 %, +10 is 100 %,\n// on a straight line in between: here ${pct(duty)}`}</code></pre>
         </>
       )}
       <figcaption>

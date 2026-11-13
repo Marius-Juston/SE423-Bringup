@@ -108,6 +108,12 @@ export interface SpiWord {
   out: number;
   in: number;
   device: string | null;
+  /**
+   * Chip-select frame the word belongs to: a counter that goes up each time
+   * the chip select of any registered device goes low (0 before the first).
+   * Words with the same number were sent under one chip-select low.
+   */
+  frame: number;
 }
 
 type Sig = "simo" | "somi" | "clk";
@@ -158,6 +164,9 @@ interface Bus {
   devices: SpiDevice[];
   ports: Map<string, Port>;
   log: SpiWord[];
+  /** Number of chip-select falling edges so far, and the chip-select pins that are low now. */
+  frame: number;
+  csLow: Set<number>;
   selected: Set<SpiDevice>;
   bang: Map<SpiDevice, BitBang>;
 }
@@ -165,7 +174,7 @@ interface Bus {
 /** The SPI bus state of a board (created on first use, so plugin load order does not matter). */
 export function spiBus(b: Board): Bus {
   let bus = b.plugins.get("spi") as Bus | undefined;
-  if (!bus) b.plugins.set("spi", (bus = { devices: [], ports: new Map(), log: [], selected: new Set(), bang: new Map() }));
+  if (!bus) b.plugins.set("spi", (bus = { devices: [], ports: new Map(), log: [], frame: 0, csLow: new Set(), selected: new Set(), bang: new Map() }));
   return bus;
 }
 
@@ -336,7 +345,7 @@ function install(b: Board): void {
       const rx = n === 16 ? input : ((written << n) | input) & 0xffff;
       set("SPIDAT", rx);
       p.words++;
-      bus.log.push({ t, port: id, bits: n, out, in: input, device: p.cur?.name ?? null });
+      bus.log.push({ t, port: id, bits: n, out, in: input, device: p.cur?.name ?? null, frame: bus.frame });
       b.publish(`${NAME}_TX`, out, t);
       b.publish(`${NAME}_RX`, input, t);
       b.publish(`${NAME}_WORDS`, p.words, t);
@@ -521,6 +530,14 @@ function install(b: Board): void {
     gpio.drive(pinsOf(d).somi, ((s.reply >>> (n - 1 - s.count)) & 1) as 0 | 1, t);
   };
   gpio.listeners.push((pin, level, t) => {
+    // A new chip-select frame starts when a device's chip select goes low.
+    if (bus.devices.some((d) => d.csPin === pin)) {
+      if (level !== 0) bus.csLow.delete(pin);
+      else if (!bus.csLow.has(pin)) {
+        bus.csLow.add(pin);
+        bus.frame++;
+      }
+    }
     for (const d of bus.devices) {
       const pins = pinsOf(d);
       if (pin === d.csPin) {
@@ -555,7 +572,7 @@ function install(b: Board): void {
           if (++s.count === n) {
             const out = s.acc;
             d.transfer(out, n, s.t0, t);
-            bus.log.push({ t, port: portOf(d), bits: n, out, in: s.reply, device: d.name });
+            bus.log.push({ t, port: portOf(d), bits: n, out, in: s.reply, device: d.name, frame: bus.frame });
             s.count = 0;
             s.acc = 0;
             s.reply = d.peek(t);

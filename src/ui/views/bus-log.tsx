@@ -6,11 +6,12 @@ import type { SpiWord } from "../../sim/plugins/spi";
 import type { BenchView, ViewProps } from "./types";
 
 // Recent traffic on the serial buses, in plain words, newest last. Reads
-// what the plugins keep: the SPI word log (spi.ts `log`), the I2C transfer
-// log (i2c.ts `bus.log`: 7-bit address, read/write bit, ACK, data bytes),
-// and for CAN the frames sent, the history of the CAN_RX_FRAMES counter and
-// the current contents of the receive objects (can.ts keeps no list of
-// received frames). A CAN message object keeps an 11-bit identifier in bits
+// what the plugins keep: the SPI word log (spi.ts `log`; words with the
+// same chip-select frame number are one transfer), the I2C transfer log
+// (i2c.ts `bus.log`: 7-bit address, read/write bit, ACK, data bytes), and
+// for CAN the frames sent (`sent`), the last frames stored in a message
+// object (`received`, at most 200) and the current contents of the
+// receive objects. A CAN message object keeps an 11-bit identifier in bits
 // 28..18 of its arbitration register and a 29-bit one in bits 28..0 (TRM
 // 22.14, CAN_IF1ARB).
 
@@ -59,6 +60,18 @@ function upTo<T extends { t: number }>(list: T[], tNs: number): number {
   return lo;
 }
 
+/** Splits SPI words into transfers: one per chip-select frame (and device, port, word size), at most `maxWords` long. */
+export function groupSpi(words: SpiWord[], maxWords = MAX_WORDS): SpiWord[][] {
+  const groups: SpiWord[][] = [];
+  for (const w of words) {
+    const g = groups[groups.length - 1];
+    const last = g?.[g.length - 1];
+    if (g && last && g.length < maxWords && last.frame === w.frame && last.device === w.device && last.port === w.port && last.bits === w.bits) g.push(w);
+    else groups.push([w]);
+  }
+  return groups;
+}
+
 function BusLog({ board, window: [, to] }: ViewProps) {
   const until = to * MS;
   const entries: Entry[] = [];
@@ -68,19 +81,11 @@ function BusLog({ board, window: [, to] }: ViewProps) {
   const mods: [string, CanModule][] = can ? [["A", can.a], ["B", can.b]] : [];
   const bothCan = mods.filter(([, m]) => m.sent.length > 0 || m.stored > 0).length > 1;
 
-  // SPI: words that follow each other closely (same device) are one transfer.
-  // Only the last few words are looked at, however long the log is.
+  // SPI: the words sent under one chip-select low (same frame number) are
+  // one transfer. Only the last few words are looked at, however long the log is.
   const nSpi = upTo(spi, until);
   const tail = spi.slice(Math.max(0, nSpi - MAX * MAX_WORDS), nSpi);
-  let minGap = 100_000;
-  for (let i = 1; i < tail.length; i++) if (tail[i].t > tail[i - 1].t) minGap = Math.min(minGap, tail[i].t - tail[i - 1].t);
-  const groups: SpiWord[][] = [];
-  for (const w of tail) {
-    const g = groups[groups.length - 1];
-    const last = g?.[g.length - 1];
-    if (g && last && g.length < MAX_WORDS && last.device === w.device && last.port === w.port && last.bits === w.bits && w.t - last.t <= 2.6 * minGap) g.push(w);
-    else groups.push([w]);
-  }
+  const groups = groupSpi(tail);
   for (const g of groups.slice(-MAX)) {
     const w = g[g.length - 1];
     const d = Math.ceil(w.bits / 4);
@@ -136,14 +141,25 @@ function BusLog({ board, window: [, to] }: ViewProps) {
         ),
       });
     }
+    const nRx = upTo(m.received, until);
+    for (let i = Math.max(0, nRx - MAX); i < nRx; i++) {
+      const f = m.received[i];
+      entries.push({
+        t: f.t,
+        bus: "CAN",
+        body: (
+          <>
+            {bothCan ? `CAN-${letter} ` : ""}received a frame into message object {f.obj}, {f.extended ? "29-bit" : "11-bit"} identifier <code>{hex(f.id, f.extended ? 8 : 3)}</code>, {plural(f.data.length, "data byte")}
+            {f.data.length ? <>: <code>{bytes(f.data)}</code></> : null}
+          </>
+        ),
+      });
+    }
   }
-  const rx = board.outputs.get("CAN_RX_FRAMES") ?? [];
-  const nRx = upTo(rx, until);
-  for (let i = Math.max(0, nRx - MAX); i < nRx; i++) if (rx[i].v > 0 && Number.isFinite(rx[i].v)) entries.push({ t: rx[i].t, bus: "CAN", body: <>received frame number {rx[i].v} and stored it in a message object</> });
   entries.sort((a, b) => a.t - b.t);
   const shown = entries.slice(-MAX);
 
-  // CAN: what the receive objects hold now (the frames themselves are not logged).
+  // CAN: what the receive objects hold now.
   const objs = mods.flatMap(([letter, m]) =>
     m.objs.flatMap((o, k) => (k >= 1 && o && o.arb >>> 31 === 1 && !(o.arb & 0x20000000) ? [{ o, k, letter }] : [])),
   );

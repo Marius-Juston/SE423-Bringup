@@ -68,6 +68,9 @@ file, `src/ui/views/<id>.tsx`, exporting `view: BenchView`
   `board.readVar(name)`, `board.readArray(name)` for global arrays,
   `board.plugins` for plugin state), the `kit`, `nowMs`, the time `window`
   to draw, and `live`.
+- Output histories (`board.outputs`) record only changes of value: publishing
+  the same value again adds no entry, so count events from a counter output
+  or a plugin's own log, never from the number of history entries.
 - It is re-rendered every animation frame while a program runs: draw from
   current state, keep no timers of your own, and keep it light (SVG with at
   most a few hundred elements, or a `<canvas>`).
