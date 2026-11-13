@@ -115,13 +115,30 @@ describe("registers", () => {
   it("drives pins through SET, CLEAR and TOGGLE; .all and .bit agree", () => {
     const src = main(`
   GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0); GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
-  GpioDataRegs.GPASET.all = 0x00400000;
+  GpioDataRegs.GPASET.all = 0x00400000; DELAY_US(1);
   printf("%d", (int)GpioDataRegs.GPADAT.bit.GPIO22);
-  GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+  GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1; DELAY_US(1);
   printf("%d", (int)GpioDataRegs.GPADAT.bit.GPIO22);
-  GpioDataRegs.GPASET.bit.GPIO22 = 1; GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+  GpioDataRegs.GPASET.bit.GPIO22 = 1; GpioDataRegs.GPACLEAR.bit.GPIO22 = 1; DELAY_US(1);
   printf("%d", (int)GpioDataRegs.GPADAT.bit.GPIO22);`);
     expect(out(src)).toBe("100");
+  });
+  it("loses a change when GPxDAT bits are written back to back (TRM 8.3)", () => {
+    const setup = `GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0); GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
+  GPIO_SetupPinMux(25, GPIO_MUX_CPU1, 0); GPIO_SetupPinOptions(25, GPIO_OUTPUT, GPIO_PUSHPULL);
+  GpioDataRegs.GPACLEAR.all = 0x02400000; n = 0; n = 1;`;
+    const bad = run(main(`${setup}
+  GpioDataRegs.GPADAT.bit.GPIO22 = 1;
+  GpioDataRegs.GPADAT.bit.GPIO25 = 1;`, "int n;"));
+    expect(codes(bad)).toContain("dat-rmw");
+    expect(bad.board.gpio.level[22]).toBe(0);
+    expect(bad.board.gpio.level[25]).toBe(1);
+    const good = run(main(`${setup}
+  GpioDataRegs.GPASET.bit.GPIO22 = 1;
+  GpioDataRegs.GPASET.bit.GPIO25 = 1;`, "int n;"));
+    expect(codes(good)).toEqual([]);
+    expect(good.board.gpio.level[22]).toBe(1);
+    expect(good.board.gpio.level[25]).toBe(1);
   });
   it("reads a button: 1 with the pull-up, 0 when pressed", () => {
     const src = main(`

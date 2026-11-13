@@ -10,6 +10,14 @@ export const PIN_COUNT = 169;
 
 export type Level = 0 | 1;
 
+/**
+ * How long GPyDAT keeps showing a pin's previous level after its latch
+ * changes: long enough that the very next C statement still reads the old
+ * value (the hazard TRM section 8.3 describes), short enough that any later
+ * statement reads the new one.
+ */
+const DAT_LAG_NS = 60;
+
 export interface PinChange {
   t: number;
   level: Level;
@@ -27,6 +35,9 @@ export class Gpio {
   private periphOut: Drive[] = new Array(PIN_COUNT).fill(null);
   /** Resolved level per pin; -1 = floating. */
   level: Int8Array = new Int8Array(PIN_COUNT).fill(-1);
+  /** When each pin last changed, and its level before that. */
+  private changedAt = new Float64Array(PIN_COUNT).fill(-1e9);
+  private before = new Int8Array(PIN_COUNT).fill(-1);
   /** Level history of every pin that ever changed. */
   trace = new Map<number, PinChange[]>();
   listeners: ((pin: number, level: Level, t: number) => void)[] = [];
@@ -48,6 +59,22 @@ export class Gpio {
       const dat = dev.reg(`GpioDataRegs.GP${p}DAT`).hook;
       dat.read = () => this.readPort(i);
       dat.after = (v) => {
+        // TRM 8.3: GPyDAT reads the pins, and a pin takes a moment to follow
+        // its latch. A read-modify-write that lands inside that moment
+        // writes the old level back and undoes the previous change.
+        const last = Math.min(PIN_COUNT, i * 32 + 32);
+        for (let pin = i * 32; pin < last; pin++) {
+          const n = pin & 31;
+          const stale = b.now - this.changedAt[pin] < DAT_LAG_NS;
+          if (stale && this.mux(pin) === 0 && this.isOutput(pin) && ((v >>> n) & 1) === this.before[pin] && ((this.latch[i] >>> n) & 1) !== this.before[pin]) {
+            b.warn(
+              b.line,
+              "dat-rmw",
+              `This write to GP${p}DAT undid the change just made to GPIO${pin}. A .bit write reads the whole register first, and GP${p}DAT still showed GPIO${pin}'s old level. Use GP${p}SET, GP${p}CLEAR or GP${p}TOGGLE, which change only the bits written as 1.`,
+              "error",
+            );
+          }
+        }
         this.latch[i] = v;
         if (!b.libDepth) this.datWrites.add(`GP${p}DAT`);
         refresh();
@@ -122,6 +149,8 @@ export class Gpio {
   refresh(pin: number, t: number): void {
     const lv = this.resolve(pin);
     if (lv === this.level[pin]) return;
+    this.before[pin] = this.level[pin];
+    this.changedAt[pin] = t;
     this.level[pin] = lv;
     this.b.mem.writes++;
     if (lv < 0) return;
@@ -138,6 +167,7 @@ export class Gpio {
     const last = Math.min(PIN_COUNT, port * 32 + 32);
     for (let pin = port * 32; pin < last; pin++) {
       let lv = this.level[pin];
+      if (this.b.now - this.changedAt[pin] < DAT_LAG_NS && this.before[pin] >= 0) lv = this.before[pin];
       if (lv < 0) {
         // A floating input picks up noise: the value read is unpredictable.
         this.rnd = (Math.imul(this.rnd, 1103515245) + 12345) >>> 0;

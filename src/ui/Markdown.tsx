@@ -1,0 +1,58 @@
+import type { ReactNode } from "react";
+
+/** Inline: **bold**, `code`. */
+function inline(text: string, key: number): ReactNode[] {
+  const out: ReactNode[] = [];
+  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const tok = m[0];
+    out.push(tok.startsWith("**") ? <strong key={`${key}-${i++}`}>{tok.slice(2, -2)}</strong> : <code key={`${key}-${i++}`}>{tok.slice(1, -1)}</code>);
+    last = m.index + tok.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/** Small Markdown subset: paragraphs, "- " lists, "1. " lists, ``` code blocks, "## " headings. */
+export function Markdown({ text }: { text: string }) {
+  const blocks: ReactNode[] = [];
+  const lines = text.replace(/^\n+|\s+$/g, "").split("\n");
+  let i = 0;
+  let k = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.startsWith("```")) {
+      const code: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith("```")) code.push(lines[i++]);
+      i++;
+      blocks.push(
+        <pre key={k++}>
+          <code>{code.join("\n")}</code>
+        </pre>,
+      );
+    } else if (/^##\s/.test(line)) {
+      blocks.push(<h3 key={k++} style={{ margin: "1em 0 0.4em" }}>{inline(line.slice(3), k)}</h3>);
+      i++;
+    } else if (/^(-|\d+\.)\s/.test(line)) {
+      const ordered = /^\d+\./.test(line);
+      const items: ReactNode[] = [];
+      while (i < lines.length && /^(-|\d+\.)\s/.test(lines[i])) {
+        items.push(<li key={items.length}>{inline(lines[i].replace(/^(-|\d+\.)\s/, ""), k * 100 + items.length)}</li>);
+        i++;
+      }
+      blocks.push(ordered ? <ol key={k++}>{items}</ol> : <ul key={k++}>{items}</ul>);
+    } else if (line.trim() === "") {
+      i++;
+    } else {
+      const para: string[] = [];
+      while (i < lines.length && lines[i].trim() !== "" && !/^(```|##\s|-\s|\d+\.\s)/.test(lines[i])) para.push(lines[i++]);
+      blocks.push(<p key={k++}>{inline(para.join(" "), k)}</p>);
+    }
+  }
+  return <>{blocks}</>;
+}

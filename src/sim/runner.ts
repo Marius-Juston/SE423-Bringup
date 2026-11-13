@@ -21,6 +21,8 @@ export type Check = { label: string; hint?: string } & (
   /** Full on+off period of a blinking LED or pin, measured between `from` and `to` (ms). */
   | { kind: "blink"; led?: string; pin?: number; periodMs: number; tolPct?: number; from?: number; to?: number }
   | { kind: "steady"; led: string; from: number; to: number; on: boolean }
+  /** Exactly one of two LEDs is lit, sampled across [from, to] ms. */
+  | { kind: "opposite"; a: string; b: string; from: number; to: number }
   | { kind: "serial"; port?: number; includes?: string; equals?: string; matches?: string }
   /** Time between the starts of consecutive printed lines. */
   | { kind: "serial-period"; port?: number; periodMs: number; tolPct?: number }
@@ -63,6 +65,8 @@ export interface RunResult {
   lcd: [string, string];
   traces: Map<number, PinChange[]>;
   isrLog: IsrLog[];
+  /** Registers the program wrote, in order of last write. */
+  touched: string[];
   endMs: number;
   board: Board;
   kit: Kit;
@@ -77,7 +81,13 @@ export function runProgram(spec: RunSpec): RunResult {
   const end = spec.durationMs * MS;
   const res: RunResult = {
     ran: false, passed: false, checks: [], diagnostics: [], serial: [], console: "", lcd: ["", ""],
-    traces: b.gpio.trace, isrLog: b.isrLog, endMs: spec.durationMs, board: b, kit,
+    traces: b.gpio.trace, isrLog: b.isrLog, touched: [], endMs: spec.durationMs, board: b, kit,
+  };
+  b.mem.onWrite = (reg) => {
+    if (b.libDepth && !reg.name.startsWith("Gpio")) return;
+    const i = res.touched.indexOf(reg.name);
+    if (i >= 0) res.touched.splice(i, 1);
+    res.touched.push(reg.name);
   };
   const finish = () => {
     res.diagnostics = [...b.diagnostics.values()].sort((x, y) => x.line - y.line);
@@ -179,6 +189,20 @@ export function runProgram(spec: RunSpec): RunResult {
         detail = tr.length
           ? `${p.name} changed ${tr.length} time${tr.length === 1 ? "" : "s"} between ${fmtMs(c.from)} and ${fmtMs(c.to)}; it should stay ${c.on ? "on" : "off"}.`
           : `${p.name} stayed ${on ? "on" : "off"}${pass ? "" : `, expected ${c.on ? "on" : "off"}`}.`;
+        break;
+      }
+      case "opposite": {
+        const pa = pinOf({ led: c.a });
+        const pb = pinOf({ led: c.b });
+        let bad = -1;
+        for (let i = 0; i <= 40 && bad < 0; i++) {
+          const t = c.from + ((c.to - c.from) * i) / 40 + 0.37;
+          if (lit(pa.pin, pa.activeLow, t) === lit(pb.pin, pb.activeLow, t)) bad = t;
+        }
+        pass = bad < 0;
+        detail = pass
+          ? `${pa.name} and ${pb.name} were never on or off together.`
+          : `At ${fmtMs(bad)} ${pa.name} and ${pb.name} were both ${lit(pa.pin, pa.activeLow, bad) ? "on" : "off"}.`;
         break;
       }
       case "blink": {
