@@ -16,7 +16,7 @@ const poseStimuli = (at: number, p: Partial<Pose>): Stimulus[] => [
   ...(p.theta !== undefined ? [{ at, set: "LIDAR_THETA_RAD", value: p.theta }] : []),
 ];
 const near = (name: string, v: number, tol: number, at: number | undefined, label: string, hint?: string) =>
-  ({ kind: "var" as const, name, min: v - tol, max: v + tol, at, label, hint });
+  ({ kind: "var" as const, name, min: +(v - tol).toFixed(4), max: +(v + tol).toFixed(4), at, label, hint });
 
 // ---------- code shared by the levels ----------
 
@@ -205,9 +205,13 @@ const DEC_LINE = DEC_LINES[3];
 const DEC_TAIL = DEC_LINES[7];
 const DEC_MM = DEC_SCAN.slice(96, 128);
 
-const decodeProgram = (decode: string, decodeLine: string) => `// Line 4 of a reply (points 96 to 127) and its short last line, without the line feeds
+// A backslash (0x5C) is a legal data character but would need escaping in a C string.
+if (/[\\?]/.test(DEC_LINE + DEC_TAIL)) throw new Error("pick another pose: the sample lines need escaping in C");
+
+const decodeProgram = (decode: string, decodeLine: string) => `// Line 4 of a reply (points 96 to 127), and the short last line with the
+// two line feeds that end the reply
 char line[] = "${DEC_LINE}";
-char tail[] = "${DEC_TAIL}";
+char tail[] = "${DEC_TAIL}\\n\\n";
 
 int dist[32];
 int rest[32];
@@ -369,7 +373,7 @@ ${parser(state2(store, DONE))}
 
 const NEAR_POSES: Pose[] = [
   { room: 3, x: 5, y: 5, theta: 0 },
-  { room: 3, x: 8.3, y: 3.1, theta: 0.3 },
+  { room: 3, x: 6.1, y: 7.9, theta: -1.2 },
 ];
 const nearestOf = (p: Pose) => {
   const s = scan(p).map(stored);
@@ -510,47 +514,145 @@ const FOLLOW_SCRIPT: { pose: Partial<Pose>; state: number; why: string }[] = [
   { pose: { x: 8.8, y: 2, theta: 0.8 }, state: 2, why: "Front at 1.7 ft, part way through the turn: keep turning" },
   { pose: { x: 8.8, y: 2, theta: Math.PI / 2 }, state: 3, why: "Front open again (8 ft): follow the wall now on the right" },
   { pose: { x: 5, y: 5, theta: Math.PI / 2 }, state: 1, why: "The wall on the right is 5 ft away: lost, drive straight" },
-  { pose: { x: 5, y: 8.8, theta: Math.PI / 2 }, state: 2, why: "Driving straight into a wall 1.2 ft ahead: turn left" },
+  { pose: { x: 8.8, y: 2, theta: 0 }, state: 2, why: "Into a corner, wall 1.2 ft ahead and 2 ft to the right: the front comes first, turn left" },
+  { pose: { x: 8.8, y: 5, theta: Math.PI / 2 }, state: 3, why: "Front open again: follow" },
+  { pose: { x: 5, y: 8.8, theta: Math.PI / 2 }, state: 2, why: "Wall 1.2 ft ahead and no wall on the right: still turn left, not straight" },
 ];
 const LED_OF: Record<number, string> = { 1: "LED1", 2: "LED2", 3: "LED3" };
 
 // Script for the chattering level: the front distance hovers around 1.5 ft.
 const CHATTER_FRONT = [4, 1.47, 1.53, 1.46, 1.52, 1.48, 3.5];
 
-// ---------- checkpoint ----------
+// ---------- the course's two-state wall follower ----------
 
-const CORRIDOR: Partial<Pose>[] = [
-  { room: 1, x: 0, y: 0, theta: 0 },
-  { x: 27.5 },
-  { x: 29 },
-  { theta: Math.PI / 2 },
-  { theta: Math.PI },
+// Names (with their spelling) and starting values of the final project starter.
+const STEER_VARS = `// The wall-following variables of the course's final project starter,
+// with their names and starting values
+uint16_t right_wall_follow_state = 2;   // 1: left turn, 2: right wall follow
+float Kp_front_wall = -2.0;
+float front_turn_velocity = 0.2;        // ft/s while turning left
+float left_turn_Stop_threshold = 3.5;   // ft: the turn ends when the front is this open
+float Kp_right_wal = -4.0;
+float ref_right_wall = 1.1;             // ft: wanted reading of LADARrightfront
+float foward_velocity = 1.0;            // ft/s along the wall
+float left_turn_Start_threshold = 1.3;  // ft: closer than this in front starts a turn
+float turn_saturation = 2.5;
+
+float LADARfront = 0;        // smallest of points 111 to 115, feet
+float LADARrightfront = 0;   // smallest of points 52 to 56, feet
+float vref = 0;              // speed command for the wheel controller, ft/s
+float turn = 0;              // turn command for the wheel controller`;
+
+const STEER_BODY = `    if (right_wall_follow_state == 1) {
+        // Left turn
+        turn = Kp_front_wall*(14.5 - LADARfront);
+        vref = front_turn_velocity;
+        if (LADARfront > left_turn_Stop_threshold) {
+            right_wall_follow_state = 2;
+        }
+    } else if (right_wall_follow_state == 2) {
+        // Right wall follow
+        turn = Kp_right_wal*(ref_right_wall - LADARrightfront);
+        vref = foward_velocity;
+        if (LADARfront < left_turn_Start_threshold) {
+            right_wall_follow_state = 1;
+        }
+    }
+    if (turn > turn_saturation) {
+        turn = turn_saturation;
+    }
+    if (turn < -turn_saturation) {
+        turn = -turn_saturation;
+    }`;
+
+/** One call of the course's wall follower: the commands of this scan and the state for the next. */
+const steerStep = (state: number, front: number, rightFront: number) => {
+  const raw = state === 1 ? -2.0 * (14.5 - front) : -4.0 * (1.1 - rightFront);
+  const turn = Math.max(-2.5, Math.min(2.5, raw));
+  const vref = state === 1 ? 0.2 : 1.0;
+  const next = state === 1 ? (front > 3.5 ? 2 : 1) : front < 1.3 ? 1 : 2;
+  return { turn, vref, next };
+};
+
+const steerProgram = (body: string) => `${FREQ}
+
+__interrupt void cpu_timer1_isr(void);
+
+${STEER_VARS}
+uint32_t numScans = 0;
+
+${MIN_FT_TB}
+
+// The wall follower: called once for every new scan
+void wall_follow(void)
+{
+${body}
+}
+
+${tbMain(false)}
+
+// A new scan every 100 ms. In the course code these lines are in the software
+// interrupt that runs when the LIDAR's reply is complete.
+__interrupt void cpu_timer1_isr(void)
+{
+    LADARfront = min_ft(111, 115);
+    LADARrightfront = min_ft(52, 56);
+    wall_follow();
+    numScans++;
+}
+`;
+
+// One pose per scan, in the 10 ft box, starting in state 2 (right wall follow).
+const STEER_SCRIPT: { pose: Partial<Pose>; why: string }[] = [
+  { pose: { room: 0, x: 5, y: 1, theta: 0 }, why: "wall 1 ft to the right: almost no correction" },
+  { pose: { x: 5, y: 1.4, theta: 0 }, why: "too far from the wall: turn right, towards it" },
+  { pose: { x: 5, y: 0.7, theta: 0 }, why: "too close: turn left, away from it" },
+  { pose: { x: 5, y: 2.5, theta: 0 }, why: "far too far: the turn command is limited" },
+  { pose: { x: 8.9, y: 1, theta: 0 }, why: "a wall 1.1 ft ahead: still following on this scan, left turn from the next" },
+  { pose: { x: 8.9, y: 1, theta: 0.8 }, why: "turning left, front 1.5 ft: not open enough, keep turning" },
+  { pose: { x: 8.9, y: 1, theta: Math.PI / 2 }, why: "front open: this scan still turns, the next one follows" },
+  { pose: { x: 8.9, y: 1.2, theta: Math.PI / 2 }, why: "following the new wall" },
 ];
-const CORRIDOR_LINES = (() => {
-  let pose: Pose = { room: 1, x: 0, y: 0, theta: 0 };
-  let state = 1;
-  return CORRIDOR.map((step) => {
-    pose = { ...pose, ...step };
-    const s = scan(pose);
-    const front = minFt(s, 111, 115);
-    const left = minFt(s, 197, 201);
-    const right = minFt(s, 26, 30);
-    if (state === 1) state = front < 1.5 ? 2 : right < 2.5 ? 3 : 1;
-    else if (state === 2) state = front > 3.0 ? 3 : 2;
-    else state = front < 1.5 ? 2 : right > 4.0 ? 1 : 3;
-    return `F ${front.toFixed(2)} L ${left.toFixed(2)} R ${right.toFixed(2)} S ${state}`;
+const STEER_RUN = (() => {
+  let pose: Pose = { room: 0, x: 5, y: 5, theta: 0 };
+  let state = 2;
+  return STEER_SCRIPT.map((step) => {
+    pose = { ...pose, ...step.pose };
+    const sc = scan(pose);
+    const front = minFt(sc, 111, 115);
+    const rightFront = minFt(sc, 52, 56);
+    const before = state;
+    const r = steerStep(state, front, rightFront);
+    state = r.next;
+    return { front, rightFront, before, ...r };
   });
 })();
 
-const WALL_FOLLOW_FN = `// The three-state wall follower of the earlier level
-void wall_follow(void)
-{
-${SWITCH}
-}`;
+// ---------- checkpoint ----------
 
-const corridorProgram = (enables: string, timer: string, loop: string) => `${FREQ}
+const CORRIDOR: Partial<Pose>[] = [
+  { room: 1, x: 0, y: -0.5, theta: 0 },
+  { x: 27.5, y: -0.2 },
+  { x: 29 },
+  { theta: Math.PI / 2 },
+  // 12 ft of corridor ahead: in range, so the left-turn law keeps its sign
+  { x: 10, theta: Math.PI },
+];
+const CORRIDOR_LINES = (() => {
+  let pose: Pose = { room: 1, x: 0, y: 0, theta: 0 };
+  let state = 2;
+  return CORRIDOR.map((step) => {
+    pose = { ...pose, ...step };
+    const sc = scan(pose);
+    const front = minFt(sc, 111, 115);
+    const rightFront = minFt(sc, 52, 56);
+    const r = steerStep(state, front, rightFront);
+    state = r.next;
+    return `F ${front.toFixed(2)} R ${rightFront.toFixed(2)} S ${state} T ${r.turn.toFixed(2)}`;
+  });
+})();
 
-${FOLLOW_DEFS}
+const corridorProgram = (o: { setup: string; timer: string; loop: string; data: string; follow: string }) => `${FREQ}
 
 __interrupt void cpu_timer1_isr(void);
 void scan_done(void);
@@ -560,12 +662,10 @@ ${G_CMD}
 ${PARSER_VARS}
 float ladar_ft[228];            // the distances of the last scan, feet
 
+${STEER_VARS}
+
 uint16_t newScan = 0;           // flag: set when a scan is complete
 uint32_t numScans = 0;
-int state = STRAIGHT;
-float front_ft = 0;
-float left_ft = 0;
-float right_ft = 0;
 
 // Smallest reading, in feet, of points first to last
 float min_ft(int first, int last)
@@ -580,16 +680,20 @@ float min_ft(int first, int last)
     return m;
 }
 
-${WALL_FOLLOW_FN}
+// The course's wall follower: called once for every new scan
+void wall_follow(void)
+{
+${o.follow}
+}
 
 void main(void)
 {
 ${SETUP}
 
-${enables}
+${o.setup}
 
     while (1) {
-${loop}
+${o.loop}
     }
 }
 
@@ -602,11 +706,11 @@ void scan_done(void)
 // CPU Timer 1 asks the LIDAR for a new scan every 100 ms
 __interrupt void cpu_timer1_isr(void)
 {
-${timer}
+${o.timer}
     CpuTimer1.InterruptCount++;
 }
 
-${parser(state2(STORE_FT, DONE))}
+${parser(o.data)}
 `;
 
 // ---------- expert: world coordinates ----------
@@ -845,9 +949,9 @@ export const ch17: Chapter = {
   id: "sensors",
   number: 17,
   title: "Sensors and state machines",
-  blurb: "Laser ranging, the LIDAR's serial protocol and wall-following state machines.",
+  blurb: "Infrared and laser ranging, the LIDAR's serial protocol and the wall-following state machine.",
   requires: ["serial"],
-  course: ["L14", "L16", "HW3", "HW4", "HW5"],
+  course: ["L14", "L16", "Lab 6", "HW3", "HW4", "HW5"],
   levels: [
     {
       id: "sens-brief",
@@ -856,41 +960,37 @@ export const ch17: Chapter = {
       goal: "Learn how the robot measures distance and how it turns a scan into a decision.",
       refs: [{ course: "L14" }, { course: "L16" }],
       brief: `
-A robot that drives has to know how far away things are. This chapter is about the sensor that tells it, and about the code that decides what to do with the answer.
+A robot that drives has to know how far away things are.
 
 ## Passive and active sensors
-A **passive** sensor only listens: a camera, a microphone, a thermometer. An **active** sensor sends energy out and measures what comes back: an infrared (IR) distance sensor, an ultrasonic sensor, a laser scanner. Active sensors work in the dark, but two of the same kind can disturb each other.
+A **passive** sensor only listens: a camera, a thermometer. An **active** sensor sends energy out and measures what comes back: an infrared (IR) distance sensor, a laser scanner. Active sensors work in the dark.
 
 ## Infrared distance sensors
-An IR distance sensor lights the scene with an infrared LED and measures how strong the reflection is. The light spreads out on the way to the object and spreads out again on the way back, so the returned intensity falls off **faster than 1/r^2**. A little further away means a lot less signal, and the reading also depends on the colour of the surface.
+A simple IR sensor lights the scene with an infrared LED and measures how strong the reflection is: closer means stronger. The light spreads out, so the signal falls with the **square of the distance**, and it also depends on the colour of the surface. Such a sensor is cheap, sees one direction only, and reaches about 80 cm.
 
 ## Time of flight
-A **LIDAR** (the course code calls it LADAR) does not measure how strong the echo is. It measures **how long** a laser pulse takes to come back:
+A better way is to measure **how long** the light takes to come back:
 
 \`\`\`c
 d = c * t / 2;   // c = 3.0e8 m/s, t = time for the round trip
 \`\`\`
 
-The division by 2 is there because the light travels the distance twice. Light is fast: an echo from 3 m arrives after only 20 ns.
-
-Try it in the figure: move the wall and count how many 5 ns periods of the chip's clock fit into the round trip.
+The light travels the distance twice, hence the division by 2. The robot's two IR sensors on the CAN bus (chapter 14) work this way, and so does its laser scanner. Move the wall in the figure and count the 5 ns clock periods that fit into the round trip.
 
 {{figure:time-of-flight}}
 
 ## A scan
-The course robot carries a Hokuyo URG-04LX. A mirror inside spins the laser beam around, so one sensor measures in many directions. The result of one turn is a **scan**: a list of distances, one per direction, like a map seen from above.
+The robot also carries a **LIDAR**, a Hokuyo URG-04LX (the course code says LADAR). A mirror inside spins an infrared laser beam around, so one sensor measures in many directions. One turn gives a **scan**: a list of distances, one per direction.
 
-- laser: 785 nm (infrared, invisible), class 1
-- field of view: 240 degrees, in steps of 360/1024 = 0.3515625 degrees
+- field of view: 240 degrees, in steps of 360/1024 degrees
 - range: 20 mm to 4095 mm
 - a new scan ten times per second
+- laser class 1: safe to look at
 
-Class 1 means safe to look at. With stronger lasers, invisible infrared is the more dangerous kind: your eye does not see it, so you do not blink or look away.
+With stronger lasers, invisible infrared is the more dangerous kind: your eye does not see it, so you do not blink or look away.
 
 ## From a scan to a decision
-The distances arrive over a serial port (SCIC). Your code asks for a scan every 100 ms, decodes the reply character by character, and then decides: drive on, turn, or follow the wall. The decision code is a **state machine**: the robot is always in exactly one state (driving straight, turning left, following a wall), and the sensor readings decide when it moves to another one.
-
-Both the decoder and the wall follower are state machines. You will write both.
+The scan arrives as text over a serial port. Your code asks for it every 100 ms, decodes it character by character, and then decides: drive on, turn, or follow the wall. Both the decoder and the decision are **state machines**: code that is always in exactly one of a few named states, and whose inputs decide when it moves to another. You will write both.
 `,
       questions: [
         {
@@ -900,15 +1000,15 @@ Both the decoder and the wall follower are state machines. You will write both.
           why: "A LIDAR sends out laser pulses and measures their echo. The other three only receive what is already there.",
         },
         {
-          prompt: "An IR distance sensor measures the strength of the reflection. Why does that strength fall off faster than 1/r^2?",
+          prompt: "A simple IR sensor judges distance by the strength of the reflection. What is the weakness of that?",
           options: [
-            "The light spreads out on the way to the object and again on the way back",
+            "A dark surface reflects less than a white one, so it looks further away than it is",
             "Infrared light is slower than visible light",
-            "The LED gets weaker as it warms up",
-            "The object absorbs all of the light",
+            "It only works in the dark",
+            "It needs a spinning mirror",
           ],
           answer: 0,
-          why: "It is a round trip: the light thins out going to the object, and the reflection thins out again coming back.",
+          why: "The strength depends on the surface as well as on the distance. Timing the light instead (time of flight) hardly depends on the colour.",
         },
         {
           prompt: "Why is a strong infrared laser more dangerous for your eyes than a visible one of the same power?",
@@ -922,41 +1022,6 @@ Both the decoder and the wall follower are state machines. You will write both.
           why: "The blink reflex protects you from bright visible light. An invisible beam does not trigger it. The course LIDAR is class 1, which is safe.",
         },
       ],
-    },
-    {
-      id: "sens-tof",
-      kind: "calc",
-      title: "How fast is light",
-      goal: "Work out the times a laser range finder has to measure, and compare them with the CPU clock.",
-      refs: [{ course: "L14" }, { trm: "3.7" }],
-      brief: `
-Time of flight: the sensor sends a pulse and times the echo.
-
-\`\`\`c
-d = c * t / 2;
-\`\`\`
-
-Use c = 3.0e8 m/s. One nanosecond (ns) is 1e-9 s, one picosecond (ps) is 1e-12 s.
-
-The figure draws the round trip and the CPU clock to the same scale. Work the numbers out first, then check them with the slider.
-
-{{figure:time-of-flight}}
-
-The CPU of the F28379D runs at 200 MHz. Imagine you tried to time the echo yourself by counting CPU clock periods. The last two questions show why nobody does that: the LIDAR has its own dedicated timing circuit and only sends you the finished distance.
-`,
-      fields: [
-        { id: "t3m", label: "Round-trip time for a wall 3 m away", unit: "ns", answer: 20, tolPct: 1, why: "t = 2 d / c = 6 m / 3.0e8 m/s = 20 ns." },
-        { id: "d10", label: "The echo returns after 10 ns. Distance to the object", unit: "m", answer: 1.5, tolPct: 1, why: "d = c t / 2 = 3.0e8 * 10e-9 / 2 = 1.5 m." },
-        { id: "sysclk", label: "Period of the 200 MHz CPU clock", unit: "ns", answer: 5, why: "1 / 200e6 Hz = 5 ns." },
-        { id: "res", label: "Distance that corresponds to one clock period of round-trip time", unit: "m", answer: 0.75, tolPct: 1, why: "d = c * 5 ns / 2 = 0.75 m. Counting CPU clocks could only tell 0.75 m steps apart." },
-        { id: "ps", label: "Round-trip time difference for 1 mm of distance", unit: "ps", answer: 6.67, tolPct: 1, why: "t = 2 * 0.001 m / 3.0e8 m/s = 6.67e-12 s. Millimetre accuracy needs picosecond timing." },
-      ],
-      hints: [
-        "The light goes there and back: the round trip is twice the distance.",
-        "For the fourth field, put the clock period into d = c t / 2.",
-        "20 ns, 1.5 m, 5 ns, 0.75 m, 6.67 ps.",
-      ],
-      takeaway: "A 5 ns clock is far too coarse to time one laser pulse. The sensor does the timing in its own hardware and sends you a number.",
     },
     {
       id: "sens-angles",
@@ -981,11 +1046,9 @@ angle = (3*i + 44)*0.3515625 - 135;
 
 0 degrees is straight ahead, negative angles are to the **right**, positive angles to the **left**. The 135 is the angle of step 384: 384 * 0.3515625.
 
-Try it in the figure: slide i from 0 to 227 and watch where each point looks, and what is behind the robot that no point sees.
+The last group is not full: it starts at step 725, where the scan ends. It still produces a point.
 
-{{figure:lidar-fan}}
-
-The last group is not full (steps 725 and 726 are missing from it), but it still produces a point. HW4 rounds these numbers: 228 readings from -120 to 120 degrees, about 1.05 degrees apart, element 113 straight ahead.
+You will use the indices you work out here in every later level.
 `,
       fields: [
         { id: "pitch", label: "Angle between two steps (360 / 1024)", unit: "deg", answer: 0.3515625, tolPct: 0.5, why: "360 / 1024 = 0.3515625 degrees. The data sheet rounds it to 0.36." },
@@ -996,11 +1059,11 @@ The last group is not full (steps 725 and 726 are missing from it), but it still
         { id: "right", label: "Index of the point that looks exactly to the right (-90 degrees)", answer: 28, why: "-90 degrees is step (135 - 90) / 0.3515625 = 128. (128 - 44) / 3 = 28." },
       ],
       hints: [
-        "Count steps first, then divide by the cluster count and round up.",
+        "Count the steps from 44 to 725 (both included), divide by the cluster count and round up.",
         "To go from an angle to an index, undo the formula: step = (angle + 135) / 0.3515625, then i = (step - 44) / 3.",
-        "0.3515625, 228, 1.0547, -119.53, 113, 28.",
+        "682 steps / 3, rounded up. Point 0 is step 44: 44 * 0.3515625 - 135. Ahead: (384 - 44) / 3 = 113.3, take the nearest whole index. Right: step (135 - 90) / 0.3515625 = 128, then (128 - 44) / 3.",
       ],
-      takeaway: "Point 113 looks ahead, point 28 to the right, point 199 to the left. The scan covers a little less than -120 to +120 degrees.",
+      takeaway: "Point 113 looks ahead, point 28 to the right, point 199 to the left. HW4 rounds these numbers: 228 readings from -120 to 120 degrees, about 1.05 degrees apart, element 113 straight ahead.",
     },
     {
       id: "sens-encode",
@@ -1040,62 +1103,11 @@ Set the bits of the 12-bit distance. The field **high** takes the 6 bits from \`
       ],
       code: `distance = (('M' - 0x30) << 6) + ('c' - 0x30);   // 1907 mm`,
       hints: [
-        "0x4D - 0x30 = 0x1D and 0x63 - 0x30 = 0x33.",
-        "0x1D is 01 1101 in six bits, 0x33 is 11 0011.",
+        "Subtract 0x30 from each character code first. Each result fits in 6 bits.",
+        "0x4D - 0x30 = 0x1D, which is 01 1101 in six bits. 0x63 - 0x30 = 0x33, which is 11 0011.",
         "high = 011101, low = 110011: the value is 0x773 = 1907.",
       ],
       takeaway: "29 * 64 + 51 = 1907 mm. Shifting left by 6 is the same as multiplying by 64.",
-    },
-    {
-      id: "sens-decode",
-      kind: "code",
-      mode: "write",
-      title: "Decode a line",
-      goal: "Write decode() for one reading and decode_line() for a whole line of readings.",
-      refs: [{ course: "L16" }],
-      brief: `
-Now do in C what you just did by hand.
-
-The figure shows the same steps with the C expression next to them.
-
-{{figure:lidar-encoding}}
-
-## \`int decode(char hi, char lo)\`
-Returns the distance in millimetres for the two characters of one reading: subtract 0x30 from each, shift the first one up by 6 bits, add the second.
-
-## \`int decode_line(char *text, int *out)\`
-The sensor sends the readings in lines of 64 characters, which is 32 readings. \`decode_line\` walks through the text two characters at a time, stores each distance in \`out[0]\`, \`out[1]\`, ... and returns how many readings it found. It stops at the \`0\` that ends a C string, or at a line feed (\`'\\n'\`).
-
-The program calls your functions on two pieces of a real reply: a full line of 64 characters, and the short last line of a scan, which has only 8.
-`,
-      kit: "robot",
-      durationMs: 2,
-      starter: decodeProgram(`    return 0;`, `    return 0;`),
-      solution: decodeProgram(
-        `    return ((hi - 0x30) << 6) + (lo - 0x30);`,
-        `    int n = 0;
-    while (text[2*n] != 0 && text[2*n] != '\\n') {
-        out[n] = decode(text[2*n], text[2*n + 1]);
-        n++;
-    }
-    return n;`,
-      ),
-      checks: [
-        { kind: "var", name: "single_mm", equals: 1907, label: "decode('M', 'c') is 1907", hint: "(0x4D - 0x30) * 64 + (0x63 - 0x30). The first character is the upper half." },
-        { kind: "var", name: "count", equals: 32, label: "The full line holds 32 readings", hint: "Two characters per reading: advance by 2 each time, and stop at the 0 that ends the string." },
-        { kind: "var", name: "first_mm", equals: DEC_MM[0], label: `The first reading of the line is ${DEC_MM[0]} mm` },
-        { kind: "var", name: "last_mm", equals: DEC_MM[31], label: `The last reading of the line is ${DEC_MM[31]} mm` },
-        { kind: "var", name: "sum_mm", equals: DEC_MM.reduce((a, v) => a + v, 0), label: "Every reading in between is right too (their sum matches)" },
-        { kind: "var", name: "tail_count", equals: 4, label: "The short line holds 4 readings", hint: "Do not assume 32 readings: stop where the text stops." },
-        { kind: "var", name: "tail_mm", equals: DEC_SCAN[227], label: `The last reading of the scan is ${DEC_SCAN[227]} mm` },
-      ],
-      watch: ["single_mm", "count", "first_mm", "last_mm", "tail_count"],
-      hints: [
-        "A char is a small number. `hi - 0x30` is a value from 0 to 63.",
-        "Reading n uses text[2*n] and text[2*n + 1]. Loop while text[2*n] is neither 0 nor '\\n'.",
-        "`return ((hi - 0x30) << 6) + (lo - 0x30);` and `while (text[2*n] != 0 && text[2*n] != '\\n') { out[n] = decode(text[2*n], text[2*n + 1]); n++; }`",
-      ],
-      takeaway: "Two characters per point, 32 points per line. The whole scan of 228 points is seven full lines and one short one.",
     },
     {
       id: "sens-poll",
@@ -1132,8 +1144,10 @@ That is 10 + 2 + 456 + 8 + 1 = **477 characters**. At 115200 baud they take abou
 Every character from the LIDAR causes the SCIC receive interrupt, **PIE group 8, interrupt 5**. The library function \`RXCINT_recv_ready\` takes the character and counts it in \`numRXC\`. Three things are missing:
 
 1. the vector: \`PieVectTable.SCIC_RX_INT\` must point to \`RXCINT_recv_ready\`
-2. the CPU enable for group 8: \`M_INT8\`
+2. the port: the call to \`init_serialSCIC\`. It also enables the interrupt in the PIE and sets the \`M_INT8\` bit of \`IER\`; the course's main sets that bit once more, which does no harm
 3. the request itself, in \`cpu_timer1_isr\`
+
+The course starter sets \`G_len\` to 11, which also sends the 0 that ends the string. The sensor ignores it.
 `,
       kit: "robot",
       durationMs: 360,
@@ -1157,9 +1171,9 @@ ${SETUP}
     ConfigCpuTimer(&CpuTimer1, LAUNCHPAD_CPU_FREQUENCY, 100000);
     CpuTimer1Regs.TCR.all = 0x4000;
 
-    init_serialSCIC(&SerialC, 115200);
+    // TODO 2: set up SCIC for the LIDAR, 115200 baud
 
-    // TODO 2: enable PIE group 8 in IER
+    IER |= M_INT8;   // SCIC
     IER |= M_INT13;  // CPU Timer 1
     EINT;
 
@@ -1210,17 +1224,17 @@ __interrupt void cpu_timer1_isr(void)
 }
 `,
       checks: [
-        { kind: "serial", port: 2, equals: "G04472503\nG04472503\nG04472503\n", label: "Three requests were sent on SCIC in 360 ms", hint: "serial_sendSCIC(&SerialC, G_command, G_len); once per timer 1 interrupt." },
+        { kind: "serial", port: 2, matches: "^(G04472503\\n\\x00?){3}$", label: "Three requests were sent on SCIC in 360 ms", hint: "serial_sendSCIC(&SerialC, G_command, G_len); once per timer 1 interrupt." },
         { kind: "signal", name: "LIDAR_SCANS", equals: 3, label: "The LIDAR answered three times" },
-        { kind: "var", name: "numRXC", equals: 3 * 477, label: "numRXC counted 3 x 477 characters", hint: "0 characters: the receive interrupt never ran. It needs IER |= M_INT8; (the vector alone is not enough)." },
+        { kind: "var", name: "numRXC", equals: 3 * 477, label: "numRXC counted 3 x 477 characters", hint: "0 characters: the receive interrupt never ran. It needs its vector, and init_serialSCIC to set up the port and enable the interrupt." },
         { kind: "no-diagnostic", code: "lidar", label: "The LIDAR understood every command" },
       ],
       watch: ["numRXC", "RXCdata"],
       inspect: ["PieCtrlRegs.PIEIER8", "ScicRegs.SCIFFRX"],
       hints: [
-        "SCIC is in PIE group 8, so its CPU enable bit is M_INT8. init_serialSCIC already sets PIEIER8.",
-        "The vector goes between EALLOW and EDIS: `PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;`",
-        "`PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;`, `IER |= M_INT8;` and in the timer function `serial_sendSCIC(&SerialC, G_command, G_len);`",
+        "Each TODO is one line, and each line is quoted in the brief.",
+        "The vector goes between EALLOW and EDIS: `PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;`. The port: `init_serialSCIC(&SerialC, 115200);`",
+        "The third line, in the timer function: `serial_sendSCIC(&SerialC, G_command, G_len);`",
       ],
       takeaway: "The sensor is polled: one G command every 100 ms, 477 characters back. Timer 1 is reserved for this in the course's robot code.",
     },
@@ -1245,7 +1259,7 @@ For each character:
 
 - a **line feed** (0x0a) is not data. Count it in \`LF_count\`
 - anything else is data: set \`LF_count = 0\`, then
-  - if \`get_dis_first\` is 1, this is the first character of a pair. Keep its 6 bits, shifted up by 6, in \`tempscid\`, and set \`get_dis_first = 0\`
+  - if \`get_dis_first\` is 1, this is the first character of a pair. Keep its 6 bits (\`RXCdata - 0x30\`), shifted up by 6, in \`tempscid\`, and set \`get_dis_first = 0\`
   - otherwise it is the second character. \`distance = tempscid + \` its 6 bits. Store it in \`ladar_mm[dis_index]\`, add 1 to \`dis_index\`, and set \`get_dis_first = 1\`
 - when \`LF_count\` reaches **2**, the reply is complete: set \`read_ladar_state = 0\` and call \`scan_done()\`
 
@@ -1272,146 +1286,6 @@ The robot stands in the middle of a 10 ft square room, then moves between the fi
         "After the second character: `ladar_mm[dis_index] = distance; dis_index += 1; get_dis_first = 1;`. At two line feeds: `read_ladar_state = 0; scan_done();`",
       ],
       takeaway: "An interrupt that receives one character at a time needs a state variable to know what that character means. This is the same idea as the wall follower later in this chapter.",
-    },
-    {
-      id: "sens-parser-debug",
-      kind: "code",
-      mode: "debug",
-      title: "Right on the right, wrong in front",
-      goal: "Find out why only the first 32 points of the scan are correct, and fix the parser.",
-      refs: [{ course: "L16" }],
-      brief: `
-A teammate rewrote the data state of the parser "to make it shorter". Now the robot reports nonsense:
-
-- \`right_mm\` (point 28) is correct
-- \`front_mm\` (point 113) and \`left_mm\` (point 199) are wrong
-- \`points\` is **232**, although a scan has 228 points
-
-Run it and look at the watch list. Then think about where point 28, point 113 and point 199 are in the reply: the data comes in lines of 64 characters, 32 points per line. What is different about the points after the first line?
-
-Fix the bug in state 2 of \`RXCINT_recv_ready\`. Change as little as you can.
-`,
-      kit: "robot",
-      durationMs: 260,
-      stimuli: [...poseStimuli(150, { x: 7, y: 3, theta: 0.5 })],
-      starter: parserProgram(BUGGY_STATE2),
-      solution: parserProgram(state2(STORE_MM, DONE)),
-      checks: parserChecks(PARSE_A, PARSE_B),
-      watch: ["read_ladar_state", "dis_index", "scans", "points", "front_mm", "right_mm", "left_mm"],
-      hints: [
-        "Points 0 to 31 are in the first line. Everything after the first line feed is wrong. What does the code do with a line feed?",
-        "232 - 228 = 4 extra points = 8 extra characters: the reply has exactly 8 line feeds inside the data. They are being decoded as if they were data.",
-        "The decoding must only run for characters that are not line feeds: move the whole `if (get_dis_first == 1) { ... } else { ... }` inside the `else` that sets `LF_count = 0`.",
-      ],
-      takeaway: "A line feed is framing, not data. One character decoded by mistake shifts every pair after it, so the error shows up far from its cause. Checking the count of points catches it at once.",
-    },
-    {
-      id: "sens-flow",
-      kind: "order",
-      title: "From a laser pulse to the wheels",
-      goal: "Put the steps of one 100 ms cycle of the wall-following robot in order.",
-      refs: [{ course: "L14" }, { course: "L16" }],
-      brief: `
-The robot runs two loops at two speeds.
-
-- The **inner loop** runs in a hardware interrupt every 1 ms. It reads the wheel encoders, runs the wheel speed controller and updates the robot's position. It needs a speed and a turn rate to aim for.
-- The **outer loop** runs when a new scan is complete, every 100 ms. It looks at the distances and decides the speed and turn rate. The course runs it in a **software interrupt** (chapter 5), which the receive function posts when the reply is complete. Long work stays out of the receive interrupt that way.
-
-Order the steps of one cycle, starting with the timer that asks for a scan.
-`,
-      steps: [
-        "CPU timer 1 reaches zero and its interrupt function sends G04472503 and a line feed on SCIC",
-        "The LIDAR starts its reply: the echo of the command, then the status character",
-        "For every character that arrives, the SCIC receive interrupt runs: data characters are paired and decoded into the distance array",
-        "Two line feeds in a row arrive: the scan is complete and the receive function posts a software interrupt",
-        "The software interrupt works out the front and right distances from the new scan",
-        "The state machine uses those distances to choose the state, the speed and the turn rate",
-        "The 1 ms control loop drives the wheels toward that speed and turn rate until the next scan arrives",
-      ],
-      hints: [
-        "Nothing arrives until the sensor has been asked.",
-        "The distances are only complete after the two line feeds. The decision comes after that.",
-        "Timer 1, reply starts, characters decoded, two line feeds, distances, state machine, wheels.",
-      ],
-      takeaway: "Fast and exact work in the 1 ms interrupt, the decision once per scan in a software interrupt. The decision can only change ten times per second, because that is how often there is new information.",
-    },
-    {
-      id: "sens-nearest",
-      kind: "code",
-      mode: "write",
-      title: "What is closest, and where",
-      goal: "Find the nearest obstacle in a scan and its direction, and the distance in front and to the right.",
-      refs: [{ course: "L14" }, { course: "L16" }, { course: "HW4" }],
-      brief: `
-A scan is 228 numbers. Behaviour needs a few meaningful ones. From here to the checkpoint the decoded scan is handed to you directly, so you can concentrate on using it: \`dist[i]\` is the distance of point \`i\` in **feet**, as in the course code. A point without an echo holds 18.7 ft (the course's "maximum reading"), so it is never the nearest.
-
-## \`float point_deg(int i)\`
-The angle of point \`i\` in degrees, with the course's formula:
-
-\`\`\`c
-(3*i + 44)*0.3515625 - 135
-\`\`\`
-
-## \`void process_scan(void)\`
-Called once per scan. Set:
-
-- \`nearest_index\`: the index of the smallest distance in the whole scan
-- \`nearest_ft\`: that distance
-- \`nearest_deg\`: its direction, from \`point_deg\`
-- \`front_ft\`: the smallest of points **111 to 115** (straight ahead)
-- \`right_ft\`: the smallest of points **26 to 30** (around -90 degrees)
-
-Taking the smallest of five neighbours, as the course code does, makes the reading less sensitive to one bad point.
-
-The robot is in a 10 ft square room with a box in it. The tests look at two poses.
-`,
-      kit: "robot",
-      durationMs: 260,
-      stimuli: [...poseStimuli(0, NEAR_POSES[0]), ...poseStimuli(150, NEAR_POSES[1])],
-      starter: nearestProgram(`    return 0;`, `    // TODO`),
-      solution: nearestProgram(
-        `    return (3*i + 44)*0.3515625 - 135.0;`,
-        `    int i;
-    nearest_index = 0;
-    for (i = 1; i < 228; i++) {
-        if (dist[i] < dist[nearest_index]) {
-            nearest_index = i;
-        }
-    }
-    nearest_ft = dist[nearest_index];
-    nearest_deg = point_deg(nearest_index);
-
-    front_ft = 19.0;
-    for (i = 111; i <= 115; i++) {
-        if (dist[i] < front_ft) {
-            front_ft = dist[i];
-        }
-    }
-    right_ft = 19.0;
-    for (i = 26; i <= 30; i++) {
-        if (dist[i] < right_ft) {
-            right_ft = dist[i];
-        }
-    }`,
-      ),
-      checks: [
-        { kind: "var", name: "nearest_index", at: 160, equals: NEAR[0].index, label: `First pose: the nearest point is number ${NEAR[0].index} (a corner of the box)`, hint: "Search all 228 points, 0 to 227." },
-        near("nearest_ft", NEAR[0].ft, 0.005, 160, `First pose: it is ${NEAR[0].ft.toFixed(2)} ft away`),
-        near("nearest_deg", NEAR[0].deg, 0.05, 160, `First pose: it is ${NEAR[0].deg.toFixed(1)} degrees to the left`, "Angle of point i: (3*i + 44)*0.3515625 - 135."),
-        near("front_ft", NEAR[0].front, 0.005, 160, `First pose: ${NEAR[0].front.toFixed(2)} ft straight ahead`, "The smallest of dist[111] to dist[115]."),
-        near("right_ft", NEAR[0].right, 0.005, 160, `First pose: ${NEAR[0].right.toFixed(2)} ft to the right`, "The smallest of dist[26] to dist[30]."),
-        { kind: "var", name: "nearest_index", equals: NEAR[1].index, label: `Second pose: the nearest point is number ${NEAR[1].index}` },
-        near("nearest_deg", NEAR[1].deg, 0.05, undefined, `Second pose: it is at ${NEAR[1].deg.toFixed(1)} degrees`),
-        near("front_ft", NEAR[1].front, 0.005, undefined, `Second pose: ${NEAR[1].front.toFixed(2)} ft straight ahead`),
-        near("right_ft", NEAR[1].right, 0.005, undefined, `Second pose: ${NEAR[1].right.toFixed(2)} ft to the right`),
-      ],
-      watch: ["nearest_index", "nearest_ft", "nearest_deg", "front_ft", "right_ft"],
-      hints: [
-        "Finding a minimum: start with a first guess, then replace it whenever a smaller value turns up.",
-        "Remember the index of the smallest value, not only the value: you need it for the angle.",
-        "`for (i = 1; i < 228; i++) { if (dist[i] < dist[nearest_index]) { nearest_index = i; } }`, then `nearest_ft = dist[nearest_index]; nearest_deg = point_deg(nearest_index);`. The same loop over 111..115 and 26..30 gives front_ft and right_ft.",
-      ],
-      takeaway: "Two numbers, front and right, are enough to follow a wall. The course's starter looks a little further forward on the right (points 52 to 56, about -63 degrees) so that the robot sees a corner coming.",
     },
     {
       id: "sens-fsm-quiz",
@@ -1478,88 +1352,94 @@ Notice the two different numbers for the front: the robot starts turning below 1
       ],
     },
     {
-      id: "sens-follow",
+      id: "sens-steer",
       kind: "code",
       mode: "write",
-      title: "A three-state wall follower",
-      goal: "Write the wall follower's state machine as a switch and show the state on three LEDs.",
-      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      title: "The course's wall follower",
+      goal: "Turn the front and right-front distances into a speed and a turn command, with the two states of the course's starter code.",
+      refs: [{ course: "L14" }, { course: "Lab 6" }, { course: "HW3" }],
       brief: `
-Write the state machine of the last level in C. The usual form is a \`switch\` on the state variable, with one \`case\` per state. Inside each case, test that state's transitions and assign the new state.
+A state is more than a name: each state has an **action**. On the robot the action is two numbers, handed to the wheel speed controller (the course's \`PIcontrol\`, chapter 16), which runs every 1 ms:
+
+- \`vref\`: forward speed in ft/s
+- \`turn\`: how much faster the left wheel should go than the right one, in ft/s. **Positive turns the robot right, negative turns it left**
+
+The decision runs once per scan, every 100 ms. Lecture 14 calls the fast controller the **inner loop** and this one the **outer loop**.
+
+## What it looks at
+- \`LADARfront\`: the smallest of points 111 to 115
+- \`LADARrightfront\`: the smallest of points 52 to 56. They look about 63 degrees to the right: sideways and a little ahead, so a corner shows up early
+
+Find both groups in the figure.
+
+{{figure:lidar-fan}}
+
+## The two states
+The course's final project starter follows the wall on its **right** with two states, kept in \`right_wall_follow_state\`.
+
+**State 2, right wall follow.** Steer in proportion to the error, like the P controller of chapter 16:
 
 \`\`\`c
-switch (state) {
-case STRAIGHT:
-    if (front_ft < FRONT_BLOCKED) {
-        state = TURN_LEFT;
-    } else if (...) {
-        ...
-    }
-    break;
-case TURN_LEFT:
-    ...
-    break;
-}
+turn = Kp_right_wal*(ref_right_wall - LADARrightfront);
+vref = foward_velocity;
 \`\`\`
 
-Do not forget the \`break;\` at the end of each case: without it the code runs on into the next case.
+Too far from the wall makes the bracket negative. \`Kp_right_wal\` is negative too, so \`turn\` is positive: right, back towards the wall. Then, if \`LADARfront < left_turn_Start_threshold\`, go to state 1.
 
-## The transitions
-- **STRAIGHT**: \`front_ft < FRONT_BLOCKED\` goes to TURN_LEFT; otherwise \`right_ft < WALL_NEAR\` goes to FOLLOW
-- **TURN_LEFT**: \`front_ft > FRONT_CLEAR\` goes to FOLLOW
-- **FOLLOW**: \`front_ft < FRONT_BLOCKED\` goes to TURN_LEFT; otherwise \`right_ft > WALL_LOST\` goes to STRAIGHT
+**State 1, left turn.**
 
-The four thresholds are defined at the top of the file.
+\`\`\`c
+turn = Kp_front_wall*(14.5 - LADARfront);
+vref = front_turn_velocity;
+\`\`\`
 
-The figure is this machine: each arrow is one test inside the case of the state it leaves.
+Then, if \`LADARfront > left_turn_Stop_threshold\`, go to state 2.
 
-{{figure:state-machine}}
+**In both states**, last of all, limit \`turn\` to the range \`-turn_saturation\` to \`turn_saturation\`.
 
-## The action
-This robot has no motors yet, so each state only lights an LED. After the switch, in \`wall_follow()\`:
-
-- **LED1** (GPIO22, port A) is on in STRAIGHT
-- **LED2** (GPIO94, port C) is on in TURN_LEFT
-- **LED3** (GPIO95, port C) is on in FOLLOW
-
-Exactly one LED is on at any time.
-
-\`wall_follow()\` is called once per scan, after \`front_ft\` and \`right_ft\` have been updated. The tests move the robot through a 10 ft square room, one pose per scan: open floor, along a wall, up to a wall, through a left turn, and away again.
+## Your task
+Write \`wall_follow()\`, as an \`if\` chain or a \`switch\`. Keep the order above: first the commands of the state you are in, then the test that may change the state for the **next** scan. All the variables exist, with the starter's names (and spelling) and values. The tests place the robot along a wall of a 10 ft room, at a wall ahead, and through the left turn.
 `,
       kit: "robot",
-      durationMs: 760,
-      stimuli: FOLLOW_SCRIPT.flatMap((s, i) => poseStimuli(50 + 100 * i, s.pose)),
-      starter: followProgram(`    // TODO: the switch, then the LEDs`),
-      solution: followProgram(`${SWITCH}
-
-${SHOW}`),
+      durationMs: 60 + 100 * STEER_SCRIPT.length,
+      stimuli: STEER_SCRIPT.flatMap((st, i) => poseStimuli(i === 0 ? 0 : 50 + 100 * i, st.pose)),
+      starter: steerProgram(`    // TODO`),
+      solution: steerProgram(STEER_BODY),
       checks: [
-        ...FOLLOW_SCRIPT.map((s, i) => ({
-          kind: "var" as const,
-          name: "state",
-          at: 160 + 100 * i,
-          equals: s.state,
-          label: `Scan ${i + 1}: ${s.why} (state ${s.state})`,
-          hint:
-            i === 3
-              ? "A turn only ends when the front is more than FRONT_CLEAR away, not as soon as it is more than FRONT_BLOCKED."
-              : i === 6
-                ? "In STRAIGHT, test the front first."
-                : undefined,
-        })),
-        ...FOLLOW_SCRIPT.slice(0, 5).map((s, i) => ({ kind: "led" as const, led: LED_OF[s.state], at: 160 + 100 * i, on: true, label: `Scan ${i + 1}: ${LED_OF[s.state]} is on` })),
-        { kind: "led", led: "LED1", at: 360, on: false, label: "LED1 is off while turning left" },
-        { kind: "led", led: "LED3", at: 360, on: false, label: "LED3 is off while turning left", hint: "Switch the other two LEDs off when the state changes." },
-        { kind: "source", mustMatch: "switch\\s*\\(\\s*state\\s*\\)", label: "The state machine is a switch on state" },
-        { kind: "no-dat-write", label: "The LEDs are changed through SET and CLEAR" },
+        ...STEER_RUN.flatMap((r, i) => [
+          near(
+            "turn",
+            r.turn,
+            0.01,
+            160 + 100 * i,
+            `Scan ${i + 1}, ${STEER_SCRIPT[i].why}: turn is ${r.turn.toFixed(2)}`,
+            Math.abs(r.turn) === 2.5
+              ? "Limit turn to -turn_saturation .. turn_saturation after the if chain, in both states."
+              : i === 1
+                ? "The sign is wrong if this is negative: turn = Kp_right_wal*(ref_right_wall - LADARrightfront), and Kp_right_wal is already negative."
+                : i === 4
+                  ? "On the scan that sees the wall ahead, the commands still come from state 2. Only the state changes."
+                  : undefined,
+          ),
+          {
+            kind: "var" as const,
+            name: "right_wall_follow_state",
+            at: 160 + 100 * i,
+            equals: r.next,
+            label: `Scan ${i + 1}: front ${r.front.toFixed(2)} ft, so the state for the next scan is ${r.next}`,
+            hint: i === 5 ? "A left turn ends above left_turn_Stop_threshold (3.5 ft), not above the 1.3 ft that started it." : undefined,
+          },
+        ]),
+        near("vref", 1.0, 0.001, 160, "Following the wall: vref is foward_velocity, 1.0 ft/s"),
+        near("vref", 0.2, 0.001, 660, "Turning left: vref is front_turn_velocity, 0.2 ft/s"),
       ],
-      watch: ["state", "front_ft", "right_ft", "numScans"],
+      watch: ["right_wall_follow_state", "LADARfront", "LADARrightfront", "vref", "turn"],
       hints: [
-        "One case per state, each ending in break. Only assign to state inside the case of the state you are leaving.",
-        "TURN_LEFT has a single way out: `if (front_ft > FRONT_CLEAR) { state = FOLLOW; }`.",
-        "For the LEDs: `if (state == STRAIGHT) { GpioDataRegs.GPASET.bit.GPIO22 = 1; } else { GpioDataRegs.GPACLEAR.bit.GPIO22 = 1; }` and the same for GPIO94 (TURN_LEFT) and GPIO95 (FOLLOW) with GPCSET and GPCCLEAR.",
+        "Two branches, one per state. Each sets turn and vref and then has one if that may change right_wall_follow_state.",
+        "The limit comes after both branches: `if (turn > turn_saturation) { turn = turn_saturation; }` and the same for the negative side.",
+        "State 2: `turn = Kp_right_wal*(ref_right_wall - LADARrightfront); vref = foward_velocity; if (LADARfront < left_turn_Start_threshold) { right_wall_follow_state = 1; }`. State 1 has the same shape with the other two lines of the brief and `>` `left_turn_Stop_threshold`.",
       ],
-      takeaway: "A switch with one case per state keeps the transitions of each state in one place. Adding a state later means adding a case, not untangling nested ifs.",
+      takeaway: "Wall following is a P controller on a distance, wrapped in a state machine. With the starter's numbers the left turn is always at the limit (-2.5), because LADARfront is far below 14.5 ft for any wall the sensor can see: the gains and thresholds are a starting point that you tune on the robot.",
     },
     {
       id: "sens-chatter",
@@ -1617,48 +1497,62 @@ ${SHOW}`,
       kind: "code",
       mode: "checkpoint",
       title: "Down the corridor",
-      goal: "Poll the LIDAR, work out the front, left and right distances of each scan, run the state machine and report over serial.",
-      refs: [{ course: "HW4" }, { course: "L14" }, { course: "L16" }, { course: "Lab 1" }, { trm: "19" }, { trm: "3.4.5" }],
+      goal: "Poll the LIDAR, parse its reply, run the wall follower on every scan and report over serial.",
+      refs: [{ course: "Lab 6" }, { course: "L14" }, { course: "L16" }, { course: "Lab 1" }, { trm: "19" }, { trm: "3.4.5" }],
       brief: `
-Everything together, on the real serial path. The parser (with distances in feet, as the course stores them) and the wall follower are in the file. You connect them.
+Everything together, on the real serial path. You have written every piece in this chapter; here you connect them.
 
 ## Set-up, in main
 - vectors for \`TIMER1_INT\` (your \`cpu_timer1_isr\`) and \`SCIC_RX_INT\` (\`RXCINT_recv_ready\`)
 - CPU timer 1 with a period of 100 ms, started
 - \`init_serialSCIC(&SerialC, 115200);\` for the LIDAR and \`init_serialSCIA(&SerialA, 115200);\` for the terminal
-- \`IER\` bits for PIE group 8 (SCIC) and CPU timer 1 (INT13), then \`EINT\`
+- \`IER\` bits for PIE group 8 (SCIC, \`M_INT8\`) and CPU timer 1 (\`M_INT13\`), then \`EINT\`
 
 ## Timer 1
-Send \`G_command\` to the LIDAR, as before.
+Send \`G_command\` to the LIDAR.
+
+## The parser
+Paste your data state from "The parser is a state machine". The course stores **feet**, and stores "very far" when the sensor sends an error code instead of a distance (0 or 6: no usable echo). So replace the line that stored \`ladar_mm[dis_index]\` by
+
+\`\`\`c
+if (distance == 0 || distance == 6) {
+    distance = LADAR_MAX_READING;   // 5700 mm
+}
+ladar_ft[dis_index] = distance*0.00328084;
+\`\`\`
+
+## The wall follower
+Paste the body of your \`wall_follow()\` from "The course's wall follower".
 
 ## When a scan is complete
 The parser calls \`scan_done()\`, which sets the flag \`newScan\`. Printing is slow, so it belongs in \`while(1)\`, behind the flag (chapters 5 and 6). When \`newScan\` is 1:
 
 1. set it back to 0
-2. \`front_ft = min_ft(111, 115);\`, \`left_ft = min_ft(197, 201);\`, \`right_ft = min_ft(26, 30);\`
+2. \`LADARfront = min_ft(111, 115);\` and \`LADARrightfront = min_ft(52, 56);\`
 3. call \`wall_follow()\`
 4. add 1 to \`numScans\`
-5. print one line on SerialA, exactly in this format:
+5. print one line on SerialA with the two distances, the state and the turn command, exactly in this format:
 
 \`\`\`c
-"F %.2f L %.2f R %.2f S %d\\r\\n"
+"F %.2f R %.2f S %d T %.2f\\r\\n"
 \`\`\`
 
-with the front, left and right distances and the state.
-
 ## The run
-The robot is in a corridor 3 ft wide and 32 ft long. The tests move it: at the start, near the far end, right up to the end wall, turned left by 90 degrees, and turned around. Where the corridor is longer than the sensor can see, the LIDAR reports an error code and the parser stores the maximum reading, 18.70 ft.
+The robot is in a corridor 3 ft wide and 32 ft long. The tests move it: at the start, near the far end, right up to the end wall, turned left by 90 degrees, and facing back the way it came. Where the corridor is longer than the sensor can see, the front reads 18.70 ft.
 `,
       kit: "robot",
       durationMs: 560,
       stimuli: CORRIDOR.flatMap((p, i) => poseStimuli(i === 0 ? 0 : 50 + 100 * i, p)),
-      starter: corridorProgram(
-        `    // TODO: vectors, timer 1 (100 ms), the two serial ports, IER, EINT`,
-        `    // TODO: ask the LIDAR for a scan`,
-        `        // TODO: when newScan is set: distances, wall_follow(), numScans, print`,
-      ),
-      solution: corridorProgram(
-        `    EALLOW;
+      starter: corridorProgram({
+        setup: `    // TODO: vectors, timer 1 (100 ms), the two serial ports, IER, EINT`,
+        timer: `    // TODO: ask the LIDAR for a scan`,
+        loop: `        // TODO: when newScan is set: the two distances, wall_follow(), numScans, print`,
+        data: `            // TODO: paste your data state from "The parser is a state machine",
+            // then store feet in ladar_ft[] as the brief shows`,
+        follow: `    // TODO: paste the body of your wall_follow() from "The course's wall follower"`,
+      }),
+      solution: corridorProgram({
+        setup: `    EALLOW;
     PieVectTable.TIMER1_INT = &cpu_timer1_isr;
     PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;
     EDIS;
@@ -1674,40 +1568,395 @@ The robot is in a corridor 3 ft wide and 32 ft long. The tests move it: at the s
     IER |= M_INT8;   // SCIC
     IER |= M_INT13;  // CPU Timer 1
     EINT;`,
-        `    serial_sendSCIC(&SerialC, G_command, G_len);`,
-        `        if (newScan == 1) {
+        timer: `    serial_sendSCIC(&SerialC, G_command, G_len);`,
+        loop: `        if (newScan == 1) {
             newScan = 0;
-            front_ft = min_ft(111, 115);
-            left_ft = min_ft(197, 201);
-            right_ft = min_ft(26, 30);
+            LADARfront = min_ft(111, 115);
+            LADARrightfront = min_ft(52, 56);
             wall_follow();
             numScans++;
-            serial_printf(&SerialA, "F %.2f L %.2f R %.2f S %d\\r\\n", front_ft, left_ft, right_ft, state);
+            serial_printf(&SerialA, "F %.2f R %.2f S %d T %.2f\\r\\n",
+                          LADARfront, LADARrightfront, right_wall_follow_state, turn);
         }`,
-      ),
+        data: state2(STORE_FT, DONE),
+        follow: STEER_BODY,
+      }),
       checks: [
         { kind: "signal", name: "LIDAR_SCANS", equals: 5, label: "The LIDAR was asked for five scans, one every 100 ms", hint: "Timer 1 needs its vector, a 100000 microsecond period, TCR and IER |= M_INT13." },
-        { kind: "var", name: "numScans", equals: 5, label: "main handled each scan once", hint: "0: the receive interrupt is not running (vector, M_INT8) or the flag is never tested. A huge number: the flag is never set back to 0." },
-        { kind: "serial", includes: `${CORRIDOR_LINES[0]}\r\n`, label: `Start of the corridor: "${CORRIDOR_LINES[0]}"`, hint: "Nothing is in range ahead, so the front is the maximum reading, 18.70 ft. Check the format string character by character." },
-        { kind: "serial", includes: `${CORRIDOR_LINES[1]}\r\n`, label: `Near the end: "${CORRIDOR_LINES[1]}"` },
+        { kind: "var", name: "numScans", equals: 5, label: "main handled each scan once", hint: "0: the receive interrupt is not running (vector, init_serialSCIC), the parser never sees two line feeds, or the flag is never tested. A huge number: the flag is never set back to 0." },
+        { kind: "serial", includes: `${CORRIDOR_LINES[0]}\r\n`, label: `Start of the corridor: "${CORRIDOR_LINES[0]}"`, hint: "Nothing is in range ahead, so the front is the maximum reading, 18.70 ft: error codes must become LADAR_MAX_READING. Check the format string character by character." },
+        { kind: "serial", includes: `${CORRIDOR_LINES[1]}\r\n`, label: `Near the end, further from the right wall: "${CORRIDOR_LINES[1]}"`, hint: "Right-front is points 52 to 56." },
         { kind: "serial", includes: `${CORRIDOR_LINES[2]}\r\n`, label: `At the end wall: "${CORRIDOR_LINES[2]}"`, hint: "Call wall_follow() after updating the distances and before printing." },
-        { kind: "serial", includes: `${CORRIDOR_LINES[3]}\r\n`, label: `Turned left: "${CORRIDOR_LINES[3]}"`, hint: "Left is points 197 to 201, right is points 26 to 30." },
-        { kind: "serial", includes: `${CORRIDOR_LINES[4]}\r\n`, label: `Turned around: "${CORRIDOR_LINES[4]}"` },
-        { kind: "serial", matches: `^(F \\d+\\.\\d\\d L \\d+\\.\\d\\d R \\d+\\.\\d\\d S \\d\\r\\n){5}$`, label: "Exactly five lines, nothing else" },
+        { kind: "serial", includes: `${CORRIDOR_LINES[3]}\r\n`, label: `Turned left by 90 degrees: "${CORRIDOR_LINES[3]}"` },
+        { kind: "serial", includes: `${CORRIDOR_LINES[4]}\r\n`, label: `Facing back, front open: "${CORRIDOR_LINES[4]}"`, hint: "On the scan that sees the open front the commands are still those of the left turn. Only the state changes." },
+        { kind: "serial", matches: `^(F \\d+\\.\\d\\d R \\d+\\.\\d\\d S \\d T -?\\d\\.\\d\\d\\r\\n){5}$`, label: "Exactly five lines, nothing else" },
         { kind: "serial-period", periodMs: 100, label: "A line is printed every 100 ms" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function", hint: "Print from while(1), behind the newScan flag." },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the values" },
       ],
-      watch: ["numScans", "state", "front_ft", "left_ft", "right_ft", "read_ladar_state"],
-      hints: [
-        "Set-up is the same list as in \"Ask every 100 ms\", plus init_serialSCIA for the terminal.",
-        "The loop: `if (newScan == 1) { newScan = 0; ... }`. Inside: three calls to min_ft, then wall_follow(), then numScans++, then the print.",
-        "`serial_printf(&SerialA, \"F %.2f L %.2f R %.2f S %d\\r\\n\", front_ft, left_ft, right_ft, state);`",
+      bonus: [
+        { kind: "isr-time", fn: "RXCINT_recv_ready", maxUs: 1.5, label: "The receive interrupt never runs longer than 1.5 us: the scan is worked on in main, not inside the interrupt", hint: "Keep scan_done() to setting the flag. min_ft() and wall_follow() belong in while(1)." },
       ],
-      takeaway: "This is the skeleton of the robot's navigation code: poll, parse, reduce the scan to a few distances, run the state machine, report. HW4 asks you to design the states; now you know where they run.",
+      watch: ["numScans", "right_wall_follow_state", "LADARfront", "LADARrightfront", "turn", "read_ladar_state"],
+      hints: [
+        "Set-up is the list of \"Ask every 100 ms\" plus init_serialSCIA for the terminal. The loop is `if (newScan == 1) { newScan = 0; ... }` with the five steps of the brief inside.",
+        "The print: `serial_printf(&SerialA, \"F %.2f R %.2f S %d T %.2f\\r\\n\", LADARfront, LADARrightfront, right_wall_follow_state, turn);`",
+        "If you do not have your parser at hand, the data state is: `if (RXCdata == 0x0a) { LF_count += 1; } else { LF_count = 0; if (get_dis_first == 1) { tempscid = (RXCdata - 0x30) << 6; get_dis_first = 0; } else { distance = tempscid + (RXCdata - 0x30); /* store, as in the brief */ dis_index += 1; get_dis_first = 1; } } if (LF_count == 2) { read_ladar_state = 0; scan_done(); }`. The wall follower is spelled out in the brief of its level.",
+      ],
+      takeaway: "This is the skeleton of the robot's navigation code: poll, parse, reduce the scan to a few distances, decide, hand vref and turn to the wheel controller. The homeworks ask you to design more states; now you know where they run.",
     },
 
     // ------------------------------------------------------------ practice
+    {
+      id: "sens-ir",
+      kind: "calc",
+      tier: "practice",
+      title: "What an IR sensor can and cannot do",
+      goal: "Put numbers on the limits of an infrared sensor that measures the strength of the reflection.",
+      refs: [{ course: "L14" }],
+      brief: `
+A simple IR distance sensor sends out infrared light and measures how much comes back. Light that spreads out covers four times the area at twice the distance, so each part of it is four times weaker. That is the **inverse square law** of lecture 14:
+
+\`\`\`c
+signal = k * reflectivity / (d * d);
+\`\`\`
+
+\`reflectivity\` says how much of the light the surface sends back (white paint a lot, black cloth little), and \`k\` collects everything that stays the same. The sensor only sees \`signal\`. It turns it into a distance by assuming one fixed reflectivity.
+
+Two consequences follow, and the fields below put numbers on them: the signal fades fast, which limits the range to about 80 cm, and a darker surface looks further away than it is.
+
+The last field is the reason for the LIDAR. An IR sensor looks in one direction with a narrow cone, so covering a wide view takes many of them.
+`,
+      fields: [
+        { id: "far", label: "Signal at 40 cm, as a percentage of the signal at 10 cm (same surface)", unit: "%", answer: 6.25, tolPct: 1, why: "4 times the distance: 1 / (4 * 4) = 1/16 = 6.25 %." },
+        { id: "ratio", label: "The object moves from 20 cm to 80 cm. The signal becomes this many times weaker", answer: 16, why: "(80 / 20) squared = 16." },
+        { id: "dark", label: "A dark box reflects a quarter of what the calibration surface does. It stands at 30 cm. Distance the sensor reports", unit: "cm", answer: 60, tolPct: 1, why: "A quarter of the signal looks like twice the distance, because the signal goes with 1 / d squared: 30 * sqrt(4) = 60 cm." },
+        { id: "count", label: "Sensors with a 15 degree cone needed to cover the LIDAR's 240 degrees without gaps", answer: 16, why: "240 / 15 = 16 sensors, each with its own wiring, calibration and stray light from its neighbours. One spinning laser does the same job." },
+      ],
+      hints: [
+        "Only ratios matter: k drops out when you divide one signal by another.",
+        "For the dark box, write the signal it really gives, then ask which distance gives the same signal with the calibration reflectivity.",
+        "signal ratio = (d1 / d2) squared. Reported distance = true distance * sqrt(calibration reflectivity / real reflectivity).",
+      ],
+      takeaway: "Strength of reflection is a cheap but rough measure of distance. The robot's own IR sensors (on the CAN bus, chapter 14) and its LIDAR time the light instead, which hardly depends on the surface.",
+    },
+    {
+      id: "sens-tof",
+      kind: "calc",
+      tier: "practice",
+      title: "How fast is light",
+      goal: "Work out the times a laser range finder has to measure, and compare them with the CPU clock.",
+      refs: [{ course: "L14" }, { trm: "3.7" }],
+      brief: `
+Time of flight: the sensor sends a pulse and times the echo.
+
+\`\`\`c
+d = c * t / 2;
+\`\`\`
+
+Use c = 3.0e8 m/s. One nanosecond (ns) is 1e-9 s, one picosecond (ps) is 1e-12 s.
+
+The figure draws the round trip and the CPU clock to the same scale. Work the numbers out first, then check them with the slider.
+
+{{figure:time-of-flight}}
+
+The CPU of the F28379D runs at 200 MHz. Imagine you tried to time the echo yourself by counting CPU clock periods. The last two questions show why nobody does that: the sensor has its own timing circuit and only sends you the finished distance. (The URG-04LX does not even time single pulses: it compares the phase of a modulated beam going out and coming back. The distance still follows from the travel time.)
+`,
+      fields: [
+        { id: "t3m", label: "Round-trip time for a wall 3 m away", unit: "ns", answer: 20, tolPct: 1, why: "t = 2 d / c = 6 m / 3.0e8 m/s = 20 ns." },
+        { id: "d10", label: "The echo returns after 10 ns. Distance to the object", unit: "m", answer: 1.5, tolPct: 1, why: "d = c t / 2 = 3.0e8 * 10e-9 / 2 = 1.5 m." },
+        { id: "sysclk", label: "Period of the 200 MHz CPU clock", unit: "ns", answer: 5, why: "1 / 200e6 Hz = 5 ns." },
+        { id: "res", label: "Distance that corresponds to one clock period of round-trip time", unit: "m", answer: 0.75, tolPct: 1, why: "d = c * 5 ns / 2 = 0.75 m. Counting CPU clocks could only tell 0.75 m steps apart." },
+        { id: "ps", label: "Round-trip time difference for 1 mm of distance", unit: "ps", answer: 6.67, tolPct: 1, why: "t = 2 * 0.001 m / 3.0e8 m/s = 6.67e-12 s. Millimetre accuracy needs picosecond timing." },
+      ],
+      hints: [
+        "The light goes there and back: the round trip is twice the distance.",
+        "For the fourth field, put the clock period into d = c t / 2.",
+        "t = 2 * 3 / 3.0e8 s. d = 3.0e8 * 10e-9 / 2 m. One period is 1 / 200e6 s. Then d = 3.0e8 * 5e-9 / 2 m, and t = 2 * 0.001 / 3.0e8 s.",
+      ],
+      takeaway: "A 5 ns clock is far too coarse to time one laser pulse. The sensor does the timing in its own hardware and sends you a number.",
+    },
+    {
+      id: "sens-decode",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Decode a line",
+      goal: "Write decode() for one reading and decode_line() for a whole line of readings.",
+      refs: [{ course: "L16" }],
+      brief: `
+Now do in C what you just did by hand.
+
+The figure shows the same steps with the C expression next to them.
+
+{{figure:lidar-encoding}}
+
+## \`int decode(char hi, char lo)\`
+Returns the distance in millimetres for the two characters of one reading: subtract 0x30 from each, shift the first one up by 6 bits, add the second.
+
+## \`int decode_line(char *text, int *out)\`
+The sensor sends the readings in lines of 64 characters, which is 32 readings. \`decode_line\` walks through the text two characters at a time, stores each distance in \`out[0]\`, \`out[1]\`, ... and returns how many readings it found. It stops at the \`0\` that ends a C string, or at a line feed (\`'\\n'\`).
+
+The program calls your functions on two pieces of a real reply: a full line of 64 characters, and the short last line of a scan: 8 characters, followed by the two line feeds that end the reply.
+`,
+      kit: "robot",
+      durationMs: 2,
+      starter: decodeProgram(`    return 0;`, `    return 0;`),
+      solution: decodeProgram(
+        `    return ((hi - 0x30) << 6) + (lo - 0x30);`,
+        `    int n = 0;
+    while (text[2*n] != 0 && text[2*n] != '\\n') {
+        out[n] = decode(text[2*n], text[2*n + 1]);
+        n++;
+    }
+    return n;`,
+      ),
+      checks: [
+        { kind: "var", name: "single_mm", equals: 1907, label: "decode('M', 'c') is 1907", hint: "(0x4D - 0x30) * 64 + (0x63 - 0x30). The first character is the upper half." },
+        { kind: "var", name: "count", equals: 32, label: "The full line holds 32 readings", hint: "Two characters per reading: advance by 2 each time, and stop at the 0 that ends the string." },
+        { kind: "var", name: "first_mm", equals: DEC_MM[0], label: `The first reading of the line is ${DEC_MM[0]} mm` },
+        { kind: "var", name: "last_mm", equals: DEC_MM[31], label: `The last reading of the line is ${DEC_MM[31]} mm` },
+        { kind: "var", name: "sum_mm", equals: DEC_MM.reduce((a, v) => a + v, 0), label: "Every reading in between is right too (their sum matches)" },
+        { kind: "var", name: "tail_count", equals: 4, label: "The short line holds 4 readings", hint: "Do not assume 32 readings, and do not decode a line feed: stop at '\\n' as well as at 0." },
+        { kind: "var", name: "tail_mm", equals: DEC_SCAN[227], label: `The last reading of the scan is ${DEC_SCAN[227]} mm` },
+      ],
+      watch: ["single_mm", "count", "first_mm", "last_mm", "tail_count"],
+      hints: [
+        "A char is a small number. `hi - 0x30` is a value from 0 to 63.",
+        "Reading n uses text[2*n] and text[2*n + 1]. Loop while text[2*n] is neither 0 nor '\\n'.",
+        "`return ((hi - 0x30) << 6) + (lo - 0x30);` and `while (text[2*n] != 0 && text[2*n] != '\\n') { out[n] = decode(text[2*n], text[2*n + 1]); n++; }`",
+      ],
+      takeaway: "Two characters per point, 32 points per line. The whole scan of 228 points is seven full lines and one short one.",
+    },
+    {
+      id: "sens-parser-debug",
+      kind: "code",
+      mode: "debug",
+      tier: "practice",
+      title: "Right on the right, wrong in front",
+      goal: "Find out why only the first 32 points of the scan are correct, and fix the parser.",
+      refs: [{ course: "L16" }],
+      brief: `
+A teammate rewrote the data state of the parser "to make it shorter". Now the robot reports nonsense:
+
+- \`right_mm\` (point 28) is correct
+- \`front_mm\` (point 113) and \`left_mm\` (point 199) are wrong
+- \`points\` is **232**, although a scan has 228 points
+
+Run it and look at the watch list. Then think about where point 28, point 113 and point 199 are in the reply: the data comes in lines of 64 characters, 32 points per line. What is different about the points after the first line?
+
+Fix the bug in state 2 of \`RXCINT_recv_ready\`. Change as little as you can.
+`,
+      kit: "robot",
+      durationMs: 260,
+      stimuli: [...poseStimuli(150, { x: 7, y: 3, theta: 0.5 })],
+      starter: parserProgram(BUGGY_STATE2),
+      solution: parserProgram(state2(STORE_MM, DONE)),
+      checks: parserChecks(PARSE_A, PARSE_B),
+      watch: ["read_ladar_state", "dis_index", "scans", "points", "front_mm", "right_mm", "left_mm"],
+      hints: [
+        "Points 0 to 31 are in the first line. Everything after the first line feed is wrong. What does the code do with a line feed?",
+        "232 - 228 = 4 extra points = 8 extra characters: the reply has exactly 8 line feeds inside the data. They are being decoded as if they were data.",
+        "The decoding must only run for characters that are not line feeds: move the whole `if (get_dis_first == 1) { ... } else { ... }` inside the `else` that sets `LF_count = 0`.",
+      ],
+      takeaway: "A line feed is framing, not data. One character decoded by mistake shifts every pair after it, so the error shows up far from its cause. Checking the count of points catches it at once.",
+    },
+    {
+      id: "sens-flow",
+      kind: "order",
+      tier: "practice",
+      title: "From a laser pulse to the wheels",
+      goal: "Put the steps of one 100 ms cycle of the wall-following robot in order.",
+      refs: [{ course: "L14" }, { course: "L16" }],
+      brief: `
+The robot runs two loops at two speeds.
+
+- The **inner loop** runs in a hardware interrupt every 1 ms. It reads the wheel encoders, runs the wheel speed controller and updates the robot's position. It needs a speed and a turn rate to aim for.
+- The **outer loop** runs when a new scan is complete, every 100 ms. It looks at the distances and decides the speed and turn rate. The course runs it in a **software interrupt** (chapter 5), which the receive function posts when the reply is complete. Long work stays out of the receive interrupt that way.
+
+Order the steps of one cycle, starting with the timer that asks for a scan.
+`,
+      steps: [
+        "CPU timer 1 reaches zero and its interrupt function sends G04472503 and a line feed on SCIC",
+        "The LIDAR starts its reply: the echo of the command, then the status character",
+        "For every character that arrives, the SCIC receive interrupt runs: data characters are paired and decoded into the distance array",
+        "Two line feeds in a row arrive: the scan is complete and the receive function posts a software interrupt",
+        "The software interrupt works out the front and right distances from the new scan",
+        "The state machine uses those distances to choose the state, the speed and the turn rate",
+        "The 1 ms control loop drives the wheels toward that speed and turn rate until the next scan arrives",
+      ],
+      hints: [
+        "Nothing arrives until the sensor has been asked.",
+        "The distances are only complete after the two line feeds. The decision comes after that.",
+        "Timer 1, reply starts, characters decoded, two line feeds, distances, state machine, wheels.",
+      ],
+      takeaway: "Fast and exact work in the 1 ms interrupt, the decision once per scan in a software interrupt. The decision can only change ten times per second, because that is how often there is new information.",
+    },
+    {
+      id: "sens-nearest",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "What is closest, and where",
+      goal: "Find the nearest obstacle in a scan and its direction, and the distance in front and to the right.",
+      refs: [{ course: "L14" }, { course: "L16" }, { course: "HW4" }],
+      brief: `
+A scan is 228 numbers. Behaviour needs a few meaningful ones. Here the decoded scan is handed to you directly, so you can concentrate on using it: \`dist[i]\` is the distance of point \`i\` in **feet**, as in the course code. A point without an echo holds 18.7 ft (the course's "maximum reading"), so it is never the nearest.
+
+## \`float point_deg(int i)\`
+The angle of point \`i\` in degrees, with the course's formula:
+
+\`\`\`c
+(3*i + 44)*0.3515625 - 135
+\`\`\`
+
+## \`void process_scan(void)\`
+Called once per scan. Set:
+
+- \`nearest_index\`: the index of the smallest distance in the whole scan (the tests use scans where only one point has it)
+- \`nearest_ft\`: that distance
+- \`nearest_deg\`: its direction, from \`point_deg\`
+- \`front_ft\`: the smallest of points **111 to 115** (straight ahead)
+- \`right_ft\`: the smallest of points **26 to 30** (around -90 degrees)
+
+Taking the smallest of five neighbours, as the course code does, makes the reading less sensitive to one bad point.
+
+The robot is in a 10 ft square room with a box in it. The tests look at two poses.
+`,
+      kit: "robot",
+      durationMs: 260,
+      stimuli: [...poseStimuli(0, NEAR_POSES[0]), ...poseStimuli(150, NEAR_POSES[1])],
+      starter: nearestProgram(`    return 0;`, `    // TODO`),
+      solution: nearestProgram(
+        `    return (3*i + 44)*0.3515625 - 135.0;`,
+        `    int i;
+    nearest_index = 0;
+    for (i = 1; i < 228; i++) {
+        if (dist[i] < dist[nearest_index]) {
+            nearest_index = i;
+        }
+    }
+    nearest_ft = dist[nearest_index];
+    nearest_deg = point_deg(nearest_index);
+
+    front_ft = 19.0;
+    for (i = 111; i <= 115; i++) {
+        if (dist[i] < front_ft) {
+            front_ft = dist[i];
+        }
+    }
+    right_ft = 19.0;
+    for (i = 26; i <= 30; i++) {
+        if (dist[i] < right_ft) {
+            right_ft = dist[i];
+        }
+    }`,
+      ),
+      checks: [
+        { kind: "var", name: "nearest_index", at: 160, equals: NEAR[0].index, label: `First pose: the nearest point is number ${NEAR[0].index} (a corner of the box)`, hint: "Search all 228 points, 0 to 227." },
+        near("nearest_ft", NEAR[0].ft, 0.005, 160, `First pose: it is ${NEAR[0].ft.toFixed(2)} ft away`),
+        near("nearest_deg", NEAR[0].deg, 0.05, 160, `First pose: it is ${NEAR[0].deg.toFixed(1)} degrees to the left`, "Angle of point i: (3*i + 44)*0.3515625 - 135."),
+        near("front_ft", NEAR[0].front, 0.005, 160, `First pose: ${NEAR[0].front.toFixed(2)} ft straight ahead`, "The smallest of dist[111] to dist[115]."),
+        near("right_ft", NEAR[0].right, 0.005, 160, `First pose: ${NEAR[0].right.toFixed(2)} ft to the right`, "The smallest of dist[26] to dist[30]."),
+        { kind: "var", name: "nearest_index", equals: NEAR[1].index, label: `Second pose: the nearest point is number ${NEAR[1].index}` },
+        near("nearest_deg", NEAR[1].deg, 0.05, undefined, `Second pose: it is at ${NEAR[1].deg.toFixed(1)} degrees`),
+        near("front_ft", NEAR[1].front, 0.005, undefined, `Second pose: ${NEAR[1].front.toFixed(2)} ft straight ahead`),
+        near("right_ft", NEAR[1].right, 0.005, undefined, `Second pose: ${NEAR[1].right.toFixed(2)} ft to the right`),
+      ],
+      bonus: [
+        { kind: "isr-time", fn: "cpu_timer1_isr", maxUs: 60, label: "A scan is handled in under 60 us (copying it takes about 35 of them)", hint: "Search the 228 points once, compute the angle once after the loop, and loop over only five points for the front and the right." },
+      ],
+      watch: ["nearest_index", "nearest_ft", "nearest_deg", "front_ft", "right_ft"],
+      hints: [
+        "Finding a minimum: start with a first guess, then replace it whenever a smaller value turns up.",
+        "Remember the index of the smallest value, not only the value: you need it for the angle.",
+        "`for (i = 1; i < 228; i++) { if (dist[i] < dist[nearest_index]) { nearest_index = i; } }`, then `nearest_ft = dist[nearest_index]; nearest_deg = point_deg(nearest_index);`. The same loop over 111..115 and 26..30 gives front_ft and right_ft.",
+      ],
+      takeaway: "Two numbers, front and right, are enough to follow a wall. The course's starter looks a little further forward on the right (points 52 to 56, about -63 degrees) so that the robot sees a corner coming.",
+    },
+    {
+      id: "sens-follow",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "A three-state wall follower",
+      goal: "Write the wall follower's state machine as a switch and show the state on three LEDs.",
+      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      brief: `
+Write the three-state machine of "States and transitions" in C. The usual form is a \`switch\` on the state variable, with one \`case\` per state. Inside each case, test that state's transitions and assign the new state.
+
+\`\`\`c
+switch (state) {
+case STRAIGHT:
+    if (front_ft < FRONT_BLOCKED) {
+        state = TURN_LEFT;
+    } else if (...) {
+        ...
+    }
+    break;
+case TURN_LEFT:
+    ...
+    break;
+}
+\`\`\`
+
+Do not forget the \`break;\` at the end of each case: without it the code runs on into the next case.
+
+## The transitions
+- **STRAIGHT**: \`front_ft < FRONT_BLOCKED\` goes to TURN_LEFT; otherwise \`right_ft < WALL_NEAR\` goes to FOLLOW
+- **TURN_LEFT**: \`front_ft > FRONT_CLEAR\` goes to FOLLOW
+- **FOLLOW**: \`front_ft < FRONT_BLOCKED\` goes to TURN_LEFT; otherwise \`right_ft > WALL_LOST\` goes to STRAIGHT
+
+The four thresholds are defined at the top of the file. Inside a case, the order of the tests matters: a blocked front always wins.
+
+## The action
+This robot has no motors yet, so each state only lights an LED. After the switch, in \`wall_follow()\`:
+
+- **LED1** (GPIO22, port A) is on in STRAIGHT
+- **LED2** (GPIO94, port C) is on in TURN_LEFT
+- **LED3** (GPIO95, port C) is on in FOLLOW
+
+Exactly one LED is on at any time.
+
+\`wall_follow()\` is called once per scan, after \`front_ft\` and \`right_ft\` have been updated. The tests move the robot through a 10 ft square room, one pose per scan: open floor, along a wall, up to a wall, through a left turn, away again and into a corner.
+`,
+      kit: "robot",
+      durationMs: 960,
+      stimuli: FOLLOW_SCRIPT.flatMap((s, i) => poseStimuli(50 + 100 * i, s.pose)),
+      starter: followProgram(`    // TODO: the switch, then the LEDs`),
+      solution: followProgram(`${SWITCH}
+
+${SHOW}`),
+      checks: [
+        ...FOLLOW_SCRIPT.map((s, i) => ({
+          kind: "var" as const,
+          name: "state",
+          at: 160 + 100 * i,
+          equals: s.state,
+          label: `Scan ${i + 1}: ${s.why} (state ${s.state})`,
+          hint:
+            i === 3
+              ? "A turn only ends when the front is more than FRONT_CLEAR away, not as soon as it is more than FRONT_BLOCKED."
+              : i === 6
+                ? "In STRAIGHT, test the front first."
+                : i === 8
+                  ? "In FOLLOW, test the front first."
+                  : undefined,
+        })),
+        ...FOLLOW_SCRIPT.slice(0, 5).map((s, i) => ({ kind: "led" as const, led: LED_OF[s.state], at: 160 + 100 * i, on: true, label: `Scan ${i + 1}: ${LED_OF[s.state]} is on` })),
+        { kind: "led", led: "LED1", at: 360, on: false, label: "LED1 is off while turning left" },
+        { kind: "led", led: "LED3", at: 360, on: false, label: "LED3 is off while turning left", hint: "Switch the other two LEDs off when the state changes." },
+        { kind: "source", mustMatch: "switch\\s*\\(\\s*state\\s*\\)", label: "The state machine is a switch on state" },
+        { kind: "no-dat-write", label: "The LEDs are changed through SET and CLEAR" },
+      ],
+      watch: ["state", "front_ft", "right_ft", "numScans"],
+      hints: [
+        "One case per state, each ending in break. Only assign to state inside the case of the state you are leaving.",
+        "TURN_LEFT has a single way out: `if (front_ft > FRONT_CLEAR) { state = FOLLOW; }`.",
+        "For the LEDs: `if (state == STRAIGHT) { GpioDataRegs.GPASET.bit.GPIO22 = 1; } else { GpioDataRegs.GPACLEAR.bit.GPIO22 = 1; }` and the same for GPIO94 (TURN_LEFT) and GPIO95 (FOLLOW) with GPCSET and GPCCLEAR.",
+      ],
+      takeaway: "A switch with one case per state keeps the transitions of each state in one place. Adding a state later means adding a case, not untangling nested ifs.",
+    },
     {
       id: "sens-errcodes",
       kind: "code",
@@ -2030,6 +2279,9 @@ uint16_t line_chars = 0;        // data characters in the current line`,
         { kind: "var", name: "good_scans", min: 4, max: 5, label: "4 or 5 of the 7 scans were accepted", hint: "Fewer than 4: the parser does not recover after a damaged reply. More than 5: a damaged reply was accepted. A huge number: the parser wrote past the end of ladar_mm[] and overwrote this counter." },
         { kind: "var", name: "bad_scans", min: 1, max: 3, label: "At least one damaged reply was recognised and counted" },
         { kind: "signal", name: "LIDAR_SCANS", equals: 7, label: "The LIDAR was asked seven times" },
+      ],
+      bonus: [
+        { kind: "var", name: "good_scans", min: 5, max: 5, label: "5 scans accepted: the reply that only lost its last line feed is saved, because all of its points arrived", hint: "Finish a scan at the line feed that follows point 228. Do not wait for a second one." },
       ],
       watch: ["good_scans", "bad_scans", "front_mm", "left_mm", "right_mm", "read_ladar_state", "dis_index"],
       hints: [
