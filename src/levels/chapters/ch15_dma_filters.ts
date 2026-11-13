@@ -554,7 +554,7 @@ export const ch15: Chapter = {
   number: 15,
   title: "DMA and filters",
   blurb: "Ping-pong buffers, Nyquist and FIR.",
-  requires: ["adc"],
+  requires: ["interrupts"],
   course: ["L8-9", "Lab 4", "HW3"],
   levels: [
     {
@@ -564,42 +564,33 @@ export const ch15: Chapter = {
       goal: "Learn how 1024 samples reach a buffer without the CPU touching one of them, and what a filter does with them.",
       refs: [{ course: "L8-9" }, { trm: "5.1" }, { trm: "5.2" }, { trm: "5.4" }],
       brief: `
-A microphone signal has to be sampled about 10 000 times a second. You know one way: an interrupt function runs for every sample and stores it. At 10 kHz that is 10 000 interrupts a second, each with its entry, its exit and its acknowledge, just to copy one number. The CPU has better things to do.
+A microphone signal has to be sampled about 10 000 times a second. You know one way: an interrupt function runs for every sample and stores it. That is 10 000 interrupts a second, each with its entry, its exit and its acknowledge, just to copy one number.
 
 ## The DMA
-**DMA** means direct memory access. The DMA is a peripheral that copies data from one address to another when a trigger arrives, with no CPU instruction involved.
-
-- It has **6 channels**. Each has its own source, destination, trigger and interrupt.
-- It moves **16-bit or 32-bit** words.
-- It does nothing by itself: every copy needs a **trigger** from a peripheral (or from software).
+**DMA** means direct memory access. The DMA is a peripheral that copies a word from one address to another when a **trigger** arrives, with no CPU instruction involved. It has 6 channels, each with its own source, destination, trigger and interrupt. It does nothing by itself: every copy needs a trigger from a peripheral.
 
 ## The sampling chain
 Lecture 8 builds this chain:
 
 1. An **ePWM** module is used as a precise timer. Every 0.1 ms it sends a start-of-conversion pulse.
-2. The **ADC** converts the pin voltage and stores the result in \`ADCRESULT0\`. It then raises its interrupt signal.
-3. That signal is the **DMA** channel's trigger. The DMA copies \`ADCRESULT0\` into the next free place of a buffer.
+2. The **ADC** (analog-to-digital converter) turns the pin voltage into a number, stores it in its result register \`ADCRESULT0\` and raises its interrupt signal.
+3. That signal triggers the **DMA** channel, which copies \`ADCRESULT0\` into the next free place of a buffer.
 
-After 1024 samples the buffer is full. Only then is the CPU interrupted: once every 1024 x 0.1 ms = **102.4 ms** instead of 10 000 times a second.
+After 1024 samples the buffer is full. Only then is the CPU interrupted: once every 1024 x 0.1 ms = **102.4 ms**.
 
 ## Ping and pong
-The samples keep coming while the CPU works on a full buffer. So there are two buffers, called **ping** and **pong**. The DMA fills one while main processes the other, and then they swap. main must only ever read the buffer the DMA is **not** writing.
+The samples keep coming while the CPU works on a full buffer. So there are two buffers, **ping** and **pong**. The DMA fills one while main processes the other, and then they swap.
 
 ## What main does with a buffer
-- A **Fourier transform** (the course uses TI's FFT library on 1024 points) shows which frequencies are in the signal.
-- A **filter** changes the signal sample by sample. The simplest one is the moving average: the output is the mean of the last 5 samples.
-
-\`\`\`c
-y[n] = (x[n] + x[n-1] + x[n-2] + x[n-3] + x[n-4]) / 5
-\`\`\`
-Give every sample its own weight and you have the general **FIR** filter (finite impulse response): \`y[n] = b0 x[n] + b1 x[n-1] + ... + bM x[n-M]\`. The weights \`b\` are the **coefficients**, and M is the **order**. An order M filter has M + 1 coefficients and needs the last M samples stored.
+- A **Fourier transform** (the course uses TI's FFT library on 1024 samples) shows which frequencies are in the signal.
+- A **filter** changes the signal sample by sample. The simplest is the moving average: the output is the mean of the last few samples.
 
 ## One rule about sampling
-A sampled signal can only show frequencies up to **half the sampling rate**. That limit is the **Nyquist frequency**. A tone above it does not vanish: it shows up as a lower frequency that was never there. This is **aliasing**, and no filter in your code can remove it afterwards.
+A sampled signal can only show frequencies up to **half the sampling rate**, the **Nyquist frequency**. A tone above it does not vanish: it shows up as a lower frequency that was never there. This is **aliasing**, and no filter in your code can remove it afterwards.
 
 {{figure:sampling-alias}}
 
-Try it in the figure: drag the signal frequency up across the Nyquist line and watch a slow wave appear through the same dots.
+Drag the signal frequency up across the Nyquist line and watch a slow wave appear through the same dots.
 `,
       questions: [
         {
@@ -615,47 +606,13 @@ Try it in the figure: drag the signal frequency up across the Nyquist line and w
           why: "The DMA is event based. It has no timer of its own: here the ePWM sets the pace, the ADC converts, and the ADC's signal triggers the copy.",
         },
         {
-          prompt: "A filter of order 21 is written as `y[n] = b0 x[n] + ... + b21 x[n-21]`. How many coefficients does it have?",
-          options: ["20", "21", "22", "42"],
-          answer: 2,
-          why: "The coefficients are b0 to b21, which is 22 numbers. An order M filter has M + 1 coefficients. MATLAB's `fir1(21, 0.2)` returns 22 values.",
+          prompt: "A signal is sampled 10 000 times a second. Which of these tones do the samples show at the wrong frequency?",
+          options: ["440 Hz", "2500 Hz", "4900 Hz", "7000 Hz"],
+          answer: 3,
+          why: "The Nyquist frequency is half of 10 000 Hz: 5000 Hz. Only 7000 Hz is above it, so it appears as a lower tone that is not really there.",
         },
       ],
       takeaway: "ePWM sets the time, the ADC converts, the DMA copies. The CPU only sees full buffers, and it works on one buffer while the other fills.",
-    },
-    {
-      id: "dmaf-chain",
-      kind: "order",
-      title: "From the timer to your buffer",
-      goal: "Put the steps of the sampling chain in order, from the ePWM pulse to main processing a full buffer.",
-      refs: [{ course: "L8-9" }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "11.9" }],
-      brief: `
-The course's FFT starter project samples a microphone on ADCB with this setup:
-
-- **EPWM7** sends a start-of-conversion pulse (SOCA) every 0.1 ms.
-- **ADCB** converts on that pulse. When the result is in \`AdcbResultRegs.ADCRESULT0\` it raises **ADCBINT1**.
-- **DMA channel 1** uses ADCBINT1 as its trigger. One trigger copies one word.
-- A **transfer** is 1024 copies. The DMA keeps its place in the buffer in an *active* address register. Your code can only write the *shadow* address register. The DMA copies shadow to active **at the start of each transfer**, and only then.
-- The channel is set to interrupt the CPU **at the start of each transfer** (interrupt INT7.1, function \`DMA_ISR\`).
-
-Order the steps for one buffer. Follow the data: timer, converter, copy. The CPU appears only at the very end.
-`,
-      steps: [
-        "EPWM7's counter reaches its period and sends a start-of-conversion pulse",
-        "ADCB samples the pin and converts the voltage to a 12-bit number",
-        "The result is stored in ADCRESULT0 and ADCB raises ADCBINT1",
-        "DMA channel 1 is triggered and copies ADCRESULT0 to the next free place in the buffer",
-        "The 1024th copy completes the transfer",
-        "On the next trigger a new transfer starts: the DMA loads its active destination address from the shadow register",
-        "The DMA raises INT7.1 and the CPU runs DMA_ISR, which writes the other buffer's address to the shadow register and sets a flag",
-        "main sees the flag and processes the buffer that was just completed",
-      ],
-      hints: [
-        "Three peripherals pass the work along before the CPU does anything: ePWM, then ADC, then DMA.",
-        "The first four steps happen for every sample. The last four happen once per buffer.",
-        "Pulse, conversion, ADCBINT1, copy, 1024th copy, shadow loaded into active, DMA_ISR, main.",
-      ],
-      takeaway: "For 1023 samples out of 1024 the CPU is not involved at all. The shadow address your interrupt function writes is used from the next transfer on, never in the middle of one.",
     },
     {
       id: "dmaf-pingpong",
@@ -664,13 +621,13 @@ Order the steps for one buffer. Follow the data: timer, converter, copy. The CPU
       goal: "Decide which buffer main may read, and when a new address takes effect.",
       refs: [{ course: "L8-9" }, { trm: "5.4" }],
       brief: `
-Two buffers of 1024 samples, \`ping\` and \`pong\`. The DMA fills one. main reads the other.
+Two buffers of 1024 samples, \`ping\` and \`pong\`. The DMA fills one. main reads the other. Filling one buffer is one **transfer**: 1024 copies.
 
 The DMA interrupt of the course setup comes **at the start of a transfer**: the DMA has just loaded its destination address and stored the first sample. At that moment:
 
 - the buffer that is now being filled must be left alone for the next 102.4 ms,
 - the **other** buffer was completed one sample ago. It is the one main may process,
-- the interrupt function writes the address for the transfer **after** this one into \`DmaRegs.CH1.DST_ADDR_SHADOW\`. The DMA reads the shadow register only when a transfer starts.
+- the interrupt function writes the address for the transfer **after** this one into \`DmaRegs.CH1.DST_ADDR_SHADOW\`. Your code cannot change the address the DMA is working with. It writes this **shadow** register, a waiting copy, which the DMA takes over only when a transfer starts.
 
 \`\`\`c
 if (iPingPong == 0) {
@@ -729,42 +686,135 @@ Step through the figure, one sample per press, with buffers of 8 samples instead
       takeaway: "Read only the buffer the DMA is not writing, and finish before the DMA comes back to it.",
     },
     {
-      id: "dmaf-numbers",
-      kind: "calc",
-      title: "Buffers, Nyquist and aliases",
-      goal: "Work out the numbers behind a sampled signal and a simple filter.",
-      refs: [{ course: "L8-9" }, { course: "HW3" }, { trm: "5.4" }],
+      id: "dmaf-dma",
+      kind: "code",
+      mode: "complete",
+      title: "Let the DMA do the copying",
+      goal: "Finish the course's DMA channel 1 setup and swap the two buffers in the DMA interrupt function.",
+      refs: [{ course: "L8-9" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.3" }, { trm: "3.4.5" }],
       brief: `
-**Buffer time.** A buffer of N samples taken every T seconds covers N x T seconds.
+Now the copying is done by the DMA. The interrupt function no longer runs for every sample, only once per buffer.
 
-**Nyquist.** With a sampling rate fs, the highest frequency the samples can show is fs / 2. Turned around: sample at least twice as fast as the highest frequency in the signal.
+## What stands in for the ADC
+The robot's chain is EPWM7, ADCB, DMA. Here the game's **test bench** replaces the first two. Everything starting with \`tb_\` belongs to it and stands in for hardware you are not practising right now:
 
-**Aliasing.** A tone at f between fs / 2 and fs gives the same samples as a tone at **fs - f** would (for a sine, turned upside down). Example: fs = 1000 Hz and a 900 Hz tone. The samples look like a 100 Hz tone.
+- \`tb_stream(&adcResult);\` makes the test bench put a fresh 12-bit reading into the variable \`adcResult\` every 0.1 ms. \`adcResult\` plays the part of \`AdcbResultRegs.ADCRESULT0\`.
+- CPU timer 0 gives the trigger every 0.1 ms. In the DMA's source table it is number 68 (TINT0). The course selects 6 (ADCBINT1).
 
-{{figure:sampling-alias}}
+Everything else is the course's \`InitDma()\` from the FFT starter project.
 
-The figure starts on that example. Move both sliders and check the rule fs - f against what the dots show.
+## What to write
+In \`InitDma()\`:
 
-**Coefficients.** An FIR filter of order M has M + 1 coefficients.
+- \`DmaRegs.CH1.TRANSFER_SIZE\`: a transfer is N samples. Size registers hold **one less** than the count.
+- \`DmaRegs.CH1.DST_TRANSFER_STEP\`: how far the destination address moves after each sample. The source step is 0 because the source is always the same register. The destination must walk through the buffer.
 
-**Gain at DC.** Feed a filter a constant input. The output settles at the input times the **sum of the coefficients**. That factor is the gain at 0 Hz, called DC.
+In \`DMA_ISR()\`: the two lines that write the address of the **other** buffer to \`DmaRegs.CH1.DST_ADDR_SHADOW\`. DMA registers are protected, so each write goes between \`EALLOW;\` and \`EDIS;\`. The address of an array is its name, cast to the register's type:
 
-**DMA sizes.** The DMA's size registers hold **one less** than the count: a value of 2 means 3.
+\`\`\`c
+EALLOW;
+DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;
+EDIS;
+\`\`\`
+
+## When the interrupt comes
+\`MODE.all = 0x8901\` has CHINTMODE = 0: the interrupt comes at the **start** of each transfer. When the DMA has just started on \`ping\`, the buffer that is complete is \`pong\`, and the address you write is used for the transfer after this one.
+
+The course's starter file raises the flag of the buffer that has just been *started*, so main reads old data with a few new samples at the front. This level follows the reference manual: the flag names the buffer that is complete.
+
+The signal is a slow 50 Hz sine. main computes the mean of each finished buffer in ADC counts: about 2900 for the first two buffers (the positive half of the sine), about 1200 for the next two.
+`,
+      kit: "robot",
+      durationMs: 22,
+      stimuli: signal(SIG_SLOW),
+      starter: dma(
+        `    // TODO 1: DmaRegs.CH1.TRANSFER_SIZE for N one-word bursts per transfer`,
+        `    // TODO 2: DmaRegs.CH1.DST_TRANSFER_STEP so that the destination moves on by one word`,
+        `        // TODO 3: write the address of pong to DmaRegs.CH1.DST_ADDR_SHADOW (EALLOW / EDIS)`,
+        `        // TODO 4: write the address of ping to DmaRegs.CH1.DST_ADDR_SHADOW (EALLOW / EDIS)`,
+      ),
+      solution: dma(
+        `    DmaRegs.CH1.TRANSFER_SIZE = N-1;                    // N bursts per transfer`,
+        `    DmaRegs.CH1.DST_TRANSFER_STEP = 1;                  // add 1 to the pointer after each burst`,
+        `        EALLOW;
+        DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;
+        EDIS;`,
+        `        EALLOW;
+        DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)ping;
+        EDIS;`,
+      ),
+      checks: [
+        { kind: "reg", reg: "DmaRegs.CH1.TRANSFER_SIZE", equals: 49, label: "A transfer is 50 samples (TRANSFER_SIZE = 49)", hint: "The register holds the count minus one: N-1." },
+        { kind: "reg", reg: "DmaRegs.CH1.DST_TRANSFER_STEP", equals: 1, label: "The destination moves on by one word per sample" },
+        { kind: "isr", fn: "DMA_ISR", min: 5, max: 5, label: "DMA_ISR runs once per buffer (5 times in 22 ms)", hint: "Hundreds of calls mean TRANSFER_SIZE is still 0: every sample is its own transfer." },
+        {
+          kind: "var", name: "pingMean", at: 6, ...near(SLOW_HI, 80), label: "After 6 ms: the mean of the first buffer (ping) is about 2900",
+          hint: "With TRANSFER_SIZE and the step right, ping holds samples 0 to 49 when the second transfer starts.",
+        },
+        {
+          kind: "var", name: "pongMean", at: 11, ...near(SLOW_HI, 80), label: "After 11 ms: the mean of the second buffer (pong) is about 2900",
+          hint: "If pongMean stays 0 the DMA never wrote to pong: the shadow address must change in DMA_ISR.",
+        },
+        { kind: "var", name: "pingMean", at: 16, ...near(SLOW_LO, 80), label: "After 16 ms: the mean of the third buffer (ping again) is about 1200" },
+        { kind: "var", name: "pongMean", at: 21, ...near(SLOW_LO, 80), label: "After 21 ms: the mean of the fourth buffer (pong again) is about 1200" },
+        { kind: "no-diagnostic", code: "eallow", label: "Every DMA register write is between EALLOW and EDIS" },
+      ],
+      watch: ["DMAcount", "iPingPong", "pingMean", "pongMean"],
+      inspect: ["DmaRegs.CH1.MODE", "DmaRegs.CH1.CONTROL", "DmaRegs.CH1.TRANSFER_SIZE", "DmaRegs.CH1.TRANSFER_COUNT", "DmaRegs.CH1.DST_ADDR_SHADOW", "DmaRegs.CH1.DST_ADDR_ACTIVE"],
+      hints: [
+        "N samples per transfer means `TRANSFER_SIZE = N-1`. One word further per sample means a step of 1.",
+        "In the branch whose comment says the DMA has just started on ping, the next buffer is pong, so write pong's address. The other branch is the mirror image.",
+        "`DmaRegs.CH1.TRANSFER_SIZE = N-1;` `DmaRegs.CH1.DST_TRANSFER_STEP = 1;` and in each branch `EALLOW; DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;` (or `ping`) `EDIS;`",
+      ],
+      takeaway: "The CPU ran 5 short interrupt functions for 220 samples. On the robot it is one for every 1024. The shadow register lets you choose the next buffer at any time during a transfer without disturbing the one in progress.",
+    },
+    {
+      id: "dmaf-fft",
+      kind: "calc",
+      title: "What the FFT tells you",
+      goal: "Read the output of the course's 1024-point FFT: which bin stands for which frequency.",
+      refs: [{ course: "L8-9" }],
+      brief: `
+A filter works on one sample at a time. The **FFT** (fast Fourier transform) works on a whole buffer and answers a different question: **which frequencies are in these samples, and how strong is each?**
+
+The course's FFT starter project runs these two calls on every full ping or pong buffer:
+
+\`\`\`c
+RFFT_f32(hnd_rfft);        // the transform: 1024 samples in
+RFFT_f32_mag(hnd_rfft);    // strengths out: pwrSpec[0] to pwrSpec[512]
+\`\`\`
+
+Read the output like this, with N samples taken at the rate fs:
+
+- \`pwrSpec[k]\` is the strength of the part of the signal that fits **k whole periods** into the buffer. Each k is called a **bin**.
+- The buffer lasts N / fs seconds, so bin k stands for the frequency **k x fs / N**. The step from one bin to the next, fs / N, is the **resolution**.
+- Bin 0 is the average of the samples (0 Hz, called DC). The last bin, N / 2, is the Nyquist frequency. There is nothing above it to show.
+- A pure tone gives one tall bin, with small neighbours if it does not fit a whole number of periods into the buffer.
+
+To find the loudest tone, the starter looks for the largest \`pwrSpec[k]\` and prints its frequency:
+
+\`\`\`c
+maxpwrindex * 10000.0 / 1024.0     // bin number x fs / N, in Hz
+\`\`\`
+
+It starts the search at bin 5, so that the DC part and slow drift do not win.
+
+In the course fs = 10 000 Hz and N = 1024.
 `,
       fields: [
-        { id: "a", label: "Time to fill a buffer of 1024 samples taken every 0.1 ms", unit: "ms", answer: 102.4, tolPct: 0.1, why: "1024 x 0.1 ms = 102.4 ms. That is also how often the DMA interrupts the CPU." },
-        { id: "b", label: "Nyquist frequency when sampling every 0.1 ms", unit: "Hz", answer: 5000, why: "The sampling rate is 1 / 0.1 ms = 10 000 Hz. Half of it is 5000 Hz." },
-        { id: "c", label: "A 7 kHz tone sampled at 10 kHz appears at", unit: "Hz", answer: 3000, why: "7 kHz is above the Nyquist frequency of 5 kHz. It aliases to fs - f = 10 000 - 7000 = 3000 Hz." },
-        { id: "d", label: "Number of coefficients of an FIR filter of order 21", answer: 22, why: "Order M has M + 1 coefficients, b0 to bM. `fir1(21, 0.2)` returns 22 numbers." },
-        { id: "e", label: "DC gain of the 5-point moving average (each coefficient is 1/5)", answer: 1, why: "5 x 1/5 = 1. A constant input comes out unchanged, which is what you want from an average." },
-        { id: "f", label: "TRANSFER_SIZE for a transfer of 1024 one-word bursts", answer: 1023, why: "The register holds the count minus one. The course writes `DmaRegs.CH1.TRANSFER_SIZE = RFFT_SIZE-1;` with RFFT_SIZE = 1024." },
+        { id: "res", label: "Resolution: the frequency step between two bins", unit: "Hz", answer: 9.766, tolPct: 0.5, why: "fs / N = 10 000 / 1024 = 9.766 Hz. Two tones closer together than this land in the same bin." },
+        { id: "f256", label: "Frequency of bin 256", unit: "Hz", answer: 2500, why: "256 x 10 000 / 1024 = 2500 Hz. Bin 256 is a quarter of the way to bin 1024, and 2500 Hz is a quarter of the sampling rate." },
+        { id: "last", label: "Frequency of the last bin, 512", unit: "Hz", answer: 5000, why: "512 x 10 000 / 1024 = 5000 Hz: the Nyquist frequency." },
+        { id: "bin", label: "Someone whistles at 1000 Hz. Number of the tallest bin", answer: 102, why: "1000 / 9.766 = 102.4, and the nearest whole bin is 102. The tone does not fit a whole number of periods into the buffer, so bin 103 gets a share too." },
+        { id: "shown", label: "Frequency the starter prints for that whistle", unit: "Hz", answer: 996.1, tolPct: 0.2, why: "102 x 10 000 / 1024 = 996.1 Hz. The answer can only be a multiple of the resolution." },
+        { id: "long", label: "Resolution with a buffer of 2048 samples", unit: "Hz", answer: 4.883, tolPct: 0.5, why: "10 000 / 2048 = 4.883 Hz. Twice the samples, twice as fine. The price: the buffer takes 204.8 ms to fill." },
       ],
       hints: [
-        "Convert 0.1 ms to a rate first: 1 / 0.0001 s = 10 000 samples per second.",
-        "For the alias, subtract the tone's frequency from the sampling rate.",
-        "102.4, 5000, 3000, 22, 1, 1023.",
+        "The resolution is the sampling rate divided by the number of samples.",
+        "Bin k is at k x 9.766 Hz. To find the bin of a tone, divide its frequency by 9.766 and round to the nearest whole number.",
+        "9.766, 2500, 5000, 102, 996.1, 4.883.",
       ],
-      takeaway: "fs / 2 is the limit. Anything above it must be removed by an analog filter before the ADC, because after sampling it is indistinguishable from a real low tone.",
+      takeaway: "The FFT turns 1024 samples into 513 strengths, one every 9.77 Hz from 0 to 5 kHz. Finer resolution needs a longer buffer, and a longer wait for the answer.",
     },
     {
       id: "dmaf-avg5",
@@ -781,7 +831,7 @@ yk = (x[n] + x[n-1] + x[n-2] + x[n-3] + x[n-4]) / 5
 \`\`\`
 
 ## Where the samples come from
-\`tb_sample()\` returns the next sample of a test signal. It belongs to this game's **test bench**, not to the chip: everything starting with \`tb_\` stands in for hardware you are not practising right now. On the robot the line would read the ADC result instead. \`tb_output(yk)\` shows your result to the tests.
+\`tb_sample()\` returns the next sample of a test signal. Like everything starting with \`tb_\`, it belongs to this game's test bench, not to the chip. On the robot the line would read the ADC result instead. \`tb_output(yk)\` shows your result to the tests.
 
 ## The history array
 A filter needs the last few samples, so they are kept in an array: \`xk[0]\` is the newest, \`xk[4]\` the oldest. For every new sample:
@@ -797,11 +847,11 @@ Shift from the old end: copy into \`xk[4]\` first. In the other direction you wo
 Try it in the figure: drag the window along the noisy signal. The lower part shows the five stored samples, newest first, exactly as \`xk[0]\` to \`xk[4]\` hold them.
 
 ## The test signal
-A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, one period of the tone is exactly 5 samples, and the mean over one full period of a sine is zero. So a correct average shows a steady **2.0**: the tone is gone.
+A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, one period of the tone is exactly 5 samples, and the mean over one full period of a sine is zero. So a correct average shows a steady **2.0**: the tone is gone. After 7 ms the test lowers the constant to 1.0, and your output must follow.
 `,
       kit: "robot",
       durationMs: 12,
-      stimuli: signal(SIG_AVG),
+      stimuli: [...signal(SIG_AVG), { at: 7, set: "TB_DC", value: 1.0 }],
       starter: avg5(`    // TODO 1: shift the stored samples one place towards xk[4] (start at the old end)
 
     xk[0] = tb_sample();    // the newest sample (on the robot: the ADC result)
@@ -822,7 +872,7 @@ A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, on
         { kind: "var", name: "numSamples", min: 100, label: "A sample is taken every 0.1 ms" },
         { kind: "signal", name: "TB_OUT", at: 3.05, ...near(2.0, 0.005), label: "The output is 2.0 after 3 ms", hint: "If it swings between 1.5 and 2.5 you are passing the samples through. If it is 0, yk is never set." },
         { kind: "signal", name: "TB_OUT", at: 6.33, ...near(2.0, 0.005), label: "The output is still 2.0 after 6 ms", hint: "The sum must contain 5 different samples. Check the direction of your shift loop." },
-        { kind: "signal", name: "TB_OUT", at: 11.9, ...near(2.0, 0.005), label: "The output is still 2.0 at the end" },
+        { kind: "signal", name: "TB_OUT", at: 11.9, ...near(1.0, 0.005), label: "The output follows the signal down to 1.0", hint: "The output must be computed from the samples, not written as a constant." },
       ],
       watch: ["yk", "numSamples"],
       hints: [
@@ -840,7 +890,7 @@ A constant 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling, on
       goal: "Write one step of a general FIR filter: y = b[0] x[n] + b[1] x[n-1] + ... with the coefficients from an array.",
       refs: [{ course: "L8-9" }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
-The moving average weighs all samples equally. A designed filter gives each one its own weight:
+The moving average weighs all samples equally. A designed filter gives each one its own weight. This is the general **FIR** filter (finite impulse response). The weights \`b\` are its **coefficients**, and a filter of **order** M uses the newest sample and the M before it, so it has M + 1 coefficients:
 
 \`\`\`c
 y[n] = b[0] x[n] + b[1] x[n-1] + b[2] x[n-2] + b[3] x[n-3] + b[4] x[n-4]
@@ -884,7 +934,6 @@ The test signal is a 300 Hz tone, a 4 kHz tone and an offset. The tests compare 
         { kind: "var", name: "y40", ...near(fir(B4, SIG_FIR, 39), 0.0005), label: "The 40th output is right", hint: "Each coefficient must meet its own sample: b[i] with xk[i]. Shift before you store the new sample." },
         { kind: "var", name: "numSamples", min: 50, label: "A sample is processed every 0.1 ms" },
       ],
-      bonus: [{ kind: "source", mustMatch: "NUM_B\\s*-\\s*1|<\\s*NUM_B", label: "The loops use NUM_B, so the function works for any filter length" }],
       watch: ["yk", "numSamples"],
       hints: [
         "It is the moving average again, with `b[i] * xk[i]` in the sum and no division at the end.",
@@ -892,6 +941,44 @@ The test signal is a 300 Hz tone, a 4 kHz tone and an offset. The tests compare 
         "`for (i = NUM_B - 1; i > 0; i--) { xk[i] = xk[i-1]; }` then `xk[0] = x;` then `for (i = 0; i < NUM_B; i++) { y = y + b[i] * xk[i]; }` and `return y;`",
       ],
       takeaway: "Every FIR filter is this loop. Low-pass, high-pass or band-pass differ only in the numbers in b. Symmetric coefficients, like these, delay all frequencies by the same time: the filter has linear phase.",
+    },
+    {
+      id: "dmaf-numbers",
+      kind: "calc",
+      title: "Buffers, Nyquist and aliases",
+      goal: "Work out the numbers behind a sampled signal and a simple filter.",
+      refs: [{ course: "L8-9" }, { course: "HW3" }, { trm: "5.4" }],
+      brief: `
+**Buffer time.** A buffer of N samples taken every T seconds covers N x T seconds.
+
+**Nyquist.** With a sampling rate fs, the highest frequency the samples can show is fs / 2. Turned around: sample at least twice as fast as the highest frequency in the signal.
+
+**Aliasing.** A tone at f between fs / 2 and fs gives the same samples as a tone at **fs - f** would (for a sine, turned upside down). Example: fs = 1000 Hz and a 900 Hz tone. The samples look like a 100 Hz tone.
+
+{{figure:sampling-alias}}
+
+The figure starts on that example. Move both sliders and check the rule fs - f against what the dots show.
+
+**Coefficients.** An FIR filter of order M has M + 1 coefficients.
+
+**Gain at DC.** Feed a filter a constant input. The output settles at the input times the **sum of the coefficients**. That factor is the gain at 0 Hz, called DC.
+
+**DMA sizes.** The DMA's size registers hold **one less** than the count: a value of 2 means 3.
+`,
+      fields: [
+        { id: "a", label: "Time to fill a buffer of 1024 samples taken every 0.1 ms", unit: "ms", answer: 102.4, tolPct: 0.1, why: "1024 x 0.1 ms = 102.4 ms. That is also how often the DMA interrupts the CPU." },
+        { id: "b", label: "Nyquist frequency when sampling every 0.1 ms", unit: "Hz", answer: 5000, why: "The sampling rate is 1 / 0.1 ms = 10 000 Hz. Half of it is 5000 Hz." },
+        { id: "c", label: "A 7 kHz tone sampled at 10 kHz appears at", unit: "Hz", answer: 3000, why: "7 kHz is above the Nyquist frequency of 5 kHz. It aliases to fs - f = 10 000 - 7000 = 3000 Hz." },
+        { id: "d", label: "Number of coefficients of an FIR filter of order 21", answer: 22, why: "Order M has M + 1 coefficients, b0 to bM. `fir1(21, 0.2)` returns 22 numbers." },
+        { id: "e", label: "DC gain of the 5-point moving average (each coefficient is 1/5)", answer: 1, why: "5 x 1/5 = 1. A constant input comes out unchanged, which is what you want from an average." },
+        { id: "f", label: "TRANSFER_SIZE for a transfer of 1024 one-word bursts", answer: 1023, why: "The register holds the count minus one. The course writes `DmaRegs.CH1.TRANSFER_SIZE = RFFT_SIZE-1;` with RFFT_SIZE = 1024." },
+      ],
+      hints: [
+        "Convert 0.1 ms to a rate first: 1 / 0.0001 s = 10 000 samples per second.",
+        "For the alias, subtract the tone's frequency from the sampling rate.",
+        "102.4, 5000, 3000, 22, 1, 1023.",
+      ],
+      takeaway: "fs / 2 is the limit. Anything above it must be removed by an analog filter before the ADC, because after sampling it is indistinguishable from a real low tone.",
     },
     {
       id: "dmaf-avg-bugs",
@@ -945,154 +1032,6 @@ The tests also read \`xk[4]\` after the 22nd sample to see whether it really is 
         "`for (i = 4; i > 0; i--) { xk[i] = xk[i-1]; }` and `yk = sum / 5.0;`",
       ],
       takeaway: "Shift from the old end so nothing is overwritten before it has been moved, and make sure a float takes part in every division that should give a fraction.",
-    },
-    {
-      id: "dmaf-race",
-      kind: "code",
-      mode: "debug",
-      title: "Reading the wrong buffer",
-      goal: "main computes the mean of a buffer the interrupt function is still writing. Make it read the finished one.",
-      refs: [{ course: "L8-9" }, { trm: "5.4" }],
-      brief: `
-This program does ping-pong buffering by hand, without the DMA, so that you can see every step.
-
-- The timer interrupt function takes a sample every 0.1 ms and stores it in \`ping\` or \`pong\`. \`fillPing\` says which one.
-- After \`N\` = 50 samples the buffer is full. The function switches to the other buffer and sets the flag \`bufferFull\`.
-- main waits for the flag and computes the **mean** of the buffer that has just been completed.
-
-The signal is a slow 50 Hz sine. One buffer is 5 ms, a quarter of its period, so the buffer means should come out as about +0.63, +0.63, -0.63, -0.63, and so on.
-
-They do not. Run it and compare \`mean1\` and \`mean3\` with what you expect.
-
-{{figure:ping-pong}}
-
-The figure shows the same mistake with the DMA doing the filling: choose "the buffer just started" and step to a swap to see what main gets.
-
-Think about the moment main sees the flag. The interrupt function has **already switched** \`fillPing\`. So what does \`fillPing == 1\` mean at that moment: is \`ping\` the finished buffer, or the one being written?
-`,
-      kit: "robot",
-      durationMs: 22,
-      stimuli: signal(SIG_SLOW),
-      starter: race(`            if (fillPing == 1) {
-                for (i = 0; i < N; i++) {
-                    sum = sum + ping[i];
-                }
-            } else {
-                for (i = 0; i < N; i++) {
-                    sum = sum + pong[i];
-                }
-            }`),
-      solution: race(`            if (fillPing == 1) {
-                // ping is being filled now, so pong is the finished one
-                for (i = 0; i < N; i++) {
-                    sum = sum + pong[i];
-                }
-            } else {
-                for (i = 0; i < N; i++) {
-                    sum = sum + ping[i];
-                }
-            }`),
-      checks: [
-        {
-          kind: "var", name: "mean1", ...near(mean(SIG_SLOW, 0, 50), 0.005), label: "The first mean is that of samples 0 to 49 (about +0.63)",
-          hint: "It is 0 because main summed pong, which is still empty: the interrupt function had just switched to it.",
-        },
-        {
-          kind: "var", name: "mean3", ...near(mean(SIG_SLOW, 100, 50), 0.005), label: "The third mean is that of samples 100 to 149 (about -0.63)",
-          hint: "A positive value here is the mean of an older buffer: main read the buffer that is about to be overwritten instead of the one just completed.",
-        },
-        { kind: "var", name: "numMeans", min: 4, max: 4, label: "Four buffers were processed in 22 ms" },
-      ],
-      watch: ["fillPing", "count", "mean", "numMeans"],
-      hints: [
-        "`fillPing` names the buffer the interrupt function writes to **now**. main wants the other one.",
-        "Only main is wrong. The interrupt function is fine.",
-        "Swap the two loops: when `fillPing == 1` sum `pong`, otherwise sum `ping`.",
-      ],
-      takeaway: "The bug gives numbers that look plausible, only old or half new. That is what makes races hard to spot. Decide in words which buffer is finished at the moment the flag is set, and write that in a comment.",
-    },
-    {
-      id: "dmaf-dma",
-      kind: "code",
-      mode: "complete",
-      title: "Let the DMA do the copying",
-      goal: "Finish the course's DMA channel 1 setup and swap the two buffers in the DMA interrupt function.",
-      refs: [{ course: "L8-9" }, { trm: "5.4" }, { trm: "5.3.3" }, { trm: "5.9.3" }, { trm: "3.4.5" }],
-      brief: `
-Now the copying is done by the DMA. The interrupt function no longer runs for every sample, only once per buffer.
-
-## What stands in for the ADC
-The robot's chain is EPWM7, ADCB, DMA. Here a test bench replaces the first two:
-
-- \`tb_stream(&adcResult);\` makes the test bench put a fresh 12-bit reading into the variable \`adcResult\` every 0.1 ms. \`adcResult\` plays the part of \`AdcbResultRegs.ADCRESULT0\`.
-- CPU timer 0 gives the trigger every 0.1 ms. In the DMA's source table it is number 68 (TINT0). The course selects 6 (ADCBINT1).
-
-Everything else is the course's \`InitDma()\` from the FFT starter project.
-
-## What to write
-In \`InitDma()\`:
-
-- \`DmaRegs.CH1.TRANSFER_SIZE\`: a transfer is N samples. Size registers hold **one less** than the count.
-- \`DmaRegs.CH1.DST_TRANSFER_STEP\`: how far the destination address moves after each sample. The source step is 0 because the source is always the same register. The destination must walk through the buffer.
-
-In \`DMA_ISR()\`: the two lines that write the address of the **other** buffer to \`DmaRegs.CH1.DST_ADDR_SHADOW\`. DMA registers are protected, so each write goes between \`EALLOW;\` and \`EDIS;\`. The address of an array is its name, cast to the register's type:
-
-\`\`\`c
-EALLOW;
-DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;
-EDIS;
-\`\`\`
-
-## When the interrupt comes
-\`MODE.all = 0x8901\` has CHINTMODE = 0: the interrupt comes at the **start** of each transfer. Read the comments in \`DMA_ISR\`: when the DMA has just started on \`ping\`, the buffer that is complete is \`pong\`, and the address you write is used for the transfer after this one.
-
-The course's starter file raises the flag of the buffer that has just been *started*. With this interrupt timing, main then reads old data with a few new samples at the front. This level follows the reference manual: the flag names the buffer that is complete.
-
-The signal is the slow 50 Hz sine again. main computes the mean of each finished buffer in ADC counts: about 2900 for the first two buffers (the positive half of the sine), about 1200 for the next two.
-`,
-      kit: "robot",
-      durationMs: 22,
-      stimuli: signal(SIG_SLOW),
-      starter: dma(
-        `    // TODO 1: DmaRegs.CH1.TRANSFER_SIZE for N one-word bursts per transfer`,
-        `    // TODO 2: DmaRegs.CH1.DST_TRANSFER_STEP so that the destination moves on by one word`,
-        `        // TODO 3: write the address of pong to DmaRegs.CH1.DST_ADDR_SHADOW (EALLOW / EDIS)`,
-        `        // TODO 4: write the address of ping to DmaRegs.CH1.DST_ADDR_SHADOW (EALLOW / EDIS)`,
-      ),
-      solution: dma(
-        `    DmaRegs.CH1.TRANSFER_SIZE = N-1;                    // N bursts per transfer`,
-        `    DmaRegs.CH1.DST_TRANSFER_STEP = 1;                  // add 1 to the pointer after each burst`,
-        `        EALLOW;
-        DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;
-        EDIS;`,
-        `        EALLOW;
-        DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)ping;
-        EDIS;`,
-      ),
-      checks: [
-        { kind: "reg", reg: "DmaRegs.CH1.TRANSFER_SIZE", equals: 49, label: "A transfer is 50 samples (TRANSFER_SIZE = 49)", hint: "The register holds the count minus one: N-1." },
-        { kind: "reg", reg: "DmaRegs.CH1.DST_TRANSFER_STEP", equals: 1, label: "The destination moves on by one word per sample" },
-        { kind: "isr", fn: "DMA_ISR", min: 5, max: 5, label: "DMA_ISR runs once per buffer (5 times in 22 ms)", hint: "Hundreds of calls mean TRANSFER_SIZE is still 0: every sample is its own transfer." },
-        {
-          kind: "var", name: "pingMean", at: 6, ...near(SLOW_HI, 80), label: "After 6 ms: the mean of the first buffer (ping) is about 2900",
-          hint: "With TRANSFER_SIZE and the step right, ping holds samples 0 to 49 when the second transfer starts.",
-        },
-        {
-          kind: "var", name: "pongMean", at: 11, ...near(SLOW_HI, 80), label: "After 11 ms: the mean of the second buffer (pong) is about 2900",
-          hint: "If pongMean stays 0 the DMA never wrote to pong: the shadow address must change in DMA_ISR.",
-        },
-        { kind: "var", name: "pingMean", at: 16, ...near(SLOW_LO, 80), label: "After 16 ms: the mean of the third buffer (ping again) is about 1200" },
-        { kind: "var", name: "pongMean", at: 21, ...near(SLOW_LO, 80), label: "After 21 ms: the mean of the fourth buffer (pong again) is about 1200" },
-        { kind: "no-diagnostic", code: "eallow", label: "Every DMA register write is between EALLOW and EDIS" },
-      ],
-      watch: ["DMAcount", "iPingPong", "pingMean", "pongMean"],
-      inspect: ["DmaRegs.CH1.MODE", "DmaRegs.CH1.CONTROL", "DmaRegs.CH1.TRANSFER_SIZE", "DmaRegs.CH1.TRANSFER_COUNT", "DmaRegs.CH1.DST_ADDR_SHADOW", "DmaRegs.CH1.DST_ADDR_ACTIVE"],
-      hints: [
-        "N samples per transfer means `TRANSFER_SIZE = N-1`. One word further per sample means a step of 1.",
-        "In the branch whose comment says the DMA has just started on ping, the next buffer is pong, so write pong's address. The other branch is the mirror image.",
-        "`DmaRegs.CH1.TRANSFER_SIZE = N-1;` `DmaRegs.CH1.DST_TRANSFER_STEP = 1;` and in each branch `EALLOW; DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)pong;` (or `ping`) `EDIS;`",
-      ],
-      takeaway: "The CPU ran 5 short interrupt functions for 220 samples. On the robot it is one for every 1024. The shadow register lets you choose the next buffer at any time during a transfer without disturbing the one in progress.",
     },
     {
       id: "dmaf-checkpoint",
@@ -1184,13 +1123,114 @@ Keep the names of the function and the global variables. The tests read them.
       watch: ["yk", "amplitude", "count"],
       hints: [
         "Build it in three steps and run after each: first the timer interrupt (does `count` move?), then the filter (watch `yk`), then the window and the LED.",
-        "The filter is `fir_step` from two levels ago, written into the interrupt function. For the peak: `if (fabs(yk) > peak) { peak = fabs(yk); }`.",
+        "The filter is `fir_step` from \"Any coefficients you like\", written into the interrupt function. For the peak: `if (fabs(yk) > peak) { peak = fabs(yk); }`.",
         "End of window: `if (count == WINDOW) { amplitude = peak; peak = 0; count = 0; newResult = 1; }`. In main: `if (amplitude > 0.5) GpioDataRegs.GPASET.bit.GPIO22 = 1; else GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;`",
       ],
       takeaway: "This is Lab 4 in small: a timer sets the sampling rate, the interrupt function filters, main reacts. 22 multiplications and 21 moves per sample took 5 microseconds of every 100.",
     },
 
-    // ---------------- practice ----------------
+    // ---------------------------------------------------------------- practice
+    {
+      id: "dmaf-chain",
+      kind: "order",
+      tier: "practice",
+      title: "From the timer to your buffer",
+      goal: "Put the steps of the sampling chain in order, from the ePWM pulse to main processing a full buffer.",
+      refs: [{ course: "L8-9" }, { trm: "5.3.3" }, { trm: "5.4" }, { trm: "11.9" }],
+      brief: `
+The course's FFT starter project samples a microphone on ADCB with this setup:
+
+- **EPWM7** sends a start-of-conversion pulse (SOCA) every 0.1 ms.
+- **ADCB** converts on that pulse. When the result is in \`AdcbResultRegs.ADCRESULT0\` it raises **ADCBINT1**.
+- **DMA channel 1** uses ADCBINT1 as its trigger. One trigger copies one word.
+- A **transfer** is 1024 copies. The DMA keeps its place in the buffer in an *active* address register. Your code can only write the *shadow* address register. The DMA copies shadow to active **at the start of each transfer**, and only then.
+- The channel is set to interrupt the CPU **at the start of each transfer** (interrupt INT7.1, function \`DMA_ISR\`).
+
+Order the steps for one buffer. Follow the data: timer, converter, copy. The CPU appears only at the very end.
+`,
+      steps: [
+        "EPWM7's counter reaches its period and sends a start-of-conversion pulse",
+        "ADCB samples the pin and converts the voltage to a 12-bit number",
+        "The result is stored in ADCRESULT0 and ADCB raises ADCBINT1",
+        "DMA channel 1 is triggered and copies ADCRESULT0 to the next free place in the buffer",
+        "The 1024th copy completes the transfer",
+        "On the next trigger a new transfer starts: the DMA loads its active destination address from the shadow register",
+        "The DMA raises INT7.1 and the CPU runs DMA_ISR, which writes the other buffer's address to the shadow register and sets a flag",
+        "main sees the flag and processes the buffer that was just completed",
+      ],
+      hints: [
+        "Three peripherals pass the work along before the CPU does anything: ePWM, then ADC, then DMA.",
+        "The first four steps happen for every sample. The last four happen once per buffer.",
+        "Pulse, conversion, ADCBINT1, copy, 1024th copy, shadow loaded into active, DMA_ISR, main.",
+      ],
+      takeaway: "For 1023 samples out of 1024 the CPU is not involved at all. The shadow address your interrupt function writes is used from the next transfer on, never in the middle of one.",
+    },
+    {
+      id: "dmaf-race",
+      kind: "code",
+      mode: "debug",
+      tier: "practice",
+      title: "Reading the wrong buffer",
+      goal: "main computes the mean of a buffer the interrupt function is still writing. Make it read the finished one.",
+      refs: [{ course: "L8-9" }, { trm: "5.4" }],
+      brief: `
+This program does ping-pong buffering by hand, without the DMA, so that you can see every step.
+
+- The timer interrupt function takes a sample every 0.1 ms and stores it in \`ping\` or \`pong\`. \`fillPing\` says which one.
+- After \`N\` = 50 samples the buffer is full. The function switches to the other buffer and sets the flag \`bufferFull\`.
+- main waits for the flag and computes the **mean** of the buffer that has just been completed.
+
+The signal is a slow 50 Hz sine. One buffer is 5 ms, a quarter of its period, so the buffer means should come out as about +0.63, +0.63, -0.63, -0.63, and so on.
+
+They do not. Run it and compare \`mean1\` and \`mean3\` with what you expect.
+
+{{figure:ping-pong}}
+
+The figure shows the same mistake with the DMA doing the filling: choose "the buffer just started" and step to a swap to see what main gets.
+
+Think about the moment main sees the flag. The interrupt function has **already switched** \`fillPing\`. So what does \`fillPing == 1\` mean at that moment: is \`ping\` the finished buffer, or the one being written?
+`,
+      kit: "robot",
+      durationMs: 22,
+      stimuli: signal(SIG_SLOW),
+      starter: race(`            if (fillPing == 1) {
+                for (i = 0; i < N; i++) {
+                    sum = sum + ping[i];
+                }
+            } else {
+                for (i = 0; i < N; i++) {
+                    sum = sum + pong[i];
+                }
+            }`),
+      solution: race(`            if (fillPing == 1) {
+                // ping is being filled now, so pong is the finished one
+                for (i = 0; i < N; i++) {
+                    sum = sum + pong[i];
+                }
+            } else {
+                for (i = 0; i < N; i++) {
+                    sum = sum + ping[i];
+                }
+            }`),
+      checks: [
+        {
+          kind: "var", name: "mean1", ...near(mean(SIG_SLOW, 0, 50), 0.005), label: "The first mean is that of samples 0 to 49 (about +0.63)",
+          hint: "It is 0 because main summed pong, which is still empty: the interrupt function had just switched to it.",
+        },
+        {
+          kind: "var", name: "mean3", ...near(mean(SIG_SLOW, 100, 50), 0.005), label: "The third mean is that of samples 100 to 149 (about -0.63)",
+          hint: "A positive value here is the mean of an older buffer: main read the buffer that is about to be overwritten instead of the one just completed.",
+        },
+        { kind: "var", name: "numMeans", min: 4, max: 4, label: "Four buffers were processed in 22 ms" },
+      ],
+      watch: ["fillPing", "count", "mean", "numMeans"],
+      hints: [
+        "`fillPing` names the buffer the interrupt function writes to **now**. main wants the other one.",
+        "Only main is wrong. The interrupt function is fine.",
+        "Swap the two loops: when `fillPing == 1` sum `pong`, otherwise sum `ping`.",
+      ],
+      takeaway: "The bug gives numbers that look plausible, only old or half new. That is what makes races hard to spot. Decide in words which buffer is finished at the moment the flag is set, and write that in a comment.",
+    },
     {
       id: "dmaf-alias",
       kind: "timing",
@@ -1270,7 +1310,7 @@ Writing one element past the end of an array does not fail. It changes whatever 
       takeaway: "Order M needs M + 1 coefficients and M + 1 places if the newest sample lives in the array too. Size both arrays with the same #define and the mistake cannot happen.",
     },
 
-    // ---------------- expert ----------------
+    // ------------------------------------------------------------------ expert
     {
       id: "dmaf-running",
       kind: "code",
@@ -1291,11 +1331,11 @@ Two ideas get you there:
 - **Do not move the data. Move the index.** Keep the samples where they are and remember where the oldest one is. The new sample replaces the oldest, and the index steps on, wrapping back to 0 at the end. This is a **circular buffer**.
 - **Do not add 200 numbers again.** The new sum is the old sum, minus the sample that leaves, plus the sample that arrives.
 
-The buffer starts full of zeros, so the first 20 ms are start-up. The tests look after that.
+The buffer starts full of zeros, so the first 20 ms are start-up. The tests look after that. At 26 ms the reading drops to 0.75 V, and 20 ms later your output must have followed.
 `,
       kit: "robot",
-      durationMs: 45,
-      stimuli: signal(SIG_HUM),
+      durationMs: 50,
+      stimuli: [...signal(SIG_HUM), { at: 26, set: "TB_DC", value: 0.75 }],
       starter: hum(
         `float xk[N];                 // xk[0] is the newest sample`,
         `    int i;
@@ -1328,9 +1368,8 @@ float total = 0;             // sum of everything in the buffer`,
       checks: [
         { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 2, label: "The interrupt function never takes more than 2 us", hint: "Any loop over the buffer is too slow. The work per sample must not depend on N." },
         { kind: "signal", name: "TB_OUT", at: 25.03, ...near(1.25, 0.01), label: "The output is 1.25 after 25 ms (hum removed)", hint: "Subtract the sample you are about to overwrite before you overwrite it." },
-        { kind: "signal", name: "TB_OUT", at: 33.37, ...near(1.25, 0.01), label: "The output is 1.25 after 33 ms" },
-        { kind: "signal", name: "TB_OUT", at: 44.9, ...near(1.25, 0.01), label: "The output is 1.25 at the end" },
-        { kind: "var", name: "numSamples", min: 440, label: "A sample is processed every 0.1 ms" },
+        { kind: "signal", name: "TB_OUT", at: 49.9, ...near(0.75, 0.01), label: "The output has followed the reading down to 0.75 at the end", hint: "The running total must lose every sample that leaves the buffer, or old values stay in it for ever." },
+        { kind: "var", name: "numSamples", min: 490, label: "A sample is processed every 0.1 ms" },
       ],
       watch: ["yk", "numSamples"],
       hints: [

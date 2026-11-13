@@ -815,27 +815,24 @@ export const ch14: Chapter = {
       goal: "See why a shared bus saves pins and how I2C and CAN compare with UART and SPI, then answer three questions.",
       refs: [{ course: "L10" }, { trm: "20.1" }, { trm: "22.1" }],
       brief: `
-A UART joins two devices. SPI joins one master to several slaves, but every slave needs its own chip-select wire. A robot with many sensors runs out of pins. A **bus** is a set of wires that all devices share: every device hears everything, and the protocol decides who may talk and who is meant.
+A UART joins two devices. SPI joins one master to several slaves, but every slave needs its own chip-select wire, and a robot with many sensors runs out of pins. A **bus** is a set of wires that all devices share: every device hears everything, and the protocol decides who may talk and who is meant.
 
-This chapter covers the two buses the chip offers besides SPI: **I2C** for chips on the same board, and **CAN** for boxes joined by a cable.
+This chapter covers **I2C**, for chips on the same board, and **CAN**, for boxes joined by a cable.
 
 ## Four ways to send bits
-- **UART (SCI)**: 2 wires (TX, RX). No clock wire: both ends agree on the baud rate. Exactly 2 devices, so no addresses. 115200 bit/s in the course.
-- **SPI**: 3 shared wires (clock, data out, data in) plus **one chip-select wire per slave**. The master makes the clock. The slave is chosen by its wire. Several Mbit/s. 15 sensors need 15 chip-select pins.
+- **UART**: 2 wires, 2 devices. No clock wire: both ends agree on the baud rate (**asynchronous**).
+- **SPI**: clock, data out and data in, plus **one chip-select wire per slave**. The master makes the clock (**synchronous**).
 - **I2C**: 2 wires for **all** devices: **SDA** (data) and **SCL** (clock). The master makes the clock. The slave is chosen by a **7-bit address** sent as the first byte. 100 kbit/s, or 400 kbit/s in fast mode.
-- **CAN**: 2 wires (CANH and CANL) for all devices, carrying one signal as a voltage **difference**, which resists electrical noise. No clock wire: every node times the bits itself, as a UART does. No device addresses at all: each message carries an **identifier** that says what it contains. Up to 1 Mbit/s.
+- **CAN**: 2 wires (CANH and CANL) for all devices, carrying one signal as a voltage **difference**, which resists electrical noise. No clock wire, no master and no device addresses: each message carries an **identifier** that says what it contains. Up to 1 Mbit/s.
+
+UART and SPI are **full duplex**: both directions at the same time. I2C and CAN are **half duplex**: one direction at a time on the same wires.
 
 Compare them in the figure: add a device and count the wires.
 
 {{figure:bus-compare}}
 
-## Words from the lecture
-- **Synchronous**: a clock wire says when each bit is valid (SPI, I2C). **Asynchronous**: no clock wire (UART, CAN).
-- **Master / slave**: the master starts every transfer and the slave answers (SPI, I2C). On CAN every node may start a message.
-- **Full duplex**: both directions at the same time (UART, SPI). **Half duplex**: one direction at a time on the same wire (I2C, CAN).
-
 ## What makes sharing possible
-On a shared wire two devices can talk at once. If one drove the wire to 3.3 V while the other drove it to 0 V, that would be a short circuit. I2C and CAN avoid this in the same way: a device can only pull the bus to **0**. To send a 1 it lets go, and a resistor returns the bus to 1. A 0 from anyone wins. The next levels build on this one idea.
+If one device drove a shared wire to 3.3 V while another drove it to 0 V, that would be a short circuit. I2C and CAN avoid this in the same way: a device can only pull the bus to **0**. To send a 1 it lets go, and a resistor returns the bus to 1. A 0 from anyone wins.
 
 Try it in the figure: let two devices pull the same line low, then release one of them.
 
@@ -876,81 +873,6 @@ Try it in the figure: let two devices pull the same line low, then release one o
         },
       ],
       takeaway: "SPI spends one pin per device; I2C and CAN spend two wires in total, and pay with addresses, identifiers and rules for taking turns.",
-    },
-    {
-      id: "bus-i2c-wiring",
-      kind: "wiring",
-      title: "Two devices, two resistors",
-      goal: "Wire a temperature sensor and a clock chip to the I2C bus, with its two pull-up resistors.",
-      refs: [{ course: "L10" }, { trm: "20.2" }, { trm: "20.3.1" }],
-      brief: `
-An I2C pin is an **open-drain** output: inside the chip, one transistor can connect the pin to ground. There is no transistor to 3.3 V. So a device can pull a line **low**, or **let go** of it. It cannot drive it high.
-
-Something else must bring a released line back to 1: a **pull-up resistor** from the line to 3.3 V. The bus has two lines, so it has two resistors, **one for the whole bus**, not one per device.
-
-Every device connects to the **same** two lines: all SDA pins together, all SCL pins together. Nothing is chained from one device to the next.
-
-The figure shows the finished bus at work: close any switch and the whole line goes low.
-
-{{figure:i2c-bus}}
-
-Already in place (grey):
-
-- the microcontroller's SDAB (GPIO40) and SCLB (GPIO41) are on the two bus lines
-- the lower end of R1 is on the SDA line, the lower end of R2 on the SCL line
-
-Add the six missing wires.
-`,
-      nodes: [
-        { id: "v33", label: "3.3 V", x: 50, y: 5 },
-        { id: "gnd", label: "GND", x: 90, y: 5 },
-        { id: "r1", label: "R1 upper end", x: 40, y: 14, side: "left" },
-        { id: "r2", label: "R2 upper end", x: 60, y: 14, side: "right" },
-        { id: "sda", label: "SDA line", x: 40, y: 28, side: "right" },
-        { id: "scl", label: "SCL line", x: 60, y: 40, side: "right" },
-        { id: "msda", label: "GPIO40 (SDAB)", x: 10, y: 28, side: "top" },
-        { id: "mscl", label: "GPIO41 (SCLB)", x: 10, y: 40, side: "bottom" },
-        { id: "tsda", label: "Sensor SDA", x: 28, y: 54, side: "bottom" },
-        { id: "tscl", label: "Sensor SCL", x: 42, y: 54, side: "bottom" },
-        { id: "csda", label: "Clock SDA", x: 66, y: 54, side: "bottom" },
-        { id: "cscl", label: "Clock SCL", x: 80, y: 54, side: "bottom" },
-      ],
-      parts: [
-        { kind: "resistor", a: "r1", b: "sda", label: "R1" },
-        { kind: "resistor", a: "r2", b: "scl", label: "R2" },
-      ],
-      fixed: [
-        ["r1", "sda"],
-        ["r2", "scl"],
-        ["msda", "sda"],
-        ["mscl", "scl"],
-      ],
-      wires: [
-        ["v33", "r1"],
-        ["v33", "r2"],
-        ["tsda", "sda"],
-        ["tscl", "scl"],
-        ["csda", "sda"],
-        ["cscl", "scl"],
-      ],
-      mistakes: [
-        { wire: ["gnd", "r1"], why: "That makes R1 a pull-down: SDA would sit at 0 all the time. A released line must return to 1, so the resistor goes to 3.3 V." },
-        { wire: ["gnd", "r2"], why: "That makes R2 a pull-down: SCL would sit at 0 all the time. A released line must return to 1, so the resistor goes to 3.3 V." },
-        { wire: ["tsda", "scl"], why: "SDA pins go on the SDA line. Crossed over, the sensor would take the clock for data." },
-        { wire: ["tscl", "sda"], why: "SCL pins go on the SCL line. Crossed over, the sensor would take the data for a clock." },
-        { wire: ["csda", "scl"], why: "SDA pins go on the SDA line. Crossed over, the clock chip would take the clock for data." },
-        { wire: ["cscl", "sda"], why: "SCL pins go on the SCL line. Crossed over, the clock chip would take the data for a clock." },
-        { wire: ["tsda", "csda"], why: "Electrically that could work, but draw the bus as it is: every device goes to the SDA line." },
-        { wire: ["tscl", "cscl"], why: "Electrically that could work, but draw the bus as it is: every device goes to the SCL line." },
-        { wire: ["v33", "sda"], why: "A wire straight to 3.3 V has no resistance: the first device that pulls SDA low would short the supply to ground. The connection to 3.3 V goes through R1." },
-        { wire: ["v33", "scl"], why: "A wire straight to 3.3 V has no resistance: the first device that pulls SCL low would short the supply to ground. The connection to 3.3 V goes through R2." },
-      ],
-      hints: [
-        "A pull-up goes up: both resistors' free ends go to 3.3 V.",
-        "Each device has one wire to the SDA line and one to the SCL line.",
-        "3.3 V to R1 and to R2. Sensor SDA and Clock SDA to the SDA line. Sensor SCL and Clock SCL to the SCL line.",
-      ],
-      takeaway: "Open-drain outputs plus one pull-up per line make a wired-AND: the line is 1 only when every device has let go. The simulated board has no external resistors, so the code switches on the pins' internal pull-ups instead.",
     },
     {
       id: "bus-i2c-start",
@@ -1001,186 +923,6 @@ The columns are: idle, S, address bits 6 to 0, W (the R/W bit), A (the ACK bit),
       takeaway: "Data changes while SCL is low. SDA moving while SCL is high is never data: falling is a START, rising is a STOP.",
     },
     {
-      id: "bus-i2c-quiz",
-      kind: "quiz",
-      title: "Who pulls the line?",
-      goal: "Answer four questions about open-drain lines, the ACK bit and two masters starting at once.",
-      refs: [{ course: "L10" }, { trm: "20.3.5" }, { trm: "20.3.7" }, { trm: "20.3.8" }],
-      brief: `
-Because every device can only pull low or let go, each line behaves like an AND gate made of wire: it is 1 only if **all** devices have let go. This **wired-AND** gives I2C three things for free.
-
-**The ACK bit.** After every 8 bits, whoever was **receiving** pulls SDA low during a ninth clock. After the address byte that is the addressed slave. When the master reads data from a slave, the master is the receiver, so the master acknowledges each byte, and answers the **last** byte it wants with a NACK (SDA left high) to tell the slave to stop sending.
-
-**Clock synchronisation.** A device may hold SCL low. SCL only goes high when everyone has let go, so the slowest device sets the low time. A slave uses this to make a fast master wait.
-
-**Arbitration.** I2C allows more than one master. If two start at the same moment, both send their address byte and both **read SDA back** after every bit. A master that sent a 1 (let go) but reads a 0 knows someone else is pulling the line. It has lost: it stops at once and tries again later. The other master notices nothing, and its message is not damaged.
-
-Try it in the figure: give the two masters different addresses and step through the bits.
-
-{{figure:i2c-arbitration}}
-`,
-      questions: [
-        {
-          prompt: "Three devices are on SDA. Two have let go, one pulls low. What level is the line?",
-          options: ["High: two against one", "Low: one device pulling low is enough", "About 2.2 V, two thirds of 3.3 V", "It flips back and forth"],
-          answer: 1,
-          why: "Wired-AND: the line is high only when all devices have let go. A pull-up resistor cannot win against a transistor to ground.",
-        },
-        {
-          prompt: "The master sends the address byte for a write. Who drives SDA during the ninth clock?",
-          options: [
-            "The master, to confirm it has finished",
-            "The slave with that address pulls SDA low; if no such slave exists SDA stays high",
-            "Every slave on the bus pulls SDA low",
-            "Nobody, the ninth clock is a pause",
-          ],
-          answer: 1,
-          why: "The receiver of the byte acknowledges. Only the slave whose address matches answers. With no such slave the pull-up keeps SDA high: a NACK, which is how the master learns that nobody is there.",
-        },
-        {
-          prompt: "The master is reading two bytes from a sensor. What does the master do in the ninth clock of each byte?",
-          options: [
-            "ACK both bytes",
-            "NACK both bytes",
-            "ACK the first byte, NACK the second",
-            "Nothing: only slaves acknowledge",
-          ],
-          answer: 2,
-          why: "The receiver acknowledges, and here the master is the receiver. ACK means \"send more\". The NACK after the last byte tells the sensor to let go of SDA, so the master can make the STOP.",
-        },
-        {
-          prompt: "Masters A and B start at the same instant. A calls address 0x48 (100 1000), B calls 0x44 (100 0100). Who wins, and why?",
-          options: [
-            "A, because its address is higher",
-            "B: at the fourth bit A lets go for a 1 but reads the 0 that B is pulling, so A stops",
-            "Neither: both messages are destroyed and both retry",
-            "Whichever has the faster clock",
-          ],
-          answer: 1,
-          why: "The first three bits (1, 0, 0) match. At the fourth, A sends 1 and B sends 0. The line is 0. A reads back a level it did not send and withdraws. The lower number wins, and B's bits were never disturbed.",
-        },
-      ],
-      takeaway: "A 0 always beats a 1 on the wire. I2C uses that for the ACK, for slowing the clock and for arbitration.",
-    },
-    {
-      id: "bus-i2c-calc",
-      kind: "calc",
-      title: "Address bytes and clock dividers",
-      goal: "Work out the first byte on the bus and the SCL frequency the clock registers give.",
-      refs: [{ trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.5" }, { course: "L10" }],
-      brief: `
-## The address byte
-The first byte after a START is the 7-bit address shifted left by one, with the R/W bit in bit 0:
-
-**byte = (address << 1) | R/W**, with R/W = 0 to write and 1 to read.
-
-On a logic analyser you see this byte. In the register \`I2CSAR\` you write the **7-bit address**: the chip does the shift and adds the R/W bit itself.
-
-## The clock
-The I2C module divides the 200 MHz system clock twice.
-
-1. The prescaler makes the **module clock**: **200 MHz / (I2CPSC + 1)**. The reference manual requires it to be between **7 and 12 MHz**.
-2. SCL is made from the module clock. Its low time is (I2CCLKL + d) module clock periods and its high time is (I2CCLKH + d) periods:
-
-**SCL frequency = module clock / ((I2CCLKL + d) + (I2CCLKH + d))**
-
-The extra **d** is 5 when I2CPSC is greater than 1 (it is 7 for I2CPSC = 0 and 6 for I2CPSC = 1).
-
-The I2C module is specified for 10 kbit/s to 400 kbit/s.
-
-## The lecture's numbers
-The lecture's \`I2CA_Init\`, taken from TI's example, uses I2CPSC = 16, I2CCLKL = 10, I2CCLKH = 5. Work out what that gives in the last two fields.
-`,
-      fields: [
-        {
-          id: "wr",
-          label: "Address byte to write to the device at 0x48",
-          format: "hex",
-          answer: 0x90,
-          why: "0x48 << 1 = 0x90, and R/W = 0 for a write.",
-        },
-        {
-          id: "rd",
-          label: "Address byte to read from the device at 0x48",
-          format: "hex",
-          answer: 0x91,
-          why: "0x90 with R/W = 1 in bit 0: 0x91.",
-        },
-        {
-          id: "mod",
-          label: "Module clock with I2CPSC = 19",
-          unit: "MHz",
-          answer: 10,
-          why: "200 MHz / (19 + 1) = 10 MHz, inside the 7 to 12 MHz range.",
-        },
-        {
-          id: "scl100",
-          label: "SCL frequency with I2CPSC = 19, I2CCLKL = 45, I2CCLKH = 45",
-          unit: "kHz",
-          answer: 100,
-          tolPct: 0.5,
-          why: "d = 5. (45 + 5) + (45 + 5) = 100 module clock periods per SCL period: 10 MHz / 100 = 100 kHz.",
-        },
-        {
-          id: "lecmod",
-          label: "Lecture values: module clock with I2CPSC = 16",
-          unit: "MHz",
-          answer: 11.765,
-          tolPct: 0.5,
-          why: "200 MHz / 17 = 11.76 MHz, just inside the allowed range.",
-        },
-        {
-          id: "lecscl",
-          label: "Lecture values: SCL frequency with I2CCLKL = 10, I2CCLKH = 5",
-          unit: "kHz",
-          answer: 470.6,
-          tolPct: 0.5,
-          why: "(10 + 5) + (5 + 5) = 25 periods: 11.76 MHz / 25 = 470.6 kHz. That is above the 400 kHz the reference manual gives as the fastest rate. With I2CPSC = 19 the same dividers give exactly 400 kHz.",
-        },
-      ],
-      hints: [
-        "Shift the address left one place (multiply by 2), then add the R/W bit.",
-        "Find the module clock first: 200 / (I2CPSC + 1) in MHz. Then add d = 5 to both divider values.",
-        "100 kHz case: 10 MHz / (50 + 50). Lecture case: (200 / 17) MHz / (15 + 10).",
-      ],
-      takeaway: "I2CSAR holds the 7-bit address, the bus shows it shifted with R/W added. Check the module clock (7 to 12 MHz) before the SCL dividers.",
-    },
-    {
-      id: "bus-i2c-mode",
-      kind: "register",
-      title: "The mode word",
-      goal: "Set the bits of I2CMDR that start a read: master, START, and a STOP at the end.",
-      refs: [{ trm: "20.6.2" }, { trm: "20.3.3" }, { course: "L10" }],
-      brief: `
-One write to the mode register \`I2CMDR\` starts a whole transfer. The I2C module then does everything itself: START, the address byte, the data bytes, the ACK bits and the STOP.
-
-The bits that matter:
-
-- **IRS** (bit 5): 1 takes the module out of reset. It is already set here and must stay set.
-- **MST** (bit 10): 1 = master. The module makes the clock.
-- **TRX** (bit 9): 1 = transmitter (the R/W bit sent is 0, write). 0 = receiver (R/W = 1, read).
-- **STT** (bit 13): 1 = generate a START now. The chip clears it again.
-- **STP** (bit 11): 1 = generate a STOP when the number of bytes in \`I2CCNT\` has been transferred. The chip clears it once the STOP is on the bus.
-
-Set the register so the module **reads** as a master and ends with a STOP.
-`,
-      reg: "I2cbRegs.I2CMDR",
-      initial: 0x0020,
-      targets: [
-        { field: "STT", value: 1 },
-        { field: "STP", value: 1 },
-        { field: "MST", value: 1 },
-        { field: "TRX", value: 0 },
-      ],
-      code: "I2cbRegs.I2CMDR.all = 0x2C20;   // START, STOP, master, receiver, out of reset",
-      hints: [
-        "Three bits to set, one to leave alone. Reading means TRX stays 0.",
-        "Set STT (bit 13), STP (bit 11) and MST (bit 10). Keep IRS (bit 5).",
-        "The value is 0x2C20. For a write, TRX (bit 9) is set as well: 0x2E20. The lecture's 0x6E20 also sets FREE (bit 14), which only matters at a debugger breakpoint.",
-      ],
-      takeaway: "0x2C20 reads, 0x2E20 (or the lecture's 0x6E20) writes. The only difference that reaches the bus is TRX, which becomes the R/W bit.",
-    },
-    {
       id: "bus-i2c-read",
       kind: "code",
       mode: "complete",
@@ -1190,8 +932,17 @@ Set the register so the module **reads** as a master and ends with a STOP.
       brief: `
 The robot kit in this game has a temperature sensor on the I2C bus at address **0x48**. Use the temperature knob next to the board to change what it measures.
 
+## One register starts a transfer
+One write to the mode register \`I2CMDR\` starts a whole transfer. The I2C module then makes the START, the address byte, the clock, the ACK bits and the STOP by itself. The bits that matter:
+
+- **STT** (bit 13): make a START now
+- **STP** (bit 11): make a STOP after \`I2CCNT\` bytes
+- **MST** (bit 10): be the master
+- **TRX** (bit 9): 1 = transmit (R/W bit 0), 0 = receive (R/W bit 1)
+- **IRS** (bit 5): 1 = module out of reset. It must stay 1.
+
 ## What is already written
-\`init_I2CB()\` switches GPIO40 and GPIO41 to the I2C module and turns on their **internal pull-ups** (this board has no external pull-up resistors), then sets the clock to 100 kHz, as you calculated.
+\`init_I2CB()\` switches GPIO40 and GPIO41 to the I2C module, turns on their **internal pull-ups** (this board has no external pull-up resistors) and sets SCL to 100 kHz.
 
 \`read_temperature()\` already waits for the bytes. The course has no I2C starter code, so this follows the reference manual and the lecture's register names:
 
@@ -1199,13 +950,11 @@ The robot kit in this game has a temperature sensor on the I2C bus at address **
 - \`I2CMDR.bit.STP\` stays 1 until the STOP is on the bus.
 
 ## Your task
-1. Put the sensor's **7-bit address** in \`I2CSAR\` and the number of bytes to read, **2**, in \`I2CCNT\`.
-2. Write the mode word from the last level to \`I2CMDR\`: master, receiver, START, STOP.
-3. The sensor sends the **most significant byte first**. Put the two bytes together into the 16-bit \`tempRaw\`, then convert: **degrees C = tempRaw / 256**.
+1. Put the sensor's **7-bit address** in \`I2CSAR\` (the module shifts it and adds the R/W bit itself) and the number of bytes to read, **2**, in \`I2CCNT\`.
+2. Write the mode word to \`I2CMDR\`: master, receiver, START, STOP, out of reset. Work out the hex value from the bit numbers.
+3. The sensor sends the **most significant byte first**. Put the two bytes together into the 16-bit \`tempRaw\`, then convert: **degrees C = tempRaw / 256**. Divide by \`256.0\`, not \`256\`, so the result keeps its fraction.
 
-\`tempRaw\` is an \`int16_t\`, so temperatures below zero come out negative without extra work. Divide by \`256.0\`, not \`256\`, so the result keeps its fraction.
-
-The tests set the knob to 30.5 and then to -4 degrees C.
+\`tempRaw\` is an \`int16_t\`, so temperatures below zero come out negative. The tests set the knob to 30.5 and then to -4 degrees C.
 `,
       kit: "robot",
       starter: i2cRead(
@@ -1240,146 +989,10 @@ The tests set the knob to 30.5 and then to -4 degrees C.
       inspect: ["I2cbRegs.I2CMDR", "I2cbRegs.I2CSTR", "I2cbRegs.I2CSAR", "I2cbRegs.I2CCNT"],
       hints: [
         "The address goes in as 0x48, not shifted. The byte count is 2.",
-        "The mode word is the one from the register puzzle: 0x2C20.",
+        "The mode word has bits 13, 11, 10 and 5 set: 0x2000 + 0x0800 + 0x0400 + 0x0020 = 0x2C20.",
         "`tempRaw = (msb << 8) | lsb;` then `tempC = tempRaw / 256.0;`",
       ],
-      takeaway: "Address, count, one write to I2CMDR, then wait for RRDY once per byte. The module makes the START, the ACKs, the final NACK and the STOP by itself.",
-    },
-    {
-      id: "bus-i2c-nack",
-      kind: "code",
-      mode: "write",
-      title: "Is anybody there?",
-      goal: "Write read_temp() so it reads a sensor at any address and reports when no device answers.",
-      refs: [{ course: "L10" }, { trm: "20.3.4" }, { trm: "20.6.2" }, { trm: "20.4.1" }],
-      brief: `
-The robot is meant to get a second temperature sensor at address **0x49**. It is not fitted yet. \`main()\` already asks both addresses in turn.
-
-With the code of the last level, the read of 0x49 would wait for ever: no device pulls SDA low in the ninth clock, so no byte ever arrives.
-
-See it in the figure: choose "step through a transfer" and the address 0x49.
-
-{{figure:i2c-bus}}
-
-## What the chip does on a NACK
-When the address is not acknowledged the module sets \`I2CSTR.bit.NACK\` and **stops where it is, holding the bus**: SCL stays low and the bus stays busy. The program must do two things:
-
-- write \`I2CMDR.bit.STP = 1\` so the module makes a STOP and frees the bus
-- clear the flag. The flags in \`I2CSTR\` are cleared by **writing a 1** to them: \`I2cbRegs.I2CSTR.all = 0x0002;\` clears NACK (bit 1). Do not use \`.bit.NACK = 1\` here: that reads the whole register and writes it back, which clears every other flag that happens to be set.
-
-## Your task
-Write the body of \`void read_temp(uint16_t address, float *degC)\`. It reports through the global \`answered\`:
-
-1. Wait until the previous transfer's STOP is finished: \`while (I2cbRegs.I2CMDR.bit.STP == 1) {}\`. Starting a transfer on top of a STOP that is still on the bus is an error.
-2. Set address and count, start a 2-byte read with STOP (as in the last level).
-3. While waiting for the first byte, also watch \`NACK\`. If it is set: STOP, clear the flag, set \`answered = 0\` and \`return\`.
-4. Otherwise read both bytes, store the temperature in degrees C through the pointer (\`*degC = ...\`), and set \`answered = 1\`.
-
-A variable that is never written keeps its starting value: \`tempB\` must stay at -1000.
-`,
-      kit: "robot",
-      starter: nackMain("    answered = 0;"),
-      solution: nackMain(`    uint16_t msb;
-    uint16_t lsb;
-    int16_t raw;
-
-    while (I2cbRegs.I2CMDR.bit.STP == 1) {}     // previous STOP finished
-    I2cbRegs.I2CSAR.all = address;
-    I2cbRegs.I2CCNT = 2;
-    I2cbRegs.I2CMDR.all = 0x2C20;               // START, STOP, master, receive
-
-    while (I2cbRegs.I2CSTR.bit.RRDY == 0) {
-        if (I2cbRegs.I2CSTR.bit.NACK == 1) {
-            I2cbRegs.I2CMDR.bit.STP = 1;        // free the bus
-            I2cbRegs.I2CSTR.all = 0x0002;       // clear NACK
-            answered = 0;
-            return;
-        }
-    }
-    msb = I2cbRegs.I2CDRR.all;
-    while (I2cbRegs.I2CSTR.bit.RRDY == 0) {}
-    lsb = I2cbRegs.I2CDRR.all;
-
-    raw = (msb << 8) | lsb;
-    *degC = raw / 256.0;
-    answered = 1;`),
-      durationMs: 14,
-      stimuli: [
-        { at: 4, set: "TEMP_C", value: 60.25 },
-        { at: 8, set: "TEMP_C", value: -12.5 },
-      ],
-      checks: [
-        { kind: "var", name: "okA", min: 6, label: "The sensor at 0x48 is read again and again", hint: "If this stops at 1, the second call never gets going. After a NACK the bus stays busy until you write STP = 1." },
-        { kind: "var", name: "missB", min: 6, label: "Every read of 0x49 ends with answered = 0", hint: "Watch I2CSTR.bit.NACK inside the loop that waits for RRDY." },
-        { kind: "var", name: "okB", equals: 0, label: "0x49 is never reported as present" },
-        { kind: "var", name: "missA", equals: 0, label: "0x48 is never reported as missing", hint: "A NACK flag left set from the 0x49 read makes the next read of 0x48 look like a failure. Clear it: I2cbRegs.I2CSTR.all = 0x0002;" },
-        { kind: "var", name: "tempA", at: 3, equals: 25, label: "tempA is 25 at the start" },
-        { kind: "var", name: "tempA", at: 7, equals: 60.25, label: "tempA follows the knob to 60.25" },
-        { kind: "var", name: "tempA", at: 12, equals: -12.5, label: "tempA follows the knob to -12.5", hint: "Put the two bytes into an int16_t before dividing, so the sign survives." },
-        { kind: "var", name: "tempB", equals: -1000, label: "tempB is left alone" },
-        { kind: "no-diagnostic", code: "i2c-busy", label: "No transfer is started while another is on the bus", hint: "Begin read_temp with: while (I2cbRegs.I2CMDR.bit.STP == 1) {}" },
-      ],
-      watch: ["tempA", "tempB", "answered", "okA", "missA", "okB", "missB"],
-      inspect: ["I2cbRegs.I2CSTR", "I2cbRegs.I2CMDR"],
-      hints: [
-        "Start from the body of read_temperature() in the last level, with `address` in place of 0x48 and the STP wait moved to the top.",
-        "Inside `while (I2cbRegs.I2CSTR.bit.RRDY == 0) { ... }` add `if (I2cbRegs.I2CSTR.bit.NACK == 1) { ... return; }`.",
-        "In the NACK branch: `I2cbRegs.I2CMDR.bit.STP = 1;` then `I2cbRegs.I2CSTR.all = 0x0002;` then `answered = 0; return;`. At the end: `raw = (msb << 8) | lsb; *degC = raw / 256.0; answered = 1;`",
-      ],
-      takeaway: "A NACK is information, not a failure: it is how a master finds out what is on the bus. Always send the STOP afterwards, or the bus stays busy.",
-    },
-    {
-      id: "bus-i2c-debug",
-      kind: "code",
-      mode: "debug",
-      title: "0x91 on the analyser",
-      goal: "Find the two mistakes that keep this program from ever reading the sensor at 0x48.",
-      refs: [{ course: "L10" }, { trm: "20.3.5" }, { trm: "20.6.2" }],
-      brief: `
-A teammate watched a working board with a logic analyser, saw the first byte **0x91** = \`1001 0001\` on the bus, and wrote this program from it. The mode word came from the lecture's \`I2CA_WriteData\` example.
-
-It never produces a temperature: \`readings\` stays 0.
-
-There are **two** mistakes, both in \`read_temperature()\`. Fix one and the symptom changes:
-
-- Watch \`nacks\`. If it counts up, nobody answers at the address the chip is calling.
-- If \`nacks\` stays 0 and \`readings\` stays 0 as well, the sensor did answer, but the two sides disagree about who sends the data.
-
-Remember what the byte on the bus is made of, and which bit of \`I2CMDR\` decides the R/W bit:
-
-- **STT** bit 13, **STP** bit 11, **MST** bit 10, **TRX** bit 9, **IRS** bit 5, and FREE bit 14 (only matters at a breakpoint)
-`,
-      kit: "robot",
-      starter: i2cDebug("0x91", "0x6E20", "// first byte seen on the logic analyser"),
-      solution: i2cDebug("0x48", "0x2C20", "// 7-bit address (0x91 on the bus = 0x48 << 1, + read bit)"),
-      durationMs: 16,
-      stimuli: [
-        { at: 5, set: "TEMP_C", value: 41.5 },
-        { at: 10, set: "TEMP_C", value: -20 },
-      ],
-      checks: [
-        {
-          kind: "var", name: "nacks", equals: 0,
-          label: "The sensor acknowledges its address every time",
-          hint: "0x91 is the byte on the wire: the address shifted left, plus the read bit. I2CSAR wants the 7-bit address, 0x91 >> 1.",
-        },
-        {
-          kind: "var", name: "readings", min: 4,
-          label: "Readings keep arriving",
-          hint: "0x6E20 has TRX (bit 9) set: the chip addresses the sensor for writing and then waits for you to give it data to send. A read needs TRX = 0.",
-        },
-        { kind: "var", name: "tempC", at: 4, equals: 25, label: "tempC is 25 at the start" },
-        { kind: "var", name: "tempC", at: 9, equals: 41.5, label: "tempC follows the knob to 41.5" },
-        { kind: "var", name: "tempC", at: 14, equals: -20, label: "tempC follows the knob to -20" },
-      ],
-      watch: ["nacks", "readings", "tempC"],
-      inspect: ["I2cbRegs.I2CSAR", "I2cbRegs.I2CMDR", "I2cbRegs.I2CSTR"],
-      hints: [
-        "0x91 = 1001 0001. The lowest bit is the R/W bit. What are the seven bits above it, as a number?",
-        "TMP_ADDRESS must be 0x48. The chip shifts it and adds the R/W bit by itself.",
-        "The mode word for a read is 0x2C20. 0x6E20 is the lecture's word for a write: it has TRX set.",
-      ],
-      takeaway: "I2CSAR takes the 7-bit address; the analyser shows the 8-bit address byte. And the R/W bit is not yours to write: it is the opposite of TRX.",
+      takeaway: "Address, count, one write to I2CMDR, then wait for RRDY once per byte. The module makes the START, the ACK bits and the STOP by itself.",
     },
     {
       id: "bus-can-frame",
@@ -1437,7 +1050,7 @@ Order the parts.
       refs: [{ course: "L10" }, { trm: "22.1" }, { trm: "22.11.6" }, { trm: "22.10.3" }],
       brief: `
 ## Arbitration
-Two nodes may start a frame in the same instant. Both send their identifier, most significant bit first, and both **read the bus back** after every bit, exactly as two I2C masters do. A node that sent recessive (1) but reads dominant (0) has lost. It stops sending at once and becomes a receiver.
+Two nodes may start a frame in the same instant. Both send their identifier, most significant bit first, and both **read the bus back** after every bit. A node that sent recessive (1) but reads dominant (0) knows that someone else is driving the bus. It has lost. It stops sending at once and becomes a receiver.
 
 The frame of the winner is not damaged, and no time is lost. Since 0 beats 1, **the lower identifier wins**: the identifier is also the priority of the message.
 
@@ -1497,80 +1110,6 @@ The course's distance sensors (SEN-36005) send extended frames at 1 Mbit/s. Thei
       takeaway: "On CAN the identifier is the name of the message, its priority, and the filter key, all at once.",
     },
     {
-      id: "bus-can-calc",
-      kind: "calc",
-      title: "Two bytes of distance",
-      goal: "Decode the distance bytes of a sensor frame and work out the numbers behind setCANBitRate.",
-      refs: [{ trm: "22.12.1" }, { course: "L10" }],
-      brief: `
-## The distance message
-The sensor's "measured distance" frame has 8 data bytes. The first three:
-
-- **byte 0** and **byte 1**: the distance in millimetres, **least significant byte first** (little-endian)
-- **byte 2**: the ranging status, 0 when the measurement is valid
-
-So the distance is **256 x byte 1 + byte 0**. The course starter writes it as \`dis_1 = 256*dis_raw_1[1] + dis_raw_1[0];\`
-
-## The bit rate
-A CAN node has no clock wire to follow, so it counts time. One bit is divided into a number of equal **time quanta**. The length of a quantum is the CAN clock (200 MHz, the system clock) divided by a prescaler:
-
-**bit rate = CAN clock / (prescaler x time quanta per bit)**
-
-The course calls \`setCANBitRate(200000000, 1000000);\`. For 1 Mbit/s it chooses **10** time quanta per bit and works out the prescaler.
-
-A frame with a 29-bit identifier and 8 data bytes is 128 bits long (a few more when the hardware inserts stuff bits).
-`,
-      fields: [
-        {
-          id: "dist",
-          label: "A frame arrives with byte 0 = 0xD2 and byte 1 = 0x04. Distance",
-          unit: "mm",
-          answer: 1234,
-          why: "256 x 4 + 210 = 1234. 0xD2 is 210.",
-        },
-        {
-          id: "swapped",
-          label: "What a program that swaps the two bytes would report for the same frame",
-          unit: "mm",
-          answer: 53764,
-          why: "256 x 210 + 4 = 53764: more than 53 metres. A reading far outside the sensor's range is the mark of a byte-order mistake.",
-        },
-        {
-          id: "b0",
-          label: "The sensor measures 300 mm. Value of byte 0",
-          format: "hex",
-          answer: 0x2c,
-          why: "300 = 0x012C. The low byte, 0x2C, is sent first; byte 1 is 0x01.",
-        },
-        {
-          id: "id",
-          label: "Identifier of the distance message of the sensor with device number 2",
-          format: "hex",
-          answer: 0x060b0102,
-          why: "0x060B01ss with ss = 02.",
-        },
-        {
-          id: "presc",
-          label: "Prescaler for 1 Mbit/s from 200 MHz with 10 time quanta per bit",
-          answer: 20,
-          why: "200 000 000 / (20 x 10) = 1 000 000. One time quantum is 100 ns and one bit 1 us.",
-        },
-        {
-          id: "tframe",
-          label: "Time on the bus for a 128-bit frame at 1 Mbit/s",
-          unit: "us",
-          answer: 128,
-          why: "128 bits x 1 us. The sensors send every 100 ms, so the bus is idle almost all the time.",
-        },
-      ],
-      hints: [
-        "Byte 1 counts 256s, byte 0 counts ones. Convert the hex bytes to decimal first.",
-        "Write 300 in hex with four digits. The right-hand pair is byte 0.",
-        "Prescaler = 200 000 000 / (1 000 000 x 10).",
-      ],
-      takeaway: "Little-endian: low byte first. When a 16-bit value from a bus looks absurd, try the bytes the other way round.",
-    },
-    {
       id: "bus-can-receive",
       kind: "code",
       mode: "complete",
@@ -1600,7 +1139,7 @@ The identifier is 0x060B0101. \`CAN_MSG_FRAME_EXT\` says it has 29 bits, the 0 i
 
 2. **Interrupt.** CANB0 is **PIE group 9, interrupt 7**. Set its \`PIEIER9\` bit, and the group's bit in \`IER\`.
 
-3. **Decode.** In \`can_isr\`, compute \`dis_1\` in millimetres from \`dis_raw_1[0]\` (low byte) and \`dis_raw_1[1]\` (high byte).
+3. **Decode.** The first two data bytes are the distance in millimetres, **least significant byte first**: byte 0 counts ones, byte 1 counts 256s. In \`can_isr\`, compute \`dis_1\` from \`dis_raw_1[0]\` and \`dis_raw_1[1]\`.
 
 The figure shows the frame your code receives: bytes 0 and 1 are the distance.
 
@@ -1646,8 +1185,8 @@ The sensor sends every 100 ms. The tests turn its knob to 1234 mm and then to 30
       inspect: ["CanbRegs.CAN_CTL", "CanbRegs.CAN_INT", "CanbRegs.CAN_NDAT_21", "PieCtrlRegs.PIEIER9"],
       hints: [
         "The call in the brief is complete except for two arguments: the object number RX_MSG_OBJ_ID_1 and the identifier 0x060b0101.",
-        "`PieCtrlRegs.PIEIER9.bit.INTx7 = 1;` and `IER |= M_INT9;`",
-        "`dis_1 = 256*dis_raw_1[1] + dis_raw_1[0];`",
+        "The interrupt enables follow the pattern of every PIE interrupt: `PieCtrlRegs.PIEIER9.bit.INTx7 = 1;` and `IER |= M_INT9;`",
+        "The high byte counts 256s: `dis_1 = 256*dis_raw_1[1] + dis_raw_1[0];`",
       ],
       takeaway: "Three things make a CAN message arrive: a message object with the right identifier, the interrupt path (message object, CAN module, PIE, CPU), and Init = 0.",
     },
@@ -1717,7 +1256,7 @@ An LED must go off again when its condition no longer holds.
         { kind: "no-diagnostic", code: "can-int-stuck", label: "Every message object interrupt is cleared", hint: "Call CANclearInterruptStatus(CANB_BASE, ...) with the number of the message object you just read." },
       ],
       bonus: [
-        { kind: "isr-time", fn: "can_isr", maxUs: 5, label: "can_isr takes less than 5 microseconds", hint: "Store the distance and set newData in can_isr. Leave the LEDs to show_distance()." },
+        { kind: "isr-time", fn: "can_isr", maxUs: 1, label: "can_isr takes less than 1 microsecond", hint: "Store the distance and set newData in can_isr. Leave the LEDs to show_distance()." },
       ],
       watch: ["dis_1", "dis_2", "newData"],
       inspect: ["CanbRegs.CAN_INT", "CanbRegs.CAN_NDAT_21", "PieCtrlRegs.PIEACK"],
@@ -1864,7 +1403,404 @@ The tests change both knobs while the program runs.
       takeaway: "CAN delivers by interrupt, I2C is asked when you want an answer, and the serial port reports. The interrupt function stays short; main() does the waiting.",
     },
 
-    // ------------------------------------------------------------ practice
+    // ---------------------------------------------------------------- practice
+    {
+      id: "bus-i2c-wiring",
+      kind: "wiring",
+      tier: "practice",
+      title: "Two devices, two resistors",
+      goal: "Wire a temperature sensor and a clock chip to the I2C bus, with its two pull-up resistors.",
+      refs: [{ course: "L10" }, { trm: "20.2" }, { trm: "20.3.1" }],
+      brief: `
+An I2C pin is an **open-drain** output: inside the chip, one transistor can connect the pin to ground. There is no transistor to 3.3 V. So a device can pull a line **low**, or **let go** of it. It cannot drive it high.
+
+Something else must bring a released line back to 1: a **pull-up resistor** from the line to 3.3 V. The bus has two lines, so it has two resistors, **one for the whole bus**, not one per device.
+
+Every device connects to the **same** two lines: all SDA pins together, all SCL pins together. Nothing is chained from one device to the next.
+
+The figure shows the finished bus at work: close any switch and the whole line goes low.
+
+{{figure:i2c-bus}}
+
+Already in place (grey):
+
+- the microcontroller's SDAB (GPIO40) and SCLB (GPIO41) are on the two bus lines
+- the lower end of R1 is on the SDA line, the lower end of R2 on the SCL line
+
+Add the six missing wires.
+`,
+      nodes: [
+        { id: "v33", label: "3.3 V", x: 50, y: 5 },
+        { id: "gnd", label: "GND", x: 90, y: 5 },
+        { id: "r1", label: "R1 upper end", x: 40, y: 14, side: "left" },
+        { id: "r2", label: "R2 upper end", x: 60, y: 14, side: "right" },
+        { id: "sda", label: "SDA line", x: 40, y: 28, side: "right" },
+        { id: "scl", label: "SCL line", x: 60, y: 40, side: "right" },
+        { id: "msda", label: "GPIO40 (SDAB)", x: 10, y: 28, side: "top" },
+        { id: "mscl", label: "GPIO41 (SCLB)", x: 10, y: 40, side: "bottom" },
+        { id: "tsda", label: "Sensor SDA", x: 28, y: 54, side: "bottom" },
+        { id: "tscl", label: "Sensor SCL", x: 42, y: 54, side: "bottom" },
+        { id: "csda", label: "Clock SDA", x: 66, y: 54, side: "bottom" },
+        { id: "cscl", label: "Clock SCL", x: 80, y: 54, side: "bottom" },
+      ],
+      parts: [
+        { kind: "resistor", a: "r1", b: "sda", label: "R1" },
+        { kind: "resistor", a: "r2", b: "scl", label: "R2" },
+      ],
+      fixed: [
+        ["r1", "sda"],
+        ["r2", "scl"],
+        ["msda", "sda"],
+        ["mscl", "scl"],
+      ],
+      wires: [
+        ["v33", "r1"],
+        ["v33", "r2"],
+        ["tsda", "sda"],
+        ["tscl", "scl"],
+        ["csda", "sda"],
+        ["cscl", "scl"],
+      ],
+      mistakes: [
+        { wire: ["gnd", "r1"], why: "That makes R1 a pull-down: SDA would sit at 0 all the time. A released line must return to 1, so the resistor goes to 3.3 V." },
+        { wire: ["gnd", "r2"], why: "That makes R2 a pull-down: SCL would sit at 0 all the time. A released line must return to 1, so the resistor goes to 3.3 V." },
+        { wire: ["tsda", "scl"], why: "SDA pins go on the SDA line. Crossed over, the sensor would take the clock for data." },
+        { wire: ["tscl", "sda"], why: "SCL pins go on the SCL line. Crossed over, the sensor would take the data for a clock." },
+        { wire: ["csda", "scl"], why: "SDA pins go on the SDA line. Crossed over, the clock chip would take the clock for data." },
+        { wire: ["cscl", "sda"], why: "SCL pins go on the SCL line. Crossed over, the clock chip would take the data for a clock." },
+        { wire: ["tsda", "csda"], why: "Electrically that could work, but draw the bus as it is: every device goes to the SDA line." },
+        { wire: ["tscl", "cscl"], why: "Electrically that could work, but draw the bus as it is: every device goes to the SCL line." },
+        { wire: ["v33", "sda"], why: "A wire straight to 3.3 V has no resistance: the first device that pulls SDA low would short the supply to ground. The connection to 3.3 V goes through R1." },
+        { wire: ["v33", "scl"], why: "A wire straight to 3.3 V has no resistance: the first device that pulls SCL low would short the supply to ground. The connection to 3.3 V goes through R2." },
+      ],
+      hints: [
+        "A pull-up goes up: both resistors' free ends go to 3.3 V.",
+        "Each device has one wire to the SDA line and one to the SCL line.",
+        "3.3 V to R1 and to R2. Sensor SDA and Clock SDA to the SDA line. Sensor SCL and Clock SCL to the SCL line.",
+      ],
+      takeaway: "Open-drain outputs plus one pull-up per line make a wired-AND: the line is 1 only when every device has let go. The simulated board has no external resistors, so the code switches on the pins' internal pull-ups instead.",
+    },
+    {
+      id: "bus-i2c-quiz",
+      kind: "quiz",
+      tier: "practice",
+      title: "Who pulls the line?",
+      goal: "Answer four questions about open-drain lines, the ACK bit and two masters starting at once.",
+      refs: [{ course: "L10" }, { trm: "20.3.5" }, { trm: "20.3.7" }, { trm: "20.3.8" }],
+      brief: `
+Because every device can only pull low or let go, each line behaves like an AND gate made of wire: it is 1 only if **all** devices have let go. This **wired-AND** gives I2C three things for free.
+
+**The ACK bit.** After every 8 bits, whoever was **receiving** pulls SDA low during a ninth clock. After the address byte that is the addressed slave. When the master reads data from a slave, the master is the receiver, so the master acknowledges each byte, and answers the **last** byte it wants with a NACK (SDA left high) to tell the slave to stop sending.
+
+**Clock synchronisation.** A device may hold SCL low. SCL only goes high when everyone has let go, so the slowest device sets the low time. A slave uses this to make a fast master wait.
+
+**Arbitration.** I2C allows more than one master. If two start at the same moment, both send their address byte and both **read SDA back** after every bit. A master that sent a 1 (let go) but reads a 0 knows someone else is pulling the line. It has lost: it stops at once and tries again later. The other master notices nothing, and its message is not damaged.
+
+Try it in the figure: give the two masters different addresses and step through the bits.
+
+{{figure:i2c-arbitration}}
+`,
+      questions: [
+        {
+          prompt: "Three devices are on SDA. Two have let go, one pulls low. What level is the line?",
+          options: ["High: two against one", "Low: one device pulling low is enough", "About 2.2 V, two thirds of 3.3 V", "It flips back and forth"],
+          answer: 1,
+          why: "Wired-AND: the line is high only when all devices have let go. A pull-up resistor cannot win against a transistor to ground.",
+        },
+        {
+          prompt: "The master sends the address byte for a write. Who drives SDA during the ninth clock?",
+          options: [
+            "The master, to confirm it has finished",
+            "The slave with that address pulls SDA low; if no such slave exists SDA stays high",
+            "Every slave on the bus pulls SDA low",
+            "Nobody, the ninth clock is a pause",
+          ],
+          answer: 1,
+          why: "The receiver of the byte acknowledges. Only the slave whose address matches answers. With no such slave the pull-up keeps SDA high: a NACK, which is how the master learns that nobody is there.",
+        },
+        {
+          prompt: "The master is reading two bytes from a sensor. What does the master do in the ninth clock of each byte?",
+          options: [
+            "ACK both bytes",
+            "NACK both bytes",
+            "ACK the first byte, NACK the second",
+            "Nothing: only slaves acknowledge",
+          ],
+          answer: 2,
+          why: "The receiver acknowledges, and here the master is the receiver. ACK means \"send more\". The NACK after the last byte tells the sensor to let go of SDA, so the master can make the STOP.",
+        },
+        {
+          prompt: "Masters A and B start at the same instant. A calls address 0x48 (100 1000), B calls 0x44 (100 0100). Who wins, and why?",
+          options: [
+            "A, because its address is higher",
+            "B: at the fourth bit A lets go for a 1 but reads the 0 that B is pulling, so A stops",
+            "Neither: both messages are destroyed and both retry",
+            "Whichever has the faster clock",
+          ],
+          answer: 1,
+          why: "The first three bits (1, 0, 0) match. At the fourth, A sends 1 and B sends 0. The line is 0. A reads back a level it did not send and withdraws. The lower number wins, and B's bits were never disturbed.",
+        },
+      ],
+      takeaway: "A 0 always beats a 1 on the wire. I2C uses that for the ACK, for slowing the clock and for arbitration.",
+    },
+    {
+      id: "bus-i2c-calc",
+      kind: "calc",
+      tier: "practice",
+      title: "Address bytes and clock dividers",
+      goal: "Work out the first byte on the bus and the SCL frequency the clock registers give.",
+      refs: [{ trm: "20.1.4" }, { trm: "20.1.5" }, { trm: "20.3.5" }, { course: "L10" }],
+      brief: `
+## The address byte
+The first byte after a START is the 7-bit address shifted left by one, with the R/W bit in bit 0:
+
+**byte = (address << 1) | R/W**, with R/W = 0 to write and 1 to read.
+
+On a logic analyser you see this byte. In the register \`I2CSAR\` you write the **7-bit address**: the chip does the shift and adds the R/W bit itself.
+
+## The clock
+The I2C module divides the 200 MHz system clock twice.
+
+1. The prescaler makes the **module clock**: **200 MHz / (I2CPSC + 1)**. The reference manual requires it to be between **7 and 12 MHz**.
+2. SCL is made from the module clock. Its low time is (I2CCLKL + d) module clock periods and its high time is (I2CCLKH + d) periods:
+
+**SCL frequency = module clock / ((I2CCLKL + d) + (I2CCLKH + d))**
+
+The extra **d** is 5 when I2CPSC is greater than 1 (it is 7 for I2CPSC = 0 and 6 for I2CPSC = 1).
+
+The I2C module is specified for 10 kbit/s to 400 kbit/s.
+
+## The lecture's numbers
+The lecture's \`I2CA_Init\`, taken from TI's example, uses I2CPSC = 16, I2CCLKL = 10, I2CCLKH = 5. Work out what that gives in the last two fields.
+`,
+      fields: [
+        {
+          id: "wr",
+          label: "Address byte to write to the device at 0x48",
+          format: "hex",
+          answer: 0x90,
+          why: "0x48 << 1 = 0x90, and R/W = 0 for a write.",
+        },
+        {
+          id: "rd",
+          label: "Address byte to read from the device at 0x48",
+          format: "hex",
+          answer: 0x91,
+          why: "0x90 with R/W = 1 in bit 0: 0x91.",
+        },
+        {
+          id: "mod",
+          label: "Module clock with I2CPSC = 19",
+          unit: "MHz",
+          answer: 10,
+          why: "200 MHz / (19 + 1) = 10 MHz, inside the 7 to 12 MHz range.",
+        },
+        {
+          id: "scl100",
+          label: "SCL frequency with I2CPSC = 19, I2CCLKL = 45, I2CCLKH = 45",
+          unit: "kHz",
+          answer: 100,
+          tolPct: 0.5,
+          why: "d = 5. (45 + 5) + (45 + 5) = 100 module clock periods per SCL period: 10 MHz / 100 = 100 kHz.",
+        },
+        {
+          id: "lecmod",
+          label: "Lecture values: module clock with I2CPSC = 16",
+          unit: "MHz",
+          answer: 11.765,
+          tolPct: 0.5,
+          why: "200 MHz / 17 = 11.76 MHz, just inside the allowed range.",
+        },
+        {
+          id: "lecscl",
+          label: "Lecture values: SCL frequency with I2CCLKL = 10, I2CCLKH = 5",
+          unit: "kHz",
+          answer: 470.6,
+          tolPct: 0.5,
+          why: "(10 + 5) + (5 + 5) = 25 periods: 11.76 MHz / 25 = 470.6 kHz. That is above the 400 kHz the reference manual gives as the fastest rate. With I2CPSC = 19 the same dividers give exactly 400 kHz.",
+        },
+      ],
+      hints: [
+        "Shift the address left one place (multiply by 2), then add the R/W bit.",
+        "Find the module clock first: 200 / (I2CPSC + 1) in MHz. Then add d = 5 to both divider values.",
+        "100 kHz case: 10 MHz / (50 + 50). Lecture case: (200 / 17) MHz / (15 + 10).",
+      ],
+      takeaway: "I2CSAR holds the 7-bit address, the bus shows it shifted with R/W added. Check the module clock (7 to 12 MHz) before the SCL dividers.",
+    },
+    {
+      id: "bus-i2c-mode",
+      kind: "register",
+      tier: "practice",
+      title: "The mode word",
+      goal: "Set the bits of I2CMDR that start a write: master, transmitter, START, and a STOP at the end.",
+      refs: [{ trm: "20.6.2" }, { trm: "20.3.3" }, { course: "L10" }],
+      brief: `
+\`I2CMDR\` is the mode register: one write to it starts a whole transfer. "Read the temperature" used 0x2C20 to **read**. A master that **writes** to a device, for example to set a sensor's alarm limit, needs one more bit.
+
+The bits that matter:
+
+- **IRS** (bit 5): 1 takes the module out of reset. It is already set here and must stay set.
+- **MST** (bit 10): 1 = master. The module makes the clock.
+- **TRX** (bit 9): 1 = transmitter (the R/W bit sent is 0, write). 0 = receiver (R/W = 1, read).
+- **STT** (bit 13): 1 = generate a START now. The chip clears it again.
+- **STP** (bit 11): 1 = generate a STOP when the number of bytes in \`I2CCNT\` has been transferred. The chip clears it once the STOP is on the bus.
+
+Set the register so the module **writes** as a master and ends with a STOP.
+`,
+      reg: "I2cbRegs.I2CMDR",
+      initial: 0x0020,
+      targets: [
+        { field: "STT", value: 1 },
+        { field: "STP", value: 1 },
+        { field: "MST", value: 1 },
+        { field: "TRX", value: 1 },
+      ],
+      code: "I2cbRegs.I2CMDR.all = 0x2E20;   // START, STOP, master, transmitter, out of reset",
+      hints: [
+        "Four bits to set, one to leave alone. Writing means TRX is 1.",
+        "Set STT (bit 13), STP (bit 11), MST (bit 10) and TRX (bit 9). Keep IRS (bit 5).",
+        "The value is 0x2E20. The lecture's 0x6E20 also sets FREE (bit 14), which only matters at a debugger breakpoint.",
+      ],
+      takeaway: "0x2C20 reads, 0x2E20 (or the lecture's 0x6E20) writes. The only difference that reaches the bus is TRX, which becomes the R/W bit.",
+    },
+    {
+      id: "bus-i2c-nack",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Is anybody there?",
+      goal: "Write read_temp() so it reads a sensor at any address and reports when no device answers.",
+      refs: [{ course: "L10" }, { trm: "20.3.4" }, { trm: "20.6.2" }, { trm: "20.4.1" }],
+      brief: `
+The robot is meant to get a second temperature sensor at address **0x49**. It is not fitted yet. \`main()\` already asks both addresses in turn.
+
+With the code of "Read the temperature", the read of 0x49 would wait for ever: no device pulls SDA low in the ninth clock, so no byte ever arrives.
+
+See it in the figure: choose "step through a transfer" and the address 0x49.
+
+{{figure:i2c-bus}}
+
+## What the chip does on a NACK
+When the address is not acknowledged the module sets \`I2CSTR.bit.NACK\` and **stops where it is, holding the bus**: SCL stays low and the bus stays busy. The program must do two things:
+
+- write \`I2CMDR.bit.STP = 1\` so the module makes a STOP and frees the bus
+- clear the flag. The flags in \`I2CSTR\` are cleared by **writing a 1** to them: \`I2cbRegs.I2CSTR.all = 0x0002;\` clears NACK (bit 1). Do not use \`.bit.NACK = 1\` here: that reads the whole register and writes it back, which clears every other flag that happens to be set.
+
+## Your task
+Write the body of \`void read_temp(uint16_t address, float *degC)\`. It reports through the global \`answered\`:
+
+1. Wait until the previous transfer's STOP is finished: \`while (I2cbRegs.I2CMDR.bit.STP == 1) {}\`. Starting a transfer on top of a STOP that is still on the bus is an error.
+2. Set address and count, start a 2-byte read with STOP (mode word 0x2C20).
+3. While waiting for the first byte, also watch \`NACK\`. If it is set: STOP, clear the flag, set \`answered = 0\` and \`return\`.
+4. Otherwise read both bytes, store the temperature in degrees C through the pointer (\`*degC = ...\`), and set \`answered = 1\`.
+
+A variable that is never written keeps its starting value: \`tempB\` must stay at -1000.
+`,
+      kit: "robot",
+      starter: nackMain("    answered = 0;"),
+      solution: nackMain(`    uint16_t msb;
+    uint16_t lsb;
+    int16_t raw;
+
+    while (I2cbRegs.I2CMDR.bit.STP == 1) {}     // previous STOP finished
+    I2cbRegs.I2CSAR.all = address;
+    I2cbRegs.I2CCNT = 2;
+    I2cbRegs.I2CMDR.all = 0x2C20;               // START, STOP, master, receive
+
+    while (I2cbRegs.I2CSTR.bit.RRDY == 0) {
+        if (I2cbRegs.I2CSTR.bit.NACK == 1) {
+            I2cbRegs.I2CMDR.bit.STP = 1;        // free the bus
+            I2cbRegs.I2CSTR.all = 0x0002;       // clear NACK
+            answered = 0;
+            return;
+        }
+    }
+    msb = I2cbRegs.I2CDRR.all;
+    while (I2cbRegs.I2CSTR.bit.RRDY == 0) {}
+    lsb = I2cbRegs.I2CDRR.all;
+
+    raw = (msb << 8) | lsb;
+    *degC = raw / 256.0;
+    answered = 1;`),
+      durationMs: 14,
+      stimuli: [
+        { at: 4, set: "TEMP_C", value: 60.25 },
+        { at: 8, set: "TEMP_C", value: -12.5 },
+      ],
+      checks: [
+        { kind: "var", name: "okA", min: 6, label: "The sensor at 0x48 is read again and again", hint: "If this stops at 1, the second call never gets going. After a NACK the bus stays busy until you write STP = 1." },
+        { kind: "var", name: "missB", min: 6, label: "Every read of 0x49 ends with answered = 0", hint: "Watch I2CSTR.bit.NACK inside the loop that waits for RRDY." },
+        { kind: "var", name: "okB", equals: 0, label: "0x49 is never reported as present" },
+        { kind: "var", name: "missA", equals: 0, label: "0x48 is never reported as missing", hint: "A NACK flag left set from the 0x49 read makes the next read of 0x48 look like a failure. Clear it: I2cbRegs.I2CSTR.all = 0x0002;" },
+        { kind: "var", name: "tempA", at: 3, equals: 25, label: "tempA is 25 at the start" },
+        { kind: "var", name: "tempA", at: 7, equals: 60.25, label: "tempA follows the knob to 60.25" },
+        { kind: "var", name: "tempA", at: 12, equals: -12.5, label: "tempA follows the knob to -12.5", hint: "Put the two bytes into an int16_t before dividing, so the sign survives." },
+        { kind: "var", name: "tempB", equals: -1000, label: "tempB is left alone" },
+        { kind: "no-diagnostic", code: "i2c-busy", label: "No transfer is started while another is on the bus", hint: "Begin read_temp with: while (I2cbRegs.I2CMDR.bit.STP == 1) {}" },
+      ],
+      watch: ["tempA", "tempB", "answered", "okA", "missA", "okB", "missB"],
+      inspect: ["I2cbRegs.I2CSTR", "I2cbRegs.I2CMDR"],
+      hints: [
+        "Start from the body of read_temperature() in \"Read the temperature\", with `address` in place of 0x48 and the STP wait moved to the top.",
+        "Inside `while (I2cbRegs.I2CSTR.bit.RRDY == 0) { ... }` add `if (I2cbRegs.I2CSTR.bit.NACK == 1) { ... return; }`.",
+        "In the NACK branch: `I2cbRegs.I2CMDR.bit.STP = 1;` then `I2cbRegs.I2CSTR.all = 0x0002;` then `answered = 0; return;`. At the end: `raw = (msb << 8) | lsb; *degC = raw / 256.0; answered = 1;`",
+      ],
+      takeaway: "A NACK is information, not a failure: it is how a master finds out what is on the bus. Always send the STOP afterwards, or the bus stays busy.",
+    },
+    {
+      id: "bus-i2c-debug",
+      kind: "code",
+      mode: "debug",
+      tier: "practice",
+      title: "0x91 on the analyser",
+      goal: "Find the two mistakes that keep this program from ever reading the sensor at 0x48.",
+      refs: [{ course: "L10" }, { trm: "20.3.5" }, { trm: "20.6.2" }],
+      brief: `
+A teammate watched a working board with a logic analyser, saw the first byte **0x91** = \`1001 0001\` on the bus, and wrote this program from it. The mode word came from the lecture's \`I2CA_WriteData\` example.
+
+It never produces a temperature: \`readings\` stays 0.
+
+There are **two** mistakes, both in \`read_temperature()\`. Fix one and the symptom changes:
+
+- Watch \`nacks\`. If it counts up, nobody answers at the address the chip is calling.
+- If \`nacks\` stays 0 and \`readings\` stays 0 as well, the sensor did answer, but the two sides disagree about who sends the data.
+
+Remember what the byte on the bus is made of, and which bit of \`I2CMDR\` decides the R/W bit:
+
+- **STT** bit 13, **STP** bit 11, **MST** bit 10, **TRX** bit 9, **IRS** bit 5, and FREE bit 14 (only matters at a breakpoint)
+`,
+      kit: "robot",
+      starter: i2cDebug("0x91", "0x6E20", "// first byte seen on the logic analyser"),
+      solution: i2cDebug("0x48", "0x2C20", "// 7-bit address (0x91 on the bus = 0x48 << 1, + read bit)"),
+      durationMs: 16,
+      stimuli: [
+        { at: 5, set: "TEMP_C", value: 41.5 },
+        { at: 10, set: "TEMP_C", value: -20 },
+      ],
+      checks: [
+        {
+          kind: "var", name: "nacks", equals: 0,
+          label: "The sensor acknowledges its address every time",
+          hint: "0x91 is the byte on the wire: the address shifted left, plus the read bit. I2CSAR wants the 7-bit address, 0x91 >> 1.",
+        },
+        {
+          kind: "var", name: "readings", min: 4,
+          label: "Readings keep arriving",
+          hint: "0x6E20 has TRX (bit 9) set: the chip addresses the sensor for writing and then waits for you to give it data to send. A read needs TRX = 0.",
+        },
+        { kind: "var", name: "tempC", at: 4, equals: 25, label: "tempC is 25 at the start" },
+        { kind: "var", name: "tempC", at: 9, equals: 41.5, label: "tempC follows the knob to 41.5" },
+        { kind: "var", name: "tempC", at: 14, equals: -20, label: "tempC follows the knob to -20" },
+      ],
+      watch: ["nacks", "readings", "tempC"],
+      inspect: ["I2cbRegs.I2CSAR", "I2cbRegs.I2CMDR", "I2cbRegs.I2CSTR"],
+      hints: [
+        "0x91 = 1001 0001. The lowest bit is the R/W bit. What are the seven bits above it, as a number?",
+        "TMP_ADDRESS must be 0x48. The chip shifts it and adds the R/W bit by itself.",
+        "The mode word for a read is 0x2C20. 0x6E20 is the lecture's word for a write: it has TRX set.",
+      ],
+      takeaway: "I2CSAR takes the 7-bit address; the analyser shows the 8-bit address byte. And the R/W bit is not yours to write: it is the opposite of TRX.",
+    },
     {
       id: "bus-i2c-decode",
       kind: "calc",
@@ -1957,8 +1893,83 @@ Read the message under the editor: it names the first problem and its line.
       ],
       takeaway: "Check STP and BB before every transfer, and end every transfer with a STOP. A missing STOP shows up later, in code that is correct.",
     },
+    {
+      id: "bus-can-calc",
+      kind: "calc",
+      tier: "practice",
+      title: "Two bytes of distance",
+      goal: "Decode the distance bytes of a sensor frame and work out the numbers behind setCANBitRate.",
+      refs: [{ trm: "22.12.1" }, { course: "L10" }],
+      brief: `
+## The distance message
+The sensor's "measured distance" frame has 8 data bytes. The first three:
 
-    // -------------------------------------------------------------- expert
+- **byte 0** and **byte 1**: the distance in millimetres, **least significant byte first** (little-endian)
+- **byte 2**: the ranging status, 0 when the measurement is valid
+
+So the distance is **256 x byte 1 + byte 0**. The course starter writes it as \`dis_1 = 256*dis_raw_1[1] + dis_raw_1[0];\`
+
+## The bit rate
+A CAN node has no clock wire to follow, so it counts time. One bit is divided into a number of equal **time quanta**. The length of a quantum is the CAN clock (200 MHz, the system clock) divided by a prescaler:
+
+**bit rate = CAN clock / (prescaler x time quanta per bit)**
+
+The course calls \`setCANBitRate(200000000, 1000000);\`. For 1 Mbit/s it chooses **10** time quanta per bit and works out the prescaler.
+
+A frame with a 29-bit identifier and 8 data bytes is 128 bits long (a few more when the hardware inserts stuff bits).
+`,
+      fields: [
+        {
+          id: "dist",
+          label: "A frame arrives with byte 0 = 0xD2 and byte 1 = 0x04. Distance",
+          unit: "mm",
+          answer: 1234,
+          why: "256 x 4 + 210 = 1234. 0xD2 is 210.",
+        },
+        {
+          id: "swapped",
+          label: "What a program that swaps the two bytes would report for the same frame",
+          unit: "mm",
+          answer: 53764,
+          why: "256 x 210 + 4 = 53764: more than 53 metres. A reading far outside the sensor's range is the mark of a byte-order mistake.",
+        },
+        {
+          id: "b0",
+          label: "The sensor measures 300 mm. Value of byte 0",
+          format: "hex",
+          answer: 0x2c,
+          why: "300 = 0x012C. The low byte, 0x2C, is sent first; byte 1 is 0x01.",
+        },
+        {
+          id: "id",
+          label: "Identifier of the distance message of the sensor with device number 2",
+          format: "hex",
+          answer: 0x060b0102,
+          why: "0x060B01ss with ss = 02.",
+        },
+        {
+          id: "presc",
+          label: "Prescaler for 1 Mbit/s from 200 MHz with 10 time quanta per bit",
+          answer: 20,
+          why: "200 000 000 / (20 x 10) = 1 000 000. One time quantum is 100 ns and one bit 1 us.",
+        },
+        {
+          id: "tframe",
+          label: "Time on the bus for a 128-bit frame at 1 Mbit/s",
+          unit: "us",
+          answer: 128,
+          why: "128 bits x 1 us. The sensors send every 100 ms, so the bus is idle almost all the time.",
+        },
+      ],
+      hints: [
+        "Byte 1 counts 256s, byte 0 counts ones. Convert the hex bytes to decimal first.",
+        "Write 300 in hex with four digits. The right-hand pair is byte 0.",
+        "Prescaler = 200 000 000 / (1 000 000 x 10).",
+      ],
+      takeaway: "Little-endian: low byte first. When a 16-bit value from a bus looks absurd, try the bytes the other way round.",
+    },
+
+    // ------------------------------------------------------------------ expert
     {
       id: "bus-i2c-bitbang",
       kind: "code",
@@ -2004,9 +2015,6 @@ Write \`sda()\`, \`scl()\`, \`send_byte()\` and the transfer in \`main()\`. Coun
         { kind: "no-diagnostic", code: "short", label: "No output fights the sensor", hint: "Both pins must be open-drain: GPIO_OPENDRAIN | GPIO_PULLUP." },
         { kind: "source", mustNotMatch: "I2c[ab]Regs", label: "The I2C module is not used" },
         { kind: "no-dat-write", label: "Outputs are changed with SET and CLEAR only" },
-      ],
-      bonus: [
-        { kind: "max-lines", max: 60, label: "At most 60 lines of code" },
       ],
       watch: ["acks"],
       hints: [
