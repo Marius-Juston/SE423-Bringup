@@ -48,6 +48,7 @@ const theme = EditorView.theme(
     ".cm-mark-current": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 4px 0 0 var(--accent)" },
     ".cm-mark-info": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 3px 0 0 var(--info)" },
     "&.cm-focused": { outline: "none" },
+    ".cm-scroller:focus-visible": { outline: "none" },
   },
 );
 
@@ -88,7 +89,7 @@ export function Editor({ value, onChange, marks, handle }: { value: string; onCh
           theme,
           syntaxHighlighting(highlight),
           markField,
-          EditorView.contentAttributes.of({ "aria-label": "C source code editor. Press Escape then Tab to leave the editor." }),
+          EditorView.contentAttributes.of({ "aria-label": "C source code editor. Press Escape then Tab to leave the editor.", "aria-describedby": "editor-exit", tabindex: "0" }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) changed.current(u.state.doc.toString());
           }),
@@ -123,5 +124,12 @@ export function Editor({ value, onChange, marks, handle }: { value: string; onCh
     view.current?.dispatch({ effects: setMarks.of(marks) });
   }, [marks]);
 
-  return <div className="editor-host" ref={host} />;
+  return (
+    <div className="editor-wrap">
+      <div className="editor-host" ref={host} />
+      <p className="editor-exit" id="editor-exit">
+        <kbd>Tab</kbd> indents. To leave the editor with the keyboard press <kbd>Esc</kbd>, then <kbd>Tab</kbd>.
+      </p>
+    </div>
+  );
 }

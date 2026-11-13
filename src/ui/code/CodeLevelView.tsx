@@ -11,6 +11,8 @@ import { Registers } from "./Registers";
 import { Panel } from "../Panel";
 import { Icon } from "../Icon";
 import { VIEWS } from "../views";
+import { Guard } from "../Markdown";
+import { findLevel } from "../../levels/index";
 
 interface Problem {
   line: number;
@@ -26,24 +28,47 @@ function problemsOf(diags: Diagnostic[], err?: { line: number; msg: string } | n
   return out;
 }
 
-export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; onPass: () => void; splitter?: ReactNode }) {
+const SERIAL_CHECKS = new Set(["serial", "serial-period", "uart"]);
+const PIN_CHECKS = new Set(["led", "pin", "blink", "steady", "opposite", "duty", "latency", "uart"]);
+
+export function CodeLevelView({ level, onPass, helped = false, splitter, benchTop }: { level: CodeLevel; onPass: () => void; /** The student has seen the last hint or the solution: no stars. */ helped?: boolean; splitter?: ReactNode; /** Shown above the bench panels (the "level passed" box). */ benchTop?: ReactNode }) {
   const save = useSave();
-  const [code, setCode] = useState(() => save.code[level.id] ?? level.starter);
+  // A level that continues an earlier one opens with the student's code for that level.
+  const earlier = level.continues ? findLevel(level.continues)?.level : undefined;
+  const earlierCode = earlier ? save.code[earlier.id] : undefined;
+  const [code, setCode] = useState(() => save.code[level.id] ?? earlierCode ?? level.starter);
+  const [continued, setContinued] = useState(() => save.code[level.id] === undefined && earlierCode !== undefined);
+  const [resetting, setResetting] = useState(false);
   const [live, setLive] = useState<LiveSession | null>(null);
   const [, setFrame] = useState(0);
+  const bump = () => setFrame((f) => f + 1);
   const [result, setResult] = useState<RunResult | null>(null);
+  /** The code the shown test result belongs to. */
+  const [tested, setTested] = useState("");
   const [speed, setSpeed] = useState(1);
   const [typed, setTyped] = useState("");
   const editor = useRef<EditorHandle | null>(null);
   const term = useRef<HTMLDivElement>(null);
   const kit = KITS[level.kit];
   const sandbox = level.checks.length === 0;
+  const fails = save.fails[level.id] ?? 0;
 
-  // Save the code a moment after the student stops typing.
+  // Save the code a moment after the student stops typing, and at once when leaving the level.
+  const unsaved = useRef<string | null>(null);
   useEffect(() => {
-    const t = setTimeout(() => store.setCode(level.id, code), 400);
+    unsaved.current = code;
+    const t = setTimeout(() => {
+      store.setCode(level.id, code);
+      unsaved.current = null;
+    }, 400);
     return () => clearTimeout(t);
   }, [code, level.id]);
+  useEffect(
+    () => () => {
+      if (unsaved.current !== null) store.setCode(level.id, unsaved.current);
+    },
+    [level.id],
+  );
 
   // Animation loop for the live run.
   useEffect(() => {
@@ -62,38 +87,60 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
     return () => cancelAnimationFrame(raf);
   }, [live, speed]);
 
+  // The terminal follows new output only while it is scrolled to the end, so earlier output can be read.
+  const follow = useRef(true);
   useEffect(() => {
     const el = term.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && follow.current) el.scrollTop = el.scrollHeight;
   });
 
-  const start = () => {
-    setResult(null);
-    setLive(new LiveSession(level.kit, code));
-  };
+  const running = !!live?.running;
+  const start = () => setLive(new LiveSession(level.kit, code));
   const stop = () => setLive(null);
+  /** Stepping works from a stopped board too: it powers up paused at the first line. */
+  const session = (): LiveSession => {
+    if (live?.running) return live;
+    const s = new LiveSession(level.kit, code);
+    s.paused = true;
+    setLive(s);
+    return s;
+  };
+  const stepLine = () => {
+    session().stepLine();
+    bump();
+  };
+  const stepWrite = () => {
+    session().stepToWrite();
+    bump();
+  };
   const test = () => {
     setLive(null);
     const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
     setResult(r);
+    setTested(code);
     if (r.passed) {
       onPass();
-      // Stars count only on a solution that passes the level.
+      // Stars count only on a solution that passes the level without the last hint or the reference solution.
       const earned = r.bonus.map((b, i) => (b.pass ? i : -1)).filter((i) => i >= 0);
-      if (earned.length) store.star(level.id, earned);
+      if (earned.length && !helped) store.star(level.id, earned);
+    } else {
+      store.fail(level.id);
+      // The verdict must be in view (in a narrow window the board is below the editor). After a pass, LevelView shows the next step instead.
+      requestAnimationFrame(() => document.querySelector('.bench [data-panel="tests"] .result')?.scrollIntoView({ block: "nearest" }));
     }
   };
 
   const board = live?.board ?? result?.board ?? null;
+  const stale = !!result && !live && tested !== code;
   // One always-visible statement of what the program is doing.
   const state: { kind: string; text: string } = live
     ? live.error
       ? { kind: "bad", text: live.error.kind === "compile" ? "Does not compile" : "Stopped: error" }
-      : live.paused
-        ? { kind: "paused", text: `Paused at line ${live.board.line}` }
-        : live.running
-          ? { kind: "running", text: "Running" }
-          : { kind: "idle", text: "Stopped" }
+      : !live.running
+        ? { kind: "idle", text: "Program ended" }
+        : live.paused
+          ? { kind: "paused", text: `Paused at line ${live.board.line}` }
+          : { kind: "running", text: "Running" }
     : result
       ? result.passed
         ? { kind: "ok", text: "All tests passed" }
@@ -101,23 +148,28 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
           ? { kind: "bad", text: "Does not compile" }
           : { kind: "bad", text: `${result.checks.filter((c) => c.pass).length} of ${result.checks.length} tests passed` }
       : { kind: "idle", text: "Not running" };
+  const tip = running
+    ? live!.paused
+      ? "Step line runs one line. Next write runs to the next register write."
+      : "The board is powered: use its buttons, or pause to step."
+    : sandbox
+      ? "Run powers the board with your program."
+      : "Run tests checks the level. Run powers the board so you can try it.";
   // Keyboard: Ctrl+Enter tests, Ctrl+Shift+Enter run/stop, F10 step, F9 next write.
-  const keys = useRef({ start, stop, test });
-  keys.current = { start, stop, test };
+  const keys = useRef({ start, stop, test, stepLine, stepWrite });
+  keys.current = { start, stop, test, stepLine, stepWrite };
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         if (e.shiftKey) (live?.running ? keys.current.stop : keys.current.start)();
         else if (!sandbox) keys.current.test();
-      } else if (e.key === "F10" && live?.running) {
+      } else if (e.key === "F10") {
         e.preventDefault();
-        live.stepLine();
-        setFrame((f) => f + 1);
-      } else if (e.key === "F9" && live?.running) {
+        keys.current.stepLine();
+      } else if (e.key === "F9") {
         e.preventDefault();
-        live.stepToWrite();
-        setFrame((f) => f + 1);
+        keys.current.stepWrite();
       }
     };
     window.addEventListener("keydown", on);
@@ -129,6 +181,15 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
     for (const c of [...level.checks, ...(level.bonus ?? [])]) if (c.kind === "signal") names.add(c.name);
     for (const st of level.stimuli ?? []) if ("set" in st) names.add(st.set);
     return names;
+  }, [level]);
+  // Panels a level has no use for stay away until the program itself uses them.
+  const uses = useMemo(() => {
+    const checks = [...level.checks, ...(level.bonus ?? [])];
+    const stim = level.stimuli ?? [];
+    return {
+      serial: checks.some((c) => SERIAL_CHECKS.has(c.kind)) || stim.some((s) => "type" in s) || /serial|printf|Sci[a-d]Regs|UART_/i.test(level.starter + level.solution),
+      pins: checks.some((c) => PIN_CHECKS.has(c.kind)) || stim.some((s) => "press" in s || "release" in s),
+    };
   }, [level]);
   const problems = useMemo(() => {
     if (live) return problemsOf([...live.board.diagnostics.values()], live.error, live.error?.kind === "compile" ? "Compile error" : "Stopped");
@@ -150,61 +211,80 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
   const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
   const windowMs = live ? Math.min(Math.max(nowMs, 1), 400) : Math.max(nowMs, 1);
   const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : "set" in s ? `${s.set}=${s.value}` : `'${s.type}'` })) : [];
+  const showSerial = sandbox || uses.serial || serial !== "" || !!board?.console;
+  const showPins = sandbox || uses.pins || (board?.gpio.trace.size ?? 0) > 0;
+  const nPass = result ? result.checks.filter((c) => c.pass).length : 0;
+  // A failed check says what was seen; its pointer to the cause waits for the second failed run.
+  const pointers = fails >= 2;
+  const held = !!result && !result.passed && !pointers && result.checks.some((c) => !c.pass && c.hint);
+  const replace = (text: string) => {
+    setCode(text);
+    setContinued(false);
+    setResetting(false);
+    editor.current?.goto(1);
+  };
 
   return (
     <>
       <div className="pane editor-pane">
+        <h2 className="sr-only">Code</h2>
         <div className="toolbar">
-          {live?.running ? (
-            <button className="btn" onClick={stop}><Icon name="stop" size={13} /> Stop</button>
-          ) : (
-            <button className="btn" onClick={start} title="Power the board and run your program (Ctrl+Shift+Enter)"><Icon name="play" size={13} /> Run</button>
-          )}
-          {live?.running && (
-            <>
-              <button className="btn" aria-pressed={live.paused} onClick={() => { live.paused = !live.paused; setFrame((f) => f + 1); }}>
-                <Icon name={live.paused ? "play" : "pause"} size={13} /> {live.paused ? "Resume" : "Pause"}
+          <div className="tool-row">
+            {!sandbox && (
+              <button className="btn primary" onClick={test} title="Check your program against the level's tests (Ctrl+Enter)">
+                <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
               </button>
-              <button className="btn" onClick={() => { live.stepLine(); setFrame((f) => f + 1); }} title="Run one line of your code, then pause (F10)"><Icon name="step" size={14} /> Step line</button>
-              <button className="btn" onClick={() => { live.stepToWrite(); setFrame((f) => f + 1); }} title="Run until the next register write, then pause (F9)"><Icon name="skip" size={13} /> Next write</button>
-            </>
-          )}
-          {!sandbox && (
-            <button className="btn primary" onClick={test} title="Check your program against the level's tests (Ctrl+Enter)">
-              <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
+            )}
+            {running ? (
+              <button className="btn" onClick={stop} title="Switch the board off (Ctrl+Shift+Enter)"><Icon name="stop" size={13} /> Stop</button>
+            ) : (
+              <button className={`btn ${sandbox ? "primary" : ""}`} onClick={start} title="Power the board and run your program (Ctrl+Shift+Enter)"><Icon name="play" size={13} /> Run</button>
+            )}
+            <button className="btn" disabled={!running} onClick={() => { live!.paused = !live!.paused; bump(); }} title={running ? (live!.paused ? "Let the program run on" : "Freeze the program where it is") : "Nothing is running: press Run first"}>
+              <Icon name={running && live!.paused ? "play" : "pause"} size={13} /> <span className="lbl">{running && live!.paused ? "Resume" : "Pause"}</span>
             </button>
+            <button className="btn" onClick={stepLine} title="Run one line of your code, then pause (F10)"><Icon name="step" size={14} /> <span className="lbl">Step line</span></button>
+            <button className="btn" onClick={stepWrite} title="Run until the next register write, then pause (F9)"><Icon name="skip" size={13} /> <span className="lbl">Next write</span></button>
+          </div>
+          <div className="tool-row">
+            <span className={`chip state-${state.kind}`} role="status">
+              <i aria-hidden="true" /> {state.text}
+            </span>
+            <span className="tool-tip" title={tip}>{tip}</span>
+            <label className="speed">
+              Speed{" "}
+              <select value={speed} onChange={(e) => setSpeed(+e.target.value)} title="How fast simulated time passes while the program runs">
+                <option value={0.0001}>1/10 000</option>
+                <option value={0.001}>1/1000</option>
+                <option value={0.01}>1/100</option>
+                <option value={0.1}>1/10</option>
+                <option value={1}>real time</option>
+                <option value={10}>10×</option>
+              </select>
+            </label>
+            <button className="btn ghost small" aria-expanded={resetting} onClick={() => setResetting(!resetting)}>
+              <Icon name="reset" size={13} /> Reset code
+            </button>
+          </div>
+          {resetting && (
+            <div className="tool-note" role="group" aria-label="Reset code">
+              <span>Replace everything in the editor with:</span>
+              <button className="btn small" onClick={() => { replace(level.starter); if (!earlierCode) store.resetCode(level.id); }}>{earlier ? "This level's starting code" : "The starting code"}</button>
+              {earlier && earlierCode !== undefined && <button className="btn small" onClick={() => replace(earlierCode)}>Your code from “{earlier.title}”</button>}
+              <button className="btn ghost small" onClick={() => setResetting(false)}>Cancel</button>
+            </div>
           )}
-          <span className={`chip state-${state.kind}`} role="status">
-            <i aria-hidden="true" /> {state.text}
-          </span>
-          <span className="spacer" />
-          <label className="speed">
-            Speed{" "}
-            <select value={speed} onChange={(e) => setSpeed(+e.target.value)}>
-              <option value={0.0001}>1/10 000</option>
-              <option value={0.001}>1/1000</option>
-              <option value={0.01}>1/100</option>
-              <option value={0.1}>1/10</option>
-              <option value={1}>real time</option>
-              <option value={10}>10×</option>
-            </select>
-          </label>
-          <button
-            className="btn ghost small"
-            onClick={() => {
-              if (code === level.starter || window.confirm("Replace your code with the starting code for this level?")) {
-                setCode(level.starter);
-                store.resetCode(level.id);
-              }
-            }}
-          >
-            <Icon name="reset" size={13} /> Reset code
-          </button>
+          {continued && earlier && !resetting && (
+            <div className="tool-note">
+              <span>Continuing from your code for {earlier.title}.</span>
+              <button className="btn ghost small" onClick={() => setContinued(false)} aria-label="Dismiss this note">Dismiss</button>
+            </div>
+          )}
         </div>
         <Editor value={code} onChange={setCode} marks={marks} handle={editor} />
         <div className="problems" aria-live="polite">
           {problems.length === 0 ? (
-            <span style={{ color: "var(--dim)" }}>{live || result ? "No problems reported." : "Run the program to try it, or run the tests to check it."}</span>
+            <span className="hint-text">{live || result ? "No problems reported." : "Compiler messages and warnings about your program appear here."}</span>
           ) : (
             problems.map((p, i) => (
               <div className={`problem ${p.severity}`} key={i}>
@@ -223,13 +303,16 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
       </div>
       {splitter}
       <div className="pane bench">
+        <h2 className="sr-only">{sandbox ? "Board" : "Tests and board"}</h2>
+        {benchTop}
         <div className="bench-panels">
           {!sandbox && (
-            <Panel id="tests" title={result ? `Tests: ${result.checks.filter((c) => c.pass).length} of ${result.checks.length} passed` : "Tests"}>
+            <Panel id="tests" title="Tests" note={result ? `${nPass} of ${result.checks.length} passed${stale ? ", before your last edit" : ""}` : undefined}>
               {!result ? (
                 <p className="hint-text">Press <strong>Run tests</strong>. The tests run your program for {level.durationMs} ms of simulated time{level.stimuli?.length ? ", pressing buttons, turning knobs or typing at fixed times," : ""} and check the points below.</p>
               ) : (
-                <div className={`result ${result.passed ? "ok" : "bad"}`} role="status" style={{ marginTop: 0, marginBottom: "0.6rem" }}>
+                <div className={`result ${result.passed ? "ok" : "bad"}`}>
+                  <Icon name={result.passed ? "check" : "cross"} size={16} />{" "}
                   {result.passed
                     ? "All checks passed."
                     : result.compileError
@@ -238,7 +321,8 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
                         ? "The program stopped with an error. See the message under the editor."
                         : result.checks.every((c) => c.pass)
                           ? "The checks pass, but an error was reported under the editor. Fix it to finish the level."
-                          : "Some checks failed."}
+                          : `${result.checks.length - nPass} of ${result.checks.length} checks failed. Each one says what was seen.`}
+                  {stale && <span className="tiny"> This is the result for the code before your last edit: run the tests again.</span>}
                 </div>
               )}
               <ul className="checks">
@@ -250,10 +334,11 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
                       {c.label}
                     </span>
                     {c.detail && <span className="detail">{c.detail}</span>}
-                    {c.hint && <span className="hintline">{c.hint}</span>}
+                    {c.hint && pointers && <span className="hintline">{c.hint}</span>}
                   </li>
                 ))}
               </ul>
+              {held && <p className="tiny">Work from what was seen first. If a run fails again, each failed check adds a pointer to the likely cause.</p>}
               {level.bonus && level.bonus.length > 0 && (
                 <>
                   <h4 className="sub">Stars (optional)</h4>
@@ -261,7 +346,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
                     {level.bonus.map((b, i) => {
                       const r = result?.bonus[i];
                       const kept = save.stars[level.id]?.includes(i) ?? false;
-                      const now = !!r?.pass && !!result?.passed;
+                      const now = !!r?.pass && !!result?.passed && !helped;
                       return (
                         <li key={i}>
                           <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name="star" size={14} /></span>
@@ -271,11 +356,12 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
                             {kept && !now && result ? " (earned earlier)" : ""}
                           </span>
                           {r?.detail && <span className="detail">{r.detail}</span>}
-                          {r && !r.pass && r.hint && <span className="hintline">{r.hint}</span>}
+                          {r && !r.pass && r.hint && pointers && <span className="hintline">{r.hint}</span>}
                         </li>
                       );
                     })}
                   </ul>
+                  {helped && <p className="tiny">Stars are for a pass without the last hint or the reference solution.</p>}
                 </>
               )}
             </Panel>
@@ -291,7 +377,7 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
                 {level.watch.map((w) => {
                   const v = board.readVar(w);
                   return (
-                    <div key={w} style={{ display: "contents" }}>
+                    <div key={w}>
                       <dt>{w}</dt>
                       <dd>{v === undefined ? "?" : Number.isInteger(v) ? v : v.toPrecision(6)}</dd>
                     </div>
@@ -306,33 +392,52 @@ export function CodeLevelView({ level, onPass, splitter }: { level: CodeLevel; o
           {board &&
             VIEWS.filter((v) => v.relevant(board, kit)).map((v) => (
               <Panel key={v.id} id={`view-${v.id}`} title={v.title}>
-                <v.Component board={board} kit={kit} nowMs={nowMs} window={[Math.max(0, nowMs - windowMs), Math.max(nowMs, 1)]} live={!!live} />
+                <Guard what="This view">
+                  <v.Component board={board} kit={kit} nowMs={nowMs} window={[Math.max(0, nowMs - windowMs), Math.max(nowMs, 1)]} live={!!live} />
+                </Guard>
               </Panel>
             ))}
-          <Panel id="signals" title="Pins over time">
-            {board ? <Scope kit={kit} traces={board.gpio.trace} fromMs={Math.max(0, nowMs - windowMs)} toMs={Math.max(nowMs, 1)} marks={stimMarks} /> : <p className="hint-text">Run the program to see its pins.</p>}
-          </Panel>
-          <Panel id="serial" title="Serial terminal (SCIA, 115200 baud)">
-            <div className="term" ref={term} role="log" aria-label="Serial terminal output" tabIndex={0}>{serial}</div>
-            <form
-              className="term-input"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (live?.running && typed) live.type(typed);
-                setTyped("");
-              }}
-            >
-              <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="Type characters to send" aria-label="Characters to send to the board" disabled={!live?.running} />
-              <button className="btn small" disabled={!live?.running}>Send</button>
-            </form>
-            {board?.console ? (
-              <>
-                <h4 className="sub">printf console</h4>
-                <div className="term" role="log" aria-label="printf output" tabIndex={0}>{board.console}</div>
-              </>
-            ) : null}
-          </Panel>
-          <Panel id="registers" title="Registers: what changed, and when">
+          {showPins && (
+            <Panel id="signals" title="Pins over time">
+              {board ? <Scope kit={kit} traces={board.gpio.trace} fromMs={Math.max(0, nowMs - windowMs)} toMs={Math.max(nowMs, 1)} marks={stimMarks} /> : <p className="hint-text">Run the program to see its pins.</p>}
+            </Panel>
+          )}
+          {showSerial && (
+            <Panel id="serial" title="Serial terminal" note="SCIA, 115200 baud">
+              <div
+                className="term"
+                ref={term}
+                role="log"
+                aria-live={running && !live!.paused ? "off" : "polite"}
+                aria-label="Serial terminal output"
+                tabIndex={0}
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
+                }}
+              >
+                {serial}
+              </div>
+              <form
+                className="term-input"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (live?.running && typed) live.type(typed);
+                  setTyped("");
+                }}
+              >
+                <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={running ? "Type characters to send" : "Press Run to type to the board"} aria-label="Characters to send to the board" disabled={!running} />
+                <button className="btn small" disabled={!running}>Send</button>
+              </form>
+              {board?.console ? (
+                <>
+                  <h4 className="sub">printf console</h4>
+                  <div className="term" role="log" aria-live="off" aria-label="printf output" tabIndex={0}>{board.console}</div>
+                </>
+              ) : null}
+            </Panel>
+          )}
+          <Panel id="registers" title="Registers" note="what changed, and when">
             {board ? <Registers board={board} onGoto={(line) => editor.current?.goto(line)} /> : <p className="hint-text">Run the program to see the registers it writes.</p>}
           </Panel>
         </div>

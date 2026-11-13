@@ -42,7 +42,9 @@ export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel
   const targetNames = new Set((level.targets ?? []).map((t) => t.field));
   return (
     <div>
-      {name && <h2 className="mono" style={{ marginBottom: "0.5rem" }}>{name}</h2>}
+      {name && <h3 className="mono regname">{name}</h3>}
+      <p className="hint-text">Select a bit to switch it between 0 and 1.{targetNames.size ? " Leave the bits of the other fields as they are." : ""}</p>
+      <div className="bits-scroll">
       {rows.map((row, ri) => (
         <div className="bits" key={ri}>
           {[...row].reverse().map((f) => (
@@ -51,8 +53,8 @@ export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel
                 {Array.from({ length: f.hi - f.lo + 1 }, (_, i) => f.hi - i).map((b) => {
                   const on = Math.floor(value / 2 ** b) % 2 === 1;
                   return (
-                    <button key={b} className="bit" aria-pressed={on} aria-label={`Bit ${b}${f.name && !f.reserved ? `, field ${f.name}` : ""}: ${on ? 1 : 0}`} onClick={() => toggle(b)}>
-                      <small>{b}</small>
+                    <button key={b} className="bit" data-bit={b} aria-pressed={on} title={`Bit ${b}${f.name && !f.reserved ? `, field ${f.name}` : ""}`} onClick={() => toggle(b)}>
+                      <small><span className="sr-only">Bit </span>{b}<span className="sr-only">{f.name && !f.reserved ? `, field ${f.name}` : ""}: </span></small>
                       {on ? 1 : 0}
                     </button>
                   );
@@ -63,6 +65,7 @@ export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel
           ))}
         </div>
       ))}
+      </div>
       <div className="readout" aria-live="polite">
         <span>hex <b>{hex(value, bits)}</b></span>
         <span>decimal <b>{value}</b></span>
@@ -70,7 +73,7 @@ export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel
       {fields.some((f) => !f.reserved && f.name) && (
         <table className="fields">
           <thead>
-            <tr><th>Field</th><th>Bits</th><th>Value</th><th>What it does</th></tr>
+            <tr><th scope="col">Field</th><th scope="col">Bits</th><th scope="col">Value</th><th scope="col">What it does</th></tr>
           </thead>
           <tbody>
             {[...fields].reverse().filter((f) => !f.reserved && f.name).map((f) => {
@@ -99,12 +102,12 @@ export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel
           Check value
         </button>
         <button className="btn ghost" onClick={() => { setValue(level.initial >>> 0); setChecked(false); }}>Reset</button>
-        {checked && !ok && <span role="status" style={{ color: "var(--bad)" }}>Not yet: a needed field is wrong, or a bit that should stay unchanged was flipped.</span>}
+        <span role="status" className="verdict bad">{checked && !ok ? "Not yet: a needed field is wrong, or a bit that should stay unchanged was flipped." : ""}</span>
       </div>
       {solved && level.code && (
         <div className="takeaway">
           <strong>In C:</strong>
-          <pre style={{ marginTop: "0.4rem" }}><code>{level.code}</code></pre>
+          <pre><code>{level.code}</code></pre>
         </div>
       )}
     </div>

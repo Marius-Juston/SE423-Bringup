@@ -27,9 +27,10 @@ export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => vo
                   return (
                     <td key={i} style={{ padding: 0 }}>
                       <button
+                        data-wrong={wrong || undefined}
                         className={`wave ${v ? "hi" : "lo"} ${edge ? "edge" : ""} ${wrong ? "wrong" : ""}`}
                         disabled={!r.editable}
-                        aria-label={`${r.name}, ${level.slots[i]}: ${v ? "high" : "low"}${r.editable ? ". Press to change" : ""}`}
+                        aria-label={`${r.name}, ${level.slots[i]}: ${v ? "high" : "low"}${wrong ? ", wrong" : ""}${r.editable ? ". Press to change" : ", given"}`}
                         onClick={() => {
                           setRows(rows.map((row, k) => (k === ri ? row.map((x, j) => (j === i ? ((1 - x) as 0 | 1) : x)) : row)));
                           setChecked(false);
@@ -43,7 +44,7 @@ export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => vo
           </tbody>
         </table>
       </div>
-      <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>Click a cell to switch it between low and high. Grey rows are given.</p>
+      <p className="hint-text">Select a cell to switch it between low and high. {level.rows.some((r) => !r.editable) ? "Grey traces are given and cannot be changed." : ""}</p>
       <div className="actions">
         <button
           className="btn primary"
@@ -54,7 +55,7 @@ export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => vo
         >
           Check waveform
         </button>
-        {checked && !ok && <span role="status" style={{ color: "var(--bad)" }}>The highlighted cells are wrong.</span>}
+        <span role="status" className="verdict bad">{checked && !ok ? "The outlined cells are wrong." : ""}</span>
       </div>
     </div>
   );

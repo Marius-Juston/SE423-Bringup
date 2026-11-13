@@ -1,5 +1,25 @@
-import type { ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import { Figure } from "./figures";
+
+/**
+ * Keeps a failure in one part (a figure, a bench view) from taking the whole
+ * screen down: the part is replaced by a short note and the rest keeps working.
+ */
+export class Guard extends Component<{ what: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <p className="part-failed" role="note">
+        {this.props.what} could not be shown (a bug in the game, not in your work). The rest of this screen still works.{" "}
+        <button className="linkish" onClick={() => this.setState({ failed: false })}>Try again</button>
+      </p>
+    );
+  }
+}
 
 /** Inline: **bold**, `code`. */
 function inline(text: string, key: number): ReactNode[] {
@@ -37,10 +57,10 @@ export function Markdown({ text }: { text: string }) {
         </pre>,
       );
     } else if (/^\{\{figure:[a-z0-9-]+\}\}\s*$/.test(line.trim())) {
-      blocks.push(<Figure key={k++} id={line.trim().slice(9, -2)} />);
+      blocks.push(<Guard key={k++} what="This figure"><Figure id={line.trim().slice(9, -2)} /></Guard>);
       i++;
     } else if (/^##\s/.test(line)) {
-      blocks.push(<h3 key={k++} style={{ margin: "1em 0 0.4em" }}>{inline(line.slice(3), k)}</h3>);
+      blocks.push(<h3 key={k++} className="md-h">{inline(line.slice(3), k)}</h3>);
       i++;
     } else if (/^(-|\d+\.)\s/.test(line)) {
       const ordered = /^\d+\./.test(line);

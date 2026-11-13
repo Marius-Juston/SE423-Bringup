@@ -20,11 +20,16 @@ export function fieldRight(f: CalcField, text: string): boolean {
 export function Calc({ fields, onPass }: { fields: CalcField[]; onPass: () => void }) {
   const [vals, setVals] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState(false);
+  /** Wrong checks per field: the explanation appears after the second. */
+  const [misses, setMisses] = useState<Record<string, number>>({});
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
         setChecked(true);
+        const m = { ...misses };
+        for (const f of fields) if (!fieldRight(f, vals[f.id] ?? "") && parse(vals[f.id] ?? "") !== null) m[f.id] = (m[f.id] ?? 0) + 1;
+        setMisses(m);
         if (fields.every((f) => fieldRight(f, vals[f.id] ?? ""))) onPass();
       }}
     >
@@ -50,7 +55,7 @@ export function Calc({ fields, onPass }: { fields: CalcField[]; onPass: () => vo
             </span>
             {checked && (
               <p className={`why ${right ? "ok" : "bad"}`} role="status">
-                {right ? `Correct. ${f.why}` : parse(vals[f.id] ?? "") === null ? "Enter a number (decimal, or hex as 0x...)." : "Not this value. Recheck the formula, or use a hint."}
+                {right ? `Correct. ${f.why}` : parse(vals[f.id] ?? "") === null ? "Enter a number (decimal, or hex as 0x...)." : (misses[f.id] ?? 0) >= 2 ? `Not this value. Here is the reasoning: ${f.why}` : "Not this value. Recheck the formula and the units."}
               </p>
             )}
           </div>

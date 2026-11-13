@@ -55,21 +55,32 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
   const [sel, setSel] = useState<number | null>(null);
   const [showLib, setShowLib] = useState(false);
   const log = board.writeLog;
-  const shown = useMemo(() => (showLib ? log : log.filter((e) => !e.lib)), [log, log.length, showLib]);
-  const recent = shown.slice(-60).reverse();
+  // The log is appended to in place (and trimmed when long): the number of its last entry says when it changed.
+  const stamp = log.length ? log[log.length - 1].n : -1;
+  const shown = useMemo(() => (showLib ? [...log] : log.filter((e) => !e.lib)), [log, stamp, showLib]);
+  const recent = useMemo(() => shown.slice(-60).reverse(), [shown]);
   const picked = sel !== null ? (log.find((e) => e.n === sel) ?? null) : (recent[0] ?? null);
-  const names = useMemo(() => [...new Set(log.map((e) => e.name))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })), [log, log.length]);
+  /** Last write to each register, by name, in a fixed (sorted) order. */
+  const lastWrite = useMemo(() => {
+    const m = new Map<string, WriteEntry>();
+    for (const e of log) m.set(e.name, e);
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  }, [log, stamp]);
   if (!log.length) return <p className="hint-text">Nothing written yet. Each register your code writes will be listed here with the line that wrote it and what changed.</p>;
   const row = picked ? describe(board, picked) : null;
   return (
     <div className="regs">
       <div className="reglog-head">
-        <h4 className="sub">Change log ({shown.length}{shown.length !== log.length ? ` of ${log.length}` : ""})</h4>
-        <label className="tiny">
+        <h4 className="sub">Change log, newest first ({shown.length}{shown.length !== log.length ? ` of ${log.length}` : ""})</h4>
+        <label className="tiny check">
           <input type="checkbox" checked={showLib} onChange={(e) => setShowLib(e.target.checked)} /> include writes made inside library functions
         </label>
       </div>
-      <ol className="reglog" aria-label="Register writes, newest first">
+      <p className="tiny">
+        {sel === null ? "Showing the newest write below. Select a line to keep one in view." : "Keeping the selected write in view."}{" "}
+        {sel !== null && <button className="linkish" onClick={() => setSel(null)}>Follow the newest write</button>}
+      </p>
+      <ol className="reglog" aria-label="Register writes, newest first" tabIndex={0}>
         {recent.map((e) => {
           const d = describe(board, e);
           const active = picked?.n === e.n;
@@ -100,7 +111,7 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
       </ol>
       {shown.length > recent.length && <p className="tiny">Showing the latest {recent.length} of {shown.length}.</p>}
       {row && picked && (
-        <div className="regdetail" aria-live="polite">
+        <div className="regdetail">
           <div className="regdetail-head">
             <b className="mono">{picked.name}</b>
             <span className="mono">
@@ -121,6 +132,9 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
           </p>
           {row.fields.length > 0 && row.fields.length <= 40 && (
             <table className="fields">
+              <thead>
+                <tr><th scope="col">Field</th><th scope="col">Value</th><th scope="col">What it does</th></tr>
+              </thead>
               <tbody>
                 {[...row.fields]
                   .reverse()
@@ -142,15 +156,17 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
       )}
       <h4 className="sub">Registers written so far (current values)</h4>
       <table className="fields regnow">
+        <thead>
+          <tr><th scope="col">Register</th><th scope="col">Value now</th></tr>
+        </thead>
         <tbody>
-          {names.map((n) => {
+          {lastWrite.map(([n, last]) => {
             const r = board.dev.regs.get(n);
             const v = r ? board.mem.peek(r.addr, r.words) : n === "IER" ? board.ier : board.ifr;
-            const last = [...log].reverse().find((e) => e.name === n);
             return (
               <tr key={n} className={picked?.name === n ? "changed" : ""}>
                 <td className="mono">
-                  <button className="linkish" onClick={() => last && setSel(last.n)}>{n}</button>
+                  <button className="linkish" title="Show the last write to this register" onClick={() => setSel(last.n)}>{n}</button>
                 </td>
                 <td className="mono">{hex(v, (r?.words ?? 1) * 16)}</td>
               </tr>

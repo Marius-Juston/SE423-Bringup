@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Icon } from "../Icon";
 import { Markdown } from "../Markdown";
 
 /** Deterministic shuffle so the puzzle looks the same every time. */
@@ -17,6 +18,10 @@ function shuffled(n: number): number[] {
 export function Order({ steps, onPass }: { steps: string[]; onPass: () => void }) {
   const [order, setOrder] = useState(() => shuffled(steps.length));
   const [checked, setChecked] = useState(false);
+  const [said, setSaid] = useState("");
+  const list = useRef<HTMLOListElement>(null);
+  /** The button that keeps the focus after a move: it follows its step. */
+  const focusOn = useRef<{ step: number; dir: number } | null>(null);
   const move = (i: number, d: number) => {
     const j = i + d;
     if (j < 0 || j >= order.length) return;
@@ -24,18 +29,35 @@ export function Order({ steps, onPass }: { steps: string[]; onPass: () => void }
     [next[i], next[j]] = [next[j], next[i]];
     setOrder(next);
     setChecked(false);
+    setSaid(`Moved to position ${j + 1} of ${order.length}.`);
+    focusOn.current = { step: order[i], dir: d };
   };
+  useEffect(() => {
+    const f = focusOn.current;
+    if (!f) return;
+    focusOn.current = null;
+    const li = list.current?.querySelector(`li[data-step="${f.step}"]`);
+    const btns = li?.querySelectorAll<HTMLButtonElement>("button");
+    if (!btns) return;
+    // At either end the button that was used no longer applies: the other one takes the focus.
+    const want = btns[f.dir < 0 ? 0 : 1];
+    (want.getAttribute("aria-disabled") === "true" ? btns[f.dir < 0 ? 1 : 0] : want).focus();
+  }, [order]);
   // Steps with identical text are interchangeable.
   const right = (i: number) => steps[order[i]] === steps[i];
   return (
     <div>
-      <ol className="order">
+      <p className="hint-text">Use the arrow buttons to put the steps in the order they must happen.</p>
+      <ol className="order" ref={list}>
         {order.map((s, i) => (
           <li key={s} data-step={s} className={checked ? (right(i) ? "right" : "wrong") : ""}>
-            <span><Markdown text={steps[s]} /></span>
+            <span>
+              <Markdown text={steps[s]} />
+              {checked && <span className={`mark ${right(i) ? "ok" : "bad"}`}><Icon name={right(i) ? "check" : "cross"} size={14} /> {right(i) ? "Right place" : "Wrong place"}</span>}
+            </span>
             <span className="moves">
-              <button className="btn small" onClick={() => move(i, -1)} disabled={i === 0} aria-label={`Move step ${i + 1} up`}>↑</button>
-              <button className="btn small" onClick={() => move(i, 1)} disabled={i === order.length - 1} aria-label={`Move step ${i + 1} down`}>↓</button>
+              <button className="icon-btn" onClick={() => move(i, -1)} aria-disabled={i === 0} aria-label={`Move step ${i + 1} up`} title="Move up"><Icon name="up" size={16} /></button>
+              <button className="icon-btn" onClick={() => move(i, 1)} aria-disabled={i === order.length - 1} aria-label={`Move step ${i + 1} down`} title="Move down"><Icon name="down" size={16} /></button>
             </span>
           </li>
         ))}
@@ -50,8 +72,9 @@ export function Order({ steps, onPass }: { steps: string[]; onPass: () => void }
         >
           Check order
         </button>
-        {checked && !order.every((_, i) => right(i)) && <span role="status" style={{ color: "var(--bad)" }}>Steps outlined in red are in the wrong place.</span>}
+        <span role="status" className="verdict bad">{checked && !order.every((_, i) => right(i)) ? "Steps marked with a cross are in the wrong place." : ""}</span>
       </div>
+      <p className="sr-only" role="status">{said}</p>
     </div>
   );
 }

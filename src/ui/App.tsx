@@ -1,4 +1,4 @@
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, type ReactNode } from "react";
 import { CHAPTERS, findLevel } from "../levels/index";
 import { useSave } from "./store";
 import { MapView } from "./MapView";
@@ -11,7 +11,7 @@ import { Icon, Ring } from "./Icon";
 import { usePref } from "./prefs";
 import { tierOf } from "../levels/types";
 
-export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook" } | { name: "sandbox" } | { name: "settings" };
+export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook"; reg?: string } | { name: "sandbox" } | { name: "settings" };
 
 /** Shows a message instead of a blank window if a screen fails to draw. */
 class Boundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
@@ -23,7 +23,7 @@ class Boundary extends Component<{ children: ReactNode; onReset: () => void }, {
     if (!this.state.error) return this.props.children;
     return (
       <div className="map" role="alert">
-        <h1>Something went wrong on this screen</h1>
+        <h1 tabIndex={-1}>Something went wrong on this screen</h1>
         <p className="map-intro">Your progress is safe. This is a bug in the game, not in your code.</p>
         <pre>{String(this.state.error.message)}</pre>
         <button
@@ -64,12 +64,30 @@ function Game() {
     else root.dataset.theme = theme;
     root.style.fontSize = `${16 * scale}px`;
   }, [theme, scale]);
+  // A new screen starts at its top, with the focus on its heading (so a screen reader announces where you are).
+  const where = view.name === "level" ? view.id : view.name;
+  const shownOnce = useRef(false);
+  useEffect(() => {
+    const main = document.getElementById("main");
+    const h = main?.querySelector<HTMLElement>("h1");
+    document.title = h && view.name !== "map" ? `${h.textContent} · Bringup` : "Bringup: SE 423 practice";
+    if (!shownOnce.current) {
+      shownOnce.current = true;
+      return;
+    }
+    if (main) main.scrollTop = 0;
+    if (h) {
+      h.tabIndex = -1;
+      h.focus({ preventScroll: true });
+    } else main?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [where]);
   const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches) || (theme === "system" && !window.matchMedia("(prefers-color-scheme: light)").matches);
   const core = CHAPTERS.flatMap((c) => c.levels).filter((l) => tierOf(l) === "core");
   const done = core.filter((l) => save.passed[l.id]).length;
   const nav = (name: "map" | "handbook" | "sandbox" | "settings", label: string, icon: string) => (
     <button aria-current={view.name === name || (name === "map" && view.name === "level") ? "page" : undefined} onClick={() => setView({ name } as View)}>
-      <Icon name={icon} size={16} /> {label}
+      <Icon name={icon} size={16} /> <span className="lbl">{label}</span>
     </button>
   );
   return (
@@ -80,7 +98,7 @@ function Game() {
           <span className="brand-mark" aria-hidden="true">
             <i /><i /><i /><i />
           </span>
-          Bringup
+          <span className="lbl">Bringup</span>
         </button>
         <nav className="topnav" aria-label="Main">
           {nav("map", "Map", "map")}
@@ -91,6 +109,7 @@ function Game() {
         <span className="spacer" />
         <span className="progress-pill" title="Core levels passed">
           <Ring value={done} max={core.length} size={22} /> {done}/{core.length}
+          <span className="sr-only"> core levels passed</span>
         </span>
         <button className="icon-btn" onClick={() => setTheme(dark ? "light" : "dark")} aria-label={dark ? "Switch to the light theme" : "Switch to the dark theme"} title={dark ? "Light theme" : "Dark theme"}>
           <Icon name={dark ? "sun" : "moon"} size={18} />
@@ -100,7 +119,7 @@ function Game() {
         <Boundary key={view.name === "level" ? view.id : view.name} onReset={() => setView({ name: "map" })}>
         {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} />}
         {view.name === "level" && findLevel(view.id) && <LevelView key={view.id} id={view.id} go={setView} />}
-        {view.name === "handbook" && <Handbook />}
+        {view.name === "handbook" && <Handbook open={(id) => setView({ name: "level", id })} at={view.reg ? { reg: view.reg } : undefined} />}
         {view.name === "sandbox" && <Sandbox />}
         {view.name === "settings" && <Settings />}
         </Boundary>

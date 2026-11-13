@@ -5,6 +5,9 @@ import { Markdown } from "../Markdown";
 export function Quiz({ questions, onPass }: { questions: Question[]; onPass: () => void }) {
   const [picked, setPicked] = useState<(number | null)[]>(() => questions.map(() => null));
   const [checked, setChecked] = useState(false);
+  /** Wrong checks per question: the explanation appears after the second. */
+  const [misses, setMisses] = useState<number[]>(() => questions.map(() => 0));
+  const open = picked.filter((p) => p === null).length;
   const allRight = picked.every((p, i) => p === questions[i].answer);
   return (
     <div>
@@ -32,7 +35,7 @@ export function Quiz({ questions, onPass }: { questions: Question[]; onPass: () 
             {checked && p !== null && (
               <p className={`why ${right ? "ok" : "bad"}`} role="status">
                 {right ? "Correct. " : "Not quite. "}
-                {right ? q.why : "Think about it again, or use a hint."}
+                {right ? q.why : misses[qi] >= 2 ? `Here is the reasoning: ${q.why}` : "Read the question once more and try another answer."}
               </p>
             )}
           </fieldset>
@@ -44,11 +47,13 @@ export function Quiz({ questions, onPass }: { questions: Question[]; onPass: () 
           disabled={picked.some((p) => p === null)}
           onClick={() => {
             setChecked(true);
+            setMisses(misses.map((m, i) => (picked[i] === questions[i].answer ? m : m + 1)));
             if (allRight) onPass();
           }}
         >
           Check answers
         </button>
+        {open > 0 && <span className="hint-text">{open === questions.length ? "Answer every question, then check." : `${open} question${open === 1 ? "" : "s"} still to answer.`}</span>}
       </div>
     </div>
   );

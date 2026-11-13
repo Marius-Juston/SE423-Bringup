@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Icon } from "../Icon";
 import type { WiringLevel } from "../../levels/types";
 
 const same = (a: [string, string], b: [string, string]) => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
@@ -7,6 +8,7 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
   const [wires, setWires] = useState<[string, string][]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const node = (id: string) => level.nodes.find((n) => n.id === id)!;
   const click = (id: string) => {
     setMsg(null);
@@ -30,7 +32,7 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
     onPass();
   };
   return (
-    <div className="wiring">
+    <div className="wiring" ref={root}>
       <svg viewBox="0 0 100 60" role="group" aria-label="Circuit. Select two terminals to connect them.">
         {(level.fixed ?? []).map(([a, b], i) => (
           <line key={`f${i}`} className="fixed" x1={node(a).x} y1={node(a).y} x2={node(b).x} y2={node(b).y} />
@@ -99,18 +101,32 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
           </g>
         ))}
       </svg>
-      <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>Select one terminal, then another, to add a wire. Grey wires are already in place.</p>
+      <p className="hint-text" role="status">
+        {sel ? `${node(sel).label} is selected: now select the terminal to connect it to (or select it again to cancel).` : "Select one terminal, then another, to add a wire. Grey wires are already in place."}
+      </p>
+      {wires.length > 0 && <h3 className="eyebrow">Wires you added</h3>}
       <ul className="wirelist" aria-label="Wires you added">
         {wires.map((w, i) => (
           <li key={i}>
-            {node(w[0]).label} — {node(w[1]).label}
-            <button aria-label={`Remove wire ${node(w[0]).label} to ${node(w[1]).label}`} onClick={() => { setWires(wires.filter((_, k) => k !== i)); setMsg(null); }}>×</button>
+            {node(w[0]).label} to {node(w[1]).label}
+            <button
+              aria-label={`Remove wire ${node(w[0]).label} to ${node(w[1]).label}`}
+              title="Remove this wire"
+              onClick={() => {
+                setWires(wires.filter((_, k) => k !== i));
+                setMsg(null);
+                // The removed button is gone: the focus goes to a terminal of that wire.
+                root.current?.querySelector<SVGGElement>(`g.node[data-node="${w[0]}"]`)?.focus();
+              }}
+            >
+              <Icon name="cross" size={13} />
+            </button>
           </li>
         ))}
       </ul>
       <div className="actions">
         <button className="btn primary" onClick={check}>Check circuit</button>
-        {msg && <span role="status" style={{ color: msg.ok ? "var(--ok)" : "var(--bad)" }}>{msg.text}</span>}
+        <span role="status" className={`verdict ${msg?.ok ? "ok" : "bad"}`}>{msg?.text ?? ""}</span>
       </div>
     </div>
   );

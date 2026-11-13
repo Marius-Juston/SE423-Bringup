@@ -1,4 +1,8 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { BENCH_MIN, benchWidth, useWinWidth } from "./LevelView";
+import { Splitter } from "./Splitter";
+import { Panel } from "./Panel";
+import { usePref } from "./prefs";
 import type { CodeLevel } from "../levels/types";
 import { CodeLevelView } from "./code/CodeLevelView";
 import { Markdown } from "./Markdown";
@@ -66,15 +70,33 @@ const mk = (kit: CodeLevel["kit"]): CodeLevel => ({
   watch: ["numTimer0calls"],
 });
 
+const ABOUT = `
+Write any program and press **Run**. Hold the on-screen push buttons, type into the serial terminal, and watch the pins and registers.
+
+- The course helper functions are available: \`GPIO_SetupPinMux\`, \`GPIO_SetupPinOptions\`, \`InitCpuTimers\`, \`ConfigCpuTimer\`, \`init_serialSCIA\`, \`serial_printf\`, \`UART_printfLine\`, \`DELAY_US\`.
+- \`printf\` output appears in its own console under the terminal.
+- Time is simulated: a slower speed lets you watch fast signals.
+- The simulator models behaviour, not exact timing: confirm on the real board.
+`;
+
 export function Sandbox() {
   const [kit, setKit] = useState<CodeLevel["kit"]>("robot");
+  const level = useMemo(() => mk(kit), [kit]);
+  const winW = useWinWidth();
+  const [scale] = usePref<number>("text-scale", 1);
+  const [benchPref, setBenchW] = usePref<number | null>("w-bench", null);
+  const wide = winW >= 760 * Math.max(1, scale);
+  const { bench, max } = benchWidth(winW, 0, benchPref);
   return (
     <div className="level">
       <div className="level-head">
-        <span className="badge">Sandbox</span>
-        <h1 style={{ fontSize: "1.15rem" }}>Free board</h1>
+        <div className="crumbs">
+          <span className="eyebrow">Sandbox</span>
+          <h1>Free board</h1>
+        </div>
+        <span className="badge">Nothing is checked</span>
         <span className="spacer" />
-        <label style={{ fontSize: "0.9rem" }}>
+        <label className="speed">
           Board{" "}
           <select value={kit} onChange={(e) => setKit(e.target.value as CodeLevel["kit"])}>
             <option value="robot">Robot board</option>
@@ -83,22 +105,18 @@ export function Sandbox() {
           </select>
         </label>
       </div>
-      <div className="level-body code sandbox">
-        <div className="pane">
-          <Markdown
-            text={`
-Write any program and press **Run**. Hold the on-screen push buttons, type into the serial terminal, and watch the pins and registers.
-
-The simulator covers what the released chapters use: GPIO, the three CPU timers, the interrupt controller (PIE), and the serial ports. Other peripherals have their registers but no behaviour yet.
-
-Useful to know:
-- The course helper functions are available: \`GPIO_SetupPinMux\`, \`GPIO_SetupPinOptions\`, \`InitCpuTimers\`, \`ConfigCpuTimer\`, \`init_serialSCIA\`, \`serial_printf\`, \`UART_printfLine\`, \`DELAY_US\`.
-- \`printf\` output appears in its own console under the terminal.
-- Time is simulated: a slower speed lets you watch fast signals.
-`}
-          />
-        </div>
-        <CodeLevelView key={kit} level={mk(kit)} onPass={() => {}} />
+      <div className={`level-body code ${wide ? "" : "stacked"}`} style={wide ? { gridTemplateColumns: `minmax(0, 1fr) 7px ${bench}px` } : undefined}>
+        <CodeLevelView
+          key={kit}
+          level={level}
+          onPass={() => {}}
+          splitter={<Splitter value={bench} onChange={setBenchW} min={BENCH_MIN} max={max} side="right" label="Resize the board pane" reset={440} />}
+          benchTop={
+            <Panel id="sandbox-about" title="About the sandbox">
+              <Markdown text={ABOUT} />
+            </Panel>
+          }
+        />
       </div>
     </div>
   );
