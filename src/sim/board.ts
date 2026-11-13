@@ -407,6 +407,35 @@ export class Board implements Rt {
     else this.diagnostics.set(key, { line, code, msg, count: 1, t: this.steps ? this.now : -1, severity });
   }
 
+  /**
+   * Elements of a global array by name, flattened (for bench views that
+   * draw images, maps or buffers). Returns undefined if there is no such
+   * array of numbers.
+   */
+  readArray(name: string): { data: number[]; dims: number[] } | undefined {
+    const g = this.compiler.globals.get(name);
+    if (!g || g.t.k !== "array") return undefined;
+    const dims: number[] = [];
+    let t = g.t as import("./cc/types").CType;
+    while (t.k === "array") {
+      dims.push(t.n);
+      t = t.of;
+    }
+    if (t.k !== "int" && t.k !== "float") return undefined;
+    const n = dims.reduce((a, b) => a * b, 1);
+    const data = new Array<number>(n);
+    const buf = new Float32Array(1);
+    const bits = new Uint32Array(buf.buffer);
+    for (let i = 0; i < n; i++) {
+      const raw = this.mem.peek(g.addr + i * t.w, t.w);
+      if (t.k === "float") {
+        bits[0] = raw;
+        data[i] = buf[0];
+      } else data[i] = !t.s ? raw : t.w === 1 ? (raw << 16) >> 16 : raw | 0;
+    }
+    return { data, dims };
+  }
+
   /** Value of a global variable by name (for checks and the watch view). */
   readVar(name: string): number | undefined {
     const g = this.compiler.globals.get(name);

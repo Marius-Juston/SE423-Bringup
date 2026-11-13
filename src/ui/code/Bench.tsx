@@ -6,7 +6,7 @@ import { fieldsOf, fieldValue, hex } from "../device";
 
 const MS = 1e6;
 
-export function Parts({ kit, board, pressed, onButton, onKnob }: { kit: Kit; board: Board | null; pressed?: (id: string) => boolean; onButton?: (id: string, down: boolean) => void; onKnob?: (id: string, value: number) => void }) {
+export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: Kit; board: Board | null; pressed?: (id: string) => boolean; onButton?: (id: string, down: boolean) => void; onKnob?: (id: string, value: number) => void; focus?: Set<string> }) {
   const lit = (pin: number, activeLow: boolean) => {
     if (!board) return false;
     const g = board.gpio;
@@ -16,7 +16,15 @@ export function Parts({ kit, board, pressed, onButton, onKnob }: { kit: Kit; boa
   };
   // Plugins add many knobs and meters to a kit; show only the ones this
   // program touches (an input it read, an output something produced).
-  const analog = kit.parts.filter((p) => (p.kind === "knob" && !!board?.inputsUsed.has(p.input)) || (p.kind === "meter" && !!board?.outputs.has(p.output)));
+  // A meter is relevant when the level names its signal or its value has
+  // moved; a knob when the level names it or something read it.
+  const moved = (name: string) => {
+    const tr = board?.outputs.get(name);
+    return !!tr && (tr.length > 1 || tr[0].v !== 0);
+  };
+  const analog = kit.parts.filter(
+    (p) => (p.kind === "knob" && (focus?.has(p.input) || !!board?.inputsUsed.has(p.input))) || (p.kind === "meter" && (focus?.has(p.output) || moved(p.output))),
+  );
   return (
     <>
     <div className="parts" role="group" aria-label={`${kit.name}: LEDs and push buttons`}>

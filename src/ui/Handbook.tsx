@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { device, fieldsOf, hex } from "./device";
 import { KITS } from "../sim/world/kits";
-import { Figure } from "./figures";
+import { Figure, FIGURE_IDS } from "./figures";
 
 const PAGES = ["Key diagrams", "Pins on the course boards", "Formulas"] as const;
 
@@ -58,15 +58,12 @@ export function Handbook() {
             )}
           </>
         ) : sel === "Key diagrams" ? (
-          <div style={{ maxWidth: 640 }}>
+          <div style={{ maxWidth: 680 }}>
             <h1>Key diagrams</h1>
-            <p style={{ color: "var(--dim)" }}>The three pictures worth knowing by heart. Each one is interactive.</p>
-            <h2 style={{ marginTop: "1.2rem" }}>A GPIO pin</h2>
-            <Figure id="gpio-pin" />
-            <h2 style={{ marginTop: "1.2rem" }}>An ADC conversion, from trigger to interrupt</h2>
-            <Figure id="adc-chain" />
-            <h2 style={{ marginTop: "1.2rem" }}>SPI clock polarity and phase</h2>
-            <Figure id="spi-modes" />
+            <p style={{ color: "var(--dim)" }}>Every interactive figure in the game, in one place.</p>
+            {FIGURE_IDS.map((id) => (
+              <Figure key={id} id={id} />
+            ))}
           </div>
         ) : sel === "Pins on the course boards" ? (
           <>

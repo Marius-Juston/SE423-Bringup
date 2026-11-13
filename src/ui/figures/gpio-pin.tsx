@@ -3,7 +3,7 @@ import { useState } from "react";
 type Outside = "nothing" | "released" | "pressed" | "high";
 
 /** One GPIO pin, as TRM chapter 8 draws it: mux, direction, latch, pull-up, input path. */
-export function GpioPin() {
+function GpioPin() {
   const [gpio, setGpio] = useState(true);
   const [output, setOutput] = useState(false);
   const [latch, setLatch] = useState<0 | 1>(0);
@@ -109,3 +109,5 @@ export function GpioPin() {
     </figure>
   );
 }
+
+export const figure = { id: "gpio-pin", Component: GpioPin };

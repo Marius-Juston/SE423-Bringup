@@ -9,7 +9,7 @@ const NAMES = [
 ];
 
 /** The four SPI clocking schemes of TRM section 18.3.6 (Table 18-3, Figure 18-7). */
-export function SpiModes() {
+function SpiModes() {
   const [pol, setPol] = useState<0 | 1>(0);
   const [phase, setPhase] = useState<0 | 1>(1);
   const idle = pol;
@@ -84,3 +84,5 @@ export function SpiModes() {
     </figure>
   );
 }
+
+export const figure = { id: "spi-modes", Component: SpiModes };

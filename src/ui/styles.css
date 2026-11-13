@@ -301,4 +301,27 @@ tr.target td:first-child { color: var(--harvest); }
 .fig-dots i.on { background: var(--orange); }
 .fig-missing { color: var(--bad); }
 /* Briefs with a figure get a wider column. */
-.level-body:has(.figure) { grid-template-columns: minmax(380px, 560px) 1fr; }
+
+/* ---- panes and panels ---- */
+.splitter { cursor: col-resize; background: transparent; border-left: 1px solid var(--border); position: relative; touch-action: none; }
+.splitter::after { content: ""; position: absolute; top: 50%; left: 1px; width: 3px; height: 36px; margin-top: -18px; border-radius: 2px; background: var(--dim); opacity: 0.5; }
+.splitter:hover, .splitter:focus-visible { background: rgba(252, 179, 22, 0.25); }
+.splitter:hover::after, .splitter:focus-visible::after { opacity: 1; background: var(--harvest); }
+.level-body .pane + .pane { border-left: none; }
+.level-body.sandbox { grid-template-columns: minmax(240px, 300px) minmax(320px, 1fr) minmax(340px, 480px); }
+.level-body.sandbox .pane + .pane { border-left: 1px solid var(--border); }
+.bench { container-type: inline-size; padding: 0.7rem; }
+.bench-panels { display: grid; gap: 0.7rem; grid-template-columns: 1fr; align-items: start; }
+@container (min-width: 760px) { .bench-panels { grid-template-columns: 1fr 1fr; } }
+@container (min-width: 1180px) { .bench-panels { grid-template-columns: 1fr 1fr 1fr; } }
+.panel { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.panel > h3 { margin: 0; }
+.panel > h3 button { width: 100%; text-align: left; background: none; border: none; padding: 0.45rem 0.7rem; font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); }
+.panel > h3 button:hover { color: var(--text); }
+.panel-body { padding: 0 0.7rem 0.7rem; }
+.panel h4.sub { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); margin: 0.8rem 0 0.3rem; }
+.hint-text { color: var(--dim); font-size: 0.9rem; margin: 0; }
+.plots { display: grid; gap: 0.4rem; }
+.panel .lcd { margin-top: 0.5rem; }
+.panel .watch { margin-top: 0.5rem; }
+@media (max-width: 1000px) { .splitter { display: none; } }

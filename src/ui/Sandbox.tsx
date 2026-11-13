@@ -83,7 +83,7 @@ export function Sandbox() {
           </select>
         </label>
       </div>
-      <div className="level-body code">
+      <div className="level-body code sandbox">
         <div className="pane">
           <Markdown
             text={`

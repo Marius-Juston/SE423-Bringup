@@ -159,11 +159,10 @@ describe("playthrough", () => {
     await pb.dispatchEvent("pointerdown");
     await expect.poll(() => pb.getAttribute("aria-pressed")).toBe("true");
     await pb.dispatchEvent("pointerup");
-    await page.getByRole("tab", { name: "Registers" }).click();
+    // Board and registers are visible together.
     await page.waitForSelector(".reg-row");
-    if (shots) await page.screenshot({ path: join(shots, "sandbox-registers.png") });
-    await page.getByRole("tab", { name: "Board" }).click();
-    if (shots) await page.screenshot({ path: join(shots, "sandbox-board.png") });
+    await page.waitForSelector(".parts");
+    if (shots) await page.screenshot({ path: join(shots, "sandbox.png") });
     await page.getByRole("button", { name: "■ Stop" }).click();
     expect(errors).toEqual([]);
   });

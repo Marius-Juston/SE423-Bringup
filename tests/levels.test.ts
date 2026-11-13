@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CHAPTERS } from "../src/levels/index";
 import trm from "../src/levels/trm-index.json";
-import { FIGURES } from "../src/levels/figures";
+import { existsSync } from "node:fs";
 import { runProgram } from "../src/sim/runner";
 import { device } from "../src/ui/device";
 import { layoutOf, registerSolved } from "../src/ui/widgets/RegisterPuzzle";
@@ -28,7 +28,7 @@ describe("level catalogue", () => {
         expect((l.hints ?? []).length).toBeLessThanOrEqual(3);
         for (const r of l.refs) if (r.trm) expect(trm, `TRM section ${r.trm}`).toHaveProperty([r.trm]);
         // Embedded figures must exist.
-        for (const m of l.brief.matchAll(/\{\{figure:([a-z0-9-]+)\}\}/g)) expect(FIGURES as readonly string[], `figure ${m[1]}`).toContain(m[1]);
+        for (const m of l.brief.matchAll(/\{\{figure:([a-z0-9-]+)\}\}/g)) expect(existsSync(`src/ui/figures/${m[1]}.tsx`), `figure ${m[1]}`).toBe(true);
         // No typographic characters that would break pasted code.
         const code = l.kind === "code" ? l.starter + l.solution : "";
         expect(code).not.toMatch(/[‘’“”–—… ]/);

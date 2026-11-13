@@ -52,7 +52,7 @@ const STEPS: { title: string; text: string; code: string; hot: string[] }[] = [
 ];
 
 /** The path from a trigger to a result, TRM sections 11.5 and 11.9. */
-export function AdcChain() {
+function AdcChain() {
   const [i, setI] = useState(0);
   const s = STEPS[i];
   const on = (id: string) => (s.hot.includes(id) ? "hot" : "");
@@ -133,3 +133,5 @@ export function AdcChain() {
     </figure>
   );
 }
+
+export const figure = { id: "adc-chain", Component: AdcChain };

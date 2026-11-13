@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { findLevel, nextLevel } from "../levels/index";
 import { KIND_LABEL, kindOf, tierOf, type Ref } from "../levels/types";
 import { store, useSave } from "./store";
@@ -13,6 +13,21 @@ import { Wiring } from "./widgets/Wiring";
 import { RegisterPuzzle } from "./widgets/RegisterPuzzle";
 import { CodeLevelView } from "./code/CodeLevelView";
 import type { View } from "./App";
+import { Splitter } from "./Splitter";
+import { usePref } from "./prefs";
+
+/** True when the window is wide enough for side-by-side panes. */
+function useWide(): boolean {
+  const q = "(min-width: 1001px)";
+  const [wide, setWide] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const m = window.matchMedia(q);
+    const on = () => setWide(m.matches);
+    m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
 
 export function Refs({ refs }: { refs: Ref[] }) {
   return (
@@ -47,6 +62,9 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
     setJustPassed(true);
   };
   const isCode = level.kind === "code";
+  const [taskW, setTaskW] = usePref<number>(isCode ? "w-task-code" : "w-task", isCode ? 340 : 460);
+  const [benchW, setBenchW] = usePref<number>("w-bench", 440);
+  const wide = useWide();
 
   const side = (
     <div className="pane">
@@ -105,10 +123,11 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
           Chapter {chapter.number}: {chapter.title}
         </span>
       </div>
-      <div className={`level-body ${isCode ? "code" : ""}`}>
+      <div className={`level-body ${isCode ? "code" : ""}`} style={wide ? { gridTemplateColumns: isCode ? `${taskW}px 7px minmax(300px, 1fr) 7px ${benchW}px` : `${taskW}px 7px 1fr` } : undefined}>
         {side}
+        <Splitter value={taskW} onChange={setTaskW} min={240} max={760} side="left" label="Resize the task pane" />
         {isCode ? (
-          <CodeLevelView level={level} onPass={onPass} />
+          <CodeLevelView level={level} onPass={onPass} splitter={<Splitter value={benchW} onChange={setBenchW} min={300} max={1100} side="right" label="Resize the board pane" />} />
         ) : (
           <div className="pane">
             <div className="activity">
