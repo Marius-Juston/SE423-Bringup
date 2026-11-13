@@ -1,9 +1,11 @@
-import { useRef, type KeyboardEvent } from "react";
+import { useMemo, useRef, type KeyboardEvent } from "react";
 import { CHAPTERS, PLANNED, chapterDone, chapterUnlocked } from "../levels/index";
 import { KIND_LABEL, chapterLabel, kindOf, tierOf, type Chapter, type Level } from "../levels/types";
-import { useSave, type Save } from "./store";
+import { store, useSave, type Save } from "./store";
 import { usePref } from "./prefs";
 import { Icon, Ring } from "./Icon";
+import { pickSession } from "./review";
+import { outcomeOf } from "./outcomes";
 
 /** The campaign in parts, by chapter number. */
 export const PARTS: { title: string; blurb: string; from: number; to: number }[] = [
@@ -60,6 +62,11 @@ function ChapterDetail({ c, save, open, nextId }: { c: Chapter; save: Save; open
   const expert = c.levels.filter((l) => tierOf(l) === "expert");
   const n = core.filter((l) => save.passed[l.id]).length;
   const first = c.levels.find((l) => !save.passed[l.id] && tierOf(l) === "core") ?? c.levels.find((l) => !save.passed[l.id]);
+  const finished = core.length > 0 && n === core.length;
+  const optional = [...practice, ...expert];
+  const optionalDone = optional.filter((l) => save.passed[l.id]).length;
+  const starTotal = c.levels.reduce((t, l) => t + starsOf(l), 0);
+  const starGot = c.levels.reduce((t, l) => t + (save.stars[l.id]?.length ?? 0), 0);
   const group = (title: string, cls: string, levels: Level[], note: string) =>
     levels.length > 0 && (
       <section className={`tier-group ${cls}`}>
@@ -85,9 +92,19 @@ function ChapterDetail({ c, save, open, nextId }: { c: Chapter; save: Save; open
           <Icon name="bulb" size={15} /> Recommended first: {titlesOf(c.requires)}. This chapter builds on {c.requires.length > 1 ? "them" : "it"}, but every level here is open.
         </p>
       )}
+      {finished && (
+        <p className="chapter-finished">
+          <Icon name="check" size={15} />
+          <span>
+            <b>Chapter finished.</b> {outcomeOf(c)}
+            {optional.length > 0 && optionalDone < optional.length ? ` ${optional.length - optionalDone} optional level${optional.length - optionalDone === 1 ? " is" : "s are"} left for more practice.` : ""}
+            {starTotal > 0 ? ` Stars: ${starGot} of ${starTotal}.` : ""}
+          </span>
+        </p>
+      )}
       {first && (
-        <button className={`btn ${ready ? "primary" : ""}`} onClick={() => open(first.id)}>
-          <Icon name="play" size={14} /> {n === 0 ? "Start" : "Continue"}: {first.title}
+        <button className={`btn ${ready && !finished ? "primary" : ""}`} onClick={() => open(first.id)}>
+          <Icon name="play" size={14} /> {finished ? "Optional" : n === 0 ? "Start" : "Continue"}: {first.title}
         </button>
       )}
       {group("Core path", "core", core, "The main line of the chapter.")}
@@ -97,8 +114,11 @@ function ChapterDetail({ c, save, open, nextId }: { c: Chapter; save: Save; open
   );
 }
 
-export function MapView({ open }: { open: (id: string) => void }) {
+export function MapView({ open, warmup, note }: { open: (id: string) => void; /** Starts a warm-up with these levels. */ warmup?: (ids: string[]) => void; /** The result of the warm-up just finished. */ note?: string }) {
   const save = useSave();
+  // Today's warm-up: a few passed puzzles that are due again (none when too few are due, or one was started or dismissed today).
+  const session = useMemo(() => (warmup ? pickSession(CHAPTERS, save, Date.now()) : []), [warmup, save.passed, save.passedAt, save.reviews, save.warmupDay]);
+  const sessionChapters = [...new Set(session.map((id) => CHAPTERS.find((c) => c.levels.some((l) => l.id === id))?.title ?? ""))].filter(Boolean);
   const fresh = Object.keys(save.passed).length === 0;
   const ordered = [...CHAPTERS].sort((a, b) => a.number - b.number);
   // The primer chapters (before chapter 0) are where a new student starts; one who began at chapter 0 is not sent back to them.
@@ -117,6 +137,7 @@ export function MapView({ open }: { open: (id: string) => void }) {
   const extraPassed = all.filter((l) => tierOf(l) !== "core" && save.passed[l.id]).length;
   const starGot = Object.values(save.stars).reduce((s, a) => s + a.length, 0);
   const starTotal = all.reduce((s, l) => s + starsOf(l), 0);
+  const chaptersDone = CHAPTERS.filter((c) => chapterDone(c, save.passed)).length;
   const parts = useRef<HTMLDivElement>(null);
   const cols = useRef<HTMLDivElement>(null);
 
@@ -179,8 +200,33 @@ export function MapView({ open }: { open: (id: string) => void }) {
           <div><dt>Core levels</dt><dd>{corePassed}<span>/{coreTotal}</span></dd></div>
           <div><dt>Optional levels</dt><dd>{extraPassed}<span>/{all.length - coreTotal}</span></dd></div>
           <div><dt>Stars</dt><dd>{starGot}<span>/{starTotal}</span></dd></div>
+          <div><dt>Chapters finished</dt><dd>{chaptersDone}<span>/{CHAPTERS.length}</span></dd></div>
         </dl>
       </header>
+      {note && (
+        <p className="warm-note" role="status">
+          <Icon name="check" size={15} /> {note}
+        </p>
+      )}
+      {session.length > 0 && warmup && (
+        <section className="warmup" aria-labelledby="warmup-title">
+          <span className="warmup-mark" aria-hidden="true"><Icon name="reset" size={18} /></span>
+          <div className="warmup-text">
+            <h2 id="warmup-title">Warm-up: {session.length} quick questions from earlier chapters</h2>
+            <p>
+              {sessionChapters.join(", ")}. Answering again after a few days is what makes it stick.
+            </p>
+          </div>
+          <div className="warmup-actions">
+            <button className="btn" onClick={() => warmup(session)}>
+              <Icon name="play" size={13} /> Start the warm-up
+            </button>
+            <button className="btn ghost" onClick={() => store.warmupSeen()} title="Hides the warm-up until tomorrow">
+              Not today
+            </button>
+          </div>
+        </section>
+      )}
       {WEEKS.length > 0 && (
         <div className="weeks" role="group" aria-label="Show the chapters for a lab or homework (arrow keys move along the row)">
           <span className="eyebrow" aria-hidden="true">Working on</span>
@@ -218,10 +264,18 @@ export function MapView({ open }: { open: (id: string) => void }) {
             const planned = PLANNED.filter((p) => p.number >= part.from && p.number <= part.to);
             if (!chapters.length && !planned.length) return null;
             const single = chapters.length + planned.length === 1;
+            const partDone = chapters.length > 0 && planned.length === 0 && chapters.every((c) => chapterDone(c, save.passed));
             return (
               <section key={part.title} className="part" aria-labelledby={`part-${part.from}`}>
                 <div className="part-head">
-                  <h2 id={`part-${part.from}`}>{part.title}</h2>
+                  <h2 id={`part-${part.from}`}>
+                    {part.title}
+                    {partDone && (
+                      <span className="part-done">
+                        <Icon name="check" size={12} /> Finished
+                      </span>
+                    )}
+                  </h2>
                   <p>{part.blurb}</p>
                 </div>
                 <div className={`tiles ${single ? "single" : ""}`}>
@@ -257,7 +311,7 @@ export function MapView({ open }: { open: (id: string) => void }) {
                           </span>
                           {single && <span className="tile-blurb">{c.blurb}</span>}
                           <span className="tile-meta">
-                            {n}/{core.length} core{extra ? ` · ${extraDone}/${extra} extra` : ""}
+                            {done ? <b className="tile-done">Finished</b> : `${n}/${core.length} core`}{extra ? ` · ${extraDone}/${extra} extra` : ""}
                             <span className="sr-only">{done ? ". Core path done." : ""}{c === nextChapter ? ". Next up." : ""}{match ? `. Supports ${week}.` : ""}</span>
                           </span>
                           {!ready && !done && <span className="tile-advice">First: {titlesOf(c.requires)}</span>}

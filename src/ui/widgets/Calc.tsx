@@ -17,7 +17,7 @@ export function fieldRight(f: CalcField, text: string): boolean {
   return v === f.answer;
 }
 
-export function Calc({ fields, onPass }: { fields: CalcField[]; onPass: () => void }) {
+export function Calc({ fields, onPass, onMiss }: { fields: CalcField[]; onPass: () => void; /** Called when a check finds a wrong answer (a warm-up counts the first try). */ onMiss?: () => void }) {
   const [vals, setVals] = useState<Record<string, string>>({});
   const [checked, setChecked] = useState(false);
   /** Wrong checks per field: the explanation appears after the second. */
@@ -31,6 +31,8 @@ export function Calc({ fields, onPass }: { fields: CalcField[]; onPass: () => vo
         for (const f of fields) if (!fieldRight(f, vals[f.id] ?? "") && parse(vals[f.id] ?? "") !== null) m[f.id] = (m[f.id] ?? 0) + 1;
         setMisses(m);
         if (fields.every((f) => fieldRight(f, vals[f.id] ?? ""))) onPass();
+        // An empty or unreadable field is not an answer yet: only a wrong number is a miss.
+        else if (fields.some((f) => parse(vals[f.id] ?? "") !== null && !fieldRight(f, vals[f.id] ?? ""))) onMiss?.();
       }}
     >
       {fields.map((f) => {

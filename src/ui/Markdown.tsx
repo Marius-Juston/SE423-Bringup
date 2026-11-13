@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, type CSSProperties, type ReactNode } from "react";
 import { Figure } from "./figures";
 
 /**
@@ -19,6 +19,27 @@ export class Guard extends Component<{ what: string; children: ReactNode }, { fa
       </p>
     );
   }
+}
+
+/**
+ * A block of code for reading (not the editor). A line too long for the pane
+ * wraps instead of being cut off at the edge, and what wraps is set in from
+ * the line's own indentation, so it still reads as one line. The text itself
+ * is unchanged: copying it gives the original lines.
+ */
+export function CodeBlock({ code }: { code: string }) {
+  return (
+    <pre className="code-block">
+      <code>
+        {code.split("\n").map((line, i, all) => (
+          <span key={i} className="ln" style={{ "--ind": line.length - line.trimStart().length } as CSSProperties}>
+            {line}
+            {i < all.length - 1 ? "\n" : ""}
+          </span>
+        ))}
+      </code>
+    </pre>
+  );
 }
 
 /** Inline: **bold**, `code`. */
@@ -51,11 +72,7 @@ export function Markdown({ text }: { text: string }) {
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) code.push(lines[i++]);
       i++;
-      blocks.push(
-        <pre key={k++}>
-          <code>{code.join("\n")}</code>
-        </pre>,
-      );
+      blocks.push(<CodeBlock key={k++} code={code.join("\n")} />);
     } else if (/^\{\{figure:[a-z0-9-]+\}\}\s*$/.test(line.trim())) {
       blocks.push(<Guard key={k++} what="This figure"><Figure id={line.trim().slice(9, -2)} /></Guard>);
       i++;

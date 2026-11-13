@@ -1,7 +1,7 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { device, fieldsOf, hex } from "./device";
 import { KITS } from "../sim/world/kits";
-import { Figure, FIGURE_IDS } from "./figures";
+import { Figure, FIGURE_IDS, figureMeta } from "./figures";
 import { Guard } from "./Markdown";
 import { Icon } from "./Icon";
 import { usePref } from "./prefs";
@@ -53,6 +53,8 @@ interface Use {
 interface FigInfo {
   id: string;
   title: string;
+  /** One or two sentences on what the figure shows, when its author wrote them. */
+  description?: string;
   /** Levels that embed the figure, in campaign order. */
   uses: Use[];
   /** The map part of the first level that uses it ("More" when none does). */
@@ -60,7 +62,7 @@ interface FigInfo {
 }
 
 const UPPER = new Set(["adc", "dac", "pwm", "spi", "i2c", "can", "uart", "imu", "lidar", "hsl", "pi", "sar", "fifo", "gpio", "isr", "pie", "dma", "led", "sci", "lcd", "r2r", "eallow", "1d", "2d", "fsm"]);
-/** The figure registry only has ids ("pwm-clock-tree"): make a readable title of one. */
+/** A figure without a title of its own gets one made from its id ("pwm-clock-tree"). */
 const titleOf = (id: string) =>
   id
     .split("-")
@@ -76,10 +78,13 @@ function figures(): FigInfo[] {
     const uses = texts.filter((t) => t.text.includes(`{{figure:${id}}}`)).map((t) => t.use);
     const n = uses[0]?.chapter.number;
     const topic = n === undefined ? "More" : (PARTS.find((p) => n >= p.from && n <= p.to)?.title ?? "More");
-    return { id, title: titleOf(id), uses, topic };
+    const meta = figureMeta(id);
+    return { id, title: meta.title?.trim() || titleOf(id), description: meta.description?.trim() || undefined, uses, topic };
   }).sort((a, b) => (a.uses[0]?.chapter.number ?? 999) - (b.uses[0]?.chapter.number ?? 999) || a.title.localeCompare(b.title));
   return figCache;
 }
+/** A diagram matches a search by its title, its description, its id or a level that uses it. */
+const figMatches = (f: FigInfo, s: string) => f.title.toLowerCase().includes(s) || !!f.description?.toLowerCase().includes(s) || f.id.includes(s) || f.uses.some((u) => u.level.title.toLowerCase().includes(s));
 const levelName = (u: Use) => `${chapterLabel(u.chapter)}.${u.index + 1} ${u.level.title}`;
 
 let periphCache: Map<string, RegInfo[]> | null = null;
@@ -141,7 +146,7 @@ function Diagrams({ open, fig, setFig }: { open: (id: string) => void; fig: stri
   const [q, setQ] = usePref<string>("hb-fq", "");
   const topics = useMemo(() => [...new Set(all.map((f) => f.topic))], [all]);
   const s = q.trim().toLowerCase();
-  const shown = all.filter((f) => (!topic || f.topic === topic) && (!s || f.title.toLowerCase().includes(s) || f.id.includes(s) || f.uses.some((u) => u.level.title.toLowerCase().includes(s) || u.chapter.title.toLowerCase().includes(s))));
+  const shown = all.filter((f) => (!topic || f.topic === topic) && (!s || figMatches(f, s) || f.uses.some((u) => u.chapter.title.toLowerCase().includes(s))));
   const cur = all.find((f) => f.id === fig);
   // Coming back from one diagram: the card it was opened from has the focus again.
   const back = useRef("");
@@ -183,6 +188,7 @@ function Diagrams({ open, fig, setFig }: { open: (id: string) => void; fig: stri
           </button>
         </div>
         <h1 ref={title} tabIndex={-1}>{cur.title}</h1>
+        {cur.description && <p className="hb-figure-desc">{cur.description}</p>}
         <p className="hint-text">
           {cur.uses.length === 0 ? "Not used in a level yet." : "Used in: "}
           {cur.uses.map((u, k) => (
@@ -218,7 +224,8 @@ function Diagrams({ open, fig, setFig }: { open: (id: string) => void; fig: stri
         {shown.map((f) => (
           <button key={f.id} className="hb-card" data-figure={f.id} onClick={() => setFig(f.id)}>
             <span className="hb-card-title">{f.title}</span>
-            <span className="hb-card-desc">{f.uses[0] ? `First used in ${levelName(f.uses[0])}` : "Not used in a level yet"}</span>
+            {f.description && <span className="hb-card-desc">{f.description}</span>}
+            <span className="hb-card-use">{f.uses[0] ? `First used in ${levelName(f.uses[0])}` : "Not used in a level yet"}</span>
             <span className="tag">{f.uses[0] ? `Chapter ${chapterLabel(f.uses[0].chapter)} · ${f.uses[0].chapter.title}` : "More"}</span>
           </button>
         ))}
@@ -441,7 +448,7 @@ export function Handbook({ open, at }: { open: (id: string) => void; at?: Handbo
     for (const r of regs) for (const f of r.fields) if (f.name.toLowerCase().includes(s)) fields.push({ r, f: f.name, desc: f.desc ?? "" });
     return [
       { title: "Glossary", ...cap(GLOSSARY.filter((g) => g.term.toLowerCase().includes(s) || g.meaning.toLowerCase().includes(s)), (g) => ({ label: g.term, note: g.meaning, go: goto("Glossary", () => setGq(g.term)) })) },
-      { title: "Key diagrams", ...cap(figures().filter((f) => f.title.toLowerCase().includes(s) || f.id.includes(s) || f.uses.some((u) => u.level.title.toLowerCase().includes(s))), (f) => ({ label: f.title, note: f.uses[0] ? `Used in ${levelName(f.uses[0])}` : undefined, go: goto("Key diagrams", () => setFig(f.id)) })) },
+      { title: "Key diagrams", ...cap(figures().filter((f) => figMatches(f, s)), (f) => ({ label: f.title, note: f.description ?? (f.uses[0] ? `Used in ${levelName(f.uses[0])}` : undefined), go: goto("Key diagrams", () => setFig(f.id)) })) },
       { title: "Pins and boards", ...cap(PINS.filter((p) => `${p.label} gpio${p.pin} ${p.kit}`.toLowerCase().includes(s)), (p) => ({ label: `${p.label}: GPIO${p.pin}`, note: `${p.kit}. ${p.note}`, go: goto("Pins and boards") })) },
       { title: "Formulas", ...cap(FORMULAS.filter((f) => `${f.what} ${f.formula}`.toLowerCase().includes(s)), (f) => ({ label: f.what, note: f.formula, go: goto("Formulas") })) },
       { title: "Registers", ...cap(regs.filter((r) => r.name.toLowerCase().includes(s)), (r) => ({ label: r.name, note: r.desc, go: goto("Registers", () => showReg(r.name)) })) },

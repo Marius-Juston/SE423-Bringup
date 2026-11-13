@@ -29,7 +29,7 @@ export function registerSolved(level: RegisterLevel, value: number): boolean {
   return true;
 }
 
-export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel; onPass: () => void; solved: boolean }) {
+export function RegisterPuzzle({ level, onPass, onMiss, solved }: { level: RegisterLevel; onPass: () => void; /** Called when a check finds a wrong answer (a warm-up counts the first try). */ onMiss?: () => void; solved: boolean }) {
   const { bits, fields, name } = useMemo(() => layoutOf(level), [level]);
   const [value, setValue] = useState(level.initial >>> 0);
   const [checked, setChecked] = useState(false);
@@ -97,6 +97,7 @@ export function RegisterPuzzle({ level, onPass, solved }: { level: RegisterLevel
           onClick={() => {
             setChecked(true);
             if (ok) onPass();
+            else onMiss?.();
           }}
         >
           Check value

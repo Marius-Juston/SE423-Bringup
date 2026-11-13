@@ -4,7 +4,7 @@ import type { WiringLevel } from "../../levels/types";
 
 const same = (a: [string, string], b: [string, string]) => (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0]);
 
-export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => void }) {
+export function Wiring({ level, onPass, onMiss }: { level: WiringLevel; onPass: () => void; /** Called when a check finds a wrong answer (a warm-up counts the first try). */ onMiss?: () => void }) {
   const [wires, setWires] = useState<[string, string][]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -20,14 +20,18 @@ export function Wiring({ level, onPass }: { level: WiringLevel; onPass: () => vo
     setWires([...wires, w]);
   };
   const check = () => {
+    const wrong = (text: string) => {
+      setMsg({ ok: false, text });
+      onMiss?.();
+    };
     for (const w of wires) {
       const m = (level.mistakes ?? []).find((x) => same(x.wire, w));
-      if (m) return setMsg({ ok: false, text: m.why });
+      if (m) return wrong(m.why);
     }
     const extra = wires.find((w) => !level.wires.some((x) => same(x, w)));
-    if (extra) return setMsg({ ok: false, text: `The wire from ${node(extra[0]).label} to ${node(extra[1]).label} does not belong in this circuit.` });
+    if (extra) return wrong(`The wire from ${node(extra[0]).label} to ${node(extra[1]).label} does not belong in this circuit.`);
     const missing = level.wires.filter((w) => !wires.some((x) => same(x, w))).length;
-    if (missing) return setMsg({ ok: false, text: `${missing} more wire${missing === 1 ? " is" : "s are"} needed.` });
+    if (missing) return wrong(`${missing} more wire${missing === 1 ? " is" : "s are"} needed.`);
     setMsg({ ok: true, text: "The circuit is complete." });
     onPass();
   };

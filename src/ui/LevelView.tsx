@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { findLevel, nextLevel } from "../levels/index";
 import { KIND_LABEL, chapterLabel, kindOf, tierOf, type Ref } from "../levels/types";
 import { store, useSave } from "./store";
-import { Markdown } from "./Markdown";
+import { CodeBlock, Markdown } from "./Markdown";
 import { trmRef } from "./device";
 import { openExternal } from "./external";
 import { Quiz } from "./widgets/Quiz";
@@ -16,6 +16,8 @@ import type { View } from "./App";
 import { Splitter } from "./Splitter";
 import { Icon } from "./Icon";
 import { usePref } from "./prefs";
+import { INTERVALS } from "./review";
+import type { BestNote } from "./bests";
 
 /** Width of the window in CSS pixels, kept up to date. */
 export function useWinWidth(): number {
@@ -64,7 +66,24 @@ export function Refs({ refs }: { refs: Ref[] }) {
   );
 }
 
-export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
+/** A level played as one question of a warm-up (spaced review). */
+export interface WarmupStep {
+  index: number;
+  total: number;
+  /** Goes to the next question (or back to the map); `right` says whether the first check was right. */
+  next: (right: boolean) => void;
+  /** Leaves the warm-up. */
+  end: () => void;
+}
+
+type Tab = "read" | "code" | "board";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "read", label: "Read" },
+  { id: "code", label: "Code" },
+  { id: "board", label: "Board" },
+];
+
+export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => void; warmup?: WarmupStep }) {
   const { level, chapter, index } = findLevel(id)!;
   const save = useSave();
   const passed = !!save.passed[id];
@@ -81,9 +100,26 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
   const helped = isCode && ((hints.length > 0 && shown >= hints.length) || solutionOpened);
   const helpedNow = useRef(helped);
   helpedNow.current = helped;
+  // In a warm-up the first check decides when the level comes back.
+  const firstTry = useRef<boolean | null>(null);
+  const [tab, setTab] = useState<Tab>("read");
+  const [status, setStatus] = useState<{ kind: string; text: string; detail?: string }>({ kind: "idle", text: "Tests not run yet" });
+  const [bests, setBests] = useState<BestNote[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const onMiss = () => {
+    if (!warmup || firstTry.current !== null) return;
+    firstTry.current = false;
+    store.review(id, false);
+  };
   const onPass = () => {
     store.pass(id, helpedNow.current);
+    if (warmup && firstTry.current === null) {
+      firstTry.current = true;
+      store.review(id, true);
+    }
     setJustPassed(true);
+    // In a narrow window the "level passed" box is on the Board tab.
+    setTab("board");
   };
 
   // After a pass the next step comes into view, and takes the focus unless the student is typing code.
@@ -92,13 +128,17 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
     if (!justPassed) return;
     const box = passBox.current;
     box?.scrollIntoView({ block: "nearest" });
-    if (!document.activeElement?.closest(".cm-editor")) box?.querySelector<HTMLElement>("button")?.focus();
+    if (tabbedNow.current || !document.activeElement?.closest(".cm-editor")) box?.querySelector<HTMLElement>("button")?.focus();
   }, [justPassed]);
 
   const [scale] = usePref<number>("text-scale", 1);
   const winW = useWinWidth();
   // Below these widths (they grow with the text size) the panes stack and the page scrolls.
   const wide = winW >= (isCode ? 1000 : 720) * Math.max(1, num(scale, 1));
+  // A code level in a narrow window: one pane at a time, chosen with tabs.
+  const tabbed = isCode && !wide;
+  const tabbedNow = useRef(tabbed);
+  tabbedNow.current = tabbed;
   const [taskPref, setTaskW] = usePref<number | null>(isCode ? "w-task-code" : reading ? "w-task-read" : "w-task", null);
   const [benchPref, setBenchW] = usePref<number | null>("w-bench", null);
   // Briefings and quick checks are for reading: the text gets the larger share.
@@ -108,36 +148,80 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
   const { bench: benchW, max: benchMax } = benchWidth(winW, taskW, benchPref);
 
   const retry = () => {
-    if (!window.confirm("Try this level again without help? The hints are hidden again and the editor goes back to the starting code. Your pass is kept.")) return;
+    setConfirming(false);
     store.clearHints(id);
     store.resetCode(id);
     setSolutionOpened(false);
     setJustPassed(false);
+    setBests([]);
     setAttempt((a) => a + 1);
+    setTab("code");
   };
+  const improved = bests.filter((b) => b.improved).slice(0, 3);
 
-  const done = (passed || justPassed) && (
-    <div className={`takeaway passed ${assisted ? "assisted" : ""}`} ref={passBox}>
-      <strong className="passed-title">
-        <Icon name={assisted ? "help" : "check"} size={16} /> {assisted ? "Level passed with help." : "Level passed."}
-      </strong>{" "}
-      {level.takeaway && <Markdown text={level.takeaway} />}
-      {assisted && <p className="tiny">It counts for the chapter like any other pass. Stars are for a pass without the last hint or the reference solution.</p>}
-      <div className="actions">
-        {next ? (
-          <button className="btn primary" onClick={() => go({ name: "level", id: next.id })}>
-            Next: {next.title} <Icon name="next" size={14} />
+  const done = warmup ? (
+    justPassed && (
+      <div className="takeaway passed" ref={passBox}>
+        <strong className="passed-title">
+          <Icon name="check" size={16} /> {firstTry.current ? "Right at the first try." : "Right."}
+        </strong>{" "}
+        {level.takeaway && <Markdown text={level.takeaway} />}
+        <p className="tiny">{firstTry.current ? "This one comes back later, after a longer wait." : `It took more than one try, so it comes back in ${INTERVALS[0]} days.`}</p>
+        <div className="actions">
+          <button className="btn primary" onClick={() => warmup.next(firstTry.current === true)}>
+            {warmup.index + 1 < warmup.total ? "Next question" : "Finish the warm-up"} <Icon name="next" size={14} />
           </button>
-        ) : (
-          <button className="btn primary" onClick={() => go({ name: "map" })}>Back to the map</button>
-        )}
-        {assisted && <button className="btn ghost" onClick={retry}>Try again without help</button>}
+        </div>
       </div>
-    </div>
+    )
+  ) : (
+    (passed || justPassed) && (
+      <div className={`takeaway passed ${assisted ? "assisted" : ""}`} ref={passBox}>
+        <strong className="passed-title">
+          <Icon name={assisted ? "help" : "check"} size={16} /> {assisted ? "Level passed with help." : "Level passed."}
+        </strong>{" "}
+        {level.takeaway && <Markdown text={level.takeaway} />}
+        {improved.map((b) => (
+          <p className="best-line" key={b.label}>
+            <Icon name="star" size={13} /> {b.was ? "New best" : "Your mark to beat"}: <b>{b.now}</b>
+            {b.was ? ` (was ${b.was})` : ""} <span className="best-what">{b.label}</span>
+          </p>
+        ))}
+        {assisted && <p className="tiny">It counts for the chapter like any other pass. Stars are for a pass without the last hint or the reference solution.</p>}
+        <div className="actions">
+          {next ? (
+            <button className="btn primary" onClick={() => go({ name: "level", id: next.id })}>
+              Next: {next.title} <Icon name="next" size={14} />
+            </button>
+          ) : (
+            <button className="btn primary" onClick={() => go({ name: "map" })}>Back to the map</button>
+          )}
+          {assisted && !confirming && <button className="btn ghost" onClick={() => setConfirming(true)}>Try again without help</button>}
+        </div>
+        {assisted && confirming && (
+          <div className="confirm" role="group" aria-label="Try again without help">
+            <p>The hints are hidden again and the editor goes back to the starting code. Your pass is kept.</p>
+            <div className="actions">
+              <button className="btn" autoFocus onClick={retry}>Start over without help</button>
+              <button className="btn ghost" onClick={() => setConfirming(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
   );
 
+  const onTabKey = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const i = TABS.findIndex((t) => t.id === tab);
+    const j = e.key === "ArrowRight" ? (i + 1) % TABS.length : e.key === "ArrowLeft" ? (i + TABS.length - 1) % TABS.length : e.key === "Home" ? 0 : e.key === "End" ? TABS.length - 1 : -1;
+    if (j < 0) return;
+    e.preventDefault();
+    setTab(TABS[j].id);
+    document.getElementById(`tab-${TABS[j].id}`)?.focus();
+  };
+
   const side = (
-    <div className="pane brief">
+    <div className="pane brief" {...(tabbed ? { role: "tabpanel", id: "pane-read", "aria-labelledby": "tab-read", hidden: tab !== "read" } : {})}>
       <h2 className="sr-only">Briefing</h2>
       <div className="goal">
         <strong>Goal.</strong> {level.goal}
@@ -167,7 +251,7 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
       {level.kind === "code" && (passed || shown >= hints.length) && hints.length > 0 && (
         <details className="solution" onToggle={(e) => e.currentTarget.open && setSolutionOpened(true)}>
           <summary>Reference solution</summary>
-          <pre><code>{level.solution}</code></pre>
+          <CodeBlock code={level.solution} />
         </details>
       )}
     </div>
@@ -177,59 +261,110 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
   const ch = chapterLabel(chapter);
   return (
     <div className="level">
-      <div className="level-head">
-        <button className="btn ghost small" onClick={() => go({ name: "map" })}>
-          <Icon name="back" size={14} /> Map
-        </button>
+      <div className={`level-head ${warmup ? "warm" : ""}`}>
+        {warmup ? (
+          <button className="btn ghost small" onClick={warmup.end}>
+            <Icon name="back" size={14} /> End warm-up
+          </button>
+        ) : (
+          <button className="btn ghost small" onClick={() => go({ name: "map" })}>
+            <Icon name="back" size={14} /> Map
+          </button>
+        )}
         <div className="crumbs">
-          <span className="eyebrow">Chapter {ch} · {chapter.title}</span>
+          <span className="eyebrow">
+            {warmup && <span className="warm-step">Warm-up {warmup.index + 1} of {warmup.total}</span>}
+            {warmup ? " · from chapter " : "Chapter "}{ch} · {chapter.title}
+          </span>
           <h1>
             {ch}.{index + 1} {level.title}
           </h1>
         </div>
         <span className="badge">{KIND_LABEL[kindOf(level)]}</span>
-        {tier !== "core" && (
+        {tier !== "core" && !warmup && (
           <span className={`badge tier-${tier}`}>
             {tier === "expert" && <Icon name="diamond" size={11} />} {tier === "expert" ? "Expert" : "Practice"}
           </span>
         )}
-        {passed && (
+        {passed && !warmup && (
           <span className={`badge ok ${assisted ? "assisted" : ""}`}>
             <Icon name={assisted ? "help" : "check"} size={12} /> {assisted ? "Passed with help" : "Passed"}
           </span>
         )}
         <span className="spacer" />
-        <nav className="stepper" aria-label={`Levels of chapter ${ch}`}>
-          {chapter.levels.map((l, i) => {
-            const t = tierOf(l);
-            const p = !!save.passed[l.id];
-            const help = p && !!save.assisted[l.id];
-            return (
+        {warmup ? (
+          <>
+            <span className="warm-dots" role="img" aria-label={`Question ${warmup.index + 1} of ${warmup.total}`}>
+              {Array.from({ length: warmup.total }, (_, i) => (
+                <i key={i} className={i < warmup.index ? "done" : i === warmup.index ? "now" : ""} />
+              ))}
+            </span>
+            {!justPassed && (
               <button
-                key={l.id}
-                className={`step tier-${t} ${p ? (help ? "assisted" : "passed") : ""}`}
-                aria-current={l.id === id ? "step" : undefined}
-                aria-label={`${ch}.${i + 1} ${l.title}${t !== "core" ? `, ${t}` : ""}${p ? (help ? ", passed with help" : ", passed") : ""}`}
-                title={`${ch}.${i + 1} ${l.title}`}
-                onClick={() => go({ name: "level", id: l.id })}
+                className="btn ghost small"
+                title={`Go on without answering: this question comes back in ${INTERVALS[0]} days`}
+                onClick={() => {
+                  onMiss();
+                  warmup.next(false);
+                }}
               >
-                <span aria-hidden="true" />
+                Skip <Icon name="next" size={14} />
               </button>
-            );
-          })}
-        </nav>
-        <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title={index === 0 ? "This is the first level of the chapter" : "Previous level"}>
-          <Icon name="back" size={16} />
-        </button>
-        <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title={next ? "Next level" : "This is the last level"}>
-          <Icon name="next" size={16} />
-        </button>
+            )}
+          </>
+        ) : (
+          <>
+            <nav className="stepper" aria-label={`Levels of chapter ${ch}`}>
+              {chapter.levels.map((l, i) => {
+                const t = tierOf(l);
+                const p = !!save.passed[l.id];
+                const help = p && !!save.assisted[l.id];
+                return (
+                  <button
+                    key={l.id}
+                    className={`step tier-${t} ${p ? (help ? "assisted" : "passed") : ""}`}
+                    aria-current={l.id === id ? "step" : undefined}
+                    aria-label={`${ch}.${i + 1} ${l.title}${t !== "core" ? `, ${t}` : ""}${p ? (help ? ", passed with help" : ", passed") : ""}`}
+                    title={`${ch}.${i + 1} ${l.title}`}
+                    onClick={() => go({ name: "level", id: l.id })}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                );
+              })}
+            </nav>
+            <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title={index === 0 ? "This is the first level of the chapter" : "Previous level"}>
+              <Icon name="back" size={16} />
+            </button>
+            <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title={next ? "Next level" : "This is the last level"}>
+              <Icon name="next" size={16} />
+            </button>
+          </>
+        )}
       </div>
-      <p className="sr-only" role="status">{justPassed ? `Level passed${assisted ? " with help" : ""}. ${next ? `Next: ${next.title}.` : ""}` : ""}</p>
+      <p className="sr-only" role="status">{justPassed ? (warmup ? "Right." : `Level passed${assisted ? " with help" : ""}. ${next ? `Next: ${next.title}.` : ""}`) : ""}</p>
       <div
-        className={`level-body ${isCode ? "code" : ""} ${reading ? "reading" : ""} ${wide ? "" : "stacked"}`}
+        className={`level-body ${isCode ? "code" : ""} ${reading ? "reading" : ""} ${wide ? "" : tabbed ? "tabbed" : "stacked"} ${warmup ? "warm" : ""}`}
         style={wide ? { gridTemplateColumns: isCode ? `${taskW}px ${SPLIT}px minmax(0, 1fr) ${SPLIT}px ${benchW}px` : `${taskW}px ${SPLIT}px minmax(0, 1fr)` } : undefined}
       >
+        {tabbed && (
+          <div className="level-tabs">
+            <div role="tablist" aria-label="Parts of this level">
+              {TABS.map((t) => (
+                <button key={t.id} role="tab" id={`tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`pane-${t.id}`} tabIndex={tab === t.id ? 0 : -1} onClick={() => setTab(t.id)} onKeyDown={onTabKey}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <p className={`tab-verdict state-${status.kind}`} role="status">
+              <i aria-hidden="true" />
+              <span className="tab-verdict-text">
+                <b>{status.text}</b>
+                {status.detail ? <span> {status.detail}</span> : null}
+              </span>
+            </p>
+          </div>
+        )}
         {side}
         <Splitter value={taskW} onChange={setTaskW} min={240} max={taskMax} side="left" label="Resize the briefing pane" reset={taskDefault} />
         {isCode ? (
@@ -239,18 +374,21 @@ export function LevelView({ id, go }: { id: string; go: (v: View) => void }) {
             onPass={onPass}
             helped={helped}
             benchTop={done}
+            tab={tabbed ? tab : undefined}
+            onStatus={setStatus}
+            onBests={setBests}
             splitter={<Splitter value={benchW} onChange={setBenchW} min={BENCH_MIN} max={benchMax} side="right" label="Resize the board pane" reset={440} />}
           />
         ) : (
           <div className="pane">
             <div className="activity">
               <h2 className="eyebrow activity-title">{level.kind === "brief" ? "Check your understanding" : "Your turn"}</h2>
-              {(level.kind === "brief" || level.kind === "quiz") && <Quiz questions={level.questions} onPass={onPass} />}
-              {level.kind === "calc" && <Calc fields={level.fields} onPass={onPass} />}
-              {level.kind === "order" && <Order steps={level.steps} onPass={onPass} />}
-              {level.kind === "timing" && <Timing level={level} onPass={onPass} />}
-              {level.kind === "wiring" && <Wiring level={level} onPass={onPass} />}
-              {level.kind === "register" && <RegisterPuzzle level={level} onPass={onPass} solved={passed || justPassed} />}
+              {(level.kind === "brief" || level.kind === "quiz") && <Quiz questions={level.questions} onPass={onPass} onMiss={onMiss} />}
+              {level.kind === "calc" && <Calc fields={level.fields} onPass={onPass} onMiss={onMiss} />}
+              {level.kind === "order" && <Order steps={level.steps} onPass={onPass} onMiss={onMiss} />}
+              {level.kind === "timing" && <Timing level={level} onPass={onPass} onMiss={onMiss} />}
+              {level.kind === "wiring" && <Wiring level={level} onPass={onPass} onMiss={onMiss} />}
+              {level.kind === "register" && <RegisterPuzzle level={level} onPass={onPass} onMiss={onMiss} solved={warmup ? justPassed : passed || justPassed} />}
               {done}
             </div>
           </div>

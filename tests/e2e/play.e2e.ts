@@ -197,6 +197,150 @@ describe("playthrough", () => {
     expect(errors).toEqual([]);
   });
 
+  // Opens a level from the map with this progress stored.
+  async function openWith(save: Record<string, unknown>, chapter?: string, level?: string): Promise<void> {
+    if (!(await page.locator(".map-cols").count())) await page.locator(".brand").click();
+    await page.evaluate((text) => localStorage.setItem("bringup-save-v1", text), JSON.stringify({ version: 1, passed: {}, hints: {}, code: {}, unlockAll: true, ...save }));
+    await page.reload();
+    await page.waitForSelector(".map-cols");
+    if (!chapter || !level) return;
+    await page.locator(`button[data-chapter="${chapter}"]`).click();
+    await page.locator(`button[data-level="${level}"]`).click();
+    await page.waitForSelector(".level-head");
+  }
+  const stored = () => page.evaluate(() => JSON.parse(localStorage.getItem("bringup-save-v1")!));
+
+  it("suggests a warm-up of due puzzles, plays it from clean widgets and reschedules them", async () => {
+    errors.length = 0;
+    const calcs = CHAPTERS.flatMap((c) => c.levels.filter((l) => l.kind === "calc").slice(0, 1).map((l) => ({ c, l }))).slice(0, 3);
+    expect(calcs).toHaveLength(3);
+    const day = 86_400_000;
+    const passed = Object.fromEntries(calcs.map((x) => [x.l.id, true]));
+    // Passed yesterday: nothing is due.
+    await openWith({ passed, passedAt: Object.fromEntries(calcs.map((x) => [x.l.id, Date.now() - day])) });
+    expect(await page.locator(".warmup").count()).toBe(0);
+    // Passed nine days ago: three questions from three chapters.
+    await openWith({ passed, passedAt: Object.fromEntries(calcs.map((x, i) => [x.l.id, Date.now() - (9 - i) * day])) });
+    expect(await page.locator(".warmup h2").innerText()).toContain("3 quick questions");
+    await page.getByRole("button", { name: "Start the warm-up" }).click();
+    for (const [i, { l }] of calcs.entries()) {
+      await page.waitForSelector(".level-head.warm");
+      expect(await page.locator(".level-head .eyebrow").innerText()).toMatch(new RegExp(`warm-up ${i + 1} of 3`, "i"));
+      expect(await page.locator(".level-head h1").innerText()).toContain(l.title);
+      // A passed level shows no answers and no "passed" box until it is answered again.
+      expect(await page.locator(".calc-field input").evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value).join(""))).toBe("");
+      expect(await page.locator(".takeaway.passed").count()).toBe(0);
+      if (l.kind !== "calc") throw new Error("not a calc level");
+      if (i === 1) {
+        // A wrong first answer is a miss, even when the next try is right.
+        for (const f of l.fields) await page.fill(`#calc-${f.id}`, String(f.answer + 7));
+        await page.getByRole("button", { name: "Check", exact: true }).click();
+      }
+      await solve(l);
+      await page.waitForSelector(".takeaway.passed");
+      await page.getByRole("button", { name: i < 2 ? "Next question" : "Finish the warm-up" }).click();
+    }
+    await page.waitForSelector(".map-cols");
+    expect(await page.locator(".warm-note").innerText()).toContain("2 of 3 right at the first try");
+    // One warm-up a day: the card is gone, also after a reload.
+    expect(await page.locator(".warmup").count()).toBe(0);
+    const s = await stored();
+    expect(calcs.map((x) => s.reviews[x.l.id].interval)).toEqual([5, 2, 5]);
+    await page.reload();
+    await page.waitForSelector(".map-cols");
+    expect(await page.locator(".warmup").count()).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  it("hides the warm-up until tomorrow when it is dismissed", async () => {
+    errors.length = 0;
+    const quick = CHAPTERS.flatMap((c) => c.levels.filter((l) => l.kind === "calc" || l.kind === "register").slice(0, 1)).slice(0, 3);
+    await openWith({ passed: Object.fromEntries(quick.map((l) => [l.id, true])), passedAt: Object.fromEntries(quick.map((l) => [l.id, Date.now() - 5 * 86_400_000])) });
+    await page.getByRole("button", { name: "Not today" }).click();
+    expect(await page.locator(".warmup").count()).toBe(0);
+    expect((await stored()).reviews).toEqual({});
+    expect(errors).toEqual([]);
+  });
+
+  const timed = CHAPTERS.flatMap((c) => c.levels.map((l) => ({ c, l }))).find((x) => x.l.kind === "code" && (x.l.bonus ?? []).some((b) => b.kind === "isr-time"));
+
+  it("keeps a personal best for a measured star and says when it improves", async () => {
+    errors.length = 0;
+    if (!timed || timed.l.kind !== "code") throw new Error("no code level with a timed star");
+    const label = timed.l.bonus!.find((b) => b.kind === "isr-time")!.label;
+    // A slow earlier best: the reference solution beats it.
+    await openWith({ passed: { [timed.l.id]: true }, bests: { [timed.l.id]: { [label]: 500 } } }, timed.c.id, timed.l.id);
+    expect(await page.locator(".bench .checks.bonus .best").first().innerText()).toContain("Best: 500 us");
+    await solve(timed.l);
+    await page.waitForSelector(".bench .result.ok");
+    expect(await page.locator(".takeaway.passed .best-line").innerText()).toMatch(/New best: [\d.]+ us \(was 500 us\)/);
+    expect(await page.locator(".bench .checks.bonus .best-new").count()).toBe(1);
+    const best = (await stored()).bests[timed.l.id][label];
+    expect(best).toBeLessThan(500);
+    // The same program again: the best stays, and nothing claims to be new.
+    await page.getByRole("button", { name: /^Run tests/ }).click();
+    await expect.poll(() => page.locator(".bench .checks.bonus .best-new").count()).toBe(0);
+    expect((await stored()).bests[timed.l.id][label]).toBe(best);
+    expect(errors).toEqual([]);
+  });
+
+  it("shows a code level as three tabs in a narrow window, with the test result always in view", async () => {
+    errors.length = 0;
+    if (!timed || timed.l.kind !== "code") throw new Error("no code level");
+    await page.setViewportSize({ width: 480, height: 900 });
+    try {
+      await openWith({}, timed.c.id, timed.l.id);
+      const selected = () => page.locator('[role="tab"][aria-selected="true"]').innerText();
+      expect(await page.getByRole("tab").count()).toBe(3);
+      expect(await selected()).toBe("Read");
+      expect(await page.locator(".pane.brief").isVisible()).toBe(true);
+      expect(await page.locator(".cm-content").isVisible()).toBe(false);
+      // The arrow keys move along the tabs; each tab names its panel.
+      await page.getByRole("tab", { name: "Read" }).focus();
+      await page.keyboard.press("ArrowRight");
+      expect(await selected()).toBe("Code");
+      expect(await page.getByRole("tabpanel", { name: "Code" }).isVisible()).toBe(true);
+      expect(await page.locator(".cm-content").isVisible()).toBe(true);
+      // A failed run: the verdict and the first thing to fix show without leaving the editor.
+      await page.getByRole("button", { name: /^Run tests/ }).click();
+      await expect.poll(() => page.locator(".tab-verdict").innerText()).toMatch(/tests passed|compile|error/i);
+      expect(await page.locator(".tab-verdict").isVisible()).toBe(true);
+      expect(await selected()).toBe("Code");
+      // A pass opens the Board tab, where the next step is.
+      await page.locator(".cm-content").click();
+      await page.keyboard.press("Control+A");
+      await page.keyboard.insertText(timed.l.solution);
+      await page.getByRole("button", { name: /^Run tests/ }).click();
+      await page.waitForSelector(".takeaway.passed");
+      expect(await selected()).toBe("Board");
+      expect(await page.locator(".tab-verdict").innerText()).toContain("All tests passed");
+      expect(await page.locator(".takeaway.passed .btn.primary").isVisible()).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), "horizontal overflow").toBeLessThanOrEqual(1);
+    } finally {
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    // Wide again: three panes side by side, no tabs.
+    await expect.poll(() => page.getByRole("tab").count()).toBe(0);
+    expect(await page.locator(".cm-content").isVisible()).toBe(true);
+    expect(await page.locator(".pane.brief").isVisible()).toBe(true);
+    await page.locator(".level-head").getByRole("button", { name: "Map", exact: true }).click();
+    await page.waitForSelector(".map-cols");
+    expect(errors).toEqual([]);
+  });
+
+  it("marks finished chapters and parts on the map", async () => {
+    errors.length = 0;
+    const part = CHAPTERS.filter((c) => c.number < 0);
+    await openWith({ passed: Object.fromEntries(part.flatMap((c) => c.levels).map((l) => [l.id, true])) });
+    for (const c of part) expect(await page.locator(`button[data-chapter="${c.id}"]`).getAttribute("class")).toContain("done");
+    expect(await page.locator(".part-done").count()).toBe(1);
+    await page.locator(`button[data-chapter="${part[0].id}"]`).click();
+    expect(await page.locator(".chapter-finished").innerText()).toContain("Chapter finished");
+    expect(await page.locator(".stats").innerText()).toMatch(new RegExp(`chapters finished\\s*${part.length}\\s*/${CHAPTERS.length}`, "i"));
+    await openWith({});
+    expect(errors).toEqual([]);
+  });
+
   it("keeps the handbook's scroll position", async () => {
     errors.length = 0;
     await page.locator(".topnav").getByRole("button", { name: "Handbook" }).click();

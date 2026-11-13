@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Board, WriteEntry } from "../../sim/board";
 import { fieldsOf, fieldValue, hex, type BitField } from "../device";
 
@@ -59,7 +59,17 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
   const stamp = log.length ? log[log.length - 1].n : -1;
   const shown = useMemo(() => (showLib ? [...log] : log.filter((e) => !e.lib)), [log, stamp, showLib]);
   const recent = useMemo(() => shown.slice(-60).reverse(), [shown]);
-  const picked = sel !== null ? (log.find((e) => e.n === sel) ?? null) : (recent[0] ?? null);
+  // While the pointer is over the list (or the keyboard focus is in it) the rows hold still, so a row can be read and chosen while the program keeps writing.
+  const [held, setHeld] = useState<WriteEntry[] | null>(null);
+  const holders = useRef({ pointer: false, keys: false });
+  const hold = (who: "pointer" | "keys", on: boolean) => {
+    holders.current[who] = on;
+    const any = holders.current.pointer || holders.current.keys;
+    setHeld((h) => (any ? (h ?? recent) : null));
+  };
+  const rows = held ?? recent;
+  const newer = held ? shown.length && held.length ? shown.filter((e) => e.n > held[0].n).length : shown.length : 0;
+  const picked = sel !== null ? (log.find((e) => e.n === sel) ?? null) : (rows[0] ?? null);
   /** Last write to each register, by name, in a fixed (sorted) order. */
   const lastWrite = useMemo(() => {
     const m = new Map<string, WriteEntry>();
@@ -80,13 +90,21 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
         {sel === null ? "Showing the newest write below. Select a line to keep one in view." : "Keeping the selected write in view."}{" "}
         {sel !== null && <button className="linkish" onClick={() => setSel(null)}>Follow the newest write</button>}
       </p>
-      <ol className="reglog" aria-label="Register writes, newest first" tabIndex={0}>
-        {recent.map((e) => {
+      <ol
+        className="reglog"
+        aria-label="Register writes, newest first"
+        tabIndex={0}
+        onPointerEnter={() => hold("pointer", true)}
+        onPointerLeave={() => hold("pointer", false)}
+        onFocus={(e) => e.target.matches(":focus-visible") && hold("keys", true)}
+        onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && hold("keys", false)}
+      >
+        {rows.map((e) => {
           const d = describe(board, e);
           const active = picked?.n === e.n;
           return (
             <li key={e.n}>
-              <button className={active ? "on" : ""} aria-pressed={active} onClick={() => setSel(e.n)}>
+              <button className={active ? "on" : ""} aria-pressed={active} onClick={() => setSel(e.n)} title={`${e.name}: ${d.changes.map((c) => `${c.name ? `${c.name} ` : ""}${d.command ? `wrote ${c.name ? c.to : hex(c.to, d.bits)}` : `${c.name ? c.from : hex(c.from, d.bits)} to ${c.name ? c.to : hex(c.to, d.bits)}`}`).join(", ")}`}>
                 <span className="when">{(e.t / MS).toFixed(e.t / MS < 10 ? 4 : 2)} ms</span>
                 <span className="where">{e.line ? `line ${e.line}` : "start"}{e.lib ? " (library)" : ""}</span>
                 <span className="what">
@@ -109,7 +127,9 @@ export function Registers({ board, onGoto }: { board: Board; onGoto?: (line: num
           );
         })}
       </ol>
-      {shown.length > recent.length && <p className="tiny">Showing the latest {recent.length} of {shown.length}.</p>}
+      <p className="tiny reglog-foot">
+        {newer > 0 ? `Held still while you are on the list: ${newer} newer write${newer === 1 ? "" : "s"} will show when you leave it.` : shown.length > recent.length ? `Showing the latest ${recent.length} of ${shown.length}.` : ""}
+      </p>
       {row && picked && (
         <div className="regdetail">
           <div className="regdetail-head">

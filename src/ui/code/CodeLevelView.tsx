@@ -13,6 +13,7 @@ import { Icon } from "../Icon";
 import { VIEWS } from "../views";
 import { Guard } from "../Markdown";
 import { findLevel } from "../../levels/index";
+import { compareBests, measure, type BestNote } from "../bests";
 
 interface Problem {
   line: number;
@@ -29,9 +30,61 @@ function problemsOf(diags: Diagnostic[], err?: { line: number; msg: string } | n
 }
 
 const SERIAL_CHECKS = new Set(["serial", "serial-period", "uart"]);
+/** The program talks over a serial port (serial_printf, the SCI registers, the UART helpers). */
+const usesSerial = (src: string) => /serial_|Serial[A-D]\b|Sci[a-d]Regs|UART_/.test(src);
+/** The program prints with plain printf, which goes to the debugger's console and not to a serial port. */
+const usesPrintf = (src: string) => /(^|[^\w.])printf\s*\(/.test(src);
+
+/** A scrolling text output that follows new text only while it is scrolled to the end, so earlier output can be read. */
+function Term({ text, label, live }: { text: string; label: string; live: "off" | "polite" }) {
+  const el = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  useEffect(() => {
+    if (el.current && follow.current) el.current.scrollTop = el.current.scrollHeight;
+  });
+  return (
+    <div
+      className="term"
+      ref={el}
+      role="log"
+      aria-live={live}
+      aria-label={label}
+      tabIndex={0}
+      onScroll={(e) => {
+        const t = e.currentTarget;
+        follow.current = t.scrollHeight - t.scrollTop - t.clientHeight < 8;
+      }}
+    >
+      {text}
+    </div>
+  );
+}
 const PIN_CHECKS = new Set(["led", "pin", "blink", "steady", "opposite", "duty", "latency", "uart"]);
 
-export function CodeLevelView({ level, onPass, helped = false, splitter, benchTop }: { level: CodeLevel; onPass: () => void; /** The student has seen the last hint or the solution: no stars. */ helped?: boolean; splitter?: ReactNode; /** Shown above the bench panels (the "level passed" box). */ benchTop?: ReactNode }) {
+export function CodeLevelView({
+  level,
+  onPass,
+  helped = false,
+  splitter,
+  benchTop,
+  tab,
+  onStatus,
+  onBests,
+}: {
+  level: CodeLevel;
+  onPass: () => void;
+  /** The student has seen the last hint or the solution: no stars. */
+  helped?: boolean;
+  splitter?: ReactNode;
+  /** Shown above the bench panels (the "level passed" box). */
+  benchTop?: ReactNode;
+  /** In a narrow window the panes are tab panels: the one that is showing (undefined on a wide window: both show). */
+  tab?: "read" | "code" | "board";
+  /** Told what the program or the last test run is doing, for a summary outside the panes. */
+  onStatus?: (s: { kind: string; text: string; detail?: string }) => void;
+  /** Told the measured star values of a passing run without help, compared with the stored bests. */
+  onBests?: (notes: BestNote[]) => void;
+}) {
   const save = useSave();
   // A level that continues an earlier one opens with the student's code for that level.
   const earlier = level.continues ? findLevel(level.continues)?.level : undefined;
@@ -47,8 +100,9 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
   const [tested, setTested] = useState("");
   const [speed, setSpeed] = useState(1);
   const [typed, setTyped] = useState("");
+  /** Star values of the last passing run without help. */
+  const [bestNotes, setBestNotes] = useState<BestNote[]>([]);
   const editor = useRef<EditorHandle | null>(null);
-  const term = useRef<HTMLDivElement>(null);
   const kit = KITS[level.kit];
   const sandbox = level.checks.length === 0;
   const fails = save.fails[level.id] ?? 0;
@@ -87,13 +141,6 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
     return () => cancelAnimationFrame(raf);
   }, [live, speed]);
 
-  // The terminal follows new output only while it is scrolled to the end, so earlier output can be read.
-  const follow = useRef(true);
-  useEffect(() => {
-    const el = term.current;
-    if (el && follow.current) el.scrollTop = el.scrollHeight;
-  });
-
   const running = !!live?.running;
   const start = () => setLive(new LiveSession(level.kit, code));
   const stop = () => setLive(null);
@@ -123,8 +170,14 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
       // Stars count only on a solution that passes the level without the last hint or the reference solution.
       const earned = r.bonus.map((b, i) => (b.pass ? i : -1)).filter((i) => i >= 0);
       if (earned.length && !helped) store.star(level.id, earned);
+      // Personal bests count on the same terms as stars: a pass without help.
+      const best = helped ? { store: {}, notes: [] } : compareBests(level.bonus ?? [], r.bonus, store.get().bests[level.id]);
+      store.best(level.id, best.store);
+      setBestNotes(best.notes);
+      onBests?.(best.notes);
     } else {
       store.fail(level.id);
+      setBestNotes([]);
       // The verdict must be in view (in a narrow window the board is below the editor). After a pass, LevelView shows the next step instead.
       requestAnimationFrame(() => document.querySelector('.bench [data-panel="tests"] .result')?.scrollIntoView({ block: "nearest" }));
     }
@@ -155,6 +208,25 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
     : sandbox
       ? "Run powers the board with your program."
       : "Run tests checks the level. Run powers the board so you can try it.";
+  // What a failed run needs first, for the summary a narrow window keeps in view.
+  const firstFail = result && !result.passed ? result.checks.find((c) => !c.pass) : undefined;
+  const statusDetail = live
+    ? ""
+    : result && !result.passed
+      ? result.compileError
+        ? `Line ${result.compileError.line}: ${result.compileError.msg}`
+        : result.runtimeError
+          ? `Line ${result.runtimeError.line}: ${result.runtimeError.msg}`
+          : firstFail
+            ? `First to fix: ${firstFail.label}`
+            : "An error was reported under the editor."
+      : result && tested !== code
+        ? "Before your last edit."
+        : "";
+  useEffect(() => {
+    onStatus?.({ kind: state.kind, text: !live && !result ? "Tests not run yet" : state.text, detail: statusDetail || undefined });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.kind, state.text, statusDetail]);
   // Keyboard: Ctrl+Enter tests, Ctrl+Shift+Enter run/stop, F10 step, F9 next write.
   const keys = useRef({ start, stop, test, stepLine, stepWrite });
   keys.current = { start, stop, test, stepLine, stepWrite };
@@ -187,7 +259,8 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
     const checks = [...level.checks, ...(level.bonus ?? [])];
     const stim = level.stimuli ?? [];
     return {
-      serial: checks.some((c) => SERIAL_CHECKS.has(c.kind)) || stim.some((s) => "type" in s) || /serial|printf|Sci[a-d]Regs|UART_/i.test(level.starter + level.solution),
+      serial: checks.some((c) => SERIAL_CHECKS.has(c.kind)) || stim.some((s) => "type" in s) || usesSerial(level.starter + level.solution),
+      console: checks.some((c) => c.kind === "console") || usesPrintf(level.starter + level.solution),
       pins: checks.some((c) => PIN_CHECKS.has(c.kind)) || stim.some((s) => "press" in s || "release" in s),
     };
   }, [level]);
@@ -211,7 +284,9 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
   const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
   const windowMs = live ? Math.min(Math.max(nowMs, 1), 400) : Math.max(nowMs, 1);
   const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : "set" in s ? `${s.set}=${s.value}` : `'${s.type}'` })) : [];
-  const showSerial = sandbox || uses.serial || serial !== "" || !!board?.console;
+  // The serial terminal is for programs that use a serial port; plain printf has its own console.
+  const showSerial = sandbox || uses.serial || serial !== "" || usesSerial(code);
+  const showConsole = uses.console || !!board?.console || usesPrintf(code);
   const showPins = sandbox || uses.pins || (board?.gpio.trace.size ?? 0) > 0;
   const nPass = result ? result.checks.filter((c) => c.pass).length : 0;
   // A failed check says what was seen; its pointer to the cause waits for the second failed run.
@@ -226,7 +301,7 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
 
   return (
     <>
-      <div className="pane editor-pane">
+      <div className="pane editor-pane" {...(tab ? { role: "tabpanel", id: "pane-code", "aria-labelledby": "tab-code", hidden: tab !== "code" } : {})}>
         <h2 className="sr-only">Code</h2>
         <div className="toolbar">
           <div className="tool-row">
@@ -247,7 +322,7 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
             <button className="btn" onClick={stepWrite} title="Run until the next register write, then pause (F9)"><Icon name="skip" size={13} /> <span className="lbl">Next write</span></button>
           </div>
           <div className="tool-row">
-            <span className={`chip state-${state.kind}`} role="status">
+            <span className={`chip state-${state.kind}`} role={tab ? undefined : "status"}>
               <i aria-hidden="true" /> {state.text}
             </span>
             <span className="tool-tip" title={tip}>{tip}</span>
@@ -302,7 +377,7 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
         </div>
       </div>
       {splitter}
-      <div className="pane bench">
+      <div className="pane bench" {...(tab ? { role: "tabpanel", id: "pane-board", "aria-labelledby": "tab-board", hidden: tab !== "board" } : {})}>
         <h2 className="sr-only">{sandbox ? "Board" : "Tests and board"}</h2>
         {benchTop}
         <div className="bench-panels">
@@ -347,6 +422,9 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
                       const r = result?.bonus[i];
                       const kept = save.stars[level.id]?.includes(i) ?? false;
                       const now = !!r?.pass && !!result?.passed && !helped;
+                      const stored = save.bests[level.id]?.[b.label];
+                      const best = stored !== undefined ? measure(b, stored) : null;
+                      const fresh = bestNotes.find((n) => n.label === b.label)?.improved && !stale;
                       return (
                         <li key={i}>
                           <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name="star" size={14} /></span>
@@ -356,6 +434,12 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
                             {kept && !now && result ? " (earned earlier)" : ""}
                           </span>
                           {r?.detail && <span className="detail">{r.detail}</span>}
+                          {best && (
+                            <span className="best">
+                              <span>Best: <b>{best.text}</b></span>
+                              {fresh && <span className="best-new">New best</span>}
+                            </span>
+                          )}
                           {r && !r.pass && r.hint && pointers && <span className="hintline">{r.hint}</span>}
                         </li>
                       );
@@ -402,22 +486,14 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
               {board ? <Scope kit={kit} traces={board.gpio.trace} fromMs={Math.max(0, nowMs - windowMs)} toMs={Math.max(nowMs, 1)} marks={stimMarks} /> : <p className="hint-text">Run the program to see its pins.</p>}
             </Panel>
           )}
+          {showConsole && (
+            <Panel id="console" title="printf console" note="what printf prints">
+              {board?.console ? <Term text={board.console} label="printf output" live="off" /> : <p className="hint-text">Run the program to see what it prints.</p>}
+            </Panel>
+          )}
           {showSerial && (
             <Panel id="serial" title="Serial terminal" note="SCIA, 115200 baud">
-              <div
-                className="term"
-                ref={term}
-                role="log"
-                aria-live={running && !live!.paused ? "off" : "polite"}
-                aria-label="Serial terminal output"
-                tabIndex={0}
-                onScroll={(e) => {
-                  const el = e.currentTarget;
-                  follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 8;
-                }}
-              >
-                {serial}
-              </div>
+              <Term text={serial} label="Serial terminal output" live={running && !live!.paused ? "off" : "polite"} />
               <form
                 className="term-input"
                 onSubmit={(e) => {
@@ -429,12 +505,6 @@ export function CodeLevelView({ level, onPass, helped = false, splitter, benchTo
                 <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={running ? "Type characters to send" : "Press Run to type to the board"} aria-label="Characters to send to the board" disabled={!running} />
                 <button className="btn small" disabled={!running}>Send</button>
               </form>
-              {board?.console ? (
-                <>
-                  <h4 className="sub">printf console</h4>
-                  <div className="term" role="log" aria-live="off" aria-label="printf output" tabIndex={0}>{board.console}</div>
-                </>
-              ) : null}
             </Panel>
           )}
           <Panel id="registers" title="Registers" note="what changed, and when">

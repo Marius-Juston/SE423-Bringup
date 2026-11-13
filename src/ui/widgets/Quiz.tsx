@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Question } from "../../levels/types";
 import { Markdown } from "../Markdown";
 
-export function Quiz({ questions, onPass }: { questions: Question[]; onPass: () => void }) {
+export function Quiz({ questions, onPass, onMiss }: { questions: Question[]; onPass: () => void; /** Called when a check finds a wrong answer (a warm-up counts the first try). */ onMiss?: () => void }) {
   const [picked, setPicked] = useState<(number | null)[]>(() => questions.map(() => null));
   const [checked, setChecked] = useState(false);
   /** Wrong checks per question: the explanation appears after the second. */
@@ -49,6 +49,7 @@ export function Quiz({ questions, onPass }: { questions: Question[]; onPass: () 
             setChecked(true);
             setMisses(misses.map((m, i) => (picked[i] === questions[i].answer ? m : m + 1)));
             if (allRight) onPass();
+            else onMiss?.();
           }}
         >
           Check answers

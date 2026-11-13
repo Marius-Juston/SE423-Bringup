@@ -15,7 +15,7 @@ function shuffled(n: number): number[] {
   return idx;
 }
 
-export function Order({ steps, onPass }: { steps: string[]; onPass: () => void }) {
+export function Order({ steps, onPass, onMiss }: { steps: string[]; onPass: () => void; /** Called when a check finds a wrong answer (a warm-up counts the first try). */ onMiss?: () => void }) {
   const [order, setOrder] = useState(() => shuffled(steps.length));
   const [checked, setChecked] = useState(false);
   const [said, setSaid] = useState("");
@@ -68,6 +68,7 @@ export function Order({ steps, onPass }: { steps: string[]; onPass: () => void }
           onClick={() => {
             setChecked(true);
             if (order.every((_, i) => right(i))) onPass();
+            else onMiss?.();
           }}
         >
           Check order

@@ -10,6 +10,8 @@ import { Figure } from "./figures";
 import { Icon, Ring } from "./Icon";
 import { usePref } from "./prefs";
 import { tierOf } from "../levels/types";
+import { store } from "./store";
+import { sessionSummary } from "./review";
 
 export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook"; reg?: string } | { name: "sandbox" } | { name: "settings" };
 
@@ -54,7 +56,35 @@ export function App() {
 }
 
 function Game() {
-  const [view, setView] = useState<View>({ name: "map" });
+  const [view, show] = useState<View>({ name: "map" });
+  /** A warm-up in progress: its levels, the one showing, and how many were right at the first try. */
+  const [warm, setWarm] = useState<{ ids: string[]; i: number; right: number } | null>(null);
+  /** The result of the warm-up just finished, shown on the map until another screen is opened. */
+  const [warmNote, setWarmNote] = useState("");
+  // Going anywhere by hand leaves a warm-up.
+  const setView = (v: View) => {
+    setWarm(null);
+    setWarmNote("");
+    show(v);
+  };
+  const startWarmup = (ids: string[]) => {
+    store.warmupSeen();
+    setWarmNote("");
+    setWarm({ ids, i: 0, right: 0 });
+    show({ name: "level", id: ids[0] });
+  };
+  const warmNext = (right: boolean) => {
+    if (!warm) return;
+    const n = warm.right + (right ? 1 : 0);
+    if (warm.i + 1 < warm.ids.length) {
+      setWarm({ ...warm, i: warm.i + 1, right: n });
+      show({ name: "level", id: warm.ids[warm.i + 1] });
+    } else {
+      setWarm(null);
+      setWarmNote(sessionSummary(n, warm.ids.length));
+      show({ name: "map" });
+    }
+  };
   const save = useSave();
   const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
   const [scale] = usePref<number>("text-scale", 1);
@@ -117,8 +147,8 @@ function Game() {
       </header>
       <main id="main" tabIndex={-1}>
         <Boundary key={view.name === "level" ? view.id : view.name} onReset={() => setView({ name: "map" })}>
-        {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} />}
-        {view.name === "level" && findLevel(view.id) && <LevelView key={view.id} id={view.id} go={setView} />}
+        {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} warmup={startWarmup} note={warmNote} />}
+        {view.name === "level" && findLevel(view.id) && <LevelView key={warm ? `warm-${view.id}` : view.id} id={view.id} go={setView} warmup={warm ? { index: warm.i, total: warm.ids.length, next: warmNext, end: () => setView({ name: "map" }) } : undefined} />}
         {view.name === "handbook" && <Handbook open={(id) => setView({ name: "level", id })} at={view.reg ? { reg: view.reg } : undefined} />}
         {view.name === "sandbox" && <Sandbox />}
         {view.name === "settings" && <Settings />}

@@ -1,7 +1,7 @@
 import { useState, type CSSProperties } from "react";
 import type { TimingLevel } from "../../levels/types";
 
-export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => void }) {
+export function Timing({ level, onPass, onMiss }: { level: TimingLevel; onPass: () => void; /** Called when a check finds a wrong answer (a warm-up counts the first try). */ onMiss?: () => void }) {
   const [rows, setRows] = useState(() => level.rows.map((r) => [...r.initial]));
   const [checked, setChecked] = useState(false);
   const ok = level.rows.every((r, ri) => r.answer.every((v, i) => rows[ri][i] === v));
@@ -51,6 +51,7 @@ export function Timing({ level, onPass }: { level: TimingLevel; onPass: () => vo
           onClick={() => {
             setChecked(true);
             if (ok) onPass();
+            else onMiss?.();
           }}
         >
           Check waveform
