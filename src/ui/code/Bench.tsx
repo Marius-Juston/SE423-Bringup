@@ -14,7 +14,9 @@ export function Parts({ kit, board, pressed, onButton, onKnob }: { kit: Kit; boa
     const lv = g.level[pin];
     return lv < 0 ? false : activeLow ? lv === 0 : lv === 1;
   };
-  const analog = kit.parts.filter((p) => p.kind === "knob" || p.kind === "meter");
+  // Plugins add many knobs and meters to a kit; show only the ones this
+  // program touches (an input it read, an output something produced).
+  const analog = kit.parts.filter((p) => (p.kind === "knob" && !!board?.inputsUsed.has(p.input)) || (p.kind === "meter" && !!board?.outputs.has(p.output)));
   return (
     <>
     <div className="parts" role="group" aria-label={`${kit.name}: LEDs and push buttons`}>

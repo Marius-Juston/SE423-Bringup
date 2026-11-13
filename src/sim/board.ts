@@ -159,8 +159,11 @@ export class Board implements Rt {
   }
 
   input(name: string, fallback = 0): number {
+    this.inputsUsed.add(name);
     return this.inputs.get(name) ?? fallback;
   }
+  /** Inputs something has actually read (the bench shows only these knobs). */
+  inputsUsed = new Set<string>();
 
   onInput(name: string, fn: (v: number, t: number) => void): void {
     const l = this.inputWatchers.get(name);
