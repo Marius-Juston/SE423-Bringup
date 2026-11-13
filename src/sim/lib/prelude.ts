@@ -269,6 +269,7 @@ float sqrt(float x); float fabs(float x); float exp(float x); float log(float x)
 float pow(float x, float y); float floor(float x); float ceil(float x); float fmod(float x, float y);
 float sinf(float x); float cosf(float x); float tanf(float x); float atan2f(float y, float x);
 float sqrtf(float x); float fabsf(float x); float powf(float x, float y);
+float fmax(float x, float y); float fmin(float x, float y); float round(float x);
 int abs(int x); long labs(long x);
 size_t strlen(char *s); char *strcpy(char *dst, char *src); int strcmp(char *a, char *b);
 void *memset(void *dst, int value, size_t n); void *memcpy(void *dst, void *src, size_t n);
@@ -411,6 +412,8 @@ export function installLibrary(b: Board): void {
   f1("floor", Math.floor); f1("ceil", Math.ceil);
   f2("atan2", Math.atan2); f2("atan2f", Math.atan2); f2("pow", Math.pow); f2("powf", Math.pow);
   f2("fmod", (x, y) => x % y);
+  f2("fmax", Math.max); f2("fmin", Math.min);
+  f1("round", (x) => Math.sign(x) * Math.round(Math.abs(x)));
   c.defineNative("abs", (a) => (Math.abs(a[0]) << 16) >> 16);
   c.defineNative("labs", (a) => Math.abs(a[0]) | 0);
   c.defineNative("strlen", (a, _t, line) => cstr(a[0], line).length);

@@ -489,6 +489,7 @@ export class Compiler {
           gen: function* () {
             if (init) init.gen ? yield* init.gen() : init.sync!();
             let first = true;
+            let idleNext = false;
             for (;;) {
               const w0 = mem.writes;
               const l0 = mem.liveReads;
@@ -496,14 +497,21 @@ export class Compiler {
               const b0 = mem.sigB;
               rt.tick(tl);
               if ((testFirst || !first) && c && !c()) break;
+              // The previous pass changed nothing and the loop goes on:
+              // every later pass would be identical until an event happens,
+              // so jump to that event. (Tested after the condition, so a
+              // loop that is about to end is never held back.)
+              if (idleNext) {
+                idleNext = false;
+                rt.idle();
+                if (rt.pause) yield;
+              }
               first = false;
               const sig = body.gen ? yield* body.gen() : body.sync!();
               if (sig === 1) break;
               if (sig === 3) return 3 as Sig;
               if (step) step();
-              // Nothing changed during this pass: every later pass would be
-              // identical until an event happens, so jump to that event.
-              if (mem.writes === w0 && mem.liveReads === l0 && mem.sigA === a0 && mem.sigB === b0) rt.idle();
+              idleNext = mem.writes === w0 && mem.liveReads === l0 && mem.sigA === a0 && mem.sigB === b0;
               if (rt.pause) yield;
             }
             return 0 as Sig;
