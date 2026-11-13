@@ -1,6 +1,14 @@
 import type { Chapter } from "../types";
 import type { Check, Stimulus } from "../../sim/runner";
 
+// Timing: library maths costs simulated time (sin, cos, atan2 about 1 us,
+// sqrt 0.25 us). From cap-lean on, the 1 ms interrupt keeps only the heading;
+// x, y, dist and eTheta are computed by navigate() in the main loop behind
+// navFlag. Longest pass of cpu_timer0_isr: 6.0 us with the maths inside
+// (cap-goto), 2.5 to 2.75 us after; the budget of ISR_BUDGET is 3.5 us, which
+// also fails a program that leaves sqrt and atan2 inside (3.95 us) or reads
+// the 39 LIDAR points in the 1 ms loop (7.7 us).
+//
 // Chapter 21 is ONE program that grows level by level. Each code level
 // `continues` the one before it, so the student keeps building on their own
 // file. The reference program is assembled by `program(n, ...)`: stage n
@@ -179,7 +187,8 @@ uint16_t distance = 0;
 uint16_t dis_index = 0;         // which point comes next
 float ladar_ft[228];            // the last complete scan, ft
 float front_ft = 19.0;          // nearest thing ahead, ft
-uint32_t numScans = 0;          // complete scans received`;
+uint32_t numScans = 0;          // complete scans received
+uint16_t newScan = 0;           // 1: a complete scan waits for the main loop`;
 
 const SERIAL_FNS = (first: number, last: number) => `// Runs every 100 ms: ask the LIDAR for a scan (chapter 17)
 __interrupt void cpu_timer1_isr(void)
@@ -187,9 +196,9 @@ __interrupt void cpu_timer1_isr(void)
     serial_sendSCIC(&SerialC, G_command, G_len);
 }
 
-// Called when a reply is complete: the nearest thing ahead,
-// points ${first} to ${last}, 20 degrees to each side
-void scan_done(void)
+// Called from the main loop when a reply is complete: the nearest thing
+// ahead, points ${first} to ${last}, 20 degrees to each side
+void look_ahead(void)
 {
     int i;
     float m = 19.0;   // more than the largest reading
@@ -260,9 +269,9 @@ __interrupt void RXCINT_recv_ready(void)
                 }
             }
             if (LF_count == 2) {
-                // two line feeds in a row: the reply is complete
+                // two line feeds in a row: the reply is complete, tell main
                 read_ladar_state = 0;
-                scan_done();
+                newScan = 1;
             }
         }
     }
@@ -306,6 +315,22 @@ const GOAL_GEOMETRY = `    // Where is the goal from here: distance and heading 
     while (eTheta > PI) eTheta = eTheta - 2.0 * PI;
     while (eTheta < -PI) eTheta = eTheta + 2.0 * PI;`;
 
+/** Stage 6 on: the interrupt keeps the heading and asks the main loop for the rest. */
+const HEADING_AND_FLAG = `    // ---- Estimate: the heading here (chapter 18); x, y and the goal in navigate() ----
+    theta = theta0 + (RightWheel - LeftWheel) * (1.235/12.0) / WHEEL_BASE;
+    navFlag = 1;`;
+
+const NAVIGATE = `// Called from the main loop after every pass of the 1 ms interrupt: the slow
+// maths. cos, sin and atan2 take about 1 microsecond each.
+void navigate(void)
+{
+    // Dead reckoning (chapter 18)
+    x = x + 0.5 * (vLeft + vRight) * cos(theta) * 0.001;
+    y = y + 0.5 * (vLeft + vRight) * sin(theta) * 0.001;
+
+${GOAL_GEOMETRY}
+}`;
+
 const CONTROL_PI = `    // ---- Control: one PI loop per wheel, with anti-windup (chapter 16) ----
     eLeft = vref - vLeft;
     eRight = vref - vRight;
@@ -344,7 +369,8 @@ const f = (v: number) => (Number.isInteger(v) ? v.toFixed(1) : `${+v.toFixed(8)}
 /**
  * The program after stage n:
  * 1 motors, 2 encoders, 3 PI speed control, 4 steering and heading,
- * 5 dead reckoning and the goal, 6 LIDAR.
+ * 5 dead reckoning and the goal (all in the 1 ms interrupt),
+ * 6 the same with the slow maths moved to the main loop, 7 LIDAR.
  */
 function program(n: number, o: Opts): string {
   const s = o.start ?? START;
@@ -358,15 +384,16 @@ function program(n: number, o: Opts): string {
   add(n >= 4, `#define WHEEL_BASE  0.6     // distance between the wheels, ft`);
   add(true, `
 __interrupt void cpu_timer0_isr(void);`);
-  add(n >= 6, `__interrupt void cpu_timer1_isr(void);`);
+  add(n >= 7, `__interrupt void cpu_timer1_isr(void);`);
   add(true, `void init_EPWM1and2(void);
 void setEPWM1A(float controleffort);
 void setEPWM2A(float controleffort);
 void init_eQEPs(void);`);
   add(n >= 2, `float readEncLeft(void);
 float readEncRight(void);`);
-  add(n >= 6 && !o.serial, `float min_ft(int first, int last);`);
-  add(n >= 6 && !!o.serial, `void scan_done(void);`);
+  add(n >= 6, `void navigate(void);`);
+  add(n >= 7 && !o.serial, `float min_ft(int first, int last);`);
+  add(n >= 7 && !!o.serial, `void look_ahead(void);`);
   add(true, `
 uint32_t numTimer0calls = 0;   // counts the 1 ms interrupts
 
@@ -407,8 +434,11 @@ float xGoal = ${f(g[0])};
 float yGoal = ${f(g[1])};
 float dist = 0;           // distance to the goal, ft
 float eTheta = 0;         // heading error towards the goal, rad`);
-  add(n >= 6 && !!o.serial, SERIAL_GLOBALS);
-  add(n >= 6 && !o.serial, `
+  add(n >= 6, `
+// Hand-off to the main loop (chapter 5)
+uint16_t navFlag = 0;     // 1: the interrupt has new speeds, main must call navigate()`);
+  add(n >= 7 && !!o.serial, SERIAL_GLOBALS);
+  add(n >= 7 && !o.serial, `
 // LIDAR (chapter 17)
 float front_ft = 19.0;    // nearest thing ahead, ft
 uint32_t numScans = 0;`);
@@ -431,30 +461,43 @@ void main(void)
 
     EALLOW;
     PieVectTable.TIMER0_INT = &cpu_timer0_isr;`);
-  add(n >= 6, `    PieVectTable.TIMER1_INT = &cpu_timer1_isr;`);
-  add(n >= 6 && !!o.serial, `    PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;`);
+  add(n >= 7, `    PieVectTable.TIMER1_INT = &cpu_timer1_isr;`);
+  add(n >= 7 && !!o.serial, `    PieVectTable.SCIC_RX_INT = &RXCINT_recv_ready;`);
   add(true, `    EDIS;
 
     // Timer 0 interrupts every 1 ms (1000 microseconds): the control loop
     InitCpuTimers();
     ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 1000);
     CpuTimer0Regs.TCR.all = 0x4000;`);
-  add(n >= 6, `    // Timer 1 interrupts every 100 ms: the LIDAR
+  add(n >= 7, `    // Timer 1 interrupts every 100 ms: the LIDAR
     ConfigCpuTimer(&CpuTimer1, LAUNCHPAD_CPU_FREQUENCY, 100000);
     CpuTimer1Regs.TCR.all = 0x4000;`);
-  add(n >= 6 && !!o.serial, `
+  add(n >= 7 && !!o.serial, `
     // The LIDAR is on SCIC, 115200 baud
     init_serialSCIC(&SerialC, 115200);`);
   add(true, `
     IER |= M_INT1;
     PieCtrlRegs.PIEIER1.bit.INTx7 = 1;`);
-  add(n >= 6 && !!o.serial, `    IER |= M_INT8;   // SCIC`);
-  add(n >= 6, `    IER |= M_INT13;  // CPU Timer 1`);
+  add(n >= 7 && !!o.serial, `    IER |= M_INT8;   // SCIC`);
+  add(n >= 7, `    IER |= M_INT13;  // CPU Timer 1`);
+  add(n >= 6, `
+    // dist and eTheta must be right before the first interrupt uses them
+    navigate();`);
   add(true, `    EINT;
     ERTM;
 
-    while (1) {
-    }
+    while (1) {`);
+  add(n >= 6, `        // The slow maths waits here until the 1 ms interrupt asks for it
+        if (navFlag == 1) {
+            navFlag = 0;
+            navigate();
+        }`);
+  add(n >= 7 && !!o.serial, `        // A complete scan waits here until the receive interrupt has it
+        if (newScan == 1) {
+            newScan = 0;
+            look_ahead();
+        }`);
+  add(true, `    }
 }
 
 // Runs every 1 ms: measure, estimate, decide, control, act
@@ -466,7 +509,9 @@ __interrupt void cpu_timer0_isr(void)
 `);
   add(n === 4, `${HEADING}
 `);
-  add(n >= 5, `${POSE}
+  add(n === 5, `${POSE}
+`);
+  add(n >= 6, `${HEADING_AND_FLAG}
 `);
   add(true, `    // ---- Decide: the mission ----
 ${o.mission.replace(/^\n+|\s+$/g, "")}
@@ -480,7 +525,9 @@ ${o.mission.replace(/^\n+|\s+$/g, "")}
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 `);
-  add(n >= 6, `${(o.serial ? SERIAL_FNS : LIDAR_FNS)(94, 132)}
+  add(n >= 6, `${NAVIGATE}
+`);
+  add(n >= 7, `${(o.serial ? SERIAL_FNS : LIDAR_FNS)(94, 132)}
 `);
   add(true, `${INIT_PWM}
 
@@ -587,9 +634,7 @@ const STEER_TO_GOAL = `        turn = -2.0 * eTheta;
         if (turn < -1.0) turn = -1.0;`;
 
 // Stage 5: go to the goal.
-const M_GOTO = `
-${GOAL_GEOMETRY}
-
+const GOTO_SWITCH = `
     switch (state) {
     case 0:
         // FACE: turn on the spot towards the goal
@@ -614,11 +659,14 @@ ${STEER_TO_GOAL}
         turn = 0.0;
         break;
     }`;
-
-// Stage 6: the same, but stop when the LIDAR sees something close ahead.
-const M_WALL = `
+const M_GOTO = `
 ${GOAL_GEOMETRY}
+${GOTO_SWITCH}`;
+// Stage 6: the same mission; dist and eTheta now come from navigate().
+const M_LEAN = GOTO_SWITCH;
 
+// Stage 7: the same, but stop when the LIDAR sees something close ahead.
+const M_WALL = `
     switch (state) {
     case 0:
         // FACE: turn on the spot towards the goal
@@ -652,12 +700,10 @@ ${STEER_TO_GOAL}
         break;
     }`;
 
-// Stage 7: go around what is in the way.
+// Checkpoint: go around what is in the way.
 const G_FINAL = `${G_STATE}
 float passStart = 0;      // travel when the robot began to pass the obstacle, ft`;
 const mFinal = (o: { vmax?: number; pass?: number; blocked?: number; clear?: number; vpass?: number } = {}) => `
-${GOAL_GEOMETRY}
-
     switch (state) {
     case 0:
         // FACE: turn on the spot towards the goal
@@ -709,14 +755,9 @@ ${STEER_TO_GOAL}
 const G_SQUARE = `${G_STATE}
 float wpX[4] = {4.0, 4.0, 1.0, 1.0};   // the corners, in the order they are visited
 float wpY[4] = {2.0, 5.0, 5.0, 2.0};
-uint16_t corner = 0;      // corners reached so far`;
+uint16_t corner = 0;      // corners reached so far
+float eHome = 0;          // heading error towards the starting heading, rad`;
 const mSquare = (vmax: number) => `
-    if (corner < 4) {
-        xGoal = wpX[corner];
-        yGoal = wpY[corner];
-    }
-${GOAL_GEOMETRY}
-
     switch (state) {
     case 0:
         // FACE: turn on the spot towards the next corner
@@ -734,6 +775,10 @@ ${STEER_TO_GOAL}
         if (dist < 0.03) {
             corner++;
             if (corner < 4) {
+                // the next corner is the goal: navigate() works out dist and
+                // eTheta for it before the next pass
+                xGoal = wpX[corner];
+                yGoal = wpY[corner];
                 state = 0;
             } else {
                 state = 5;
@@ -749,12 +794,14 @@ ${STEER_TO_GOAL}
         break;
     case 5:
         // HOME: turn back to the heading the robot started with
-        eTheta = theta0 - theta;
-        while (eTheta > PI) eTheta = eTheta - 2.0 * PI;
-        while (eTheta < -PI) eTheta = eTheta + 2.0 * PI;
+        eHome = theta0 - theta;
+        while (eHome > PI) eHome = eHome - 2.0 * PI;
+        while (eHome < -PI) eHome = eHome + 2.0 * PI;
         vref = 0.0;
-${STEER_TO_GOAL}
-        if (fabs(eTheta) < 0.02) {
+        turn = -2.0 * eHome;
+        if (turn > 1.0) turn = 1.0;
+        if (turn < -1.0) turn = -1.0;
+        if (fabs(eHome) < 0.02) {
             state = 2;
         }
         break;
@@ -776,19 +823,20 @@ const S_DIST = program(2, { mission: M_DIST });
 const S_SPEED = program(3, { mission: M_SPEED });
 const S_STEER = program(4, { mission: M_TURN, globals: G_STATE });
 const S_GOTO = program(5, { mission: M_GOTO, globals: G_STATE, goal: GOAL_GOTO });
-const S_WALL = program(6, { mission: M_WALL, globals: G_STATE, goal: GOAL_WALL });
-const S_FINAL = program(6, { mission: mFinal(), globals: G_FINAL, goal: GOAL_FINAL });
+const S_LEAN = program(6, { mission: M_LEAN, globals: G_STATE, goal: GOAL_GOTO });
+const S_WALL = program(7, { mission: M_WALL, globals: G_STATE, goal: GOAL_WALL });
+const S_FINAL = program(7, { mission: mFinal(), globals: G_FINAL, goal: GOAL_FINAL });
 
 // Practice: other places.
 const CORNER = { start: [8.8, 9, Math.PI] as [number, number, number], goal: [6.5, 4.5] as [number, number] };
 const DOOR = { room: 4, start: [8.5, 2, Math.PI / 2] as [number, number, number], goal: [12, 7.25] as [number, number] };
-const S_CORNER = program(6, { mission: mFinal(), globals: G_FINAL, ...CORNER });
-const S_DOOR = program(6, { mission: mFinal(), globals: G_FINAL, start: DOOR.start, goal: DOOR.goal });
+const S_CORNER = program(7, { mission: mFinal(), globals: G_FINAL, ...CORNER });
+const S_DOOR = program(7, { mission: mFinal(), globals: G_FINAL, start: DOOR.start, goal: DOOR.goal });
 
 // Expert.
-const S_FAST = program(6, { mission: mFinal({ vmax: 3, blocked: 1.5, vpass: 2 }), globals: G_FINAL, goal: GOAL_FINAL });
-const S_SERIAL = program(6, { mission: mFinal(), globals: G_FINAL, goal: GOAL_FINAL, serial: true });
-const S_SQUARE = program(6, { mission: mSquare(2.5), globals: G_SQUARE, goal: [START[0], START[1]] });
+const S_FAST = program(7, { mission: mFinal({ vmax: 3, blocked: 1.5, vpass: 2 }), globals: G_FINAL, goal: GOAL_FINAL });
+const S_SERIAL = program(7, { mission: mFinal(), globals: G_FINAL, goal: GOAL_FINAL, serial: true });
+const S_SQUARE = program(7, { mission: mSquare(2.5), globals: G_SQUARE, goal: [4, 2] });
 
 /** Replaces exact pieces of a program; every piece must be there. */
 function blank(source: string, pieces: [string, string][]): string {
@@ -845,9 +893,19 @@ const GOTO_STARTER = withTodos(S_STEER, [
   { after: "// ---- Decide: the mission ----", todo: "// TODO 3: new mission. Face the goal, drive to it, stop (replace the switch below)" },
 ]);
 
-const WALL_STARTER = withTodos(S_GOTO, [
+const LEAN_STARTER = withTodos(S_GOTO, [
+  { after: "void init_eQEPs(void);", todo: "// TODO 1: prototype of navigate()" },
+  { after: "float eTheta = 0;", todo: "// TODO 2: a global flag, uint16_t navFlag = 0;" },
+  { before: "    EINT;", todo: "// TODO 5: call navigate() once here, before the first interrupt" },
+  { after: "    while (1) {", todo: "// TODO 4: when navFlag is 1, set it back to 0 and call navigate()" },
+  { after: "    theta = theta0 +", todo: "// TODO 1: move the two lines below (x and y) into navigate()\n// TODO 3: here, only raise the flag: navFlag = 1;" },
+  { after: "// ---- Decide: the mission ----", todo: "// TODO 1: move the four lines for dist and eTheta into navigate() as well" },
+  { before: "// Motor PWM (chapter 10, Lab 3)", todo: "// TODO 1: write void navigate(void) here, with the six lines you moved" },
+]);
+
+const WALL_STARTER = withTodos(S_LEAN, [
   { after: "__interrupt void cpu_timer0_isr(void);", todo: "// TODO 1: prototypes of cpu_timer1_isr() and min_ft()" },
-  { after: "float eTheta = 0;", todo: "// TODO 2: globals front_ft (start at 19.0) and numScans. Set the goal to (12.0, 2.0)" },
+  { after: "uint16_t navFlag = 0;", todo: "// TODO 2: globals front_ft (start at 19.0) and numScans. Set the goal to (12.0, 2.0)" },
   { after: "    PieVectTable.TIMER0_INT = &cpu_timer0_isr;", todo: "// TODO 3: the vector of timer 1" },
   { after: "    CpuTimer0Regs.TCR.all = 0x4000;", todo: "// TODO 4: timer 1 every 100 ms (100000 microseconds), and start it" },
   { after: "    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;", todo: "// TODO 5: enable CPU interrupt 13 (timer 1)" },
@@ -878,12 +936,14 @@ const SERIAL_STARTER = withTodos(S_FINAL, [
   { after: "    PieVectTable.TIMER1_INT = &cpu_timer1_isr;", todo: "// TODO 2: the vector of the SCIC receive interrupt" },
   { after: "    CpuTimer1Regs.TCR.all = 0x4000;", todo: "// TODO 3: init_serialSCIC at 115200 baud, and M_INT8 in IER" },
   { before: "// Runs every 100 ms: look ahead", todo: "// TODO 4: cpu_timer1_isr() now only sends the G command" },
-  { before: "// Smallest reading, in feet", todo: "// TODO 5: RXCINT_recv_ready() fills ladar_ft[]; scan_done() computes front_ft from it" },
+  { before: "// Smallest reading, in feet", todo: "// TODO 5: RXCINT_recv_ready() fills ladar_ft[] and sets newScan when a reply is complete" },
+  { after: "    while (1) {", todo: "// TODO 6: when newScan is 1, set it back to 0 and compute front_ft from ladar_ft[]" },
 ]);
 
 const SQUARE_STARTER = withTodos(S_FINAL, [
   { after: "float passStart = 0;", todo: "// TODO 1: the four corners, and a global corner that counts the corners reached" },
-  { after: "// ---- Decide: the mission ----", todo: "// TODO 2: new mission. Visit the corners in order, then turn back to the starting heading" },
+  { before: "float xGoal = ", todo: "// TODO 2: the first goal is the first corner, (4.0, 2.0)" },
+  { after: "// ---- Decide: the mission ----", todo: "// TODO 3: new mission. Visit the corners in order, then turn back to the starting heading" },
 ]);
 
 // ---------- checks shared by the room levels ----------
@@ -897,9 +957,9 @@ const arrived = (hint?: string): Check[] => [
 const ISR_BUDGET: Check = {
   kind: "isr-time",
   fn: "cpu_timer0_isr",
-  maxUs: 4,
-  label: "The 1 ms loop never takes more than 4 microseconds",
-  hint: "Going through 39 LIDAR points takes longer than everything else in the loop together. Do it in the 100 ms interrupt and let the 1 ms loop only use the result.",
+  maxUs: 3.5,
+  label: "No pass of cpu_timer0_isr takes more than 3.5 microseconds",
+  hint: "About 6 us: cos, sin, atan2 or sqrt are still called inside cpu_timer0_isr, or navigate() is called from it. They belong in the main loop, behind navFlag. About 8 us: the 39 LIDAR points are read in the 1 ms loop. Do that in the 100 ms interrupt and let the 1 ms loop only use the result.",
 };
 
 /** Always true for a robot that drove forward: it is there so the student reads the number. */
@@ -944,7 +1004,7 @@ Nothing here is new hardware. Every part is something you wrote in an earlier ch
 **Every 1 ms**, CPU timer 0 interrupts (chapter 5) and one function does five things, always in this order:
 
 1. **Measure**: read the two encoders, the sensors that count how far each wheel has turned. Turn the counts into wheel angles, and the change since the last pass into wheel speeds in feet per second (chapter 11).
-2. **Estimate**: work out which way the robot points and where it is, from what the wheels did. This is called dead reckoning, and this chapter teaches it from the start.
+2. **Estimate**: work out which way the robot points and where it is, from what the wheels did. This is called dead reckoning, and this chapter teaches it from the start. The part of it that needs slow maths (\`cos\`, \`sin\`) is handed to the main loop with a flag (chapter 5), so that this function stays short.
 3. **Decide**: a **state machine** (chapter 17: a variable that remembers what the robot is doing, and rules for when to change it) sets two numbers: the speed command \`vref\` and the turn command \`turn\`.
 4. **Control**: a PI controller per wheel (chapter 16) compares the commanded speed with the measured speed and produces a **control effort** for each motor: a number from -10 (full power backwards) through 0 (stopped) to 10 (full power forwards). They are called \`uLeft\` and \`uRight\`.
 5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` (chapter 10) turn the efforts into PWM duty cycles, the motors turn, and the wheels move.
@@ -967,8 +1027,9 @@ Keep the file tidy. You will be reading it for the rest of the chapter.
 3. PI speed control: hold 1 ft/s.
 4. Steering: drive straight, then turn 90 degrees.
 5. Dead reckoning: drive to a point.
-6. LIDAR: stop in front of a wall.
-7. Checkpoint: drive to a point behind an obstacle.
+6. Timing: move the slow maths out of the 1 ms loop.
+7. LIDAR: stop in front of a wall.
+8. Checkpoint: drive to a point behind an obstacle.
 ${ROOM_NOTE}${MOTOR_NOTE}`,
       questions: [
         {
@@ -1039,8 +1100,8 @@ This is the 1 ms function you will have written by the end of the chapter, cut i
 Ask of each step: **what does it need?** A step can only run after the steps that produce its inputs.
 
 - A speed needs two angles: this pass's and the last one's. So the encoders are read first.
-- The position step ("dead reckoning": adding up small movements) needs the speed, to know how far the robot moved in this millisecond.
-- The decision needs to know where the robot is.
+- The heading comes from the two wheel angles. The position ("dead reckoning": adding up small movements) needs slow maths, so the function only raises a flag, \`navFlag\`, and the main loop works out the position and the way to the goal before the next pass.
+- The decision needs to know which way the robot points.
 - The controller needs the commands \`vref\` and \`turn\` and the measured speeds.
 - The motors get the efforts last, and the interrupt is acknowledged at the very end, as in every timer 0 function since chapter 5.
 
@@ -1050,8 +1111,8 @@ While you sort, name the chapter each step came from. The answer is shown when y
         "Timer 0 reaches zero and cpu_timer0_isr starts",
         "Read EQep1 and EQep2: the two wheel angles in radians",
         "Wheel speeds in ft/s: (angle now - angle 1 ms ago) x (1.235/12) / 0.001, then save the angles",
-        "Dead reckoning: update the heading theta, then x and y, from the wheel angles and speeds",
-        "The mission's state machine sets vref and turn from the position and the LIDAR distance",
+        "The heading theta from the two wheel angles, then navFlag = 1: the main loop will update x, y and the way to the goal",
+        "The mission's state machine sets vref and turn from the heading, the way to the goal and the LIDAR distance",
         "eSteer = vRight - vLeft + turn, then the two wheel errors eLeft and eRight",
         "PI for each wheel, limited to -10 ... 10 with anti-windup: uLeft and uRight",
         "setEPWM1A(uLeft); setEPWM2A(-uRight);",
@@ -1060,9 +1121,9 @@ While you sort, name the chapter each step came from. The answer is shown when y
       hints: [
         "Start with the two ends: the timer starts the function, the acknowledge (PIEACK) ends it.",
         "In between, the order is always: measure, estimate, decide, control, act. Sort each step into one of those five.",
-        "Encoders, speeds, dead reckoning, state machine, steering error (eSteer), PI, the two setEPWM calls, PIEACK.",
+        "Encoders, speeds, heading and flag, state machine, steering error (eSteer), PI, the two setEPWM calls, PIEACK.",
       ],
-      takeaway: "Encoders and speeds are chapter 11, the state machine chapter 17, steering and PI chapter 16, the PWM calls chapter 10, PIEACK chapter 5. Only dead reckoning is new, and the order.",
+      takeaway: "Encoders and speeds are chapter 11, the state machine chapter 17, steering and PI chapter 16, the PWM calls chapter 10, PIEACK chapter 5. The flag is chapter 5 too. Only dead reckoning is new, and the order.",
     },
     {
       id: "cap-open",
@@ -1238,14 +1299,17 @@ if (uLeft > 10.0) {
 - **First 0.7 s**: 4 ft/s is asked. The robot's top speed is 3.1 ft/s, so both efforts sit at 10 and the error never goes away. This is exactly the situation that winds up an integral.
 - **Then 1 ft/s**: half a second later the wheels must be within 6 % of 1 ft/s, which is **9.72 rad/s** on the two wheel speed meters. At the end both must hold it within 1.5 %. Without anti-windup the wheels are still flat out 0.3 s after the command dropped.
 
-Watch \`uLeft\` and \`uRight\` at the end: the right effort is larger. The integral found what the weaker motor needs, without being told.
+- **At 2.0 s** the test makes the right motor weaker still, as if that wheel had rolled onto carpet. The right wheel may dip to 8.3 rad/s and must be back within 2 % a quarter of a second later. The left wheel must not notice. Only a right wheel that reacts to its **own** error does this.
+
+Watch \`uLeft\` and \`uRight\`: the right effort is larger. The integral found what the weaker motor needs, without being told.
 
 ## What is still wrong
 Both wheels now hold the same speed, but look at "Robot heading": about -0.4 rad. Flat out, the right motor is simply slower and no controller can help. And equal speeds from now on do not bring back the angle that was lost. The next level deals with the heading.
 `,
       kit: "robot",
-      durationMs: 2000,
-      stimuli: world(),
+      durationMs: 2400,
+      // At 2.0 s the right motor loses a third of its strength: only the right wheel's own error sees that.
+      stimuli: [...world(), { at: 2000, set: "MOTOR_RIGHT_GAIN", value: 0.6 }],
       starter: SPEED_STARTER,
       solution: S_SPEED,
       checks: [
@@ -1253,6 +1317,9 @@ Both wheels now hold the same speed, but look at "Robot heading": about -0.4 rad
         { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1200, equals: RADPS_PER_FTPS, tol: 0.6, label: "0.5 s after the command drops, the left wheel is within 6 % of 1 ft/s (9.72 rad/s)", hint: "Still far too fast: the integral wound up during the first 0.7 s. While uLeft is at a limit, store INew in ILeft only if the error has the opposite sign. Far too slow: is Ki * INew part of the effort?" },
         { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 1900, equals: RADPS_PER_FTPS, tol: 0.15, label: "The left wheel holds 1 ft/s within 1.5 %", hint: "A steady error that never goes away means the integral is not adding up. It must be ILeft plus eLeft * 0.001, kept from pass to pass in a global." },
         { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 1900, equals: RADPS_PER_FTPS, tol: 0.15, label: "The weaker right wheel holds 1 ft/s too, within 1.5 %", hint: "The right wheel needs its own block: eRight, IRight and uRight. A leftover Left in the copied block makes it follow the wrong wheel." },
+        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 2060, min: 8.3, label: "0.06 s after the right motor gets weaker (at 2.0 s), the right wheel is still above 8.3 rad/s", hint: "Only the right wheel's own error sees this. If it dips to about 8.0, the P part of the right wheel does not react: look for a leftover eLeft in the line `uRight = Kp * eRight + Ki * INew;`." },
+        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 2250, equals: RADPS_PER_FTPS, tol: 0.2, label: "0.25 s after it, the right wheel is back at 1 ft/s within 2 %, without overshooting", hint: "Swinging past 9.9 rad/s means the right wheel is held by its integral alone. Its P part must use eRight." },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 2060, equals: RADPS_PER_FTPS, tol: 0.15, label: "The left wheel does not notice", hint: "The left wheel's effort must depend on eLeft and ILeft only." },
         veered("Read this number: both wheels are equally fast now, but the heading lost at the start is still lost"),
         NO_CRASH,
       ],
@@ -1423,13 +1490,80 @@ The simulated wheels never slip, so dead reckoning is almost perfect here. On th
         "Before the switch: `dist = sqrt((xGoal - x) * (xGoal - x) + (yGoal - y) * (yGoal - y)); eTheta = atan2(yGoal - y, xGoal - x) - theta;` and the two while lines of the wrap. Steering, in both FACE and DRIVE: `turn = -2.0 * eTheta; if (turn > 1.0) turn = 1.0; if (turn < -1.0) turn = -1.0;`",
         "`case 0: vref = 0.0;` steer, `if (fabs(eTheta) < 0.05) { state = 1; } break; case 1: vref = 2.0 * dist; if (vref > 1.5) vref = 1.5;` steer, `if (dist < 0.05) { state = 2; } break; default: vref = 0.0; turn = 0.0; break;`",
       ],
-      takeaway: "A go-to-point controller is two proportional rules, one on the heading error and one on the distance, and a wrap. The course's xy_control function is the same idea with a few more guards.",
+      takeaway: "A go-to-point controller is two proportional rules, one on the heading error and one on the distance, and a wrap. The course's xy_control function is the same idea with a few more guards. The next level looks at what cos, sin and atan2 cost the 1 ms loop.",
+    },
+    {
+      id: "cap-lean",
+      kind: "code",
+      mode: "write",
+      continues: "cap-goto",
+      title: "Keep the 1 ms loop short",
+      goal: "Move the slow maths of dead reckoning out of the 1 ms interrupt into the main loop, behind a flag.",
+      refs: [{ course: "Lab 1" }, { course: "L4" }, { course: "L15" }],
+      brief: `
+The robot arrives. Now look at what the last level cost. The simulator times every pass of \`cpu_timer0_isr\`. Before dead reckoning the longest pass took 2.5 microseconds (us). Now it takes **6**.
+
+## Where the time goes
+\`cos\`, \`sin\` and \`atan2\` take about 1 us each on this chip, \`sqrt\` a quarter of that. Those four calls cost more than the encoders, both PI loops and the motors together.
+
+6 us out of 1000 is not an emergency. But this is the one function that must never be late: the speed formula and the integral assume exactly 0.001 s between passes, and while it runs every other interrupt waits. The LIDAR and a serial port are still to come. So engineers keep a rule:
+
+**An interrupt does only what must happen at its rate. The rest is handed to the main loop.**
+
+Measure, heading, mission, PI and motors must happen every millisecond. \`x\`, \`y\`, \`dist\` and \`eTheta\` may be a few microseconds late.
+
+## What to change, and where
+The hand-off is the flag of the chapter 5 level "Leave the slow work to main".
+
+1. **A new function at the bottom**, \`void navigate(void)\`, and its prototype at the top. Move six lines into it, unchanged: the two lines for \`x\` and \`y\`, and the four lines for \`dist\` and \`eTheta\` from the top of the mission.
+2. **With the globals:** \`uint16_t navFlag = 0;\`
+3. **In \`cpu_timer0_isr\`**, where the \`x\` and \`y\` lines were: \`navFlag = 1;\`
+4. **In \`main\`, inside \`while (1)\`:**
+\`\`\`c
+if (navFlag == 1) {
+    navFlag = 0;
+    navigate();
+}
+\`\`\`
+5. **In \`main\`, just before \`EINT;\`:** call \`navigate();\` once. The first interrupt comes before the main loop has run. Without this call it finds \`eTheta = 0\`, and FACE believes the robot already points at the goal.
+
+## Is that safe?
+\`navigate()\` starts right after the interrupt returns and is done about 6 us later. The next interrupt is 994 us away, so the two never work on these variables at the same moment. When you cannot be sure of that, copy the shared values with interrupts off (chapter 20).
+
+## The test
+The robot still reaches (4, 5), and no pass of \`cpu_timer0_isr\` takes more than **3.5 us**.
+`,
+      kit: "robot",
+      durationMs: 7000,
+      stimuli: world({ goal: GOAL_GOTO }),
+      starter: LEAN_STARTER,
+      solution: S_LEAN,
+      checks: [
+        { ...ISR_BUDGET, hint: "About 6 us: nothing has moved yet, or navigate() is called from cpu_timer0_isr. A function call does not make the maths faster: only main may call navigate(). About 4 us: the lines for dist and eTheta (sqrt, atan2) are still in the mission. They move too." },
+        { kind: "var", name: "state", at: 100, equals: 0, label: "After 0.1 s the mission is still in FACE (state 0), turning towards the goal", hint: "Already 1: the first interrupt ran before navigate() ever did. eTheta was still 0, so FACE believed the robot was pointing at the goal and skipped the turn. Call navigate() once in main, just before EINT." },
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.15, label: "The robot still ends within 0.15 ft of (4, 5)", hint: "Spinning on the spot or driving into a wall: dist and eTheta are not being updated. See the check on x." },
+        { kind: "var", name: "x", min: 3.85, max: 4.15, label: "Your x says 4", hint: "Stays at 1: navigate() never runs. The interrupt must set navFlag = 1 and while (1) must test it. Far too large although the robot hardly moved: navigate() runs over and over. Set navFlag back to 0 inside the if, before the call." },
+        { kind: "var", name: "y", min: 4.85, max: 5.15, label: "Your y says 5" },
+        { kind: "var", name: "navFlag", equals: 0, label: "The flag is back at 0 after main used it", hint: "`navFlag = 0;` inside the if in main, before navigate()." },
+        ...stopped(),
+        NO_CRASH,
+      ],
+      bonus: [
+        { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.06, label: "Still within 0.06 ft of the goal" },
+      ],
+      watch: ["navFlag", "state", "x", "y", "dist", "eTheta"],
+      hints: [
+        "Move first, then connect. Write navigate() and move the six lines. The program still compiles if you call nothing yet, and the robot stands still: that tells you the lines are gone from the interrupt.",
+        "The interrupt keeps the heading line `theta = theta0 + ...` and gets `navFlag = 1;` after it. The mission starts directly with `switch (state)`.",
+        "`void navigate(void) { x = x + 0.5 * (vLeft + vRight) * cos(theta) * 0.001; y = ...sin(theta)...; dist = sqrt(...); eTheta = atan2(...) - theta;` and the two while lines `}`. In main: `navigate();` before `EINT;`, and `if (navFlag == 1) { navFlag = 0; navigate(); }` inside `while (1)`.",
+      ],
+      takeaway: "The interrupt decides when, the main loop does the slow work. On the course robot the same job is done by software interrupts of low priority (chapter 5): the 1 ms control code always goes first.",
     },
     {
       id: "cap-wall",
       kind: "code",
       mode: "write",
-      continues: "cap-goto",
+      continues: "cap-lean",
       title: "LIDAR: stop before the wall",
       goal: "Read the LIDAR every 100 ms from CPU timer 1 and stop the robot when something is close ahead.",
       refs: [{ course: "L16" }, { course: "L14" }, { trm: "3.8" }],
@@ -1686,7 +1820,7 @@ Measure before you change anything: watch \`state\` and \`numTimer0calls\` (the 
 - **\`cpu_timer1_isr\`** now only **asks**: \`serial_sendSCIC(&SerialC, G_command, G_len);\` with the globals \`char G_command[] = "G04472503\\n";\` and \`uint16_t G_len = 10;\`.
 - **A new interrupt function** \`__interrupt void RXCINT_recv_ready(void)\`: your parser. It runs once per received character. It reads \`ScicRegs.SCIRXBUF.all\` into \`RXCdata\` (declared by the serial library), counts the 12 header characters, joins the data characters in pairs, skips single line feeds and ends on two in a row. Its last two lines clear \`ScicRegs.SCIFFRX.bit.RXFFINTCLR\` and acknowledge **PIE group 8**.
 - **Globals:** the parser's variables and \`float ladar_ft[228];\`. Store each distance in feet: \`distance * 0.00328084\` (the sensor sends millimetres). Readings of 0 and 6 are error codes, not distances: store \`LADAR_MAX_READING\` for them, as the course code does.
-- **When a reply is complete:** compute \`front_ft\` as the smallest of \`ladar_ft[94]\` ... \`ladar_ft[132]\` and count the scan in \`numScans\`.
+- **When a reply is complete:** the parser only sets a flag, \`newScan = 1;\`. The \`while (1)\` loop in \`main\` sees it, sets it back, computes \`front_ft\` as the smallest of \`ladar_ft[94]\` ... \`ladar_ft[132]\` and counts the scan in \`numScans\`. This is the hand-off you used for \`navigate()\`, and the one of the chapter 17 checkpoint: searching 39 points takes six times as long as handling one character.
 - Remove \`min_ft()\` or change it to read the array. No \`tb_lidar\` call may remain.
 
 ## What changes for the robot
@@ -1695,7 +1829,7 @@ The answer now arrives about 42 ms after the question, 477 characters later, one
 There are three interrupt sources now. The 1 ms loop must not notice.
 `,
       kit: "robot",
-      durationMs: 16000,
+      durationMs: 14500,
       stimuli: world({ goal: GOAL_FINAL }),
       starter: SERIAL_STARTER,
       solution: S_SERIAL,
@@ -1709,12 +1843,12 @@ There are three interrupt sources now. The 1 ms loop must not notice.
       bonus: [
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", at: 13500, max: 0.15, label: "At the goal within 13.5 s" },
         ISR_BUDGET,
-        { kind: "isr-time", fn: "RXCINT_recv_ready", maxUs: 8, label: "No character takes more than 8 microseconds to handle" },
+        { kind: "isr-time", fn: "RXCINT_recv_ready", maxUs: 1.5, label: "No character takes more than 1.5 microseconds to handle: the scan is searched in main", hint: "About 7 us: front_ft is computed inside RXCINT_recv_ready when the reply ends. Set a flag there and do the search in while (1)." },
       ],
       watch: ["state", "front_ft", "numScans", "read_ladar_state", "dis_index"],
       hints: [
         "Bring it up in the order of chapter 17: first the request (watch the meter \"LIDAR scans sent\"), then the parser (watch numScans), then front_ft.",
-        "The parser's states: 0 waits for 'G'; 1 counts to 12 and checks that character 11 is '0'; 2 joins pairs, `(first - 0x30) << 6` plus `(second - 0x30)`, and counts line feeds. Two line feeds in a row: back to state 0 and compute front_ft.",
+        "The parser's states: 0 waits for 'G'; 1 counts to 12 and checks that character 11 is '0'; 2 joins pairs, `(first - 0x30) << 6` plus `(second - 0x30)`, and counts line feeds. Two line feeds in a row: back to state 0 and `newScan = 1;`. In main: `if (newScan == 1) { newScan = 0; ... }` with the search for front_ft.",
         "In the data state, on the second character of a pair: `if (distance == 0 || distance == 6) distance = LADAR_MAX_READING; if (dis_index < 228) ladar_ft[dis_index] = distance*0.00328084; dis_index += 1;`",
       ],
       takeaway: "This is the robot's real program structure: a 1 ms control interrupt, a 100 ms request, and a receive interrupt that assembles the answer one character at a time.",
@@ -1739,8 +1873,8 @@ From the start at (1, 2), visit the corners **(4, 2)**, **(4, 5)**, **(1, 5)** a
 - At the end the robot stands still within **0.25 ft** (3 inches) of the start, and its heading is within 0.1 rad of 0.
 
 ## Things that will bite
-- The goal now changes while the program runs. Two arrays of corner coordinates keep that tidy: set \`xGoal\` and \`yGoal\` from them at the top of the mission.
-- After the fourth corner the robot points along -y. "Back to the starting heading" is a turn to a **heading**, not towards a point: the heading error is \`theta0 - theta\`, wrapped.
+- The goal now changes while the program runs. Two arrays of corner coordinates keep that tidy. Set \`xGoal\` and \`yGoal\` to the next corner **in the same pass that counts the corner**. \`navigate()\` then works out \`dist\` and \`eTheta\` for the new corner before the next pass. Change the goal one pass later and FACE acts once on numbers for the old corner.
+- After the fourth corner the robot points along -y. "Back to the starting heading" is a turn to a **heading**, not towards a point: the heading error is \`theta0 - theta\`, wrapped. Keep it in a variable of its own: \`eTheta\` belongs to \`navigate()\`.
 - Your \`theta\` keeps growing through four left turns, to about 2 PI. The wrap of the error takes care of it, if every error is wrapped.
 - An error of 0.05 ft at each corner is 0.05 ft at the end, not 0.2: each corner is a point in the room, not a distance from the last corner. That is what dead reckoning buys you over "3 ft, turn 90 degrees, four times".
 - The whole trip must fit in 20 s. At 1.5 ft/s it takes almost 19 s. The star for 18 s needs more speed on the straight parts.
@@ -1767,9 +1901,9 @@ On this floor the wheels never slip, so the square closes almost perfectly. Run 
       ],
       watch: ["corner", "state", "x", "y", "theta", "dist", "eTheta"],
       hints: [
-        "`float wpX[4] = {4.0, 4.0, 1.0, 1.0}; float wpY[4] = {2.0, 5.0, 5.0, 2.0};` and, at the top of the mission, `if (corner < 4) { xGoal = wpX[corner]; yGoal = wpY[corner]; }`",
-        "In DRIVE, when dist is small: `corner++;` then `state = 0;` (FACE) if `corner < 4`, else go to a new state HOME, for example `state = 5;`.",
-        "`case 5: eTheta = theta0 - theta;` then the two wrap lines, `vref = 0.0; turn = -2.0 * eTheta;` (limited to -1 ... 1), and `if (fabs(eTheta) < 0.02) { state = 2; } break;`. Let DRIVE go up to 2.5 ft/s.",
+        "`float wpX[4] = {4.0, 4.0, 1.0, 1.0}; float wpY[4] = {2.0, 5.0, 5.0, 2.0};` and the goal starts at the first corner: `float xGoal = 4.0; float yGoal = 2.0;`",
+        "In DRIVE, when dist is small: `corner++;` then, if `corner < 4`, `xGoal = wpX[corner]; yGoal = wpY[corner]; state = 0;` (FACE), else go to a new state HOME, for example `state = 5;`.",
+        "`case 5: eHome = theta0 - theta;` then the two wrap lines on eHome, `vref = 0.0; turn = -2.0 * eHome;` (limited to -1 ... 1), and `if (fabs(eHome) < 0.02) { state = 2; } break;`. Let DRIVE go up to 2.5 ft/s.",
       ],
       takeaway: "Waypoints in room coordinates do not add up their errors; steps relative to the last pose do. The error that remains on a real floor is the wheels' slip, and no amount of code in this file can see it.",
     },

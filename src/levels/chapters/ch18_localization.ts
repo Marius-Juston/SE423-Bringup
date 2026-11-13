@@ -10,7 +10,7 @@ import type { Chapter } from "../types";
 const FREQ = `#define LAUNCHPAD_CPU_FREQUENCY 200`;
 
 /** A complete program whose timer 0 interrupt (every `periodUs`) runs `isr`. */
-const prog = (globals: string, isr: string, opts: { functions?: string; periodUs?: number; setup?: string } = {}) => `${FREQ}
+const prog = (globals: string, isr: string, opts: { functions?: string; periodUs?: number; setup?: string; loop?: string } = {}) => `${FREQ}
 #define PI 3.14159265
 #define WHEEL_BASE 0.6    // distance between the wheels, ft
 
@@ -42,7 +42,7 @@ ${opts.setup ? `\n${opts.setup.replace(/^\n+|\s+$/g, "")}\n` : ""}
     EINT;
     ERTM;
 
-    while (1) {}
+    while (1) {${opts.loop ? `\n${opts.loop.replace(/^\n+|\s+$/g, "")}\n    ` : ""}}
 }
 
 // Runs every ${(opts.periodUs ?? 1000) / 1000} ms
@@ -367,6 +367,283 @@ float vref = 0;
 float turn = 0;
 int state = 0;        // 0: turn to face the target, 1: drive, 2: arrived
 ${SPEED_GLOBALS}`;
+
+// ---- Keeping the interrupt short (level loc-budget) ----
+const BUDGET_GLOBALS = `${POSE_GLOBALS}
+float dist = 0;       // distance driven since the start, ft (summed in the interrupt)
+float distDone = 0;   // the part of dist that x and y already contain
+float step = 0;       // distance driven since the last update of x and y
+int newStep = 0;      // 1: the interrupt asks the main loop to update x and y`;
+
+// ---- The three-state filter (levels loc-kf3-*) ----
+// The form is HW6's (F = identity, B from the heading, u = speed and turn
+// rate). The numbers, Q and R are this chapter's own, and the bench measures
+// only x and y, so H has two rows where the course's has three.
+const KF3_P_PLUS_Q = `    // 3. Covariance: P = F P F' + Q. F is the identity, so this is P = P + Q.
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            P[i][j] = P[i][j] + Q[i][j];
+        }
+    }`;
+
+const KF3_PREDICT = `// Predict: the robot drove at v (ft/s) and turned at omega (rad/s) for dt seconds.
+void kf3_predict(float v, float omega, float dt)
+{
+    int i, j;
+
+    // 1. Fill B from the heading BEFORE the step, and u from the inputs
+    B[0][0] = cos(xhat[2]) * dt;
+    B[0][1] = 0.0;
+    B[1][0] = sin(xhat[2]) * dt;
+    B[1][1] = 0.0;
+    B[2][0] = 0.0;
+    B[2][1] = dt;
+    u[0] = v;
+    u[1] = omega;
+
+    // 2. State: xhat = xhat + B u, one row at a time
+    for (i = 0; i < 3; i++) {
+        xhat[i] = xhat[i] + B[i][0] * u[0] + B[i][1] * u[1];
+    }
+
+${KF3_P_PLUS_Q}
+}`;
+
+const KF3_PREDICT_EMPTY = `// Predict: the robot drove at v (ft/s) and turned at omega (rad/s) for dt seconds.
+void kf3_predict(float v, float omega, float dt)
+{
+    int i, j;
+
+    // 1. Fill B from the heading BEFORE the step, and u from the inputs
+
+    // 2. State: xhat = xhat + B u, one row at a time
+
+${KF3_P_PLUS_Q}
+}`;
+
+const KF3_PREDICT_MAIN = (fn: string) => `float xhat[3] = {2.0, 1.0, 0.5236};   // state: x (ft), y (ft), heading (rad)
+float P[3][3] = {{0.2, 0.0, 0.0},     // covariance: how unsure the filter is
+                 {0.0, 0.2, 0.0},
+                 {0.0, 0.0, 0.05}};
+float Q[3][3] = {{0.05, 0.0, 0.0},    // process noise: what one step adds to P
+                 {0.0, 0.05, 0.0},
+                 {0.0, 0.0, 0.01}};
+float B[3][2];        // input matrix: what each input does to each state
+float u[2];           // inputs: forward speed (ft/s) and turn rate (rad/s)
+float x1 = 0;         // results after the first step
+float y1 = 0;
+float th1 = 0;
+float x2 = 0;         // results after the second step
+float y2 = 0;
+float th2 = 0;
+float p00 = 0;
+float p22 = 0;
+
+${fn}
+
+void main(void)
+{
+    // Step 1: the numbers of the previous level
+    kf3_predict(2.0, 0.5, 0.1);
+    x1 = xhat[0];
+    y1 = xhat[1];
+    th1 = xhat[2];
+
+    // Step 2: slower, turning right
+    kf3_predict(1.0, -1.0, 0.1);
+    x2 = xhat[0];
+    y2 = xhat[1];
+    th2 = xhat[2];
+    p00 = P[0][0];
+    p22 = P[2][2];
+
+    while (1) {}
+}
+`;
+
+const KF3_INVERSE = `    // 3. Inverse of the 2 x 2 matrix S (given)
+    det = S00 * S11 - S01 * S10;
+    Si00 = S11 / det;
+    Si01 = -S01 / det;
+    Si10 = -S10 / det;
+    Si11 = S00 / det;`;
+
+const KF3_UPDATE_LOCALS = `    float e0, e1;                   // residual: measurement minus prediction
+    float S00, S01, S10, S11;       // S: doubt of the residual
+    float det, Si00, Si01, Si10, Si11;
+    float P0[3], P1[3];             // rows 0 and 1 of P from before the update
+    int i, j;`;
+
+const KF3_UPDATE = `// Update: a position fix (zx, zy) arrived.
+void kf3_update(float zx, float zy)
+{
+${KF3_UPDATE_LOCALS}
+
+    // 1. Residual: e = z - H xhat
+    e0 = zx - xhat[0];
+    e1 = zy - xhat[1];
+
+    // 2. S = H P H' + R: the top left 2 x 2 corner of P, plus R
+    S00 = P[0][0] + R[0][0];
+    S01 = P[0][1] + R[0][1];
+    S10 = P[1][0] + R[1][0];
+    S11 = P[1][1] + R[1][1];
+
+${KF3_INVERSE}
+
+    // 4. Gain: K = P H' Si. P H' is the first two columns of P.
+    for (i = 0; i < 3; i++) {
+        K[i][0] = P[i][0] * Si00 + P[i][1] * Si10;
+        K[i][1] = P[i][0] * Si01 + P[i][1] * Si11;
+    }
+
+    // 5. State: xhat = xhat + K e
+    for (i = 0; i < 3; i++) {
+        xhat[i] = xhat[i] + K[i][0] * e0 + K[i][1] * e1;
+    }
+
+    // 6. Covariance: P = P - K H P. H P is rows 0 and 1 of the OLD P.
+    for (j = 0; j < 3; j++) {
+        P0[j] = P[0][j];
+        P1[j] = P[1][j];
+    }
+    for (i = 0; i < 3; i++) {
+        for (j = 0; j < 3; j++) {
+            P[i][j] = P[i][j] - K[i][0] * P0[j] - K[i][1] * P1[j];
+        }
+    }
+}`;
+
+const KF3_UPDATE_EMPTY = `// Update: a position fix (zx, zy) arrived.
+void kf3_update(float zx, float zy)
+{
+${KF3_UPDATE_LOCALS}
+
+    // 1. Residual: e = z - H xhat
+    e0 = 0.0;
+    e1 = 0.0;
+
+    // 2. S = H P H' + R: the top left 2 x 2 corner of P, plus R
+    S00 = 1.0;
+    S01 = 0.0;
+    S10 = 0.0;
+    S11 = 1.0;
+
+${KF3_INVERSE}
+
+    // 4. Gain: K = P H' Si. P H' is the first two columns of P.
+
+    // 5. State: xhat = xhat + K e
+
+    // 6. Covariance: P = P - K H P. H P is rows 0 and 1 of the OLD P.
+
+}`;
+
+const KF3_UPDATE_MAIN = (fn: string) => `float xhat[3] = {2.1732, 1.1, 0.5736};   // state after a predict step: x, y, heading
+float P[3][3] = {{0.25, 0.05, 0.02},     // covariance after a predict step
+                 {0.05, 0.25, -0.03},
+                 {0.02, -0.03, 0.06}};
+float R[2][2] = {{0.25, 0.0},            // measurement noise of the fix: x, then y
+                 {0.0, 0.75}};
+float K[3][2];        // gain: 3 states (rows) by 2 measured numbers (columns)
+float t_x = 0;        // results
+float t_y = 0;
+float t_th = 0;
+float t_K00 = 0;
+float t_K21 = 0;
+float t_P00 = 0;
+float t_P11 = 0;
+float t_P02 = 0;
+float t_P22 = 0;
+
+${fn}
+
+void main(void)
+{
+    kf3_update(2.4, 1.0);
+    t_x = xhat[0];
+    t_y = xhat[1];
+    t_th = xhat[2];
+    t_K00 = K[0][0];
+    t_K21 = K[2][1];
+    t_P00 = P[0][0];
+    t_P11 = P[1][1];
+    t_P02 = P[0][2];
+    t_P22 = P[2][2];
+
+    while (1) {}
+}
+`;
+
+// Whole filter on the bench (level loc-kf3).
+const KF3_RUN_GLOBALS = `#define DT 0.01       // the filter runs every 10 ms
+float xhat[3] = {0.0, 0.0, 0.0};        // state: x (ft), y (ft), heading (rad)
+float P[3][3] = {{100.0, 0.0, 0.0},     // position unknown, heading known
+                 {0.0, 100.0, 0.0},
+                 {0.0, 0.0, 0.0001}};
+float Q[3][3] = {{0.00001, 0.0, 0.0},   // what 10 ms of dead reckoning adds
+                 {0.0, 0.00001, 0.0},
+                 {0.0, 0.0, 0.000001}};
+float R[2][2] = {{0.0225, 0.0},         // one fix: 0.15 ft squared, in x and in y
+                 {0.0, 0.0225}};
+float B[3][2];
+float u[2];
+float K[3][2];
+float vLeft = 0;
+float vRight = 0;
+float vSum = 0;       // sums of the last readings of V and omega
+float wSum = 0;
+float v = 0;          // their averages over the last 10 ms, for the filter
+float omega = 0;
+int newStep = 0;      // 1: 10 ms have passed, the main loop must run the filter
+uint32_t numTimer0calls = 0;`;
+
+const KF3_RUN_DRIVE = `    // Drive: 4 s straight, 2.5 s on a left arc, then straight again
+    numTimer0calls++;
+    if (numTimer0calls <= 4000) {
+        tb_set_effort(4.8, 4.8);
+    } else if (numTimer0calls <= 6500) {
+        tb_set_effort(3.6, 6.0);
+    } else {
+        tb_set_effort(4.8, 4.8);
+    }
+    vLeft = tb_left_speed();
+    vRight = tb_right_speed();
+`;
+
+const KF3_PREDICT_BLANK = `// Predict: the robot drove at v (ft/s) and turned at omega (rad/s) for dt seconds.
+void kf3_predict(float v, float omega, float dt)
+{
+
+}`;
+
+const KF3_UPDATE_BLANK = `// Update: a position fix (zx, zy) arrived. H = [1 0 0; 0 1 0].
+void kf3_update(float zx, float zy)
+{
+
+}`;
+
+const KF3_RUN_ISR_SUMS = `    // Sum V and omega. Every 10th call: hand their averages to the main loop.
+    vSum = vSum + 0.5 * (vLeft + vRight);
+    wSum = wSum + (vRight - vLeft) / WHEEL_BASE;
+    if (numTimer0calls % 10 == 0) {
+        v = vSum / 10.0;
+        omega = wSum / 10.0;
+        vSum = 0.0;
+        wSum = 0.0;
+        newStep = 1;
+    }`;
+
+const KF3_RUN_LOOP = `
+        // Every 10 ms: predict, update if a fix arrived, report
+        if (newStep == 1) {
+            newStep = 0;
+            kf3_predict(v, omega, DT);
+            if (tb_gps_new()) {
+                kf3_update(tb_gps_x(), tb_gps_y());
+            }
+            tb_report_pose(xhat[0], xhat[1], xhat[2]);
+        }`;
 
 export const ch18: Chapter = {
   id: "localization",
@@ -901,7 +1178,7 @@ float z = 0;          // last position fix, ft`,
         "`kf_predict(v * 0.001, Q);`",
         "`if (tb_gps_new()) { z = tb_gps_x(); kf_update(z, R); }`",
       ],
-      takeaway: "Fast, smooth, drifting dead reckoning plus slow, noisy, absolute fixes give an estimate better than both. The robot's real filter does this for x, y and theta at once, with 3 x 3 matrices in place of these single numbers. A Kalman filter is the best possible blend only when the system is linear and the noise is Gaussian; otherwise it is still a good one.",
+      takeaway: "Fast, smooth, drifting dead reckoning plus slow, noisy, absolute fixes give an estimate better than both. The robot's real filter does this for x, y and theta at once, with 3 x 3 matrices in place of these single numbers. The practice levels \"Three states\" build it. A Kalman filter is the best possible blend only when the system is linear and the noise is Gaussian; otherwise it is still a good one.",
     },
     {
       id: "loc-atan2",
@@ -1077,7 +1354,7 @@ ${BENCH}`,
         "Turn error: `turnerror = theta - alpha;` then add or subtract 2.0 * PI if that makes fabs(turnerror) smaller. Dead reckoning: theta from (vRight - vLeft) / WHEEL_BASE, x and y from the average speed times cos(theta) and sin(theta), each times 0.001.",
         "After the xy_control call from the brief: `if (near == 1 && statePos < NUMWAYPOINTS - 1) { statePos++; }`",
       ],
-      takeaway: "Speed control below, a pose estimate beside it, way points on top: this is the shape of the robot's navigation code. The final project adds the Kalman filter to keep the pose honest, and obstacle avoidance between the way points.",
+      takeaway: "Speed control below, a pose estimate beside it, way points on top: this is the shape of the robot's navigation code. The final project adds the Kalman filter to keep the pose honest, and obstacle avoidance between the way points. This interrupt now spends about 6 us of every millisecond, most of it on sin, cos, atan2 and sqrt: the practice level \"Keep the interrupt short\" moves that work to the main loop.",
     },
     {
       id: "loc-gyro",
@@ -1883,6 +2160,322 @@ The robot is at **(1, 1) ft, heading 90 degrees**, driving at V = 1 ft/s. Its wh
       takeaway: "Pure pursuit is one transform and one division per step. The look-ahead distance is its tuning knob: too short and the robot weaves about the path, too long and it cuts the corners.",
     },
     {
+      id: "loc-budget",
+      kind: "code",
+      mode: "debug",
+      tier: "practice",
+      title: "Practice: keep the interrupt short",
+      goal: "Move the trigonometry of dead reckoning out of the interrupt function into the main loop, behind a flag.",
+      refs: [{ course: "L15" }, { course: "L11" }, { course: "Lab 5" }],
+      brief: `
+The dead reckoning of the level "Dead reckoning" works. It also calls \`cos\` and \`sin\` inside the interrupt function, a thousand times a second. Drop that habit before the program grows.
+
+## Why
+While an interrupt function runs, every other interrupt waits. An addition takes a few nanoseconds. \`sin\`, \`cos\` and \`atan2\` take about a microsecond each, and \`sqrt\` a quarter of that: as much as hundreds of additions. Three microseconds do no harm yet. But the final project adds \`atan2\`, a Kalman filter and 228 LADAR points, while serial characters arrive every 87 us and must not be lost.
+
+The rule: **the interrupt does only what must happen on time.** Reading the wheels and summing must: a missed millisecond is lost distance. The trigonometry need not: x and y are just as good when they are updated 100 times a second.
+
+## The hand-off
+1. The interrupt keeps the two cheap sums: \`theta\`, and \`dist\`, the total distance driven (\`dist = dist + V * 0.001\`). Every 10th call it sets the flag \`newStep = 1\`.
+2. The main loop waits for the flag, clears it and does the costly part:
+
+\`\`\`c
+step = dist - distDone;        // driven since the last pass
+distDone = distDone + step;
+x = x + step * cos(theta);
+y = y + step * sin(theta);
+\`\`\`
+
+\`dist\` is read once and never reset, so no distance is lost if an interrupt arrives in the middle.
+
+The course's final project has the same shape: a short hardware interrupt reads the sensor, then starts a **software interrupt** (a function of lower priority, which other interrupts may interrupt) where the navigation maths runs.
+
+## What to do
+Change \`cpu_timer0_isr\` and the \`while (1)\` loop of \`main\` as described. \`tb_report_pose\` moves to the main loop too, after the update of x and y. \`numTimer0calls\` already counts the calls.
+
+## The test
+The pose is as good as before, and the longest run of the interrupt function is below 1.2 us.
+${BENCH}`,
+      kit: "robot",
+      durationMs: 3500,
+      starter: prog(
+        BUDGET_GLOBALS,
+        `
+${DRIVE}
+    vLeft = tb_left_speed();
+    vRight = tb_right_speed();
+    theta = theta + (vRight - vLeft) / WHEEL_BASE * 0.001;
+    x = x + 0.5 * (vLeft + vRight) * cos(theta) * 0.001;
+    y = y + 0.5 * (vLeft + vRight) * sin(theta) * 0.001;
+
+    tb_report_pose(x, y, theta);`,
+        {
+          loop: `
+        // When newStep is 1: clear it, update x and y from dist, report the pose
+`,
+        },
+      ),
+      solution: prog(
+        BUDGET_GLOBALS,
+        `
+${DRIVE}
+    vLeft = tb_left_speed();
+    vRight = tb_right_speed();
+    theta = theta + (vRight - vLeft) / WHEEL_BASE * 0.001;
+    dist = dist + 0.5 * (vLeft + vRight) * 0.001;
+    if (numTimer0calls % 10 == 0) {
+        newStep = 1;
+    }`,
+        {
+          loop: `
+        // When newStep is 1: clear it, update x and y from dist, report the pose
+        if (newStep == 1) {
+            newStep = 0;
+            step = dist - distDone;
+            distDone = distDone + step;
+            x = x + step * cos(theta);
+            y = y + step * sin(theta);
+            tb_report_pose(x, y, theta);
+        }`,
+        },
+      ),
+      checks: [
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 1.2, label: "The longest run of the interrupt function is below 1.2 us", hint: "Each sin or cos costs about 1 us. Neither may be called in cpu_timer0_isr: only the theta sum, the dist sum and the flag stay there." },
+        { kind: "var", name: "x", at: 1500, min: 1.41, max: 1.46, label: "Your x agrees after the straight part (1.44 ft)", hint: "0: the main loop never updates x. Is newStep set in the interrupt, and is dist summed there? Far too large: add step (the distance since the last pass), not dist (the whole distance so far), and add step to distDone." },
+        { kind: "var", name: "dist", min: 2.9, max: 3.05, label: "dist holds the whole distance driven, about 2.98 ft: it is never reset", hint: "Sum dist = dist + 0.5 * (vLeft + vRight) * 0.001; on every call of the interrupt, and do not set it back to 0." },
+        { kind: "signal", name: "TB_EST_ERR_RAD", max: 0.01, label: "Heading estimate within 0.01 rad of the truth at the end", hint: "The theta sum must stay in the interrupt and run every millisecond." },
+        { kind: "signal", name: "TB_EST_ERR_FT", max: 0.02, label: "Position estimate within 0.02 ft of the truth at the end", hint: "No value: call tb_report_pose in the main loop. About 0.1 ft or more: the flag must be set every 10th call, not once a second, and x uses cos, y uses sin." },
+        { kind: "max-steps", max: 400000, label: "The main loop works only when the flag is set", hint: "Clear the flag (newStep = 0;) inside the if, or the loop redoes the update on every pass." },
+      ],
+      watch: ["x", "y", "theta", "dist", "distDone", "newStep"],
+      hints: [
+        "Two places change. The interrupt loses the x and y lines and the report, and gains a sum for dist and the flag. The main loop gains an if with six lines.",
+        "Interrupt: `dist = dist + 0.5 * (vLeft + vRight) * 0.001;` then `if (numTimer0calls % 10 == 0) { newStep = 1; }`. The % sign gives the remainder of a division: it is 0 on every 10th call.",
+        "Main loop: `if (newStep == 1) { newStep = 0; step = dist - distDone; distDone = distDone + step; x = x + step * cos(theta); y = y + step * sin(theta); tb_report_pose(x, y, theta); }`",
+      ],
+      takeaway: "Sums that must not miss a sample stay in the interrupt. Maths that is merely needed soon goes to the main loop behind a flag. The interrupt went from about 2.5 us to under 1 us, and the pose is as good as before.",
+    },
+    {
+      id: "loc-kf3-model",
+      kind: "calc",
+      tier: "practice",
+      title: "Practice: three states, the predict step by hand",
+      goal: "Name the matrices of the robot's three-state Kalman filter and do one predict step by hand.",
+      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      brief: `
+The robot's real filter (HW6 and the final project) estimates three numbers at once: x, y and the heading theta. The two steps stay, and the single numbers become matrices (practice level "One matrix for rotate and shift"). This level is about what each entry means.
+
+## Two lists
+- **State** xhat = (x, y, theta): what the filter estimates. The hat says "estimate".
+- **Input** u = (V, omega): the forward speed and the turn rate, from the wheels.
+
+## B: what the inputs do to the state
+One row per state, one column per input, for a step of dt seconds:
+
+\`\`\`c
+        V               omega
+x    [  cos(theta) dt   0   ]
+y    [  sin(theta) dt   0   ]
+th   [  0               dt  ]
+\`\`\`
+
+Row x says: x grows by V x cos(theta) x dt, and the turn rate does not move x. This is dead reckoning as a table. The predict step is **xhat = F xhat + B u**. The matrix **F** says what the state does on its own. A robot with no input stays where it is, so F is the **identity matrix** (1 on the diagonal, 0 elsewhere): F xhat is just xhat.
+
+## P and Q: the doubt
+The **covariance matrix** P takes the place of the variance. On its diagonal: the variance of x, of y and of theta. Off the diagonal: whether two errors go together (0 means they have nothing to do with each other). Q has the same layout: what one step adds. With F the identity, **P = P + Q**.
+
+## Worked example
+State (1, 3, 1.5708): the robot points along y. V = 1 ft/s, omega = 0.2 rad/s, dt = 0.5 s. B u = (1 x 0 x 0.5, 1 x 1 x 0.5, 0.2 x 0.5) = (0, 0.5, 0.1). New state: (1, 3.5, 1.6708). P with 0.1, 0.1, 0.02 on its diagonal and Q with 0.01, 0.01, 0.002 give 0.11, 0.11, 0.022.
+
+## Your turn
+State (2.0, 1.0, 0.5236): heading 30 degrees. V = 2 ft/s, omega = 0.5 rad/s, dt = 0.1 s. P has 0.2, 0.2, 0.05 on its diagonal and Q has 0.05, 0.05, 0.01. Both are 0 elsewhere.
+`,
+      fields: [
+        { id: "b00", label: "The entry of B in row x, column V", answer: 0.0866, tolPct: 1, why: "cos(30 degrees) x dt = 0.866 x 0.1 = 0.0866: each ft/s of forward speed moves x by 0.0866 ft in this step." },
+        { id: "x", label: "x after the predict step", unit: "ft", answer: 2.1732, tolPct: 0.1, why: "2.0 + 0.0866 x 2 = 2.1732 ft. The omega column of this row is 0." },
+        { id: "y", label: "y after the predict step", unit: "ft", answer: 1.1, tolPct: 0.1, why: "sin(30 degrees) x 0.1 = 0.05 per ft/s, times V = 2: 1.0 + 0.1 = 1.1 ft." },
+        { id: "th", label: "Heading after the predict step", unit: "rad", answer: 0.5736, tolPct: 0.1, why: "Row th of B is (0, dt): 0.5236 + 0.1 x 0.5 = 0.5736 rad. The forward speed does not turn the robot." },
+        { id: "p00", label: "Variance of x (top left entry of P) after the step", answer: 0.25, tolPct: 0.5, why: "0.2 + 0.05 = 0.25. Driving made the filter less sure of x." },
+        { id: "p22", label: "Variance of the heading (bottom right entry of P) after the step", answer: 0.06, tolPct: 0.5, why: "0.05 + 0.01 = 0.06. The zeros off the diagonal stay 0: 0 + 0." },
+      ],
+      hints: [
+        "cos(30 degrees) = 0.866 and sin(30 degrees) = 0.5. Multiply each by dt = 0.1 to get the first column of B.",
+        "Each state grows by its row of B times u: (row entry 1) x V + (row entry 2) x omega.",
+        "P after the step is P + Q, entry by entry: 0.2 + 0.05 and 0.05 + 0.01.",
+      ],
+      takeaway: "B is dead reckoning as a table: one row per state, one column per input. F = identity means the robot stays put without input. P = P + Q: every move adds doubt.",
+    },
+    {
+      id: "loc-kf3-predict",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Practice: three states, the predict function",
+      goal: "Write the predict step for the state (x, y, heading) with the input matrix B, and read the given covariance step.",
+      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      brief: `
+Write the predict step of the previous level in C. The state is the array \`xhat[3]\`: x, y, heading. P, Q and B are **two-dimensional arrays**: \`float P[3][3]\` is a table of 3 rows and 3 columns, and \`P[1][2]\` is its entry in row 1, column 2, both counted from 0.
+
+## What to write in kf3_predict(v, omega, dt)
+**1.** Fill the six entries of \`B\` and the two of \`u\`:
+
+\`\`\`c
+B = [ cos(theta) * dt   0  ]      u = [ v     ]
+    [ sin(theta) * dt   0  ]          [ omega ]
+    [ 0                 dt ]
+\`\`\`
+
+The heading is \`xhat[2]\`, and it is in radians already. Fill B **before** you change the state: the equations of HW6 use the heading from before the step.
+
+**2.** \`xhat = xhat + B u\`. Row i of the product B u is \`B[i][0] * u[0] + B[i][1] * u[1]\`. A \`for\` loop over the three rows needs one line in its body.
+
+## Given: the covariance
+Step 3 is written for you. Two nested loops add Q to P, entry by entry. That is all of **P = F P F' + Q** when F is the identity. (F' is F with rows and columns swapped: still the identity.) Read what it says: every predict step makes the filter a little less sure of all three states. Only a measurement brings P down again.
+
+## The test
+\`main\` runs two steps. The first uses the numbers of the previous level: (2.0, 1.0, 0.5236) becomes (2.1732, 1.1, 0.5736). The second starts from there with v = 1 and omega = -1: slower, turning right.
+
+The course code calls a small matrix library for the product (\`Matrix3x2_Mult\` in MatrixMath.c). Here you write the loop yourself, so you see what the library does.
+`,
+      kit: "robot",
+      durationMs: 2,
+      starter: KF3_PREDICT_MAIN(KF3_PREDICT_EMPTY),
+      solution: KF3_PREDICT_MAIN(KF3_PREDICT),
+      checks: [
+        { kind: "var", name: "x1", min: 2.1727, max: 2.1737, label: "Step 1: x is 2.1732 ft", hint: "2.0: B or the loop is missing. 2.168: B was filled after the heading changed; fill B first. 2.1: sin and cos are swapped. 2.2: the heading is in radians already, do not convert it. 3.73: the first column of B needs * dt. 2.22: B[0][1] must be 0, the turn rate does not move x." },
+        { kind: "var", name: "y1", min: 1.0995, max: 1.1005, label: "Step 1: y is 1.1 ft", hint: "B[1][0] = sin(xhat[2]) * dt and B[1][1] = 0." },
+        { kind: "var", name: "th1", min: 0.5731, max: 0.5741, label: "Step 1: the heading is 0.5736 rad", hint: "0.5236: row 2 of B is (0, dt), and u[1] is omega. 0.7236: B[2][0] must be 0, the forward speed does not turn the robot." },
+        { kind: "var", name: "x2", min: 2.2567, max: 2.2577, label: "Step 2: x is 2.2572 ft", hint: "Step 1 is right and step 2 is not: B must be filled again on every call, from the heading at that moment." },
+        { kind: "var", name: "y2", min: 1.1538, max: 1.1548, label: "Step 2: y is 1.1543 ft" },
+        { kind: "var", name: "th2", min: 0.4731, max: 0.4741, label: "Step 2: the heading is 0.4736 rad (a right turn makes it smaller)" },
+        { kind: "var", name: "p00", min: 0.2999, max: 0.3001, label: "The given covariance step ran twice: P[0][0] is 0.2 + 0.05 + 0.05 = 0.3", hint: "Keep step 3 as it was given." },
+        { kind: "var", name: "p22", min: 0.0699, max: 0.0701, label: "P[2][2] is 0.05 + 0.01 + 0.01 = 0.07" },
+      ],
+      watch: ["x1", "y1", "th1", "x2", "y2", "th2", "p00"],
+      hints: [
+        "Step 1 is eight assignments: B[0][0], B[0][1], B[1][0], B[1][1], B[2][0], B[2][1], u[0], u[1]. Four of the B entries are 0.0.",
+        "`B[0][0] = cos(xhat[2]) * dt;` `B[1][0] = sin(xhat[2]) * dt;` `B[2][1] = dt;` `u[0] = v;` `u[1] = omega;`",
+        "`for (i = 0; i < 3; i++) { xhat[i] = xhat[i] + B[i][0] * u[0] + B[i][1] * u[1]; }`",
+      ],
+      takeaway: "The state step is dead reckoning in matrix clothes, and the covariance step only adds Q. The matrix form earns its keep in the update, where a measurement of one state can correct another.",
+    },
+    {
+      id: "loc-kf3-gain",
+      kind: "calc",
+      tier: "practice",
+      title: "Practice: three states, the update by hand",
+      goal: "Name the matrices of the update step (H, R, S, K) and do one update by hand with diagonal matrices.",
+      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      brief: `
+The update uses the position fix: two numbers, z = (zx, zy). The bench measures no heading. The course's OptiTrack does: there z has three numbers and H is the 3 x 3 identity. The steps are the same.
+
+## H: what the sensor sees
+One row per measured number, one column per state, with a 1 where the sensor reads that state:
+
+\`\`\`c
+        x  y  th
+zx   [  1  0  0  ]
+zy   [  0  1  0  ]
+\`\`\`
+
+H times the state is what the sensor should read if the estimate is right: (x, y). The **residual** e = z - H xhat is the surprise: fix minus prediction.
+
+## R, S and K
+- **R** (2 x 2): on its diagonal, the variance of the fix in x and in y.
+- **S = H P H' + R** (2 x 2): the doubt of the residual. The corner of P that belongs to x and y, plus the sensor's own doubt: the "variance + r" of the 1-D filter.
+- **K = P H' S^-1** (3 rows, 2 columns): the gain. Each entry says how far one state moves per foot of surprise in one measured number. S^-1 is the **inverse** of S, the matrix form of "divide by S".
+- **xhat = xhat + K e** and **P = (I - K H) P**, with I the identity.
+
+## When everything is diagonal
+If P and R are 0 off the diagonal, the matrices fall apart into the 1-D filter, once for x and once for y: the gain for x is Pxx / (Pxx + Rx). The heading row of K is 0: nothing measures the heading, so it stays.
+
+## Worked example
+State (4.0, 2.0, 0.3), P diagonal 0.3, 0.1, 0.02. Fix (4.4, 1.9), R diagonal 0.1, 0.1. Residual: (0.4, -0.1). Gains: 0.3 / 0.4 = 0.75 for x, 0.1 / 0.2 = 0.5 for y. New state: (4.3, 1.95, 0.3). New P diagonal: 0.25 x 0.3 = 0.075, 0.5 x 0.1 = 0.05, 0.02.
+
+## Your turn
+The state after the predict step two levels back: (2.1732, 1.1, 0.5736), P diagonal 0.25, 0.25, 0.06. The fix is (2.4, 1.0). R diagonal: 0.25 for x and 0.75 for y. This sensor is worse in y.
+`,
+      fields: [
+        { id: "e0", label: "Residual in x", unit: "ft", answer: 0.2268, tolPct: 1, why: "zx - x = 2.4 - 2.1732 = 0.2268 ft: the fix says the robot is further along x than predicted." },
+        { id: "kx", label: "Gain for x (row x, column zx of K)", answer: 0.5, tolPct: 0.5, why: "0.25 / (0.25 + 0.25) = 0.5: prediction and fix are equally unsure in x, so meet in the middle." },
+        { id: "ky", label: "Gain for y (row y, column zy of K)", answer: 0.25, tolPct: 0.5, why: "0.25 / (0.25 + 0.75) = 0.25: the fix is three times less sure in y, so it gets a quarter of the say." },
+        { id: "x", label: "x after the update", unit: "ft", answer: 2.2866, tolPct: 0.1, why: "2.1732 + 0.5 x 0.2268 = 2.2866 ft." },
+        { id: "y", label: "y after the update", unit: "ft", answer: 1.075, tolPct: 0.1, why: "The residual in y is 1.0 - 1.1 = -0.1. 1.1 + 0.25 x (-0.1) = 1.075 ft." },
+        { id: "pyy", label: "Variance of y after the update", answer: 0.1875, tolPct: 0.5, why: "(1 - 0.25) x 0.25 = 0.1875. For x it is (1 - 0.5) x 0.25 = 0.125: the better measurement removed more doubt." },
+        { id: "th", label: "Heading after the update", unit: "rad", answer: 0.5736, tolPct: 0.1, why: "Unchanged. The fix has no heading, and P is 0 off the diagonal, so nothing links the heading to x or y. The next level shows what happens when P is not diagonal." },
+      ],
+      hints: [
+        "With diagonal matrices, treat x and y as two separate 1-D filters. The heading has no measurement.",
+        "Gain = variance of the prediction / (variance of the prediction + variance of the fix), per axis: 0.25 / 0.5 and 0.25 / 1.0.",
+        "New value = old + gain x (fix - old). New variance = (1 - gain) x old variance.",
+      ],
+      takeaway: "H says what the sensor sees, S is the doubt of the surprise, K shares the surprise out among the states. With diagonal matrices this is the 1-D filter once per axis.",
+    },
+    {
+      id: "loc-kf3-update",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Practice: three states, the update function",
+      goal: "Write the measurement update for a position fix: residual, S, gain, state and covariance, with every matrix product written out.",
+      refs: [{ course: "HW6" }, { course: "L20-21" }],
+      brief: `
+Write the update for any P, not only a diagonal one. The six steps are numbered in the code, and step 3 is given. With H = [1 0 0; 0 1 0] every product with H only picks rows or columns. So no general matrix multiply is needed: single floats and short loops do it.
+
+**1. Residual**: \`e0 = zx - xhat[0]\` and \`e1 = zy - xhat[1]\`.
+
+**2. S = H P H' + R**: the top left 2 x 2 corner of P plus R, kept in four floats. For example \`S01 = P[0][1] + R[0][1]\`.
+
+**3. Inverse of S** (given). For a 2 x 2 matrix: swap the two diagonal entries, change the sign of the other two, divide all four by \`det = S00 * S11 - S01 * S10\`. Check: [2 0; 0 4] gives [0.5 0; 0 0.25].
+
+**4. Gain K = P H' Si**, for each row i of the three:
+
+\`\`\`c
+K[i][0] = P[i][0] * Si00 + P[i][1] * Si10;
+K[i][1] = P[i][0] * Si01 + P[i][1] * Si11;
+\`\`\`
+
+**5. State**, for each row i: \`xhat[i] = xhat[i] + K[i][0] * e0 + K[i][1] * e1\`.
+
+**6. Covariance P = P - K H P**, for each row i and column j:
+
+\`\`\`c
+P[i][j] = P[i][j] - K[i][0] * P0[j] - K[i][1] * P1[j];
+\`\`\`
+
+\`P0\` and \`P1\` are rows 0 and 1 of P **from before** this step. Copy them into the two local arrays first: the loop overwrites row 0 while rows 1 and 2 still need the old one.
+
+## The test
+This P is not diagonal. \`P[0][2] = 0.02\` says: when x is too small, the heading tends to be too small as well. The fix says x is 0.23 ft further on, and the update moves the **heading** too, from 0.5736 to 0.5866, although nothing measured it. That is how a filter corrects a state it cannot see.
+
+Expected: x = 2.2835, y = 1.0925, heading = 0.5866.
+
+The course code does these steps with 3 x 3 library calls (\`Matrix3x3_Invert\`, \`Matrix3x3_Mult\`), because its H is the identity.
+`,
+      kit: "robot",
+      durationMs: 2,
+      starter: KF3_UPDATE_MAIN(KF3_UPDATE_EMPTY),
+      solution: KF3_UPDATE_MAIN(KF3_UPDATE),
+      checks: [
+        { kind: "var", name: "t_K00", min: 0.497, max: 0.498, label: "K[0][0] is 0.4975: a surprise in x moves x by half of it", hint: "0: step 4 is missing. 0.25: S is still the placeholder; S00 = P[0][0] + R[0][0] and so on. 1.0: R was not added to S. Otherwise check the four Si names in step 4." },
+        { kind: "var", name: "t_K21", min: -0.0327, max: -0.0317, label: "K[2][1] is -0.0322: a surprise in y moves the heading the other way", hint: "The loop of step 4 must run over all three rows, i = 0, 1, 2. Row 2 is how the heading gets corrected." },
+        { kind: "var", name: "t_x", min: 2.283, max: 2.284, label: "x is 2.2835 ft", hint: "2.1732: step 5 is missing, or the residual is still 0. 2.058: the residual is fix minus estimate, zx - xhat[0]. 2.286: the second term K[i][1] * e1 is missing." },
+        { kind: "var", name: "t_y", min: 1.092, max: 1.093, label: "y is 1.0925 ft" },
+        { kind: "var", name: "t_th", min: 0.5861, max: 0.5871, label: "The heading moved to 0.5866 rad, corrected through P[0][2] and P[1][2]" },
+        { kind: "var", name: "t_P00", min: 0.1239, max: 0.1249, label: "P[0][0] fell from 0.25 to 0.1244", hint: "0.25: step 6 is missing. Each entry loses K[i][0] * P0[j] + K[i][1] * P1[j]." },
+        { kind: "var", name: "t_P11", min: 0.1842, max: 0.1852, label: "P[1][1] is 0.1847", hint: "0.1870: row 1 was computed from the NEW row 0. Copy rows 0 and 1 of P into P0 and P1 before the loops of step 6, and use the copies." },
+        { kind: "var", name: "t_P02", min: 0.0103, max: 0.0113, label: "P[0][2] is 0.0108" },
+        { kind: "var", name: "t_P22", min: 0.0577, max: 0.0587, label: "P[2][2] fell a little, to 0.0582: the filter is surer of the heading too", hint: "0.0588: rows 1 and 2 must use the old rows 0 and 1 of P (the copies P0 and P1)." },
+      ],
+      watch: ["t_x", "t_y", "t_th", "t_K00", "t_P00", "t_P11"],
+      hints: [
+        "Work down the six comments. Steps 1 and 2 are six assignments. Steps 4 and 5 are each one loop over i from 0 to 2.",
+        "Step 6 needs three loops: first `for (j = 0; j < 3; j++) { P0[j] = P[0][j]; P1[j] = P[1][j]; }`, then two nested loops over i and j.",
+        "Inside the nested loops: `P[i][j] = P[i][j] - K[i][0] * P0[j] - K[i][1] * P1[j];`",
+      ],
+      takeaway: "The gain has a row for every state, also for the ones the sensor cannot see. Whether those rows are 0 depends on the off-diagonal entries of P: they carry a correction from a measured state to an unmeasured one.",
+    },
+    {
       id: "loc-goto",
       kind: "code",
       mode: "write",
@@ -1904,6 +2497,8 @@ No \`xy_control\` this time: write your own move-to-XY. You get \`speed_control(
 
 ## The test
 At 7.5 s: stopped, within 0.1 ft of the target, with a pose estimate within 0.05 ft of the truth.
+
+One star is for a short interrupt: its longest run stays below 2 us. Keep the wheel readings, the heading sum, a distance sum and \`speed_control\` in the interrupt. Do the trigonometry and the state machine in the main loop behind a flag, as in the practice level "Keep the interrupt short".
 ${BENCH}`,
       kit: "robot",
       durationMs: 7500,
@@ -1927,41 +2522,59 @@ ${BENCH}`,
       solution: prog(
         `${GOTO_GLOBALS}
 float dist = 0;       // distance to the target, ft
-float eTheta = 0;     // heading error, rad`,
+float eTheta = 0;     // heading error, rad
+float odo = 0;        // distance driven since the start, ft (summed in the interrupt)
+float odoDone = 0;    // the part of odo that x and y already contain
+float step = 0;
+int newStep = 0;      // 1: the main loop must run the navigation
+uint32_t numTimer0calls = 0;`,
         `
     vLeft = tb_left_speed();
     vRight = tb_right_speed();
 
-    // Dead reckoning, direction and distance to the target, state machine
+    // Every millisecond: the two cheap sums and the speed controller
     theta = theta + (vRight - vLeft) / WHEEL_BASE * 0.001;
     if (theta > PI) theta = theta - 2.0 * PI;
     if (theta < -PI) theta = theta + 2.0 * PI;
-    x = x + 0.5 * (vLeft + vRight) * cos(theta) * 0.001;
-    y = y + 0.5 * (vLeft + vRight) * sin(theta) * 0.001;
-
-    dist = sqrt((xGoal - x) * (xGoal - x) + (yGoal - y) * (yGoal - y));
-    eTheta = atan2(yGoal - y, xGoal - x) - theta;
-    if (eTheta > PI) eTheta = eTheta - 2.0 * PI;
-    if (eTheta < -PI) eTheta = eTheta + 2.0 * PI;
-    turn = -2.0 * eTheta;
-    if (turn > 0.6) turn = 0.6;
-    if (turn < -0.6) turn = -0.6;
-
-    if (state == 0) {
-        vref = 0.0;
-        if (fabs(eTheta) < 0.05) state = 1;
-    } else if (state == 1) {
-        vref = 3.0 * dist;
-        if (vref > 1.0) vref = 1.0;
-        if (dist < 0.04) state = 2;
-    } else {
-        vref = 0.0;
-        turn = 0.0;
+    odo = odo + 0.5 * (vLeft + vRight) * 0.001;
+    numTimer0calls++;
+    if (numTimer0calls % 5 == 0) {
+        newStep = 1;
     }
-
-    tb_report_pose(x, y, theta);
     speed_control(vref, turn);`,
-        { functions: SPEED_CONTROL },
+        {
+          functions: SPEED_CONTROL,
+          loop: `
+        // Every 5 ms: position, direction and distance to the target, state machine
+        if (newStep == 1) {
+            newStep = 0;
+            step = odo - odoDone;
+            odoDone = odoDone + step;
+            x = x + step * cos(theta);
+            y = y + step * sin(theta);
+
+            dist = sqrt((xGoal - x) * (xGoal - x) + (yGoal - y) * (yGoal - y));
+            eTheta = atan2(yGoal - y, xGoal - x) - theta;
+            if (eTheta > PI) eTheta = eTheta - 2.0 * PI;
+            if (eTheta < -PI) eTheta = eTheta + 2.0 * PI;
+            turn = -2.0 * eTheta;
+            if (turn > 0.6) turn = 0.6;
+            if (turn < -0.6) turn = -0.6;
+
+            if (state == 0) {
+                vref = 0.0;
+                if (fabs(eTheta) < 0.05) state = 1;
+            } else if (state == 1) {
+                vref = 3.0 * dist;
+                if (vref > 1.0) vref = 1.0;
+                if (dist < 0.04) state = 2;
+            } else {
+                vref = 0.0;
+                turn = 0.0;
+            }
+            tb_report_pose(x, y, theta);
+        }`,
+        },
       ),
       checks: [
         { kind: "signal", name: "TB_X_FT", min: -1.1, max: -0.9, label: "x within 0.1 ft of the target (-1.0)", hint: "Not there yet: did the robot turn the long way round? Wrap the heading error to -PI ... PI." },
@@ -1973,6 +2586,7 @@ float eTheta = 0;     // heading error, rad`,
       bonus: [
         { kind: "signal", name: "TB_VLEFT", at: 6000, min: -0.02, max: 0.02, label: "Arrived and stopped within 6 s" },
         { kind: "signal", name: "TB_EST_ERR_FT", at: 6000, max: 0.05, label: "... with a good pose estimate" },
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 2, label: "Short interrupt: its longest run is below 2 us", hint: "sin, cos and atan2 cost about 1 us each, sqrt 0.25 us. Sum the heading and the distance in the interrupt, set a flag every few milliseconds, and do the rest in the while (1) loop of main." },
       ],
       watch: ["x", "y", "theta", "state", "vref", "turn"],
       hints: [
@@ -2117,6 +2731,91 @@ void kf2_update(float z, float r)
         "Interrupt: `if (tb_gps_new()) { z = tb_gps_x(); kf2_predict(0.01, QV); kf2_update(z, R); }`",
       ],
       takeaway: "The filter was never given a velocity, yet it estimates one: P10 links a position error to a velocity correction. That link is what the off-diagonal terms of a covariance matrix are for, and why HW6's Q and R are full 3 x 3 matrices.",
+    },
+    {
+      id: "loc-kf3",
+      kind: "code",
+      mode: "write",
+      tier: "expert",
+      title: "Expert: the robot's three-state filter",
+      goal: "Write the whole three-state Kalman filter and run it on the robot, so the pose estimate beats both dead reckoning and the raw fixes.",
+      refs: [{ course: "HW6" }, { course: "L20-21" }, { course: "L15" }],
+      brief: `
+Run the filter of HW6 on the bench: state (x, y, heading), predict from the wheels, update from the position fix. You write both functions and the wiring. Do the practice levels "Three states" first.
+
+## The situation
+- The code thinks the robot starts at (0, 0). It was put down at (1.5, -1.0), heading 0. Dead reckoning never finds out.
+- Each fix is off by about 0.15 ft in x and in y. \`R\` holds 0.15 x 0.15 = 0.0225.
+- At 3 s the robot is bumped 0.4 ft sideways. The wheels do not notice.
+
+## What to write
+1. \`kf3_predict(v, omega, dt)\`: B and u, xhat = xhat + B u, P = P + Q.
+2. \`kf3_update(zx, zy)\`: residual, S, its inverse, K, the state, then P (from rows 0 and 1 of the old P).
+3. **In the interrupt**, every call: add V to \`vSum\` and omega to \`wSum\`. Every 10th call: store the averages in \`v\` and \`omega\`, clear the sums, set \`newStep = 1\`.
+4. **In the main loop**, when \`newStep\` is 1: clear it, predict with \`v\`, \`omega\` and \`DT\`, update if \`tb_gps_new()\` is 1, then \`tb_report_pose(xhat[0], xhat[1], xhat[2])\`.
+
+The filter costs two trigonometry calls and some sixty multiplications, so it runs in the main loop. The interrupt only sums (practice level "Keep the interrupt short").
+
+## Q, R and the heading
+Q and R are given. Q says how far dead reckoning may wander in 10 ms. With Q = 0 the filter ends up trusting the wheels completely, and after the bump it takes many seconds to believe the fixes. With a large Q the estimate jumps with every fix.
+
+Nothing here measures the heading, and with F the identity P never links it to x or y. So this filter carries the heading by dead reckoning alone. On the course robot the OptiTrack measures it too.
+
+## The test
+- At 0.5 s the estimate has found the robot (within 0.15 ft).
+- At 4 s, one second after the bump, it is within 0.12 ft again.
+- From 4.5 s on it is off by less than 0.05 ft on average. A raw fix is off by 0.21 ft.
+- Star: the longest run of the interrupt function stays below 1.5 us.
+${BENCH}
+- \`tb_gps_new()\`: 1 when a new position fix has arrived since the last call, else 0.
+- \`tb_gps_x()\`, \`tb_gps_y()\`: the latest fix, ft.
+`,
+      kit: "robot",
+      durationMs: 8000,
+      stimuli: [
+        { at: 0, set: "TB_SET_X_FT", value: 1.5 },
+        { at: 0, set: "TB_SET_Y_FT", value: -1.0 },
+        { at: 0, set: "TB_GPS_NOISE", value: 0.15 },
+        { at: 3000, set: "TB_SET_Y_FT", value: -0.6 },
+        { at: 4500, set: "TB_STATS_RESET", value: 1 },
+      ],
+      starter: prog(
+        KF3_RUN_GLOBALS,
+        `
+${KF3_RUN_DRIVE}
+    // Sum V and omega. Every 10th call: hand their averages to the main loop.
+`,
+        {
+          functions: `${KF3_PREDICT_BLANK}\n\n${KF3_UPDATE_BLANK}`,
+          loop: `
+        // Every 10 ms: predict, update if a fix arrived, report
+`,
+        },
+      ),
+      solution: prog(
+        KF3_RUN_GLOBALS,
+        `
+${KF3_RUN_DRIVE}
+${KF3_RUN_ISR_SUMS}`,
+        { functions: `${KF3_PREDICT}\n\n${KF3_UPDATE}`, loop: KF3_RUN_LOOP },
+      ),
+      checks: [
+        { kind: "signal", name: "TB_EST_ERR_FT", at: 500, max: 0.15, label: "At 0.5 s the estimate has found the robot (it started 1.8 ft off)", hint: "No value: tb_report_pose is never called; is newStep set in the interrupt? Still 1.8 ft: the update never runs or does nothing; test kf3_update in the practice level. Hundreds of feet: v and omega are averages (sum / 10.0), and the predict runs once per 10 ms with DT." },
+        { kind: "signal", name: "TB_EST_ERR_FT", at: 4000, max: 0.12, label: "At 4 s, one second after the bump, the estimate is within 0.12 ft again", hint: "About 0.3 ft: P shrank to nothing, so the filter no longer listens. The predict step must add Q to P on every call." },
+        { kind: "signal", name: "TB_GPS_RMS_FT", min: 0.17, label: "The raw fixes are off by about 0.21 ft" },
+        { kind: "signal", name: "TB_EST_RMS_FT", max: 0.05, label: "From 4.5 s on the estimate is off by less than 0.05 ft: four times better than a fix", hint: "About 0.2 ft: the estimate just follows the fixes. R must be added in S, and Q must be the given one. More than that: the predict step must run on every 10 ms step, with or without a fix, and B must use cos for x and sin for y." },
+        { kind: "signal", name: "TB_EST_ERR_RAD", max: 0.02, label: "The heading estimate is within 0.02 rad at the end", hint: "The heading comes from the predict step alone: row 2 of B is (0, dt) and u[1] is omega = (vRight - vLeft) / WHEEL_BASE." },
+      ],
+      bonus: [
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 1.5, label: "Short interrupt: its longest run is below 1.5 us", hint: "The filter must not run inside cpu_timer0_isr. Set newStep there and call kf3_predict and kf3_update from the while (1) loop of main." },
+      ],
+      watch: ["v", "omega", "newStep"],
+      hints: [
+        "Build it in three stages and run after each. First the interrupt sums, the flag and a main loop that only predicts and reports: the estimate then moves like the robot, 1.8 ft away from it. Then the update. Then compare with the test.",
+        "Interrupt: `vSum = vSum + 0.5 * (vLeft + vRight); wSum = wSum + (vRight - vLeft) / WHEEL_BASE;` and `if (numTimer0calls % 10 == 0) { v = vSum / 10.0; omega = wSum / 10.0; vSum = 0.0; wSum = 0.0; newStep = 1; }`",
+        "Main loop: `if (newStep == 1) { newStep = 0; kf3_predict(v, omega, DT); if (tb_gps_new()) { kf3_update(tb_gps_x(), tb_gps_y()); } tb_report_pose(xhat[0], xhat[1], xhat[2]); }`",
+      ],
+      takeaway: "This is the filter of the final project: wheels for the fast, smooth part, fixes for the absolute part, Q and R to set the balance. With F the identity and diagonal Q and R, P stays diagonal and the filter is three small ones side by side. The matrix form is what lets you add the off-diagonal terms of HW6's Q and R, or a heading measurement, without rewriting the code.",
     },
   ],
 };

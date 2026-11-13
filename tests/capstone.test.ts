@@ -58,6 +58,71 @@ describe("capstone chain", () => {
     expect(star.pass).toBe(false);
   });
 
+  it("fails cap-speed when the right wheel's P term uses the left wheel's error", () => {
+    const l = byId.get("cap-speed")!;
+    const wrong = l.solution.replace("uRight = Kp * eRight + Ki * INew;", "uRight = Kp * eLeft + Ki * INew;");
+    expect(wrong).not.toBe(l.solution);
+    const r = runProgram({ kit: l.kit, source: wrong, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks });
+    expect(r.runtimeError).toBeUndefined();
+    expect(r.passed).toBe(false);
+    // Caught by the disturbance on the right motor, not by the steady state.
+    expect(r.checks.filter((c) => !c.pass).map((c) => c.label).join(" ")).toMatch(/right motor gets weaker/);
+  });
+
+  // The 1 ms interrupt keeps only what must run every millisecond: from
+  // cap-lean on, cos, sin, atan2 and sqrt run in the main loop behind navFlag.
+  const inInterrupt = (src: string) => {
+    const out = src
+      .replace("    navFlag = 1;", "    navigate();")
+      .replace("        if (navFlag == 1) {\n            navFlag = 0;\n            navigate();\n        }\n", "");
+    expect(out.match(/navigate\(\);/g)!.length).toBe(2);
+    return out;
+  };
+  const timing = (l: CodeLevel, source: string) => {
+    const r = runProgram({ kit: l.kit, source, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks, bonus: l.bonus });
+    const all = [...r.checks, ...r.bonus].filter((c) => c.label.includes("cpu_timer0_isr takes"));
+    expect(all.length).toBe(1);
+    return { r, budget: all[0] };
+  };
+
+  it("fails cap-lean while slow maths is left in the 1 ms interrupt", () => {
+    const l = byId.get("cap-lean")!;
+    expect(timing(l, l.solution).budget.value).toBeLessThan(3);
+    // navigate() called from the interrupt: the same maths, the same time.
+    const called = timing(l, inInterrupt(l.solution));
+    expect(called.r.passed).toBe(false);
+    expect(called.budget.value).toBeGreaterThan(5);
+    // Only x and y moved: sqrt and atan2 still run in the mission.
+    const geometry = l.solution.slice(l.solution.indexOf("    // Where is the goal from here"), l.solution.indexOf("    while (eTheta < -PI)"));
+    const half = l.solution.replace(geometry, "").replace("    switch (state) {", `${geometry}    switch (state) {`);
+    expect(half).not.toBe(l.solution);
+    const r = timing(l, half);
+    expect(r.r.compileError).toBeUndefined();
+    expect(r.budget.pass).toBe(false);
+    // Forgetting the first navigate() before EINT lets FACE act on eTheta = 0.
+    const noFirst = l.solution.replace("    navigate();\n    EINT;", "    EINT;");
+    expect(noFirst).not.toBe(l.solution);
+    expect(timing(l, noFirst).r.passed).toBe(false);
+  });
+
+  it("gives the timing star of cap-wall only to a short 1 ms interrupt", () => {
+    const l = byId.get("cap-wall")!;
+    expect(timing(l, l.solution).budget.pass).toBe(true);
+    const maths = timing(l, inInterrupt(l.solution));
+    expect(maths.r.passed).toBe(true);
+    expect(maths.budget.pass).toBe(false);
+    const lidar = timing(l, l.solution.replace("    // ---- Decide: the mission ----", "    front_ft = min_ft(94, 132);\n    // ---- Decide: the mission ----"));
+    expect(lidar.r.passed).toBe(true);
+    expect(lidar.budget.pass).toBe(false);
+  });
+
+  it("keeps every level with a LIDAR on the timing budget", () => {
+    for (const id of ["cap-wall", "cap-final", "cap-x-fast", "cap-x-serial", "cap-x-square"]) {
+      const l = byId.get(id)!;
+      expect((l.bonus ?? []).some((c) => c.kind === "isr-time" && c.fn === "cpu_timer0_isr" && c.maxUs <= 3.5), id).toBe(true);
+    }
+  });
+
   it("keeps every solution line within 100 characters", () => {
     for (const l of code) for (const line of l.solution.split("\n")) expect(line.length, `${l.id}: ${line}`).toBeLessThanOrEqual(100);
   });

@@ -23,6 +23,12 @@ export const glossary: GlossaryEntry[] = [
     level: "cap-goto",
   },
   {
+    term: "hand-off (interrupt to main)",
+    meaning:
+      "Leaving work for the main loop: the interrupt function sets a flag, and while (1) in main sees the flag, sets it back and does the work. The interrupt stays short, and the work runs a few microseconds later.",
+    level: "cap-lean",
+  },
+  {
     term: "mission",
     meaning:
       "This chapter's name for the Decide step of the control loop: the few lines, usually a state machine, that choose the speed command and the turn command. Everything else in the program serves it.",
@@ -44,6 +50,12 @@ export const glossary: GlossaryEntry[] = [
     meaning:
       "An extra term that tells each wheel's speed controller about the other wheel: the difference of the two wheel speeds is added to one wheel's error and subtracted from the other's, so the wheels stay together.",
     level: "cap-steer",
+  },
+  {
+    term: "time budget",
+    meaning:
+      "The longest time a piece of code is allowed to take, here one pass of the 1 ms interrupt function. Slow maths (cos, sin, atan2, about a microsecond each) is what uses it up.",
+    level: "cap-lean",
   },
   {
     term: "travel",

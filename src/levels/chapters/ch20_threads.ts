@@ -391,6 +391,8 @@ The part of Linux called the **scheduler** decides which thread runs. It can pau
 ## And on the microcontroller?
 The F28379D has no threads, but it has **interrupts**: \`main()\` is paused at a point you do not choose, an interrupt function runs, and \`main()\` continues. The two take turns, they **interleave**, and they share every global variable. For shared data that is the same problem as two threads.
 
+The game simulates only the F28379D. Programs with threads run on the Raspberry Pi, not in the game: in this chapter you read them, order their lines and find their bugs.
+
 ## The race
 \`counter += 1;\` looks like one step. The machine may do three: **read** the value from memory into a CPU register, **add** 1 there, **write** the result back. If another thread, or an interrupt, changes \`counter\` in between, that change is overwritten and lost. The result depends on timing: a **race condition**.
 
@@ -670,78 +672,6 @@ This is the pattern for printing as well. Printing takes milliseconds, and the v
       takeaway: "Reading can race too. Values that belong together are copied inside one short critical section, and then you work on (or print) the copies.",
     },
     {
-      id: "thr-deadlock",
-      kind: "quiz",
-      title: "Deadlock",
-      goal: "Recognise a deadlock from two locks, and learn the rule that prevents it.",
-      refs: [{ course: "L13" }],
-      brief: `
-Locks fix races and bring a new problem. This one belongs to the Pi, where threads use a mutex: \`pthread_mutex_lock(&m);\` takes the lock \`m\`, or waits until the thread that holds it gives it back.
-
-Thread A and thread B both need two mutexes, \`m1\` and \`m2\`, and take them in opposite orders:
-
-\`\`\`c
-// thread A                      // thread B
-pthread_mutex_lock(&m1);         pthread_mutex_lock(&m2);
-pthread_mutex_lock(&m2);         pthread_mutex_lock(&m1);
-\`\`\`
-
-Follow one unlucky schedule:
-
-1. A takes \`m1\`.
-2. The scheduler pauses A and runs B. B takes \`m2\`.
-3. B asks for \`m1\`. A holds it, so B waits.
-4. A runs again and asks for \`m2\`. B holds it, so A waits.
-
-Each waits for a lock that the other will only give back after it has continued. Neither ever continues. That is a **deadlock**. Nothing crashes and no error is printed. The two threads simply stop.
-
-Like a race, it depends on timing. If A happens to take both locks before B starts, all is well. So most runs work, and one run in a thousand hangs.
-
-## The cure
-Every thread takes the locks **in the same order**: always \`m1\` first, then \`m2\`. Then a thread that holds \`m2\` already holds \`m1\`, and nobody else can be holding \`m1\` and waiting for \`m2\`.
-
-## On the microcontroller
-There is only one "lock", \`DINT;\`, so this deadlock cannot happen. A relative of it can: code that leaves a critical section without \`EINT;\`. Then the interrupt waits forever. You will repair one in "The lock that was never opened".
-`,
-      questions: [
-        {
-          prompt: "Thread A locks `m1` then `m2`. Thread B locks `m2` then `m1`. What can happen?",
-          options: [
-            "Nothing bad: mutexes prevent all problems",
-            "A lost update",
-            "A deadlock: each thread holds one lock and waits forever for the other",
-            "The program runs twice as fast",
-          ],
-          answer: 2,
-          why: "If A gets m1 and B gets m2 before either takes its second lock, each waits for a lock the other will never release.",
-        },
-        {
-          prompt: "What is the usual way to make that deadlock impossible?",
-          options: [
-            "Use more locks",
-            "Have every thread take the locks in the same order",
-            "Unlock in a random order",
-            "Add a delay before locking",
-          ],
-          answer: 1,
-          why: "With one fixed order, the thread that holds m1 is the only one that can ask for m2. A delay only changes how often the hang shows up.",
-        },
-        {
-          prompt: "The program with the two opposite lock orders ran 500 times in testing without a hang. What does that tell you?",
-          options: [
-            "The program is correct",
-            "Very little: the deadlock needs one particular timing, which may not have occurred yet",
-            "Deadlocks only happen on the first run",
-            "The mutexes are not being used",
-          ],
-          answer: 1,
-          why: "The hang needs B to run exactly between A's two lock calls. That is rare, not impossible. Timing bugs are found by reasoning about the code, not by counting good runs.",
-        },
-      ],
-      hints: ["Draw who holds which lock and who waits for which.", "Which thread would have to continue for the other one's lock to be released?"],
-      takeaway: "A deadlock is two threads that each wait for a lock the other holds. Take locks in one fixed order, everywhere.",
-    },
-    {
       id: "thr-sem",
       kind: "code",
       mode: "write",
@@ -1005,6 +935,84 @@ int buf_get(uint16_t *v)
       takeaway: "Every path out of a critical section must re-enable interrupts (or unlock the mutex). Early returns are where this goes wrong.",
     },
     {
+      id: "thr-pi-order",
+      kind: "order",
+      title: "The same hand-off on the Pi",
+      goal: "Read a producer and a consumer written with pthreads, and put the lines in the order in which they run.",
+      refs: [{ course: "L13" }],
+      brief: `
+This program runs on the **Raspberry Pi, not in the game**. The game simulates the F28379D only, and that chip has no threads. So you read this code and trace it, as you would before you type it on the Pi.
+
+It is your ring buffer again. \`main\` is the producer. A second thread is the consumer. The library that gives a C program threads on Linux is called **pthreads**.
+
+\`\`\`c
+int buf[SIZE];
+int head = 0;
+int tail = 0;
+pthread_mutex_t lock;   // guards buf, head and tail
+sem_t items;            // how many values wait in buf
+
+void *consumer(void *arg)
+{
+    int v;
+    sem_wait(&items);
+    pthread_mutex_lock(&lock);
+    v = buf[tail];
+    tail = (tail + 1) % SIZE;
+    pthread_mutex_unlock(&lock);
+    printf("got %d\\n", v);
+    return NULL;
+}
+
+int main(void)
+{
+    pthread_t tid;
+    pthread_mutex_init(&lock, NULL);
+    sem_init(&items, 0, 0);
+    pthread_create(&tid, NULL, consumer, NULL);
+    sleep(1);
+    pthread_mutex_lock(&lock);
+    buf[head] = 42;
+    head = (head + 1) % SIZE;
+    pthread_mutex_unlock(&lock);
+    sem_post(&items);
+    pthread_join(tid, NULL);
+    return 0;
+}
+\`\`\`
+
+## How to read it
+- \`void *consumer(void *arg)\` is the shape every thread function must have. This one uses neither \`arg\` nor the pointer it returns, so it returns \`NULL\`.
+- \`pthread_create\` starts a thread that runs \`consumer\`. \`pthread_join\` waits until that thread has ended. A thread ends when its function returns.
+- The last \`0\` in \`sem_init(&items, 0, 0)\` is the starting count: nothing waits yet.
+- \`sem_wait\` takes 1 from the count. While the count is 0 it **blocks**: Linux puts the thread to sleep until somebody posts. No loop has to keep asking, which your \`sem_trywait\` on the microcontroller needed.
+- \`sem_post\` adds 1 and wakes a sleeping thread.
+- The mutex is the critical section: only the lines that touch \`buf\`, \`head\` and \`tail\` are between lock and unlock. The slow \`printf\` works on the copy \`v\`, after the unlock.
+- \`sleep(1)\` pauses \`main\` for one second, so the consumer is already asleep in \`sem_wait\` before \`main\` produces anything.
+
+Put the lines in the order in which they run. Each one says which thread runs it.
+`,
+      steps: [
+        "main: `pthread_create(&tid, NULL, consumer, NULL);` starts the consumer thread, then main sleeps for a second",
+        "consumer: `sem_wait(&items);` finds the count at 0, so this thread goes to sleep",
+        "main: `pthread_mutex_lock(&lock);` takes the lock. Nobody else holds it",
+        "main: `buf[head] = 42;` and the line that moves `head`: the value is in the buffer",
+        "main: `pthread_mutex_unlock(&lock);` gives the lock back",
+        "main: `sem_post(&items);` raises the count to 1. The consumer wakes and its `sem_wait` takes the count back to 0",
+        "consumer: `pthread_mutex_lock(&lock);` takes the lock",
+        "consumer: `v = buf[tail];` and the line that moves `tail`: the value is in its own local variable",
+        "consumer: `pthread_mutex_unlock(&lock);` gives the lock back",
+        "consumer: `printf` prints the copy, then `return NULL;` ends the thread",
+        "main: `pthread_join(tid, NULL);` returns, because the consumer thread has ended",
+      ],
+      hints: [
+        "Two threads take turns. Start with the line that creates the second thread, and end with the line that waits for it to finish.",
+        "The consumer cannot get past `sem_wait` until main has posted. main posts only after it has stored the value and unlocked.",
+        "create, consumer sleeps in sem_wait, main: lock, store, unlock, post. Consumer: lock, copy, unlock, print and return. Last: join returns.",
+      ],
+      takeaway: "Same pattern as on the microcontroller: a lock around the few lines that touch the buffer, a counter that says data is waiting, and the slow work outside the lock. On Linux the waiting thread sleeps instead of polling.",
+    },
+    {
       id: "thr-realtime",
       kind: "quiz",
       title: "Real time or not",
@@ -1056,7 +1064,7 @@ The two talk over a serial line. When the Pi is late, the F28379D keeps driving 
           options: [
             "A race condition in your code",
             "Jitter: the scheduler ran something else when your thread was due",
-            "A deadlock",
+            "A lock that was never given back",
             "The Pi's clock is wrong",
           ],
           answer: 1,
@@ -1093,6 +1101,105 @@ The two talk over a serial line. When the Pi is late, the F28379D keeps driving 
       ],
       hints: ["Ask of each job: what happens if it runs 20 ms late, once?", "Latency is the delay. Jitter is how much the delay varies."],
       takeaway: "Hard deadlines go to the microcontroller, heavy and tolerant work goes to Linux. Real time means a guaranteed worst case, not a good average.",
+    },
+    {
+      id: "thr-pi-map",
+      kind: "quiz",
+      title: "Same ideas, two machines",
+      goal: "Match each tool for threads on the Pi with what you already built from interrupts on the F28379D.",
+      refs: [{ course: "L13" }, { trm: "3.4.3" }],
+      brief: `
+The code in this level runs on the **Raspberry Pi, not in the game**. You have already written the microcontroller side of every line of it. This level puts the two side by side.
+
+## The pairs
+- **Two threads** that share global variables. On the chip: **main() and an interrupt function** that share global variables.
+- **A mutex**: \`pthread_mutex_lock(&lock);\` ... \`pthread_mutex_unlock(&lock);\`. On the chip: \`DINT;\` ... \`EINT;\`. Both mark a critical section.
+- **A semaphore**: \`sem_post\` adds 1, \`sem_wait\` takes 1. On the chip: the counter \`sem\` that the interrupt raises with \`sem++\` and main lowers in \`sem_trywait()\`.
+- **A flag** such as \`UARTPrint = 1;\` is a semaphore that cannot count past 1. It is a queue with room for one message: a second message that arrives before main has looked is lost.
+- **A ring buffer** is that queue with room for more, on both machines.
+
+## Three differences
+1. A mutex keeps out only the threads that ask for **the same mutex**. \`DINT;\` keeps out **every** interrupt. That is why a critical section on the chip must be so short.
+2. An interrupt function is never interrupted by main. So only main needs \`DINT;\` and \`EINT;\`. Two threads can pause each other in both directions, so **both** threads must take the lock.
+3. A thread that waits can **sleep**: \`sem_wait\` blocks, and Linux runs other threads meanwhile. main on the chip has nobody to hand the processor to, so it **polls**: it asks again on every pass of \`while(1)\`.
+
+## One rule on both
+Every way out of a critical section must unlock. A \`return\` between \`DINT;\` and \`EINT;\` stops all interrupts. A \`return\` between lock and unlock stops every thread that needs that mutex.
+`,
+      questions: [
+        {
+          prompt: "On the Pi a thread writes `pthread_mutex_lock(&lock);` before it changes shared data and `pthread_mutex_unlock(&lock);` after. What did you write on the F28379D for the same purpose?",
+          options: [
+            "`EALLOW;` before and `EDIS;` after",
+            "`DINT;` before and `EINT;` after",
+            "`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;` after",
+            "Nothing: a microcontroller has no shared data",
+          ],
+          answer: 1,
+          why: "DINT closes the last gate for interrupts, so main cannot be interrupted in the middle of the change. EINT opens it again. EALLOW and EDIS unlock protected registers. They do not stop interrupts.",
+        },
+        {
+          prompt: "The interrupt sets `UARTPrint = 1;` and main prints when it sees the flag. Seen as a tool for threads, what is this flag?",
+          options: [
+            "A mutex",
+            "A semaphore that can only count to 1: a queue of one",
+            "A ring buffer with 8 slots",
+            "A second thread",
+          ],
+          answer: 1,
+          why: "The flag says \"one job is waiting\" and cannot say \"three are waiting\". If the interrupt sets it three times before main looks, main does one job. A counting semaphore or a ring buffer keeps all three.",
+        },
+        {
+          prompt: "In your ring buffer, `buf_get` in main used `DINT;` and `EINT;`, and `buf_put` in the interrupt used neither. In the pthread version, which function takes the mutex?",
+          options: [
+            "Only the consumer, as on the chip",
+            "Only the producer",
+            "Both: either thread can be paused in the middle while the other runs",
+            "Neither: a semaphore is enough",
+          ],
+          answer: 2,
+          why: "On the chip the interrupt function cannot be interrupted by main, so it is safe without a lock. Threads have no such order. Linux can pause the producer between two lines and run the consumer, so both sides lock.",
+        },
+        {
+          prompt: "A thread on the Pi calls `sem_wait(&items);` while the count is 0. main on the F28379D calls your `sem_trywait()` while `sem` is 0. What happens in each case?",
+          options: [
+            "Both return 0 at once",
+            "Both stop until a post arrives",
+            "The thread sleeps until a post arrives. `sem_trywait()` returns 0 at once, and main asks again on its next pass",
+            "The thread ends. main restarts",
+          ],
+          answer: 2,
+          why: "A blocked thread costs nothing: Linux runs other threads until the post. main on the chip must not stop, because nothing else would run its loop, so it polls.",
+        },
+        {
+          prompt: "A thread holds a mutex for 5 ms while it prints. main on the F28379D sits between `DINT;` and `EINT;` for 5 ms while it prints. Which is worse, and why?",
+          options: [
+            "The mutex: it stops all other threads",
+            "The DINT: it delays every interrupt on the chip by up to 5 ms, including the 1 ms control loop. The mutex delays only threads that ask for that same mutex",
+            "They are the same",
+            "Neither delays anything",
+          ],
+          answer: 1,
+          why: "DINT is one lock for everything. Five timer ticks of the control loop would come late or be merged into one. Both are bad style: copy inside the critical section, print outside it.",
+        },
+        {
+          prompt: "`buf_get` returned early without `EINT;` and the interrupt never ran again. What is the same mistake in a pthread program?",
+          options: [
+            "Calling `pthread_join` twice",
+            "A `return` between `pthread_mutex_lock` and `pthread_mutex_unlock`: the mutex stays locked, and every thread that asks for it waits forever",
+            "Forgetting `sem_init`",
+            "Using a global variable",
+          ],
+          answer: 1,
+          why: "A lock that is never given back blocks everyone who needs it. On both machines, follow every path out of the critical section, the early returns too, and check that each one unlocks.",
+        },
+      ],
+      hints: [
+        "Ask of each tool: does it keep others out, or does it say that something is waiting?",
+        "Keeping others out: mutex and DINT / EINT. Saying that something waits: semaphore, counter, flag, buffer.",
+        "The differences: DINT stops everything and a mutex only its own users. An interrupt function is safe from main, a thread is safe from nobody. A thread can sleep, main must poll.",
+      ],
+      takeaway: "Mutex is to threads what DINT / EINT is to main and an interrupt. A flag is a semaphore that counts to 1, a ring buffer is a longer queue. What you learned on the chip carries over to the Pi.",
     },
     {
       id: "thr-logger",
@@ -1195,6 +1302,344 @@ uint16_t count = 0;`,
         "Interrupt: `if (produced < N_SAMPLES) { produced++; if (buf_put(read_sensor()) == 0) dropped++; }` main: `if (buf_get(&v)) { sum += v; logged++; if ((logged % 10) == 0) { serial_printf(...); slow_work(30000); } }`",
       ],
       takeaway: "Sample in the interrupt at a steady rate, do the slow work in main, and put a buffer with a short critical section between them. Most embedded data paths look like this.",
+    },
+    {
+      id: "thr-deadlock",
+      kind: "quiz",
+      tier: "practice",
+      title: "Deadlock",
+      goal: "Recognise a deadlock from two locks, and learn the rule that prevents it.",
+      refs: [{ course: "L13" }],
+      brief: `
+Locks fix races and bring a new problem. This one belongs to the Raspberry Pi, so there is nothing to run in the game: you read and reason. On the Pi, threads use a mutex: \`pthread_mutex_lock(&m);\` takes the lock \`m\`, or waits until the thread that holds it gives it back.
+
+Thread A and thread B both need two mutexes, \`m1\` and \`m2\`, and take them in opposite orders:
+
+\`\`\`c
+// thread A                      // thread B
+pthread_mutex_lock(&m1);         pthread_mutex_lock(&m2);
+pthread_mutex_lock(&m2);         pthread_mutex_lock(&m1);
+\`\`\`
+
+Follow one unlucky schedule:
+
+1. A takes \`m1\`.
+2. The scheduler pauses A and runs B. B takes \`m2\`.
+3. B asks for \`m1\`. A holds it, so B waits.
+4. A runs again and asks for \`m2\`. B holds it, so A waits.
+
+Each waits for a lock that the other will only give back after it has continued. Neither ever continues. That is a **deadlock**. Nothing crashes and no error is printed. The two threads simply stop.
+
+Like a race, it depends on timing. If A happens to take both locks before B starts, all is well. So most runs work, and one run in a thousand hangs.
+
+## The cure
+Every thread takes the locks **in the same order**: always \`m1\` first, then \`m2\`. Then a thread that holds \`m2\` already holds \`m1\`, and nobody else can be holding \`m1\` and waiting for \`m2\`.
+
+## On the microcontroller
+There is only one "lock", \`DINT;\`, so this deadlock cannot happen. A relative of it can: code that leaves a critical section without \`EINT;\`. Then the interrupt waits forever. You repaired one in "The lock that was never opened".
+`,
+      questions: [
+        {
+          prompt: "Thread A locks `m1` then `m2`. Thread B locks `m2` then `m1`. What can happen?",
+          options: [
+            "Nothing bad: mutexes prevent all problems",
+            "A lost update",
+            "A deadlock: each thread holds one lock and waits forever for the other",
+            "The program runs twice as fast",
+          ],
+          answer: 2,
+          why: "If A gets m1 and B gets m2 before either takes its second lock, each waits for a lock the other will never release.",
+        },
+        {
+          prompt: "What is the usual way to make that deadlock impossible?",
+          options: [
+            "Use more locks",
+            "Have every thread take the locks in the same order",
+            "Unlock in a random order",
+            "Add a delay before locking",
+          ],
+          answer: 1,
+          why: "With one fixed order, the thread that holds m1 is the only one that can ask for m2. A delay only changes how often the hang shows up.",
+        },
+        {
+          prompt: "The program with the two opposite lock orders ran 500 times in testing without a hang. What does that tell you?",
+          options: [
+            "The program is correct",
+            "Very little: the deadlock needs one particular timing, which may not have occurred yet",
+            "Deadlocks only happen on the first run",
+            "The mutexes are not being used",
+          ],
+          answer: 1,
+          why: "The hang needs B to run exactly between A's two lock calls. That is rare, not impossible. Timing bugs are found by reasoning about the code, not by counting good runs.",
+        },
+      ],
+      hints: ["Draw who holds which lock and who waits for which.", "Which thread would have to continue for the other one's lock to be released?"],
+      takeaway: "A deadlock is two threads that each wait for a lock the other holds. Take locks in one fixed order, everywhere.",
+    },
+    {
+      id: "thr-pi-bug-return",
+      kind: "quiz",
+      tier: "practice",
+      title: "Find the bug: the program that hangs",
+      goal: "Read a pthread function and find the path that leaves its mutex locked.",
+      refs: [{ course: "L13" }],
+      brief: `
+This code runs on the **Raspberry Pi, not in the game**. You cannot press Run here. Read it the way you read your own code before a lab: follow each path with a finger.
+
+Two threads share a ring buffer. One calls \`buf_put\`, the other calls \`buf_get\` in a loop. The mutex \`lock\` guards \`buf\`, \`head\`, \`tail\` and \`count\`.
+
+\`\`\`c
+int buf_put(int v)
+{
+    pthread_mutex_lock(&lock);
+    if (count == SIZE) {
+        pthread_mutex_unlock(&lock);
+        return 0;
+    }
+    buf[head] = v;
+    head = (head + 1) % SIZE;
+    count++;
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+
+int buf_get(int *v)
+{
+    pthread_mutex_lock(&lock);
+    if (count == 0) {
+        return 0;
+    }
+    *v = buf[tail];
+    tail = (tail + 1) % SIZE;
+    count--;
+    pthread_mutex_unlock(&lock);
+    return 1;
+}
+\`\`\`
+
+The person who wrote it reports: "It prints nothing and never ends. No error message."
+
+## How to look
+A function with an early \`return\` has more than one way out. For each \`return\`, go backwards and ask: is the mutex unlocked on this path?
+
+A mutex does not know why it is locked. If the thread that locked it never unlocks it, it stays locked. The next \`pthread_mutex_lock\` on it waits forever, even when the same thread makes that call.
+`,
+      questions: [
+        {
+          prompt: "Which line is missing?",
+          options: [
+            "`pthread_mutex_lock(&lock);` before `count++;` in `buf_put`",
+            "`pthread_mutex_unlock(&lock);` before `return 0;` in `buf_get`",
+            "`pthread_mutex_unlock(&lock);` after `return 1;` in `buf_get`",
+            "Nothing is missing: `buf_put` should not unlock before its `return 0;`",
+          ],
+          answer: 1,
+          why: "The empty case of buf_get returns while it still holds the mutex. buf_put shows the right form: its early return unlocks first. A line after a return never runs.",
+        },
+        {
+          prompt: "The consumer thread starts first and calls `buf_get` while the buffer is empty. What happens next?",
+          options: [
+            "`buf_get` returns 0 and everything goes on normally",
+            "The program crashes with an error message",
+            "`buf_get` returns 0 with the mutex still locked. The producer's `buf_put` then waits forever in `pthread_mutex_lock`, and so does the consumer's own next `buf_get`",
+            "Linux notices the forgotten lock and opens it",
+          ],
+          answer: 2,
+          why: "Nobody is left who would unlock. Both threads sleep in pthread_mutex_lock, so nothing is printed and the program never ends. Linux does not repair it.",
+        },
+        {
+          prompt: "Someone suggests: \"Delete both mutex calls from `buf_get`. Then it cannot hang.\" Is that a fix?",
+          options: [
+            "Yes: a function that only reads needs no lock",
+            "Yes: `buf_put` still locks, and that is enough",
+            "No: `count--` and `tail` are changed here while the other thread changes `count`. Without the lock the race is back",
+            "No: a function must always lock twice",
+          ],
+          answer: 2,
+          why: "buf_get writes tail and count, and count is written by both threads. The hang is replaced by a count that is sometimes wrong, which is harder to find. Keep the lock and unlock on every path.",
+        },
+      ],
+      hints: [
+        "Count the `return` statements in each function, and count the unlock calls.",
+        "`buf_put` has two returns and two unlocks. `buf_get` has two returns and one unlock.",
+        "The empty case of `buf_get` needs `pthread_mutex_unlock(&lock);` on the line before `return 0;`. You repaired the same bug with `EINT;` in \"The lock that was never opened\".",
+      ],
+      takeaway: "Every path out of a critical section unlocks, the early returns too. A forgotten unlock does not crash: the program goes quiet.",
+    },
+    {
+      id: "thr-pi-bug-order",
+      kind: "quiz",
+      tier: "practice",
+      title: "Find the bug: works most of the time",
+      goal: "Read two pthread functions that take two mutexes, and find why the program sometimes freezes.",
+      refs: [{ course: "L13" }],
+      brief: `
+This code runs on the **Raspberry Pi, not in the game**. Read it and trace it by hand.
+
+A program keeps the robot's position in \`pose\` and the planned route in \`path\`. Each has its own mutex. Two threads run the two functions below, over and over. A struct is copied with one \`=\`, as in chapter C.
+
+\`\`\`c
+pthread_mutex_t pose_lock;   // guards pose
+pthread_mutex_t path_lock;   // guards path
+
+// thread 1: a new position arrived, trim the path
+void *tracker(void *arg)
+{
+    pthread_mutex_lock(&pose_lock);
+    pthread_mutex_lock(&path_lock);
+    pose = new_pose;
+    trim_path(&path, &pose);
+    pthread_mutex_unlock(&path_lock);
+    pthread_mutex_unlock(&pose_lock);
+    return NULL;
+}
+
+// thread 2: plan a new path from where the robot is
+void *planner(void *arg)
+{
+    pthread_mutex_lock(&path_lock);
+    pthread_mutex_lock(&pose_lock);
+    plan_path(&path, &pose);
+    pthread_mutex_unlock(&pose_lock);
+    pthread_mutex_unlock(&path_lock);
+    return NULL;
+}
+\`\`\`
+
+The report: "It ran all afternoon. Twice it froze: no crash, no message, the robot kept its last command."
+
+## How to look
+Every lock call has its unlock, and all shared data is used inside the locks. So look at the **order**. Write down, for each thread, which mutex it takes first and which second. Then play scheduler: pause thread 1 after its first lock call and let thread 2 run.
+
+Two threads that each hold one lock and wait forever for the other's lock are in a **deadlock**.
+`,
+      questions: [
+        {
+          prompt: "What is wrong with this program?",
+          options: [
+            "`tracker` forgets to unlock `path_lock`",
+            "`pose` is changed outside the lock",
+            "The two functions take the same two mutexes in opposite orders",
+            "A program may only have one mutex",
+          ],
+          answer: 2,
+          why: "tracker takes pose_lock then path_lock. planner takes path_lock then pose_lock. Every lock is unlocked and all data is protected. The order is the bug.",
+        },
+        {
+          prompt: "Which schedule freezes it?",
+          options: [
+            "`tracker` runs from start to end, then `planner` runs",
+            "`tracker` takes `pose_lock`, then `planner` takes `path_lock`, then each asks for the mutex the other holds",
+            "`planner` runs twice in a row",
+            "Both threads call `pthread_mutex_unlock` at the same instant",
+          ],
+          answer: 1,
+          why: "tracker holds pose_lock and waits for path_lock. planner holds path_lock and waits for pose_lock. Neither can reach its unlock calls. It needs a switch between the two lock calls of one thread, which is rare. That is why it ran all afternoon.",
+        },
+        {
+          prompt: "Which change makes the freeze impossible?",
+          options: [
+            "Add `usleep(1000);` between the two lock calls in `planner`",
+            "In `planner`, take `pose_lock` first and `path_lock` second, as `tracker` does",
+            "In `tracker`, unlock in the order `pose_lock`, then `path_lock`",
+            "Test it for a whole day and keep it if it does not freeze",
+          ],
+          answer: 1,
+          why: "With one order everywhere, a thread that holds path_lock already holds pose_lock, so nobody can hold path_lock and wait for pose_lock. A delay between the lock calls makes the freeze more likely, not less. The order of the unlock calls does not matter.",
+        },
+      ],
+      hints: [
+        "For each thread, write down the first and the second mutex it takes.",
+        "Pause `tracker` right after `pthread_mutex_lock(&pose_lock);`. Let `planner` run as far as it can. Who waits for whom?",
+        "Opposite lock orders. The cure is one fixed order in every function: `pose_lock` first, then `path_lock`.",
+      ],
+      takeaway: "When code takes two locks, the order is part of the design. One fixed order everywhere, and a deadlock between them cannot happen.",
+    },
+    {
+      id: "thr-pi-bug-read",
+      kind: "quiz",
+      tier: "practice",
+      title: "Find the bug: the lock around the wrong lines",
+      goal: "Read a pthread program that uses a mutex and still prints positions where the robot never was.",
+      refs: [{ course: "L13" }],
+      brief: `
+This code runs on the **Raspberry Pi, not in the game**. Read it and trace it by hand.
+
+One thread receives the robot's position 100 times per second and stores it. Another writes the position to a file, a **log**, ten times per second. \`usleep(100000)\` pauses a thread for 100000 microseconds, 0.1 s.
+
+\`\`\`c
+float pose_x;
+float pose_y;
+pthread_mutex_t lock;        // guards pose_x and pose_y
+
+// thread 1: a new position (x, y) arrived
+void store(float x, float y)
+{
+    pthread_mutex_lock(&lock);
+    pose_x = x;
+    pose_y = y;
+    pthread_mutex_unlock(&lock);
+}
+
+// thread 2: write the position to the log file
+void *logger(void *arg)
+{
+    float x;
+    float y;
+    while (1) {
+        x = pose_x;
+        y = pose_y;
+        pthread_mutex_lock(&lock);
+        fprintf(logfile, "%f %f\\n", x, y);
+        pthread_mutex_unlock(&lock);
+        usleep(100000);
+    }
+}
+\`\`\`
+
+\`fprintf\` is \`printf\` into a file. The report: "The robot drove along the line y = 2x. A few lines of the log are off that line."
+
+## How to look
+A mutex protects data only if **every** access to that data is between lock and unlock, in every thread. One thread that locks correctly does not make the other thread's unlocked reads safe.
+
+So for each line that touches \`pose_x\` or \`pose_y\`, ask: is the mutex held here? Then ask the opposite for the lines inside the lock: do they touch shared data at all?
+`,
+      questions: [
+        {
+          prompt: "What is wrong in `logger`?",
+          options: [
+            "It never unlocks the mutex",
+            "It copies `pose_x` and `pose_y` outside the lock, and holds the lock around `fprintf`, which touches no shared data",
+            "It should not use local variables",
+            "`usleep` must be inside the lock",
+          ],
+          answer: 1,
+          why: "The two reads of shared data are unprotected, and the lock sits around a line that only uses the thread's own x and y. The lock and unlock are there, but around the wrong lines.",
+        },
+        {
+          prompt: "`pose` is (10, 20). `logger` runs `x = pose_x;`. Linux now runs thread 1, which stores (11, 22). `logger` continues. Which line does it write to the log?",
+          options: ["10 20", "11 22", "10 22", "11 20"],
+          answer: 2,
+          why: "x was copied before the update and y after it. (10, 22) is not on the line y = 2x: the robot was never there. `store` held the mutex the whole time. It did not help, because `logger` did not ask for the mutex before it read.",
+        },
+        {
+          prompt: "Which loop body is correct?",
+          options: [
+            "lock, `x = pose_x;`, unlock, lock, `y = pose_y;`, unlock, `fprintf`",
+            "lock, `x = pose_x;`, `y = pose_y;`, unlock, then `fprintf`",
+            "lock, `x = pose_x;`, `y = pose_y;`, `fprintf`, `usleep`, unlock",
+            "`x = pose_x;`, `y = pose_y;`, `fprintf`, with no lock at all",
+          ],
+          answer: 1,
+          why: "Both copies in one critical section, so they come from the same moment. The slow work comes after the unlock, on the copies. Two separate locks let an update in between the copies. Holding the lock through fprintf and usleep makes thread 1 wait a tenth of a second for every position.",
+        },
+      ],
+      hints: [
+        "Mark every line that reads or writes `pose_x` or `pose_y`. Is each one between a lock and an unlock?",
+        "You met this bug on the microcontroller in \"Two values that belong together\": two copies, and an interrupt between them.",
+        "Move the lock call to before `x = pose_x;` and the unlock call to after `y = pose_y;`. The `fprintf` stays outside.",
+      ],
+      takeaway: "A lock protects data only if every reader and every writer takes it. Lock, copy what belongs together, unlock, then do the slow work on the copies.",
     },
     {
       id: "thr-lost-update",

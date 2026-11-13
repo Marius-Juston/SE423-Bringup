@@ -371,9 +371,12 @@ ${parser(state2(store, DONE))}
 
 // ---------- nearest obstacle ----------
 
+// Chosen so that the smallest of each group of five is its LAST point (115, 30)
+// in the first pose and its FIRST point (111, 26) in the second: a loop that
+// stops one point early or starts one late then gives a different answer.
 const NEAR_POSES: Pose[] = [
-  { room: 3, x: 5, y: 5, theta: 0 },
-  { room: 3, x: 6.1, y: 7.9, theta: -1.2 },
+  { room: 3, x: 3.7, y: 4.6, theta: 1.0 },
+  { room: 3, x: 3.7, y: 4.3, theta: -0.8 },
 ];
 const nearestOf = (p: Pose) => {
   const s = scan(p).map(stored);
@@ -381,6 +384,7 @@ const nearestOf = (p: Pose) => {
   return { index, ft: s[index] * FT_PER_MM, deg: pointDeg(index), right: minFt(s, 26, 30), front: minFt(s, 111, 115) };
 };
 const NEAR = NEAR_POSES.map(nearestOf);
+const side = (deg: number) => `${Math.abs(deg).toFixed(1)} degrees to the ${deg < 0 ? "right" : "left"}`;
 
 const nearestProgram = (pointDegBody: string, body: string) => `${FREQ}
 
@@ -522,6 +526,287 @@ const LED_OF: Record<number, string> = { 1: "LED1", 2: "LED2", 3: "LED3" };
 
 // Script for the chattering level: the front distance hovers around 1.5 ft.
 const CHATTER_FRONT = [4, 1.47, 1.53, 1.46, 1.52, 1.48, 3.5, 1.58];
+
+// ---------- designing a state machine: the patrol robot (table) ----------
+
+/** One pose per scan in the 10 ft box, facing the wall x = 10 from `d` feet. */
+const facing = (d: number): Partial<Pose> => ({ room: 0, x: 10 - d, y: 5, theta: 0 });
+const frontAt = (d: number) => minFt(scan({ room: 0, x: 10 - d, y: 5, theta: 0 }), 111, 115);
+
+const PATROL_DEFS = `#define CRUISE 1
+#define BACKUP 2
+#define SPIN   3
+
+#define FRONT_BLOCKED 1.5   // feet: closer than this in front means back away
+#define FRONT_CLEAR   3.0   // feet: the spin is finished when the front is this open
+#define BACKUP_SCANS  3     // scans spent backing up`;
+
+const PATROL_BODY = `    switch (state) {
+    case CRUISE:
+        vref = 1.0;
+        turn = 0;
+        if (front_ft < FRONT_BLOCKED) {
+            count = 0;
+            state = BACKUP;
+        }
+        break;
+    case BACKUP:
+        vref = -0.5;
+        turn = 0;
+        count++;
+        if (count >= BACKUP_SCANS) {
+            state = SPIN;
+        }
+        break;
+    case SPIN:
+        vref = 0;
+        turn = 1.0;
+        if (front_ft > FRONT_CLEAR) {
+            state = CRUISE;
+        }
+        break;
+    default:
+        state = CRUISE;
+        break;
+    }`;
+
+const patrolProgram = (body: string) => `${FREQ}
+
+${PATROL_DEFS}
+
+__interrupt void cpu_timer1_isr(void);
+
+int state = CRUISE;
+int count = 0;          // scans spent in BACKUP so far
+float front_ft = 0;     // smallest of points 111 to 115, feet
+float vref = 0;         // speed command, ft/s (negative: backwards)
+float turn = 0;         // turn command (positive: to the right)
+uint32_t numScans = 0;
+
+${MIN_FT_TB}
+
+// The state machine: called once for every new scan
+void patrol(void)
+{
+${body}
+}
+
+${tbMain(false)}
+
+// A new scan every 100 ms
+__interrupt void cpu_timer1_isr(void)
+{
+    front_ft = min_ft(111, 115);
+    patrol();
+    numScans++;
+}
+`;
+
+// Front distance of every scan, feet. Two rounds, so that a counter that is
+// not set back to 0 shows.
+const PATROL_FRONT = [5.0, 1.2, 1.3, 1.9, 2.5, 2.5, 1.8, 3.6, 3.6, 1.0, 1.4, 2.0, 2.6, 3.4, 3.4];
+const PATROL_NAMES: Record<number, string> = { 1: "CRUISE", 2: "BACKUP", 3: "SPIN" };
+const PATROL_RUN = (() => {
+  let state = 1;
+  let count = 0;
+  return PATROL_FRONT.map((d) => {
+    const front = frontAt(d);
+    const before = state;
+    let vref = 0;
+    let turn = 0;
+    if (state === 1) {
+      vref = 1.0;
+      if (front < 1.5) {
+        count = 0;
+        state = 2;
+      }
+    } else if (state === 2) {
+      vref = -0.5;
+      count++;
+      if (count >= 3) state = 3;
+    } else {
+      turn = 1.0;
+      if (front > 3.0) state = 1;
+    }
+    return { front, before, vref, turn, next: state };
+  });
+})();
+const patrolWhy = (r: (typeof PATROL_RUN)[number]) =>
+  r.before === r.next
+    ? `stays in ${PATROL_NAMES[r.next]}`
+    : `${PATROL_NAMES[r.before]} ends, ${PATROL_NAMES[r.next]} from the next scan`;
+const PATROL_HINT: Record<number, string> = {
+  0: "Still 0: patrol() does nothing yet. BACKUP or SPIN: a case is missing its break, so the code runs on into the next case.",
+  1: "front_ft < FRONT_BLOCKED in case CRUISE goes to BACKUP. SPIN: the break after case CRUISE is missing, so BACKUP's code ran on the same call.",
+  3: "BACKUP lasts BACKUP_SCANS scans whatever the front reads. Its only way out is the counter. Left one scan early or late: add 1 to count first, then test count >= BACKUP_SCANS.",
+  4: "Still BACKUP: count never reaches BACKUP_SCANS. Add 1 to it on every scan in BACKUP, and test with >=.",
+  6: "1.8 ft is more than FRONT_BLOCKED but the spin only ends above FRONT_CLEAR (3.0 ft). Two thresholds: hysteresis.",
+  7: "SPIN ends when front_ft > FRONT_CLEAR, and goes to CRUISE.",
+  10: "The second BACKUP ended at once: count still held 3 from the first one. Set count = 0 on the way into BACKUP, in case CRUISE.",
+  12: "The second BACKUP must also last exactly 3 scans. Set count = 0 where CRUISE hands over to BACKUP, not only where count is declared.",
+};
+
+// ---------- designing a state machine: the delivery robot (from a description) ----------
+
+const DELIVER_GIVEN = `float front_ft = 0;     // given: distance straight ahead, feet, new on every scan
+int pressed = 0;        // given: 1 while push button 1 is held down, new on every scan
+float vref = 0;         // you set this: speed command, ft/s (negative: backwards)
+int trips = 0;          // you set this: finished trips
+uint32_t numScans = 0;`;
+
+const DELIVER_DESIGN = `#define WAIT 1   // stopped at the bench until the button is pressed
+#define GO   2   // driving to the shelf
+#define LOAD 3   // stopped at the shelf for LOAD_SCANS scans
+#define BACK 4   // backing up to the bench
+
+#define SHELF_NEAR 1.0   // feet: this close to the shelf, stop
+#define BENCH_FAR  4.0   // feet: this far from the shelf, the robot is back
+#define LOAD_SCANS 4
+
+int state = WAIT;
+int count = 0;   // scans spent in LOAD so far`;
+
+const DELIVER_BODY = `    switch (state) {
+    case WAIT:
+        vref = 0;
+        if (pressed == 1) {
+            state = GO;
+        }
+        break;
+    case GO:
+        vref = 1.0;
+        if (front_ft < SHELF_NEAR) {
+            count = 0;
+            state = LOAD;
+        }
+        break;
+    case LOAD:
+        vref = 0;
+        count++;
+        if (count >= LOAD_SCANS) {
+            state = BACK;
+        }
+        break;
+    case BACK:
+        vref = -1.0;
+        if (front_ft > BENCH_FAR) {
+            trips++;
+            state = WAIT;
+        }
+        break;
+    default:
+        state = WAIT;
+        break;
+    }`;
+
+const deliverProgram = (design: string, body: string) => `${FREQ}
+
+__interrupt void cpu_timer1_isr(void);
+
+${DELIVER_GIVEN}
+
+${design}
+
+${MIN_FT_TB}
+
+// Called once for every new scan
+void deliver(void)
+{
+${body}
+}
+
+${tbMain(false).replace(
+  "    EALLOW;\n    PieVectTable.TIMER1_INT",
+  "    // Push button 1: input with pull-up, reads 0 while pressed\n    GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);\n    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);\n\n    EALLOW;\n    PieVectTable.TIMER1_INT",
+)}
+
+// A new scan every 100 ms
+__interrupt void cpu_timer1_isr(void)
+{
+    front_ft = min_ft(111, 115);
+    if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
+        pressed = 1;
+    } else {
+        pressed = 0;
+    }
+    deliver();
+    numScans++;
+}
+`;
+
+// One entry per scan: distance to the shelf, whether the button is down, and
+// what the scan shows. Two trips, with a press during loading that must be ignored.
+const DELIVER_SCRIPT: { d: number; press?: boolean; why: string }[] = [
+  { d: 5.0, why: "waiting at the bench" },
+  { d: 5.0, why: "still waiting" },
+  { d: 5.0, press: true, why: "the button is pressed on this scan: still stopped, driving from the next" },
+  { d: 3.0, why: "driving to the shelf" },
+  { d: 1.6, why: "still driving" },
+  { d: 0.9, why: "the shelf is closer than 1.0 ft on this scan: still driving, stopped from the next" },
+  { d: 0.9, why: "loading, scan 1 of 4" },
+  { d: 0.9, press: true, why: "loading, scan 2 of 4, and somebody presses the button: ignored" },
+  { d: 0.9, why: "loading, scan 3 of 4" },
+  { d: 0.9, why: "loading, scan 4 of 4" },
+  { d: 0.9, why: "backing up" },
+  { d: 2.5, why: "2.5 ft from the shelf: not back yet, still backing up" },
+  { d: 4.2, why: "more than 4.0 ft on this scan: still backing up, and the trip is counted" },
+  { d: 4.2, why: "waiting for the next press" },
+  { d: 4.2, press: true, why: "second press" },
+  { d: 3.0, why: "second trip: driving" },
+  { d: 0.8, why: "at the shelf again" },
+  { d: 0.8, why: "second loading, scan 1 of 4" },
+  { d: 0.8, why: "second loading, scan 2 of 4" },
+  { d: 0.8, why: "second loading, scan 3 of 4" },
+  { d: 0.8, why: "second loading, scan 4 of 4" },
+  { d: 0.8, why: "backing up again" },
+  { d: 4.5, why: "back at the bench: second trip counted" },
+  { d: 4.5, why: "waiting again" },
+];
+const DELIVER_RUN = (() => {
+  let state = 1;
+  let count = 0;
+  let trips = 0;
+  return DELIVER_SCRIPT.map((sc) => {
+    const front = frontAt(sc.d);
+    let vref = 0;
+    if (state === 1) {
+      if (sc.press) state = 2;
+    } else if (state === 2) {
+      vref = 1.0;
+      if (front < 1.0) {
+        count = 0;
+        state = 3;
+      }
+    } else if (state === 3) {
+      count++;
+      if (count >= 4) state = 4;
+    } else {
+      vref = -1.0;
+      if (front > 4.0) {
+        trips++;
+        state = 1;
+      }
+    }
+    return { vref, trips };
+  });
+})();
+const DELIVER_HINT: Record<number, string> = {
+  0: "Before any press the robot stands still: vref = 0 in the waiting state.",
+  2: "1.0 already: the new state's speed was set on the scan of the press. Each call sets vref for the state it starts in and only then decides the state for the next scan.",
+  3: "Still 0: either nothing leaves the waiting state (test pressed == 1 there and go to the driving state), or the driving case has no break; and the case after it set vref again on the same call.",
+  5: "0 already: the stop came one scan early. On the scan that sees the shelf, vref is still that of driving.",
+  6: "Still 1.0: nothing ends the driving state. Its way out is front_ft < 1.0.",
+  8: "The robot drove off from the shelf. Standing at the shelf and standing at the bench are two states: only the one at the bench listens to the button, and only a count of scans ends the one at the shelf.",
+  12: "0: the backing up ended too early. It ends above 4.0 ft, not above the 1.0 ft that stopped the robot.",
+  14: "1.0 already: the new state's speed was set on the scan of the press. Set vref for the state the call starts in, then decide the next state.",
+  7: "The robot drove off while loading. The button only matters in the waiting state: test pressed inside that state's case, not before the switch.",
+  10: "0: loading lasted too long. Count the scans in the loading state and leave when the count reaches 4. 1.0: after loading comes backing up, a state of its own with vref = -1.0.",
+  11: "Backing up ends above 4.0 ft, not as soon as the shelf is further than the 1.0 ft that stopped the robot.",
+  13: "Still -1.0: backing up never ends. Its way out is front_ft > 4.0, back to waiting.",
+  15: "The second press did nothing: after a trip the machine must be back in the waiting state.",
+  20: "-1.0 here: the second loading was cut short, because the scan counter still held 4 from the first trip. Set it to 0 on the way into the loading state.",
+  21: "Still 0: the second loading never ends. Set the scan counter to 0 on the way into the loading state and test it with >=.",
+};
 
 // ---------- the course's two-state wall follower ----------
 
@@ -721,8 +1006,44 @@ const WORLD_POSES: Pose[] = [
   { room: 2, x: -3, y: 1, theta: -0.4, offset: SENSOR_OFFSET },
 ];
 const WORLD_N = WORLD_POSES.map((p) => scan(p).filter((v) => v >= 20).length);
+/** World coordinates of point i of the scan taken at pose p, with the formulas of the level. */
+const worldPoint = (p: Pose, i: number): [number, number] => {
+  const d = ft(scan(p)[i]);
+  const alpha = (pointDeg(i) * Math.PI) / 180;
+  const xr = SENSOR_OFFSET + d * Math.cos(alpha);
+  const yr = d * Math.sin(alpha);
+  return [p.x + xr * Math.cos(p.theta) - yr * Math.sin(p.theta), p.y + xr * Math.sin(p.theta) + yr * Math.cos(p.theta)];
+};
+// The tests also read one point of the wall. A fit to a wall that lies along
+// the x axis cannot see an error in ptx[], so the point itself is checked: the
+// one that a wrong sign in the x line moves furthest, in both poses.
+const WORLD_MARK = (() => {
+  const scans = WORLD_POSES.map((p) => scan(p));
+  let best = -1;
+  let bestShift = 0;
+  for (let i = 0; i < 228; i++) {
+    if (scans.some((sc) => sc[i] < 20)) continue;
+    const shift = Math.min(...WORLD_POSES.map((p, k) => Math.abs(2 * ft(scans[k][i]) * Math.sin((pointDeg(i) * Math.PI) / 180) * Math.sin(p.theta))));
+    if (shift > bestShift) {
+      best = i;
+      bestShift = shift;
+    }
+  }
+  if (bestShift < 0.5) throw new Error("no point of the wall separates a right from a wrong transform");
+  return best;
+})();
+const WORLD_MARKS = WORLD_POSES.map((p) => worldPoint(p, WORLD_MARK));
 
-const worldProgram = (toWorld: string, fit: string) => `${FREQ}
+const WORLD_IN_ISR = `    process_scan();`;
+const WORLD_FLAG = `    newScan = 1;`;
+const WORLD_LOOP = `    while (1) {
+        if (newScan == 1) {
+            newScan = 0;
+            process_scan();
+        }
+    }`;
+
+const worldProgram = (toWorld: string, fit: string, isr = WORLD_IN_ISR, loop = "    while (1) {}") => `${FREQ}
 
 #define LADAR_OFFSET 0.29167   // the sensor is 3.5 inches ahead of the robot's centre, feet
 #define NO_ECHO 18.0           // readings above this are "nothing there"
@@ -741,6 +1062,9 @@ float wall_m = 0;      // the wall in world coordinates: y = wall_m * x + wall_c
 float wall_c = 0;
 float wall_dist = 0;   // shortest distance from the robot's centre to the wall, feet
 float wall_angle = 0;  // direction of the wall relative to the robot's heading, radians
+float mark_x = 0;      // world coordinates of point ${WORLD_MARK}, read by the tests
+float mark_y = 0;
+uint16_t newScan = 0;  // flag: 1 when dist[] holds a scan that is not worked on yet
 uint32_t numScans = 0;
 
 // World coordinates of every point of the scan, into ptx[] and pty[]
@@ -755,7 +1079,17 @@ void fit_wall(void)
 ${fit}
 }
 
-${tbMain(false)}
+// The work of one scan. Slow: hundreds of calls of sin() and cos().
+void process_scan(void)
+{
+    to_world();
+    fit_wall();
+    mark_x = ptx[${WORLD_MARK}];
+    mark_y = pty[${WORLD_MARK}];
+    numScans++;
+}
+
+${tbMain(false).replace("    while (1) {}", loop)}
 
 // A new scan every 100 ms, with the pose the robot had when it was taken
 __interrupt void cpu_timer1_isr(void)
@@ -767,9 +1101,7 @@ __interrupt void cpu_timer1_isr(void)
     robot_x = tb_pose_x();
     robot_y = tb_pose_y();
     robot_theta = tb_pose_theta();
-    to_world();
-    fit_wall();
-    numScans++;
+${isr}
 }
 `;
 
@@ -1574,6 +1906,172 @@ ${SHOW}`,
       takeaway: "One threshold plus a noisy reading gives chattering. Two thresholds with a gap between them (hysteresis) give one clean transition each way.",
     },
     {
+      id: "sens-fsm-design",
+      kind: "quiz",
+      title: "From words to a state diagram",
+      goal: "Turn a sentence about what a robot should do into states, arrows and a table.",
+      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      brief: `
+So far the states were handed to you. On the robot you start with a sentence about what it should do. This level turns such a sentence into a **state diagram**: one circle per state and one arrow per transition, each arrow labelled with its condition. The next level turns the diagram into C.
+
+## The behaviour
+A patrol robot drives straight ahead at 1.0 ft/s. When something is closer than 1.5 ft in front, it backs up at 0.5 ft/s for 3 scans. Then it turns right on the spot until the front is more than 3.0 ft open, and drives on.
+
+Its only sensor reading is \`front_ft\`, new on every scan.
+
+## The recipe
+1. **List the actions.** Each different thing the robot does is a state. Here: driving ahead, backing up, turning. Call them CRUISE, BACKUP and SPIN.
+2. **For each state, ask what ends it.** That is its arrow out. The condition is a sensor reading or an amount of time, and it must be something the program can measure.
+3. **Ask what a state must remember.** "For 3 scans" needs a **counter**: a variable set to 0 on the arrow into the state and increased by 1 on every scan spent in it.
+4. **Pick the start state**: what the robot does at power-up.
+5. **Check the diagram.** Every state has a way out. The threshold that starts something is not the one that ends it (hysteresis, as in the last level).
+
+## The table
+Written as a list, the diagram is a **transition table**: one row per arrow.
+
+- from CRUISE, when \`front_ft < 1.5\`, to BACKUP (set the counter to 0)
+- from BACKUP, when the counter reaches 3, to SPIN
+- from SPIN, when \`front_ft > 3.0\`, to CRUISE
+
+A state that is in no row's "from" column would be a trap: the robot could never leave it.
+`,
+      questions: [
+        {
+          prompt: "How many states does the patrol robot need?",
+          options: ["1: it is one behaviour", "2: moving and turning", "3: one for each different thing it does", "One for each possible value of front_ft"],
+          answer: 2,
+          why: "Driving ahead, backing up and turning are three different actions, each ended by a different condition. A reading is not a state: it is what the arrows test.",
+        },
+        {
+          prompt: "In the diagram, what is \"something is closer than 1.5 ft in front\"?",
+          options: ["A state", "The action of CRUISE", "The condition on the arrow from CRUISE to BACKUP", "The start state"],
+          answer: 2,
+          why: "It is what ends driving ahead, so it labels the arrow that leaves CRUISE.",
+        },
+        {
+          prompt: "Which arrow leaves BACKUP?",
+          options: [
+            "front_ft > 1.5, to CRUISE",
+            "the counter reaches 3, to SPIN",
+            "front_ft > 3.0, to CRUISE",
+            "front_ft < 1.5, to SPIN",
+          ],
+          answer: 1,
+          why: "The sentence says \"for 3 scans\", so time ends BACKUP, not a distance. And after backing up comes the turn, not driving on.",
+        },
+        {
+          prompt: "Where must the counter be set to 0?",
+          options: [
+            "Only where it is declared, at the top of the file",
+            "On every scan spent in BACKUP",
+            "On the arrow from CRUISE into BACKUP",
+            "On the arrow from SPIN to CRUISE, and nowhere else",
+          ],
+          answer: 2,
+          why: "Each stay in BACKUP must start counting from 0. Set only at the top, the counter still holds 3 the second time, and the second BACKUP ends after one scan.",
+        },
+        {
+          prompt: "The robot is in SPIN and the new scan gives front_ft = 2.2 ft. What happens?",
+          options: ["It goes to CRUISE: 2.2 is more than 1.5", "It stays in SPIN: the turn ends above 3.0 ft", "It goes to BACKUP", "It stops"],
+          answer: 1,
+          why: "SPIN has one arrow out, front_ft > 3.0. Between 1.5 and 3.0 the robot keeps doing what it was doing: hysteresis.",
+        },
+        {
+          prompt: "A classmate labels the arrow from SPIN to CRUISE \"the robot has turned 90 degrees\". What is wrong with that for this robot?",
+          options: [
+            "Nothing: it is the same as front_ft > 3.0",
+            "An arrow may not carry a condition",
+            "The program has no reading that tells it how far the robot turned, so it can never test this",
+            "90 degrees is too much",
+          ],
+          answer: 2,
+          why: "A condition must be something the program can measure. This robot only has front_ft and the count of scans. (With a gyro or wheel encoders the label would be fine.)",
+        },
+      ],
+      hints: [
+        "Underline the verbs of the sentence (drives, backs up, turns): each is a state. Underline \"when\", \"until\" and \"for\": each is an arrow.",
+        "\"For 3 scans\" is time, so it needs the counter. \"Until the front is more than 3.0 ft open\" is a reading.",
+        "The table in the brief answers the arrow questions: CRUISE to BACKUP on front_ft < 1.5 (counter to 0), BACKUP to SPIN on the counter, SPIN to CRUISE on front_ft > 3.0.",
+      ],
+      takeaway: "Actions become states, \"when\", \"until\" and \"for\" become arrows, and anything a state must remember becomes a variable that is set on the arrow into it. Draw this before you type.",
+    },
+    {
+      id: "sens-fsm-table",
+      kind: "code",
+      mode: "write",
+      title: "From the table to a switch",
+      goal: "Write the patrol robot's state machine as a switch, straight from its transition table.",
+      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      brief: `
+A transition table turns into a \`switch\` almost line by line: **one \`case\` per state**. Inside a case, first the **action** of that state, then one \`if\` for **each row that leaves it**. Every case ends with \`break;\`.
+
+\`\`\`c
+switch (state) {
+case SPIN:
+    vref = 0;                        // action of SPIN
+    turn = 1.0;
+    if (front_ft > FRONT_CLEAR) {    // the row that leaves SPIN
+        state = CRUISE;
+    }
+    break;
+}
+\`\`\`
+
+## The table of the patrol robot
+Actions:
+
+- **CRUISE** (the start state): \`vref = 1.0\`, \`turn = 0\`
+- **BACKUP**: \`vref = -0.5\`, \`turn = 0\`, and add 1 to \`count\`
+- **SPIN**: \`vref = 0\`, \`turn = 1.0\` (positive: to the right)
+
+Transitions:
+
+- from CRUISE, when \`front_ft < FRONT_BLOCKED\`: set \`count = 0\`, go to BACKUP
+- from BACKUP, when \`count >= BACKUP_SCANS\`: go to SPIN
+- from SPIN, when \`front_ft > FRONT_CLEAR\`: go to CRUISE
+
+## Three rules
+- **Set every output in every state.** A state that does not set \`turn\` keeps the value of the state before it.
+- **Action first, then the test.** On the scan that makes a condition true, the commands are still those of the old state. The new state acts from the next scan.
+- **One state per call.** Without \`break;\` the code runs on into the next case and a second state acts on the same scan.
+
+Add a \`default:\` that sets \`state = CRUISE;\`. It catches a state variable that holds a value no case knows.
+
+## Your task
+Write the \`switch\` in \`patrol()\`. The names and the variables \`state\`, \`count\`, \`vref\` and \`turn\` exist. The tests put the robot in front of a wall of a 10 ft room, one distance per scan, through two rounds of backing up and turning.
+`,
+      kit: "robot",
+      durationMs: 60 + 100 * PATROL_FRONT.length,
+      stimuli: PATROL_FRONT.flatMap((d, i) => poseStimuli(i === 0 ? 0 : 50 + 100 * i, facing(d))),
+      starter: patrolProgram(`    // TODO: switch (state) with one case per state`),
+      solution: patrolProgram(PATROL_BODY),
+      checks: [
+        near("vref", 1.0, 0.001, 160, "Scan 1, CRUISE: vref is 1.0", "0: patrol() sets nothing yet. -0.5 or 0 with a switch in place: the break; at the end of case CRUISE is missing, so the next case ran on the same call and overwrote vref."),
+        ...PATROL_RUN.map((r, i) => ({
+          kind: "var" as const,
+          name: "state",
+          at: 160 + 100 * i,
+          equals: r.next,
+          label: `Scan ${i + 1}, front ${r.front.toFixed(2)} ft: ${patrolWhy(r)} (state ${r.next})`,
+          hint: PATROL_HINT[i],
+        })),
+        near("vref", 1.0, 0.001, 260, "Scan 2, the scan that sees the wall: vref is still 1.0", "-0.5: BACKUP already acted on this scan. Either the break after case CRUISE is missing, or the commands are set after the state changed. Action first, then the test."),
+        near("vref", -0.5, 0.001, 360, "Scan 3, BACKUP: vref is -0.5", "BACKUP drives backwards: vref = -0.5; in its case."),
+        near("vref", 0, 0.001, 660, "Scan 6, SPIN: vref is 0", "SPIN turns on the spot: vref = 0; in its case. -0.5 is left over from BACKUP."),
+        near("turn", 1.0, 0.001, 660, "Scan 6, SPIN: turn is 1.0, to the right", "SPIN sets turn = 1.0;"),
+        near("turn", 0, 0.001, 960, "Scan 9, CRUISE again: turn is back to 0", "1.0 is left over from SPIN: CRUISE never set turn. Set every output in every state."),
+        near("vref", 1.0, 0.001, 960, "Scan 9, CRUISE again: vref is 1.0"),
+        { kind: "source", mustMatch: "switch\\s*\\(\\s*state\\s*\\)", label: "The state machine is a switch on state" },
+      ],
+      watch: ["state", "count", "front_ft", "vref", "turn", "numScans"],
+      hints: [
+        "Three cases and a default. Each case: the action lines of its state, then one if for its row of the table, then break.",
+        "CRUISE's row does two things when it fires: `count = 0;` and `state = BACKUP;`. BACKUP's action includes `count++;` and its test is `count >= BACKUP_SCANS`.",
+        "`case CRUISE: vref = 1.0; turn = 0; if (front_ft < FRONT_BLOCKED) { count = 0; state = BACKUP; } break;` then `case BACKUP: vref = -0.5; turn = 0; count++; if (count >= BACKUP_SCANS) { state = SPIN; } break;` and the SPIN case of the brief.",
+      ],
+      takeaway: "One case per state, the action first, one if per arrow, a break at the end. Whatever a state must remember is set to its starting value on the arrow that enters it.",
+    },
+    {
       id: "sens-corridor",
       kind: "code",
       mode: "checkpoint",
@@ -1913,7 +2411,7 @@ for (i = 1; i < 228; i++) {
 }
 \`\`\`
 
-The robot is in a 10 ft square room with a box in it. The tests look at two poses.
+The robot is in a 10 ft square room with a box in it. The tests look at two poses, turned so that the closest of each group of five is once its last point and once its first. Count the ends of your loops: 111 **to** 115 is five points.
 `,
       kit: "robot",
       durationMs: 260,
@@ -1945,18 +2443,18 @@ The robot is in a 10 ft square room with a box in it. The tests look at two pose
     }`,
       ),
       checks: [
-        { kind: "var", name: "nearest_index", at: 160, equals: NEAR[0].index, label: `First pose: the nearest point is number ${NEAR[0].index} (a corner of the box)`, hint: "Search all 228 points, 0 to 227." },
+        { kind: "var", name: "nearest_index", at: 160, equals: NEAR[0].index, label: `First pose: the nearest point is number ${NEAR[0].index}`, hint: "Search all 228 points, 0 to 227." },
         near("nearest_ft", NEAR[0].ft, 0.005, 160, `First pose: it is ${NEAR[0].ft.toFixed(2)} ft away`),
-        near("nearest_deg", NEAR[0].deg, 0.05, 160, `First pose: it is ${NEAR[0].deg.toFixed(1)} degrees to the left`, "Angle of point i: (3*i + 44)*0.3515625 - 135."),
-        near("front_ft", NEAR[0].front, 0.005, 160, `First pose: ${NEAR[0].front.toFixed(2)} ft straight ahead`, "The smallest of dist[111] to dist[115]."),
-        near("right_ft", NEAR[0].right, 0.005, 160, `First pose: ${NEAR[0].right.toFixed(2)} ft to the right`, "The smallest of dist[26] to dist[30]."),
+        near("nearest_deg", NEAR[0].deg, 0.05, 160, `First pose: it is ${side(NEAR[0].deg)}`, "Angle of point i: (3*i + 44)*0.3515625 - 135."),
+        near("front_ft", NEAR[0].front, 0.005, 160, `First pose: ${NEAR[0].front.toFixed(2)} ft straight ahead (the closest of the five is point 115)`, "The smallest of dist[111] to dist[115], both ends included. A little too large: the loop stops at 114. Write i <= 115."),
+        near("right_ft", NEAR[0].right, 0.005, 160, `First pose: ${NEAR[0].right.toFixed(2)} ft to the right (the closest of the five is point 30)`, "The smallest of dist[26] to dist[30], both ends included. A little too large: the loop stops at 29. Write i <= 30."),
         { kind: "var", name: "nearest_index", equals: NEAR[1].index, label: `Second pose: the nearest point is number ${NEAR[1].index}` },
-        near("nearest_deg", NEAR[1].deg, 0.05, undefined, `Second pose: it is at ${NEAR[1].deg.toFixed(1)} degrees`),
-        near("front_ft", NEAR[1].front, 0.005, undefined, `Second pose: ${NEAR[1].front.toFixed(2)} ft straight ahead`),
-        near("right_ft", NEAR[1].right, 0.005, undefined, `Second pose: ${NEAR[1].right.toFixed(2)} ft to the right`),
+        near("nearest_deg", NEAR[1].deg, 0.05, undefined, `Second pose: it is ${side(NEAR[1].deg)}`),
+        near("front_ft", NEAR[1].front, 0.005, undefined, `Second pose: ${NEAR[1].front.toFixed(2)} ft straight ahead (the closest of the five is point 111)`, "A little too large: the loop starts at 112. The first point of the group is 111."),
+        near("right_ft", NEAR[1].right, 0.005, undefined, `Second pose: ${NEAR[1].right.toFixed(2)} ft to the right (the closest of the five is point 26)`, "A little too large: the loop starts at 27. The first point of the group is 26."),
       ],
       bonus: [
-        { kind: "isr-time", fn: "cpu_timer1_isr", maxUs: 60, label: "A scan is handled in under 60 us (copying it takes about 35 of them)", hint: "Search the 228 points once, compute the angle once after the loop, and loop over only five points for the front and the right." },
+        { kind: "isr-time", fn: "cpu_timer1_isr", maxUs: 60, label: "A scan is handled in under 60 us (copying it takes about 20 of them)", hint: "Search the 228 points once, compute the angle once after the loop, and loop over only five points for the front and the right." },
       ],
       watch: ["nearest_index", "nearest_ft", "nearest_deg", "front_ft", "right_ft"],
       hints: [
@@ -2048,6 +2546,67 @@ ${SHOW}`),
         "For the LEDs: `if (state == STRAIGHT) { GpioDataRegs.GPASET.bit.GPIO22 = 1; } else { GpioDataRegs.GPACLEAR.bit.GPIO22 = 1; }` and the same for GPIO94 (TURN_LEFT) and GPIO95 (FOLLOW) with GPCSET and GPCCLEAR.",
       ],
       takeaway: "A switch with one case per state keeps the transitions of each state in one place. Adding a state later means adding a case, not untangling nested ifs.",
+    },
+    {
+      id: "sens-fsm-scratch",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Your own state machine",
+      goal: "Design and write a state machine from a description alone: no states, no table and no names are given.",
+      refs: [{ course: "L14" }, { course: "HW3" }, { course: "HW4" }],
+      brief: `
+This time you get what the homeworks and the final project give you: a description. The states, their names, the variables and the \`switch\` are yours. Do "From words to a state diagram" and "From the table to a switch" first.
+
+## The behaviour
+A delivery robot stands at a bench and faces a shelf across the room.
+
+- It stands still until somebody presses push button 1.
+- Then it drives to the shelf at **1.0 ft/s**.
+- When the shelf is closer than **1.0 ft**, it stops and stands still for exactly **4 scans** while it is loaded.
+- Then it backs up at **-1.0 ft/s** until the shelf is more than **4.0 ft** away.
+- That ends one trip: add 1 to \`trips\`, stand still and wait for the next press.
+- A press at any other time is ignored.
+
+## What is given
+\`deliver()\` is called once per scan. Before each call the given code sets
+
+- \`front_ft\`: the distance to the shelf, in feet
+- \`pressed\`: 1 while the button is held down, otherwise 0
+
+You set \`vref\` on every call, and \`trips\`.
+
+## The rules of the tests
+The same as in the last level. Each call sets \`vref\` for the state it starts in, then decides the state for the next scan. So on the scan with the press \`vref\` is still 0, and on the scan that first sees the shelf closer than 1.0 ft it is still 1.0. Count a trip on the scan that ends the backing up.
+
+## Before you type
+Follow the recipe on paper: list the actions, ask what ends each, ask what must be remembered, pick the start state, write the table. Watch for this: the robot stands still twice, for two different reasons. Are those one state or two? Ask what ends each.
+
+Then write your \`#define\` names, your variables and the \`switch\` at the two TODO marks. The tests run two full trips.
+`,
+      kit: "robot",
+      durationMs: 60 + 100 * DELIVER_SCRIPT.length,
+      stimuli: [
+        ...DELIVER_SCRIPT.flatMap((sc, i) => poseStimuli(i === 0 ? 0 : 50 + 100 * i, facing(sc.d))),
+        ...DELIVER_SCRIPT.flatMap((sc, i) => (sc.press ? [{ at: 70 + 100 * i, press: "PB1" }, { at: 130 + 100 * i, release: "PB1" }] : [])),
+      ],
+      starter: deliverProgram(`// TODO: your states, your state variable and whatever else must be remembered`, `    // TODO: your state machine`),
+      solution: deliverProgram(DELIVER_DESIGN, DELIVER_BODY),
+      checks: [
+        ...DELIVER_RUN.map((r, i) =>
+          near("vref", r.vref, 0.001, 160 + 100 * i, `Scan ${i + 1}, ${DELIVER_SCRIPT[i].why}: vref is ${r.vref === 0 ? "0" : r.vref.toFixed(1)}`, DELIVER_HINT[i]),
+        ),
+        { kind: "var", name: "trips", at: 1260, equals: 0, label: "Scan 12, still backing up: no trip counted yet", hint: "Count a trip once, on the arrow that ends the backing up, not when it starts and not on every scan. 1 already: the backing up ended at 2.5 ft; it ends above 4.0 ft." },
+        { kind: "var", name: "trips", at: 1460, equals: 1, label: "After the first trip, while waiting: trips is 1", hint: "0: add 1 to trips where backing up ends. More than 1: it is added on every scan of a state. Put trips++ inside the if that leaves the state." },
+        { kind: "var", name: "trips", equals: 2, label: "At the end: two trips", hint: "Count each trip exactly once, on the scan that ends the backing up." },
+      ],
+      watch: ["front_ft", "pressed", "vref", "trips", "numScans"],
+      hints: [
+        "Four states: waiting, driving, loading, backing up. Waiting and loading both stand still, but a press ends one and a count of scans ends the other, so they are two states.",
+        "The table: waiting to driving when pressed == 1. Driving to loading when front_ft < 1.0 (counter to 0). Loading to backing up when the counter reaches 4. Backing up to waiting when front_ft > 4.0 (trips++).",
+        "`case LOAD: vref = 0; count++; if (count >= 4) { state = BACK; } break;` and `case BACK: vref = -1.0; if (front_ft > 4.0) { trips++; state = WAIT; } break;`. The other two cases have the same shape. Declare `int state = WAIT;` and `int count = 0;` above the function.",
+      ],
+      takeaway: "Two states can have the same action and still be different states: what ends them is different. Reading an input inside the case of one state is how a state machine ignores that input everywhere else.",
     },
     {
       id: "sens-errcodes",
@@ -2231,7 +2790,10 @@ c = (Sy - m*Sx) / n;
 - \`wall_angle\`: \`atan(m) - robot_theta\`. \`atan\` turns a slope into the angle of the line, in radians. A wall parallel to the robot's path gives 0
 
 ## The test
-The robot is looked at in two different poses. If your transform is right, \`wall_m\` and \`wall_c\` come out the same both times, because the wall did not move.
+The robot is looked at in two different poses. If your transform is right, \`wall_m\` and \`wall_c\` come out the same both times, because the wall did not move. The tests also read where one point of the wall lands (\`mark_x\`, \`mark_y\`, copied for you).
+
+## Where the work runs (the star)
+The given \`process_scan()\` calls your two functions. Together they call \`sin\` and \`cos\` over 900 times, and each call takes about 1 us: 1.5 ms in all. The starter calls \`process_scan()\` from the timer interrupt. The answers are right, but for 1.5 ms no other interrupt runs, and on the robot the wheel controller must run every 1 ms. An interrupt should only do what cannot wait. So, as with printing in chapters 5 and 6: in the interrupt only set \`newScan = 1;\`, and in \`while (1)\` call \`process_scan()\` when the flag is set, after setting it back to 0.
 `,
       kit: "robot",
       durationMs: 260,
@@ -2274,26 +2836,42 @@ The robot is looked at in two different poses. If your transform is right, \`wal
     wall_c = (sy - wall_m*sx) / npts;
     wall_dist = fabs(wall_m*robot_x - robot_y + wall_c) / sqrt(wall_m*wall_m + 1.0);
     wall_angle = atan(wall_m) - robot_theta;`,
+        WORLD_FLAG,
+        WORLD_LOOP,
       ),
       checks: [
+        near("mark_x", WORLD_MARKS[0][0], 0.03, 160, `First pose: point ${WORLD_MARK} is at x = ${WORLD_MARKS[0][0].toFixed(2)} ft in the world`, "0: to_world() does not fill ptx[] yet, or process_scan() is never called. Off by a foot or more: a sign in the ptx line. It is robot_x + xr*cos(robot_theta) - yr*sin(robot_theta): the minus belongs to the yr term of the x line. Off by a few tenths: LADAR_OFFSET is missing from xr."),
+        near("mark_y", WORLD_MARKS[0][1], 0.03, 160, `First pose: point ${WORLD_MARK} is on the wall, at y = ${WORLD_MARKS[0][1].toFixed(2)} ft`, "The pty line is robot_y + xr*sin(robot_theta) + yr*cos(robot_theta): both terms are added. Off by less than a tenth: LADAR_OFFSET is missing from xr."),
         { kind: "var", name: "npts", at: 160, equals: WORLD_N[0], label: `First pose: ${WORLD_N[0]} points have an echo`, hint: "Use only the points with dist[i] < NO_ECHO." },
         near("wall_m", 0, 0.004, 160, "First pose: the wall runs along the x axis (slope 0)", "A slope far from 0 means the points are turned wrongly. Check the signs in step 2 (minus in the x line only), and that alpha is in radians: multiply the degrees by 0.01745329."),
         near("wall_c", -2, 0.02, 160, "First pose: the wall is the line y = -2", "Off by a few hundredths: the sensor is not at the robot's centre. Add LADAR_OFFSET along the robot's heading."),
         near("wall_dist", 2.5, 0.02, 160, "First pose: the robot's centre is 2.5 ft from the wall", "fabs(wall_m*robot_x - robot_y + wall_c) / sqrt(wall_m*wall_m + 1.0), computed after wall_m and wall_c."),
         near("wall_angle", -0.3, 0.005, 160, "First pose: the wall is at -0.3 rad relative to the heading", "atan(wall_m) - robot_theta. The wall lies along the x axis and the robot's heading is 0.3 rad."),
+        near("mark_x", WORLD_MARKS[1][0], 0.03, undefined, `Second pose: point ${WORLD_MARK} is at x = ${WORLD_MARKS[1][0].toFixed(2)} ft in the world`, "Right in the first pose and wrong here: the heading has the other sign now. Check the signs of the two sin(robot_theta) terms."),
+        near("mark_y", WORLD_MARKS[1][1], 0.03, undefined, `Second pose: point ${WORLD_MARK} is on the wall, at y = ${WORLD_MARKS[1][1].toFixed(2)} ft`),
         { kind: "var", name: "npts", equals: WORLD_N[1], label: `Second pose: ${WORLD_N[1]} points have an echo` },
         near("wall_m", 0, 0.004, undefined, "Second pose: still slope 0"),
         near("wall_c", -2, 0.02, undefined, "Second pose: still y = -2"),
         near("wall_dist", 3, 0.02, undefined, "Second pose: 3 ft from the wall"),
         near("wall_angle", 0.4, 0.005, undefined, "Second pose: the wall is at +0.4 rad relative to the heading"),
+        { kind: "var", name: "numScans", equals: 2, label: "Each of the two scans was worked on once", hint: "A huge number: newScan is never set back to 0, so main works on the same scan again and again. 0 or 1: process_scan() is not called for every scan." },
       ],
-      watch: ["npts", "wall_m", "wall_c", "wall_dist", "wall_angle", "robot_theta"],
+      bonus: [
+        {
+          kind: "isr-time",
+          fn: "cpu_timer1_isr",
+          maxUs: 100,
+          label: "The timer interrupt never runs longer than 100 us: the scan is worked on in main, behind a flag",
+          hint: "About 1500 us: process_scan() still runs inside the interrupt. There, only set newScan = 1. In while (1): if (newScan == 1) { newScan = 0; process_scan(); }",
+        },
+      ],
+      watch: ["npts", "wall_m", "wall_c", "wall_dist", "wall_angle", "mark_x", "mark_y", "robot_theta"],
       hints: [
         "to_world: one loop over i from 0 to 227. Inside: `alpha = ((3*i + 44)*0.3515625 - 135.0)*0.01745329;` then the two lines of step 1 and the two of step 2.",
         "fit_wall: set the four sums and npts to 0, then loop: `if (dist[i] < NO_ECHO) { sx += ptx[i]; sy += pty[i]; sxx += ptx[i]*ptx[i]; sxy += ptx[i]*pty[i]; npts++; }`.",
         "After the loop: `wall_m = (npts*sxy - sx*sy) / (npts*sxx - sx*sx); wall_c = (sy - wall_m*sx) / npts;` then the two expressions of the brief for wall_dist and wall_angle, with wall_m and wall_c.",
       ],
-      takeaway: "Turn by the heading, then shift by the position: the lectures call this pair a homogeneous transform. In world coordinates, fixed things stay fixed when the robot moves, and that is what makes a map possible.",
+      takeaway: "Turn by the heading, then shift by the position: the lectures call this pair a homogeneous transform. In world coordinates, fixed things stay fixed when the robot moves, and that is what makes a map possible. Long maths belongs in main behind a flag: the interrupt only hands the data over.",
     },
     {
       id: "sens-door",

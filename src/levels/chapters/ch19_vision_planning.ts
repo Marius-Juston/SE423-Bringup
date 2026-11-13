@@ -768,6 +768,372 @@ int steps = -1;         // steps of the path A* returned from (5, 0) to (0, 6)
 int expandedFirst = -1; // cells it expanded on the way
 int steps2 = -1;        // steps of a second path`;
 
+// ---- A* from scratch: the open list, the cost update, the whole search
+const OPEN_LIST_GLOBALS = `int openList[NCELLS];   // the open list: cells waiting to be expanded, in the order they were added
+int openCount = 0;      // how many cells are waiting
+int f[NCELLS];          // f = g + h of each cell`;
+
+const OPEN_PUSH_OK = `    openList[openCount] = cell;
+    openCount++;`;
+
+const OPEN_POP_OK = `    int i, cell;
+    int best = 0;
+
+    if (openCount == 0) {
+        return -1;
+    }
+    for (i = 1; i < openCount; i++) {
+        if (f[openList[i]] <= f[openList[best]]) {
+            best = i;                   // <= : of two equal f, the later one wins
+        }
+    }
+    cell = openList[best];
+    for (i = best; i < openCount - 1; i++) {
+        openList[i] = openList[i + 1];  // close the gap, keep the order
+    }
+    openCount--;
+    return cell;`;
+
+const openListProgram = (o: { push: string; pop: string }) => `#define NCELLS 42
+
+${OPEN_LIST_GLOBALS}
+
+int popEmpty = -2;      // pop from an empty list
+int popTie = -2;        // cells 5 and 6 wait, both with f = 7
+int popLeft = -2;       // the one that is left
+int countEmpty = -2;    // openCount after both were taken
+int popMin = -2;        // five cells wait: the smallest f
+int countAfter = -2;    // openCount after that
+int popSecond = -2;     // then the next one: a tie again
+int popThird = -2;
+int popFourth = -2;
+
+// Adds a cell at the end of the open list
+void openPush(int cell)
+{
+${o.push}
+}
+
+// Takes the cell with the smallest f out of the open list and returns it.
+// Equal f: the cell that was added later. Empty list: returns -1.
+int openPopMin(void)
+{
+${o.pop}
+}
+
+void main(void)
+{
+    popEmpty = openPopMin();
+
+    f[5] = 7;
+    f[6] = 7;
+    openPush(5);
+    openPush(6);
+    popTie = openPopMin();
+    popLeft = openPopMin();
+    countEmpty = openCount;
+
+    f[10] = 9;
+    f[28] = 6;
+    f[30] = 8;
+    f[25] = 12;
+    f[14] = 8;
+    openPush(10);
+    openPush(28);
+    openPush(30);
+    openPush(25);
+    openPush(14);
+    popMin = openPopMin();
+    countAfter = openCount;
+    popSecond = openPopMin();
+    popThird = openPopMin();
+    popFourth = openPopMin();
+    while (1) {}
+}
+`;
+
+const RELAX_OK = `    int newG;
+
+    if (state[next] == 2) {
+        return 0;                       // closed: its best path is known
+    }
+    newG = g[cur] + stepCost(next / COLS, next % COLS);
+    if (state[next] == 1 && newG >= g[next]) {
+        return 0;                       // already reached at this cost or less
+    }
+    g[next] = newG;
+    parent[next] = cur;
+    f[next] = newG + heuristic(next / COLS, next % COLS, goalRow, goalCol);
+    if (state[next] == 0) {
+        state[next] = 1;
+        openPush(next);
+    }
+    return 1;`;
+
+const relaxProgram = (body: string) => `${GRID_DEFS(MUD)}
+
+int g[NCELLS];          // cost of the best path found so far from the start to each cell
+int parent[NCELLS];     // the cell that path came from
+int state[NCELLS];      // 0 = not seen, 1 = in the open list, 2 = closed
+${OPEN_LIST_GLOBALS}
+int goalRow = 0;
+int goalCol = 1;
+
+int retNew = -1;        // 1. a cell that was never seen
+int gNew = -1;
+int fNew = -1;
+int parNew = -1;
+int stNew = -1;
+int gMud = -1;          // 2. a new cell that is mud
+int countNew = -1;      // open list entries after tests 1 and 2
+int retWorse = -1;      // 3. an open cell, reached by a more expensive route
+int gWorse = -1;
+int parWorse = -1;
+int retBetter = -1;     // 4. the same open cell, reached by a cheaper route
+int gBetter = -1;
+int fBetter = -1;
+int parBetter = -1;
+int countBetter = -1;   // open list entries after test 4
+int retClosed = -1;     // 5. a closed cell
+int gClosed = -1;
+
+${STEP_COST}
+
+int heuristic(int rowCurr, int colCurr, int rowGoal, int colGoal)
+{
+    return abs(rowCurr - rowGoal) + abs(colCurr - colGoal);
+}
+
+void openPush(int cell)
+{
+${OPEN_PUSH_OK}
+}
+
+// The cost update: cell 'cur' has just been expanded and 'next' is one of
+// its free neighbours. Returns 1 if next now has a new g, f and parent,
+// 0 if nothing was changed.
+int relax(int cur, int next)
+{
+${body}
+}
+
+void main(void)
+{
+    // 1. From (3, 2), reached with g = 4, to the dry cell (3, 3)
+    g[3 * COLS + 2] = 4;
+    retNew = relax(3 * COLS + 2, 3 * COLS + 3);
+    gNew = g[3 * COLS + 3];
+    fNew = f[3 * COLS + 3];
+    parNew = parent[3 * COLS + 3];
+    stNew = state[3 * COLS + 3];
+
+    // 2. From (3, 2) into the mud at (2, 2)
+    relax(3 * COLS + 2, 2 * COLS + 2);
+    gMud = g[2 * COLS + 2];
+    countNew = openCount;
+
+    // 3. (3, 3) again, from (4, 3) which has g = 7: more expensive
+    g[4 * COLS + 3] = 7;
+    retWorse = relax(4 * COLS + 3, 3 * COLS + 3);
+    gWorse = g[3 * COLS + 3];
+    parWorse = parent[3 * COLS + 3];
+
+    // 4. (3, 3) again, from (3, 4) which has g = 2: cheaper
+    g[3 * COLS + 4] = 2;
+    retBetter = relax(3 * COLS + 4, 3 * COLS + 3);
+    gBetter = g[3 * COLS + 3];
+    fBetter = f[3 * COLS + 3];
+    parBetter = parent[3 * COLS + 3];
+    countBetter = openCount;
+
+    // 5. (3, 3) is expanded and closed. A route that looks cheaper turns up.
+    state[3 * COLS + 3] = 2;
+    g[4 * COLS + 3] = 0;
+    retClosed = relax(4 * COLS + 3, 3 * COLS + 3);
+    gClosed = g[3 * COLS + 3];
+    while (1) {}
+}
+`;
+
+// Two floors of 8 by 9 cells for the search written from scratch.
+const FLOOR_A = ["000000000", "0000x0000", "0000x0000", "0000x0000", "0000x0000", "000000000", "000000000", "000000000"];
+const FLOOR_B = ["000000000", "0xxxxxx00", "000000000", "000000000", "000000000", "000000000", "000000000", "000000000"];
+
+const SCRATCH_OK = `// Estimate of the remaining cost: the Manhattan distance
+int heuristic(int rowCurr, int colCurr, int rowGoal, int colGoal)
+{
+    return abs(rowCurr - rowGoal) + abs(colCurr - colGoal);
+}
+
+void openPush(int cell)
+{
+${OPEN_PUSH_OK}
+}
+
+int openPopMin(void)
+{
+${OPEN_POP_OK}
+}
+
+// Returns 1 and fills pathRow, pathCol and pathLen (from the goal back to
+// the start) if there is a path. Returns 0 if there is none.
+int astar(int rowStart, int colStart, int rowEnd, int colEnd)
+{
+    int dRow[4] = {-1, 0, 0, 1};
+    int dCol[4] = {0, -1, 1, 0};
+    int goal = rowEnd * COLS + colEnd;
+    int i, k, cur, row, col, next, newG;
+
+    for (i = 0; i < NCELLS; i++) {
+        g[i] = 0;
+        parent[i] = -1;
+        state[i] = 0;
+    }
+    openCount = 0;
+    pathLen = 0;
+
+    cur = rowStart * COLS + colStart;
+    f[cur] = heuristic(rowStart, colStart, rowEnd, colEnd);
+    state[cur] = 1;
+    openPush(cur);
+
+    while (openCount > 0) {
+        cur = openPopMin();
+        if (cur == goal) {
+            while (cur != -1) {             // follow the parents back
+                pathRow[pathLen] = cur / COLS;
+                pathCol[pathLen] = cur % COLS;
+                pathLen++;
+                cur = parent[cur];
+            }
+            return 1;
+        }
+        state[cur] = 2;
+        for (k = 0; k < 4; k++) {
+            row = cur / COLS + dRow[k];
+            col = cur % COLS + dCol[k];
+            if (canTravel(row, col)) {
+                next = row * COLS + col;
+                newG = g[cur] + 1;
+                if (state[next] == 0 || (state[next] == 1 && newG < g[next])) {
+                    g[next] = newG;
+                    parent[next] = cur;
+                    f[next] = newG + heuristic(row, col, rowEnd, colEnd);
+                    if (state[next] == 0) {
+                        state[next] = 1;
+                        openPush(next);
+                    }
+                }
+            }
+        }
+    }
+    return 0;`;
+
+const SCRATCH_STARTER = `// Write your functions here: a heuristic, the open list, and astar().
+
+// Returns 1 and fills pathRow, pathCol and pathLen (from the goal back to
+// the start) if there is a path. Returns 0 if there is none.
+int astar(int rowStart, int colStart, int rowEnd, int colEnd)
+{
+    return 0;`;
+
+const scratchProgram = (fns: string) => `#define ROWS 8
+#define COLS 9
+#define NCELLS (ROWS * COLS)
+
+// Two floors. 'x' is an obstacle, '0' is free. main copies one of them
+// into map[] before each search.
+char floorA[NCELLS + 1] =
+${mapText(FLOOR_A)};
+char floorB[NCELLS + 1] =
+${mapText(FLOOR_B)};
+char map[NCELLS + 1];   // the floor in use: cell (row, col) is map[row * COLS + col]
+
+int g[NCELLS];          // cost of the best path found so far from the start to each cell
+int f[NCELLS];          // g + h
+int parent[NCELLS];     // the cell we came from, -1 for the start
+int state[NCELLS];      // 0 = not seen, 1 = in the open list, 2 = closed
+int openList[NCELLS];   // cells waiting to be expanded
+int openCount = 0;
+int pathRow[NCELLS];    // the path, from the goal back to the start
+int pathCol[NCELLS];
+int pathLen = 0;
+
+long lookups = 0;       // counts the calls of canTravel
+int retA = -1;          // floor A, (3, 2) to (3, 7)
+int stepsA = -1;        // steps of the path that was written
+long lookupsA = -1;     // calls of canTravel during that search
+int retB = -1;          // floor B, (3, 1) to (0, 5)
+int stepsB = -1;
+long lookupsB = -1;
+int retShut = -1;       // floor B with both ends of the wall closed
+
+// 1 if (row, col) is on the map and free. Do not change.
+int canTravel(int row, int col)
+{
+    lookups++;
+    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) {
+        return 0;
+    }
+    if (map[row * COLS + col] == 'x') {
+        return 0;
+    }
+    return 1;
+}
+
+${fns}
+}
+
+// Steps of the path in pathRow/pathCol, or -1 if it is not a connected
+// path of free cells from the goal back to the start. Do not change.
+int check_path(int rowStart, int colStart, int rowEnd, int colEnd)
+{
+    int i;
+
+    if (pathLen < 1 || pathLen > NCELLS) return -1;
+    if (pathRow[0] != rowEnd || pathCol[0] != colEnd) return -1;
+    if (pathRow[pathLen - 1] != rowStart || pathCol[pathLen - 1] != colStart) return -1;
+    for (i = 0; i < pathLen; i++) {
+        if (canTravel(pathRow[i], pathCol[i]) == 0) return -1;
+        if (i > 0) {
+            if (abs(pathRow[i] - pathRow[i - 1]) + abs(pathCol[i] - pathCol[i - 1]) != 1) return -1;
+        }
+    }
+    return pathLen - 1;
+}
+
+void loadFloor(char *src)
+{
+    int i;
+
+    for (i = 0; i < NCELLS; i++) {
+        map[i] = src[i];
+    }
+}
+
+void main(void)
+{
+    loadFloor(floorA);
+    lookups = 0;
+    retA = astar(3, 2, 3, 7);
+    lookupsA = lookups;
+    stepsA = check_path(3, 2, 3, 7);
+
+    loadFloor(floorB);
+    lookups = 0;
+    retB = astar(3, 1, 0, 5);
+    lookupsB = lookups;
+    stepsB = check_path(3, 1, 0, 5);
+
+    // Close both ends of the wall: no way through
+    map[1 * COLS + 0] = 'x';
+    map[1 * COLS + 7] = 'x';
+    map[1 * COLS + 8] = 'x';
+    retShut = astar(3, 1, 0, 5);
+    while (1) {}
+}
+`;
+
 // ---- A* with diagonal moves
 const astar8Program = (fns: string) => `${GRID_DEFS(OPEN_FLOOR)}
 
@@ -1662,7 +2028,7 @@ The robot's own planner runs this loop with every step costing 1. The A* mode of
         "Gap 2 adds g[i] and the heuristic from cell i to (rowEnd, colEnd). Gap 4 adds the cost so far at cur and the cost of entering (row, col). Gap 3 must differ from the 1 that means found.",
         "Gap 1: `return abs(rowCurr - rowGoal) + abs(colCurr - colGoal);` Gap 2: `f = g[i] + heuristic(i / COLS, i % COLS, rowEnd, colEnd);` Gap 3: `return 0;` Gap 4: `newG = g[cur] + stepCost(row, col);` Gap 5: `parent[next] = cur;` Gap 6: `cur = parent[cur];`",
       ],
-      takeaway: "The path with the fewest steps crossed the mud and cost 12. A* found the longer, cheaper one. An empty open set means the goal is unreachable: the caller must check the return value before it uses the path.",
+      takeaway: "The path with the fewest steps crossed the mud and cost 12. A* found the longer, cheaper one. An empty open set means the goal is unreachable: the caller must check the return value before it uses the path. In the practice levels \"A* from scratch 1, 2 and 3\" you write this search yourself, starting from an empty function.",
     },
     {
       id: "map-log",
@@ -2685,6 +3051,218 @@ int lenRound = -2;      // to (0, 4)`,
         "Wrap the push in `if (dist[next] == -1)`, or add that test to the existing `if`.",
       ],
       takeaway: "Without a visited mark a graph search re-expands the same cells without end. In BFS the first visit is also the shortest, so later visits are pure waste.",
+    },
+    {
+      id: "plan-open",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "A* from scratch 1: the open list",
+      goal: "Write the two functions of the open list: add a cell, and take out the cell with the smallest f.",
+      refs: [{ course: "L18" }, { course: "HW6" }],
+      brief: `
+In "A* through the mud" most of the search was written for you. The next three levels build it from nothing: the list, then the cost update, then the whole search.
+
+That search found its next cell by looking at every cell of the map on every round. A planner keeps the waiting cells in a list of their own, the **open list**: an array of cell numbers and a count, like the queue of BFS.
+
+\`\`\`c
+int openList[NCELLS];   // cell numbers, in the order they were added
+int openCount = 0;      // how many are waiting
+int f[NCELLS];          // f of every cell
+\`\`\`
+
+The list holds cell numbers only. The f of the entry at place \`i\` is \`f[openList[i]]\`.
+
+## openPush(cell)
+Store the cell at place \`openCount\`, then count it. This is "add at tail" from the queue.
+
+## openPopMin()
+BFS took the oldest entry. A* takes the cheapest:
+
+1. Empty list: return -1.
+2. Find the place \`best\` of the smallest f. Start with \`best = 0\`, walk \`i\` from 1 to the end, and move \`best\` to \`i\` when that entry's f is smaller **or equal**.
+3. Remember the cell at \`best\`. Close the gap: move every later entry one place towards the front, so the order stays. Count one less.
+4. Return the cell.
+
+**The tie rule.** Often two cells have the same f. Take the one that was **added later**. It was found from the cell just expanded, so it usually lies further along the path, and the search runs towards the goal before it spreads sideways. The "or equal" in step 2 does this.
+
+**Worked example.** The list holds cells 4, 9, 2 with f = 8, 5, 8. \`openPopMin()\` returns 9, and the list is 4, 2 with \`openCount\` 2. The next call meets a tie at 8 and returns 2, the later one. The list is now just 4.
+
+\`main\` first pops from the empty list, then pushes cells 5 and 6 (both f = 7) and takes both, then pushes five cells and takes four.
+`,
+      kit: "robot",
+      durationMs: 20,
+      starter: openListProgram({
+        push: `    // Store the cell at the end of the list and count it`,
+        pop: `    // 1. empty list
+    // 2. find the place of the smallest f (equal f: the later entry)
+    // 3. remember the cell, close the gap, count one less
+    // 4. return the cell
+    return 0;`,
+      }),
+      solution: openListProgram({ push: OPEN_PUSH_OK, pop: OPEN_POP_OK }),
+      checks: [
+        { kind: "var", name: "popEmpty", equals: -1, label: "An empty list gives -1", hint: "Test openCount == 0 first and return -1. Without it the function hands back whatever is in openList[0], and the search would expand a cell that was never found." },
+        { kind: "var", name: "popTie", equals: 6, label: "Cells 5 and 6 with equal f: the later one, 6, comes out", hint: "5: the comparison is `<`, which keeps the earlier of two equal entries. Use `<=`. Also 5 if you compare the cell numbers themselves: compare f[openList[i]] with f[openList[best]]. 1: you returned the place `best`. Return the cell stored there, openList[best]. 0: openPush does not store the cell yet." },
+        { kind: "var", name: "popLeft", equals: 5, label: "Then 5, the one that is left", hint: "6 again: the cell was returned but is still in the list. Move the later entries one place forward and do openCount--. -1: the pop removed more than one entry." },
+        { kind: "var", name: "countEmpty", equals: 0, label: "After two pushes and two pops the list is empty", hint: "openPush counts one up, openPopMin counts one down, and the pop from the empty list at the very start must not count down." },
+        { kind: "var", name: "popMin", equals: 28, label: "Of cells 10, 28, 30, 25, 14 the smallest f (6) belongs to cell 28", hint: "10: you picked the smallest cell number. The list holds cell numbers, the cost is f[openList[i]]. 14: you returned the last entry. Check that the loop compares against the best so far, f[openList[best]]." },
+        { kind: "var", name: "countAfter", equals: 4, label: "Four cells are left" },
+        { kind: "var", name: "popSecond", equals: 14, label: "Next: 30 and 14 both have f = 8, and 14 was added later", hint: "30 with the tie test above passing: the gap was filled with the last entry, which put 14 in front of 30. Shift the later entries one place each (openList[i] = openList[i + 1]) so the order of arrival stays." },
+        { kind: "var", name: "popThird", equals: 30, label: "Then 30" },
+        { kind: "var", name: "popFourth", equals: 10, label: "Then 10 (f = 9), before 25 (f = 12)" },
+      ],
+      watch: ["popEmpty", "popTie", "popLeft", "popMin", "popSecond", "popThird", "popFourth", "openCount"],
+      hints: [
+        "openPush is two lines: `openList[openCount] = cell;` and `openCount++;`. In openPopMin, handle the empty list before anything else.",
+        "The search: `best = 0; for (i = 1; i < openCount; i++) { if (f[openList[i]] <= f[openList[best]]) { best = i; } }`. `best` is a place in the list, not a cell.",
+        "After the search: `cell = openList[best]; for (i = best; i < openCount - 1; i++) { openList[i] = openList[i + 1]; } openCount--; return cell;`",
+      ],
+      takeaway: "The open list is a queue that hands back the cheapest entry, not the oldest. That is called a priority queue. The course's planner on the Raspberry Pi keeps it as a heap, which finds the smallest entry without walking the whole list.",
+    },
+    {
+      id: "plan-relax",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "A* from scratch 2: the cost update",
+      goal: "Write the function that decides whether a neighbour gets a new cost and a new parent.",
+      refs: [{ course: "L18" }, { course: "HW6" }],
+      brief: `
+A* has just expanded a cell \`cur\`. For each free neighbour \`next\` it asks one question: **is the way through cur the cheapest way to next that I know?** If yes, it writes that down. This step is the heart of the search. You write it as \`relax(cur, next)\`.
+
+Each cell has \`g[]\` (cost from the start), \`f[]\` (g + h), \`parent[]\` and \`state[]\`: 0 not seen, 1 in the open list, 2 closed.
+
+## The rules
+1. \`next\` is **closed**: return 0 and change nothing. Its best path is already known.
+2. Compute the cost of reaching \`next\` through \`cur\`:
+   \`newG = g[cur] + stepCost(row of next, column of next)\`
+3. \`next\` is **in the open list** and \`newG\` is **not smaller** than \`g[next]\`: return 0 and change nothing. The old way was at least as good.
+4. Otherwise the new way wins. Store all three:
+   - \`g[next] = newG\`
+   - \`parent[next] = cur\`
+   - \`f[next] = newG + heuristic(row of next, column of next, goalRow, goalCol)\`
+5. If \`next\` was **not seen** before: set its state to 1 and \`openPush(next)\`. A cell that is already in the list must not be pushed a second time.
+6. Return 1.
+
+The row of a cell is \`next / COLS\`, its column \`next % COLS\`.
+
+**Worked example.** The goal is (0, 1). \`cur\` = (3, 2) has g = 4. Its neighbour (3, 3) is new and dry: newG = 4 + 1 = 5. It is 3 rows and 2 columns from the goal, so h = 5 and f = 10. Later (3, 4), which has g = 2, is expanded: newG = 3 is smaller than 5. Now g = 3, f = 3 + 5 = 8 and the parent is (3, 4). The h of a cell never changes, only its g.
+
+## The map
+The mud map from before: entering \`'m'\` costs 6, every other step 1. \`stepCost\`, \`heuristic\` and \`openPush\` are given. \`main\` sets up five cases by hand and calls \`relax\` once for each.
+
+\`\`\`
+0000000
+0000000
+xxmx0xx
+0000000
+0000000
+0000000
+\`\`\`
+`,
+      kit: "robot",
+      durationMs: 20,
+      starter: relaxProgram(`    // 1. closed: nothing to do
+    // 2. newG: the cost of reaching next through cur
+    // 3. in the open list and not cheaper: nothing to do
+    // 4. store g, parent and f
+    // 5. a new cell goes into the open list
+    return 0;`),
+      solution: relaxProgram(RELAX_OK),
+      checks: [
+        { kind: "var", name: "retNew", equals: 1, label: "1. A new cell is updated: relax returns 1" },
+        { kind: "var", name: "gNew", equals: 5, label: "Its g is 5: the 4 of the cell it was reached from, plus 1 for the step", hint: "1: newG is only the cost of the last step. Add g[cur]. 0: g[next] is not stored yet." },
+        { kind: "var", name: "fNew", equals: 10, label: "Its f is 10: g = 5 plus h = 5", hint: "5: f is g alone, so the search would ignore where the goal is. Add heuristic(next / COLS, next % COLS, goalRow, goalCol). 9 or 11: the heuristic was taken from cur. It must be the estimate from next." },
+        { kind: "var", name: "parNew", equals: 23, label: "Its parent is the cell it was reached from, (3, 2) = cell 23", hint: "0: parent[next] is never written, so the path could not be followed back. 24: you stored next as its own parent." },
+        { kind: "var", name: "stNew", equals: 1, label: "It is marked as open" },
+        { kind: "var", name: "gMud", equals: 10, label: "2. A step into the mud costs 6: g = 10", hint: "5: every step was counted as 1. Use stepCost() with the row and column of next, the cell being entered." },
+        { kind: "var", name: "countNew", equals: 2, label: "Both new cells are in the open list", hint: "0: a new cell must be pushed with openPush(next), or the search never expands it." },
+        { kind: "var", name: "retWorse", equals: 0, label: "3. A more expensive way to an open cell changes nothing: returns 0" },
+        { kind: "var", name: "gWorse", equals: 5, label: "g stays 5", hint: "8: the cell took the new cost although it is higher. Compare first: only a newG that is smaller than g[next] may replace it." },
+        { kind: "var", name: "parWorse", equals: 23, label: "The parent stays (3, 2)", hint: "31: the parent was changed before the comparison. Write g, parent and f only after you know the new way is cheaper." },
+        { kind: "var", name: "retBetter", equals: 1, label: "4. A cheaper way to an open cell is taken: returns 1", hint: "0: an open cell is skipped like a closed one. Only state 2 is final. An open cell can still get a cheaper path." },
+        { kind: "var", name: "gBetter", equals: 3, label: "g drops to 3" },
+        { kind: "var", name: "fBetter", equals: 8, label: "f follows: 3 + 5 = 8", hint: "10: g was lowered but f still holds the old value. The open list sorts by f, so the cheaper path would wait in the wrong place." },
+        { kind: "var", name: "parBetter", equals: 25, label: "The parent is now (3, 4) = cell 25", hint: "23: the cost belongs to the new way but the parent still points along the old one. The path followed back would not have the cost g says." },
+        { kind: "var", name: "countBetter", equals: 2, label: "The cell is not pushed a second time", hint: "3: openPush ran for a cell that was already in the list. Push only when the state was 0." },
+        { kind: "var", name: "retClosed", equals: 0, label: "5. A closed cell is left alone: returns 0" },
+        { kind: "var", name: "gClosed", equals: 3, label: "Its g stays 3", hint: "1: the closed cell was changed. Test state[next] == 2 first and return 0." },
+      ],
+      watch: ["gNew", "fNew", "parNew", "gMud", "gWorse", "gBetter", "fBetter", "parBetter", "openCount"],
+      hints: [
+        "Write the two \"return 0\" cases as `if` statements with the computation of newG between them. Everything after them runs only when the new way wins.",
+        "`newG = g[cur] + stepCost(next / COLS, next % COLS);` and the second test is `if (state[next] == 1 && newG >= g[next]) return 0;`.",
+        "After the tests: `g[next] = newG; parent[next] = cur; f[next] = newG + heuristic(next / COLS, next % COLS, goalRow, goalCol); if (state[next] == 0) { state[next] = 1; openPush(next); } return 1;`",
+      ],
+      takeaway: "g, f and parent always change together, and only when the new way is strictly cheaper. This update is called relaxing a neighbour, and Dijkstra's algorithm and A* both rest on it.",
+    },
+    {
+      id: "plan-scratch",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "A* from scratch 3: the whole search",
+      goal: "Write A* from an almost empty file and run it on two floors: the shortest path, with few cells expanded.",
+      refs: [{ course: "L18" }, { course: "HW6" }],
+      brief: `
+Now the whole search is yours. The file gives you the two floors, the arrays, \`canTravel\`, a path checker and \`main\`. \`astar()\` is empty. Bring your open list and your cost update from the last two levels.
+
+Every step costs 1 here. Each floor is 8 rows by 9 columns.
+
+\`\`\`
+floor A      floor B
+000000000    00000G000
+0000x0000    0xxxxxx00
+0000x0000    000000000
+00S0x00G0    0S0000000
+0000x0000    000000000
+000000000    000000000
+000000000    000000000
+000000000    000000000
+\`\`\`
+
+S is the start and G the goal (they are free cells in the file).
+
+## What astar() must do
+1. Reset \`g\`, \`parent\` (to -1) and \`state\` for every cell, and empty the open list. \`main\` calls you three times.
+2. Give the start cell its f, mark it open and push it.
+3. While the open list is not empty: pop the cell with the smallest f. If it is the goal, follow \`parent[]\` from the goal back to the start, store each cell in \`pathRow\`, \`pathCol\` and count them in \`pathLen\`, and return 1. Otherwise close it and do the cost update for each of its four neighbours that \`canTravel\`.
+4. The list ran empty: return 0.
+
+## How it is judged
+- **Path length.** The path you store must be a shortest one on both floors.
+- **Cells expanded.** \`canTravel\` counts its calls in \`lookups\`. Expanding one cell costs four. BFS answers correctly too, but it floods the floor in rings: about 230 lookups on each floor. The limits are 120 on floor A and 140 on floor B. A* with a heuristic that never overestimates stays below them.
+- With both ends of the wall on floor B closed, the answer is 0.
+
+Two floors are tested in one run, so nothing left over from the first search may leak into the second.
+
+To give you the idea of the size: the reference has a heuristic, the two open list functions and about 45 lines of \`astar\`.
+`,
+      kit: "robot",
+      durationMs: 60,
+      starter: scratchProgram(SCRATCH_STARTER),
+      solution: scratchProgram(SCRATCH_OK),
+      checks: [
+        { kind: "var", name: "retA", equals: 1, label: "Floor A: astar returns 1, a path was found", hint: "0 from the start: the function still ends in the starter's `return 0;`. 0 later: the loop ended before the goal was popped. Was the start cell pushed, and does every new neighbour go into the open list?" },
+        { kind: "var", name: "stepsA", equals: 9, label: "Floor A: the stored path is a shortest one, 9 steps", hint: "-1: the cells in pathRow/pathCol are not a chain of neighbours from the goal back to the start. Set parent[next] = cur in the cost update, give the start parent -1, and store the goal first. A larger number: the pop does not take the smallest f." },
+        { kind: "var", name: "lookupsA", min: 1, max: 120, label: "Floor A: at most 120 calls of canTravel (30 cells expanded)", hint: "0: canTravel was never called, so no neighbour was looked at. About 230: the search spreads in rings like BFS. Either f has no heuristic in it (f = g + h, with h from the neighbour to the goal), or the pop takes the oldest entry and not the smallest f. Thousands: cells are expanded again and again, so close each popped cell (state 2) and never push a cell that is already open or closed." },
+        { kind: "var", name: "retB", equals: 1, label: "Floor B: a path was found", hint: "Floor A works and floor B does not: something is left over from the first search. Reset g, parent and state for every cell and set openCount to 0 at the start of astar." },
+        { kind: "var", name: "stepsB", equals: 9, label: "Floor B: the stored path is a shortest one, 9 steps round the left end of the wall", hint: "11: the path goes round the right end, which looks nearer to the goal. Your heuristic overestimates, so f is ruled by h and the search never tries the left end. h must never say more than rows apart + columns apart: no squares, no factor. -1 with floor A correct: pathLen must start at 0 again and parent[] must be reset to -1 in every call." },
+        { kind: "var", name: "lookupsB", min: 1, max: 140, label: "Floor B: at most 140 calls of canTravel (35 cells expanded)", hint: "See floor A: about 220 is a search without a heuristic or without the smallest-f pop. If only this floor is over the limit, the open list still holds cells from the first search: set openCount to 0 at the start." },
+        { kind: "var", name: "retShut", equals: 0, label: "Floor B with both ends of the wall closed: astar returns 0, no path", hint: "When the open list is empty and the goal was never popped, return 0. A loop that runs `while (1)` never notices. 1 although floor B alone works: cells of the search before are still in the open list or still marked, so reset openCount and state[] in every call." },
+      ],
+      bonus: [
+        { kind: "var", name: "lookupsA", min: 1, max: 80, label: "Straight for the goal on floor A: at most 80 calls of canTravel", hint: "Many cells have the same f. Take the one that was added last (`<=` in the search for the smallest f): it lies further along the path. The Manhattan distance also beats the straight-line distance here, because it is closer to the true cost." },
+        { kind: "var", name: "lookupsB", min: 1, max: 72, label: "And on floor B: at most 72 calls of canTravel", hint: "The same two things as on floor A: the tie rule of the open list, and the largest heuristic that never overestimates." },
+      ],
+      watch: ["retA", "stepsA", "lookupsA", "retB", "stepsB", "lookupsB", "retShut", "openCount"],
+      hints: [
+        "Build it in the order of the four steps and run after each. After steps 1 and 2 alone, openCount should be 1 at the end. Copy heuristic, openPush and openPopMin from the earlier levels. If the run stops with \"This code never finishes\", cells are pushed again and again: push a neighbour only when its state is 0.",
+        "The loop: `while (openCount > 0) { cur = openPopMin(); if (cur == goal) { ...path...; return 1; } state[cur] = 2; for (k = 0; k < 4; k++) { ...neighbour (row, col)...; if (canTravel(row, col)) { ...cost update... } } } return 0;` Neighbours as in BFS: `row = cur / COLS + dRow[k]`.",
+        "The cost update with every step costing 1: `newG = g[cur] + 1; if (state[next] == 0 || (state[next] == 1 && newG < g[next])) { g[next] = newG; parent[next] = cur; f[next] = newG + heuristic(row, col, rowEnd, colEnd); if (state[next] == 0) { state[next] = 1; openPush(next); } }`. The path: `while (cur != -1) { pathRow[pathLen] = cur / COLS; pathCol[pathLen] = cur % COLS; pathLen++; cur = parent[cur]; }`.",
+      ],
+      takeaway: "You have written a complete planner: an open list, a cost update, a closed mark and the walk back along the parents. Change the map, the step cost or the heuristic and the same forty lines still find the cheapest way.",
     },
     {
       id: "map-row",
