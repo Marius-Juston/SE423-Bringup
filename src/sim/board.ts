@@ -250,6 +250,11 @@ export class Board implements Rt {
 
   tick(line: number): void {
     if (line) this.line = line;
+    if (this.pendingDelay) {
+      const rest = this.pendingDelay;
+      this.pendingDelay = 0;
+      this.delay(rest);
+    }
     this.now += STMT_NS;
     if (++this.steps > this.stepLimit)
       throw new RuntimeError(line, "The program ran for too many steps. Look for a loop that never ends and does work on every pass.");
@@ -274,6 +279,28 @@ export class Board implements Rt {
     if (this.irq) this.dispatch();
     if (this.now >= this.pauseAt) this.pause = true;
   }
+
+  /**
+   * Busy-waits for `ns` (DELAY_US). Time passes, so events happen and
+   * interrupts are taken during the wait, as on the chip.
+   */
+  delay(ns: number): void {
+    const target = this.now + ns;
+    // Stop at the end of the current run slice; the rest of the wait is
+    // served when the program resumes (see tick).
+    const limit = this.pauseAt > this.now ? Math.min(target, this.pauseAt) : target;
+    while (this.now < limit) {
+      const next = this.events.length ? Math.min(this.events[0].t, limit) : limit;
+      if (next > this.now) this.now = next;
+      if (this.events.length && this.events[0].t <= this.now) this.runEvents();
+      if (this.irq) this.dispatch();
+    }
+    if (this.now < target) {
+      this.pendingDelay = target - this.now;
+      this.pause = true;
+    }
+  }
+  private pendingDelay = 0;
 
   /** Schedules fn at absolute time t (ns). */
   at(t: number, fn: (t: number) => void): Ev {

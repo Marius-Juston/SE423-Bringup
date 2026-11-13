@@ -240,6 +240,19 @@ void main(void) {
     expect(codes(ok)).toEqual([]);
     expect(ok.board.readVar("v")).toBe(1);
   });
+  it("keeps taking interrupts during DELAY_US", () => {
+    const r = run(`
+uint32_t n = 0;
+__interrupt void t0(void) { n++; PieCtrlRegs.PIEACK.all = PIEACK_GROUP1; }
+void main(void) {
+  InitPieCtrl(); IER = 0; IFR = 0; InitPieVectTable();
+  EALLOW; PieVectTable.TIMER0_INT = &t0; EDIS;
+  InitCpuTimers(); ConfigCpuTimer(&CpuTimer0, 200, 1000); CpuTimer0Regs.TCR.all = 0x4000;
+  IER |= M_INT1; PieCtrlRegs.PIEIER1.bit.INTx7 = 1; EINT;
+  while (1) { DELAY_US(2500); }
+}`, 20.5);
+    expect(r.board.readVar("n")).toBe(20);
+  });
   it("skips idle time: one simulated minute runs quickly", () => {
     const t = Date.now();
     expect(run(prog(all), 60000).board.readVar("n")).toBe(59999);

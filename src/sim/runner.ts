@@ -295,9 +295,10 @@ export function runProgram(spec: RunSpec): RunResult {
           detail = `There is no global variable named ${c.name}.`;
           break;
         }
-        pass = (c.equals === undefined || Math.abs(v - c.equals) < 1e-6 * Math.max(1, Math.abs(c.equals))) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
+        const exact = Number.isInteger(v) && (c.equals === undefined || Number.isInteger(c.equals));
+        pass = (c.equals === undefined || (exact ? v === c.equals : Math.abs(v - c.equals) < 1e-6 * Math.max(1, Math.abs(c.equals)))) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
         const want = c.equals !== undefined ? `${c.equals}` : `${c.min ?? "-∞"} to ${c.max ?? "∞"}`;
-        detail = `${c.name} is ${+v.toPrecision(7)}${pass ? "" : `, expected ${want}`}.`;
+        detail = `${c.name} is ${Number.isInteger(v) ? v : +v.toPrecision(7)}${pass ? "" : `, expected ${want}`}.`;
         break;
       }
       case "isr": {

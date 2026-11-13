@@ -324,7 +324,7 @@ export function installLibrary(b: Board): void {
   c.defineNative("__asm", () => 0);
   c.defineNative("InitSysCtrl", () => 0);
   c.defineNative("DELAY_US", (a) => {
-    b.now += Math.max(0, a[0]) * 1000;
+    b.delay(Math.max(0, a[0]) * 1000);
     mem.liveReads++;
     return 0;
   });

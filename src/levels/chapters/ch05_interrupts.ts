@@ -20,6 +20,109 @@ const PIE_INIT = `    DINT;
     IFR = 0x0000;
     InitPieVectTable();`;
 
+// Timer 0 through the PIE, as in the course starter.
+const TIMER0 = (periodUs: number) => `    EALLOW;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    EDIS;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, ${periodUs});
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    EINT;
+    ERTM;`;
+
+const PB1 = `    // PB1: input with pull-up, reads 0 while pressed
+    GPIO_SetupPinMux(157, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);`;
+
+const SLOW_SENSOR = `// Stands for reading a slow sensor. Takes about 2.5 ms. Do not change it.
+void read_slow_sensor(void)
+{
+    uint16_t i;
+    for (i = 0; i < 25000; i++) {
+        sensorSum += i;
+    }
+    readings++;
+}`;
+
+const JOBS = `// Stands for a control calculation. Takes about 5 ms. Do not change it.
+void filter_job(void)
+{
+    uint16_t i;
+    for (i = 0; i < 50000; i++) {
+        filterSum += i;
+    }
+}
+
+// Stands for writing a log entry. Takes about 3 ms. Do not change it.
+void log_job(void)
+{
+    uint16_t i;
+    for (i = 0; i < 30000; i++) {
+        logSum += i;
+    }
+}`;
+
+const PRIORITY_MAIN = `void main(void)
+{
+${INIT}
+
+${LED1}
+${LED2}
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    PieVectTable.TIMER2_INT = &cpu_timer2_isr;
+    PieVectTable.EMIF_ERROR_INT = &SWI_isr;
+    EDIS;
+
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 1000);
+    ConfigCpuTimer(&CpuTimer2, LAUNCHPAD_CPU_FREQUENCY, 23000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+    CpuTimer2Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    IER |= M_INT12;
+    IER |= M_INT14;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    PieCtrlRegs.PIEIER12.bit.INTx9 = 1;
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+// Every 1 ms: toggles LED1 and posts the software interrupt on every 20th call
+__interrupt void cpu_timer0_isr(void)
+{
+    numTimer0calls++;
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    if ((numTimer0calls % 20) == 0) {
+        PieCtrlRegs.PIEIFR12.bit.INTx9 = 1;
+    }
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}`;
+
+const PRIORITY_GLOBALS = `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+__interrupt void cpu_timer2_isr(void);
+__interrupt void SWI_isr(void);
+
+uint32_t numTimer0calls = 0;
+uint32_t numTimer2calls = 0;
+uint32_t numSWIcalls = 0;
+uint32_t filterSum = 0;
+uint32_t logSum = 0;
+
+${JOBS}`;
+
 export const ch05: Chapter = {
   id: "interrupts",
   number: 5,
@@ -471,6 +574,9 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "blink", led: "LED1", periodMs: 100, label: "LED1 blinks with a 100 ms period" },
         { kind: "reg", reg: "PieCtrlRegs.PIEACK", equals: 0, label: "No PIE group is left blocked at the end" },
       ],
+      bonus: [
+        { kind: "max-lines", max: 33, label: "Minimal fix: one line added, nothing else changed", hint: "The whole fix is one line at the end of cpu_timer0_isr." },
+      ],
       watch: ["numTimer0calls"],
       inspect: ["PieCtrlRegs.PIEACK", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEIER1"],
       hints: [
@@ -603,6 +709,9 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "blink", led: "LED1", periodMs: 50, label: "LED1 blinks with a 50 ms period" },
         { kind: "isr", fn: "cpu_timer1_isr", min: 4, max: 6, label: "cpu_timer1_isr still runs every 100 ms", hint: "Keep M_INT13 set. Use |= so one enable does not erase the other." },
         { kind: "blink", led: "BLUE", periodMs: 200, label: "The blue LED still blinks with a 200 ms period" },
+      ],
+      bonus: [
+        { kind: "max-lines", max: 43, label: "Minimal fix: one line added, nothing else changed", hint: "One IER line is enough. The rest of the program is correct." },
       ],
       inspect: ["PieCtrlRegs.PIEIER1", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEACK"],
       hints: [
@@ -841,6 +950,10 @@ __interrupt void cpu_timer2_isr(void)
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the timing: no DELAY_US" },
         { kind: "no-dat-write", label: "Outputs are changed through TOGGLE" },
       ],
+      bonus: [
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.5, label: "cpu_timer0_isr never takes more than 0.5 microseconds", hint: "Count, compare, toggle, acknowledge. No loops and no waiting in an interrupt function." },
+        { kind: "isr-time", fn: "cpu_timer2_isr", maxUs: 0.2, label: "cpu_timer2_isr never takes more than 0.2 microseconds", hint: "One TOGGLE write is all it needs." },
+      ],
       watch: ["numTimer0calls"],
       hints: [
         "Work down the list for each timer: vector, ConfigCpuTimer, TCR, IER. Timer 0 also needs PIEIER1.bit.INTx7. Finish with EINT.",
@@ -1024,6 +1137,11 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "var", name: "UARTPrint", equals: 0, label: "The flag is back at 0 after main used it" },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the timing: no DELAY_US" },
       ],
+      bonus: [
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.5, label: "cpu_timer0_isr never takes more than 0.5 microseconds", hint: "It runs 1000 times a second: count, post on every 50th call, acknowledge, nothing else." },
+        { kind: "isr-time", fn: "cpu_timer1_isr", maxUs: 0.5, label: "cpu_timer1_isr never takes more than 0.5 microseconds" },
+        { kind: "max-lines", max: 72, label: "Done in 72 lines of code or fewer", hint: "Blank lines and comments do not count. One statement per line is enough: nothing needs to be repeated." },
+      ],
       watch: ["numTimer0calls", "numTimer1calls", "numSWIcalls", "UARTPrint", "handled"],
       inspect: ["PieCtrlRegs.PIEIER1", "PieCtrlRegs.PIEIER12", "PieCtrlRegs.PIEACK"],
       hints: [
@@ -1032,6 +1150,658 @@ __interrupt void cpu_timer1_isr(void)
         "Timer 0: `if ((numTimer0calls % 50) == 0) { PieCtrlRegs.PIEIFR12.bit.INTx9 = 1; }`. Timer 1: `if ((numTimer1calls % 4) == 0) { UARTPrint = 1; }`. Periods are 1000 and 25000 microseconds.",
       ],
       takeaway: "Fast and exact work goes in a timer function, longer work in the software interrupt, slow work in main behind a flag. Every lab from here on has this shape.",
+    },
+    {
+      id: "int-lost-ticks",
+      tier: "practice",
+      kind: "code",
+      mode: "debug",
+      title: "The clock that runs slow",
+      goal: "This millisecond clock loses time. Find where the ticks go and get all of them back.",
+      refs: [{ course: "L4" }, { course: "Lab 1" }, { trm: "3.4.2" }, { trm: "3.4.3" }],
+      brief: `
+Timer 0 interrupts every 1 ms and \`cpu_timer0_isr\` counts the milliseconds in \`ms\`. LED1 toggles every 50 counts, so it should blink with a 100 ms period. Every 10th call the function also reads a slow sensor. \`read_slow_sensor()\` stands for that: it takes about 2.5 ms.
+
+Run it. LED1 blinks too slowly, and after 200 ms \`ms\` has not reached 200. Nothing reports an error.
+
+## Where ticks go
+While an interrupt function runs, INTM is set and no other interrupt is taken. The timer does not wait. It keeps reaching zero every 1 ms:
+
+- The **first** request during the function sets the flag \`PIEIFR1.7\`. It waits and is served the moment the function returns: late, but not lost.
+- The **second** request finds the flag already at 1. A flag cannot count. That tick is gone for good.
+
+So a function that runs longer than **two** timer periods loses interrupts, and a function that runs longer than one period makes the next one late.
+
+## The fix
+Use the pattern from the last level. The interrupt function only decides **when**: it raises a flag. The \`while (1)\` loop in \`main()\` does the slow work and can be interrupted while it does.
+
+The sensor must still be read once every 10 ms. Do not change \`read_slow_sensor()\`.
+`,
+      kit: "robot",
+      durationMs: 200.5,
+      starter: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+uint32_t ms = 0;          // milliseconds since start
+uint32_t readings = 0;    // sensor readings taken
+uint32_t sensorSum = 0;
+
+${SLOW_SENSOR}
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+${TIMER0(1000)}
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    ms++;
+    if ((ms % 10) == 0) {
+        read_slow_sensor();
+    }
+    if ((ms % 50) == 0) {
+        GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    }
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      solution: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+uint32_t ms = 0;          // milliseconds since start
+uint32_t readings = 0;    // sensor readings taken
+uint32_t sensorSum = 0;
+uint16_t readNow = 0;     // set every 10 ms by the interrupt function
+
+${SLOW_SENSOR}
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+${TIMER0(1000)}
+
+    while (1) {
+        if (readNow == 1) {
+            readNow = 0;
+            read_slow_sensor();
+        }
+    }
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    ms++;
+    if ((ms % 10) == 0) {
+        readNow = 1;
+    }
+    if ((ms % 50) == 0) {
+        GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+    }
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        { kind: "isr", fn: "cpu_timer0_isr", min: 200, max: 201, label: "cpu_timer0_isr runs 200 times in 200 ms: no tick is lost", hint: "Fewer than 200: the function was still running when the timer asked a second time." },
+        { kind: "var", name: "ms", min: 200, max: 201, label: "ms shows 200 after 200 ms" },
+        { kind: "blink", led: "LED1", periodMs: 100, label: "LED1 blinks with a 100 ms period" },
+        { kind: "var", name: "readings", min: 19, max: 20, label: "The sensor is still read every 10 ms", hint: "Call read_slow_sensor() from the while(1) loop each time the flag is set, and clear the flag." },
+      ],
+      bonus: [
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 1, label: "cpu_timer0_isr never takes more than 1 microsecond", hint: "The test report shows the longest run. Anything slow belongs in main()." },
+      ],
+      watch: ["ms", "readings"],
+      inspect: ["PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEACK"],
+      hints: [
+        "Compare the numbers in the test report: how often did cpu_timer0_isr run, and how long did its longest run take?",
+        "Add a global flag, for example `uint16_t readNow = 0;`. In the interrupt function replace the call with `readNow = 1;`.",
+        "In main: `while (1) { if (readNow == 1) { readNow = 0; read_slow_sensor(); } }`",
+      ],
+      takeaway: "A pending flag holds one request, not a count. Keep every interrupt function much shorter than the period of the fastest interrupt, and count calls to prove that none was lost.",
+    },
+    {
+      id: "int-soft-pwm",
+      tier: "practice",
+      kind: "code",
+      mode: "write",
+      title: "Dimming by hand",
+      goal: "Dim LED1 with a timer interrupt: 30 % brightness normally, 80 % while PB1 is held.",
+      refs: [{ course: "L4" }, { course: "Lab 1" }, { trm: "3.8" }, { trm: "3.4.4" }],
+      brief: `
+An LED that is switched on and off faster than the eye can follow looks dimmer. The share of the time it is on is the **duty cycle**. Later in the course the ePWM peripheral does this in hardware. Here you do it with a timer interrupt, which shows what the hardware will do for you.
+
+## What to build
+Timer 0 interrupts every **1 ms** (already set up). Cut time into periods of **10 interrupts**, numbered 0 to 9 in \`slot\`:
+
+- LED1 is **on** in the slots below \`onSlots\` and **off** in the others.
+- \`onSlots\` is **3** normally (30 %) and **8** while **PB1** is held down (80 %).
+
+PB1 is on GPIO157 (port E) and reads **0** while pressed. The tests hold it from 100 ms to 200 ms.
+
+## One period
+\`\`\`c
+slot++;
+if (slot >= 10) {
+    slot = 0;
+}
+\`\`\`
+Then compare: \`slot < onSlots\` means on. Use \`GPASET\` and \`GPACLEAR\`, so the LED is driven to the right level on every call.
+`,
+      kit: "robot",
+      durationMs: 300,
+      stimuli: [
+        { at: 100.3, press: "PB1" },
+        { at: 200.3, release: "PB1" },
+      ],
+      starter: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+uint16_t slot = 0;       // position in the PWM period, 0 to 9
+uint16_t onSlots = 3;    // slots in which LED1 is on
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+${PB1}
+
+${PIE_INIT}
+
+${TIMER0(1000)}
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    // Next slot (0 to 9). Read PB1 to choose onSlots. Switch LED1 on or off.
+
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      solution: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+uint16_t slot = 0;       // position in the PWM period, 0 to 9
+uint16_t onSlots = 3;    // slots in which LED1 is on
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+${PB1}
+
+${PIE_INIT}
+
+${TIMER0(1000)}
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    slot++;
+    if (slot >= 10) {
+        slot = 0;
+    }
+
+    if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
+        onSlots = 8;    // PB1 pressed
+    } else {
+        onSlots = 3;
+    }
+
+    if (slot < onSlots) {
+        GpioDataRegs.GPASET.bit.GPIO22 = 1;
+    } else {
+        GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+    }
+
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        { kind: "duty", led: "LED1", pct: 30, from: 10, to: 90, label: "LED1 is on 30 % of the time while PB1 is released", hint: "On in slots 0, 1 and 2 of every 10. If it is 0 % or 100 %, check the comparison and that slot goes back to 0." },
+        { kind: "duty", led: "LED1", pct: 80, from: 110, to: 190, label: "LED1 is on 80 % of the time while PB1 is held", hint: "PB1 reads 0 while pressed: GpioDataRegs.GPEDAT.bit.GPIO157 == 0." },
+        { kind: "duty", led: "LED1", pct: 30, from: 210, to: 290, label: "LED1 is back at 30 % after PB1 is released" },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 299, max: 301, label: "cpu_timer0_isr runs every 1 ms" },
+        { kind: "no-dat-write", label: "LED1 is changed through SET and CLEAR" },
+        { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the timing: no DELAY_US" },
+      ],
+      bonus: [
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.6, label: "cpu_timer0_isr never takes more than 0.6 microseconds", hint: "No loops are needed: one step of the period per call." },
+      ],
+      watch: ["slot", "onSlots"],
+      hints: [
+        "Three steps in the interrupt function: advance slot, choose onSlots from the button, then set or clear the LED.",
+        "`if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) { onSlots = 8; } else { onSlots = 3; }`",
+        "`if (slot < onSlots) { GpioDataRegs.GPASET.bit.GPIO22 = 1; } else { GpioDataRegs.GPACLEAR.bit.GPIO22 = 1; }` and keep the PIEACK line last.",
+      ],
+      takeaway: "PWM is a counter and a compare value. This version costs 1000 interrupts a second for 10 brightness steps at 100 Hz. The ePWM peripheral does the same counting in hardware, thousands of times finer and with no CPU time.",
+    },
+    {
+      id: "int-debounce",
+      tier: "expert",
+      kind: "code",
+      mode: "write",
+      title: "One press, one count",
+      goal: "Count the presses of a bouncing button exactly, and toggle LED1 once per press.",
+      refs: [{ course: "Lab 1" }, { course: "L4" }, { trm: "8.4" }, { trm: "3.8" }],
+      brief: `
+A push button is two pieces of metal. When they meet they **bounce**: the contact closes, opens and closes again a few times before it settles. The same happens when they part. Code that reacts to every change of the pin counts one press as several.
+
+## The button in this level
+- **PB1**, GPIO157 (port E), reads 0 while the contact is closed. It needs the pull-up.
+- After the first contact, and after the first opening, the pin may flip for up to **5 ms**.
+- A real press holds the contact closed for at least 10 ms, and two presses are at least 20 ms apart.
+
+The tests press PB1 **three times**, each with a different bounce.
+
+## What to build
+- \`presses\` (a global \`uint32_t\`) goes up by exactly **1** per press.
+- **LED1** toggles exactly once per press: on after the first, off after the second, on after the third.
+- Nothing may happen on a release, however much it bounces.
+- Take the samples of the pin in a CPU timer interrupt function. No \`DELAY_US\`.
+
+You choose the timer period and the method. Decide first what your code should believe when two samples in a row disagree.
+
+## The star
+React within **2 ms of the first contact**. Waiting until the pin has been quiet for a while is safe but slow. Think about which of the two edges of a press needs the waiting.
+`,
+      kit: "robot",
+      durationMs: 230,
+      stimuli: [
+        { at: 20.4, press: "PB1" }, { at: 21.4, release: "PB1" }, { at: 22.6, press: "PB1" },
+        { at: 60.2, release: "PB1" }, { at: 61.5, press: "PB1" }, { at: 62.4, release: "PB1" },
+        { at: 100.7, press: "PB1" }, { at: 100.9, release: "PB1" }, { at: 101.6, press: "PB1" }, { at: 102.2, release: "PB1" }, { at: 102.5, press: "PB1" },
+        { at: 130.1, release: "PB1" }, { at: 130.8, press: "PB1" }, { at: 131.9, release: "PB1" }, { at: 132.6, press: "PB1" }, { at: 133.4, release: "PB1" },
+        { at: 170.2, press: "PB1" }, { at: 171.3, release: "PB1" }, { at: 171.6, press: "PB1" },
+        { at: 185.3, release: "PB1" }, { at: 186.1, press: "PB1" }, { at: 187.4, release: "PB1" },
+      ],
+      starter: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+uint32_t presses = 0;
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+    // PB1 (GPIO157)
+
+${PIE_INIT}
+
+    // Vector, timer, enables
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+}
+`,
+      solution: `${FREQ}
+
+// Samples in a row that must read "released" before the next press counts.
+// 8 samples of 1 ms is longer than the 5 ms of bounce.
+#define RELEASE_SAMPLES 8
+
+__interrupt void cpu_timer0_isr(void);
+
+uint32_t presses = 0;
+uint16_t armed = 1;        // 1: the next closed contact is a new press
+uint16_t highCount = 0;    // samples in a row with the contact open
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PB1}
+
+${PIE_INIT}
+
+${TIMER0(1000)}
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
+        // Contact closed. A bounce cannot close an open button, so the
+        // first closed sample is already proof of a press: act at once.
+        highCount = 0;
+        if (armed == 1) {
+            armed = 0;
+            presses++;
+            GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+        }
+    } else {
+        // Contact open: bounce or a real release? Only a long quiet
+        // stretch is a release.
+        if (highCount < RELEASE_SAMPLES) {
+            highCount++;
+        } else {
+            armed = 1;
+        }
+    }
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        { kind: "var", name: "presses", at: 90, equals: 1, label: "presses is 1 after the first press and its release", hint: "More than 1: bounce was counted, on the press or on the release. 0: check the pull-up, the pin and the timer interrupt." },
+        { kind: "var", name: "presses", at: 160, equals: 2, label: "presses is 2 after the second press" },
+        { kind: "var", name: "presses", equals: 3, label: "presses is 3 at the end" },
+        { kind: "steady", led: "LED1", from: 35, to: 95, on: true, label: "LED1 is on after the first press and ignores the bouncing release", hint: "A release also bounces: the pin reads 0 again for a moment after it first opened." },
+        { kind: "steady", led: "LED1", from: 115, to: 165, on: false, label: "LED1 is off after the second press" },
+        { kind: "steady", led: "LED1", from: 195, to: 229, on: true, label: "LED1 is on after the third press" },
+        { kind: "no-diagnostic", code: "floating", label: "PB1 has its pull-up", hint: "GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);" },
+        { kind: "source", mustMatch: "__interrupt", mustNotMatch: "DELAY_US", label: "The samples are taken in a timer interrupt function: no DELAY_US" },
+      ],
+      bonus: [
+        { kind: "latency", led: "LED1", after: 100.7, withinUs: 2000, label: "LED1 reacts within 2 ms of the first contact (second press)", hint: "An open button cannot read closed by accident. React to the first closed sample, then refuse new presses until the pin has stayed open for longer than the bounce time." },
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.6, label: "The sampling function never takes more than 0.6 microseconds" },
+      ],
+      watch: ["presses"],
+      hints: [
+        "Sample the pin every 1 ms. Bounce shows up as samples that disagree for a few milliseconds. A real change is a long run of equal samples.",
+        "Keep a counter of samples in a row with the contact open. Only when it passes the bounce time (say 8 samples) is the button really released, and only then may the next closed sample count as a press.",
+        "Two globals: `armed` and `highCount`. Closed sample: `highCount = 0;` and, if armed, count, toggle and clear `armed`. Open sample: count up `highCount`, and set `armed = 1;` once it reaches 8.",
+      ],
+      takeaway: "Debouncing is deciding what you trust. A closed contact is trustworthy at once, an open one only after it has stayed open longer than the bounce time. Sampling in a timer interrupt gives you that clock for free. The chip can also filter a pin in hardware: see input qualification, section 8.4 of the reference manual.",
+    },
+    {
+      id: "int-priorities",
+      tier: "expert",
+      kind: "code",
+      mode: "write",
+      title: "Three jobs, three priorities",
+      goal: "Make a 1 ms tick, a 5 ms calculation and a 3 ms log job share the CPU so that each one runs when it must.",
+      refs: [{ trm: "3.4.3" }, { trm: "3.4.4" }, { trm: "3.4.5" }, { course: "L4" }, { course: "Lab 1" }],
+      brief: `
+The program has three interrupt functions. Each one works alone. Together they fail: run it and compare the call counts with the list below.
+
+- \`cpu_timer0_isr\` (INT1.7), every 1 ms: toggles LED1 and posts the software interrupt on every 20th call. **Highest priority.** It must never be late.
+- \`SWI_isr\` (INT12.9), every 20 ms: toggles LED2, then \`filter_job()\`, which takes 5 ms. **Middle priority.** It may be interrupted by timer 0 only, and must start at once even if the log job is running.
+- \`cpu_timer2_isr\` (INT14), every 23 ms: \`log_job()\`, which takes 3 ms. **Lowest priority.** It may be interrupted by both others, and must wait while the filter job runs.
+
+Make it so. Change only the two slow interrupt functions. The jobs, \`main()\` and \`cpu_timer0_isr\` stay as they are.
+
+## What the CPU does for you, and what it does not
+On the way into any interrupt function the CPU (section 3.4.3 of the reference manual):
+
+- sets **INTM**, so nothing else is taken until the function returns or runs \`EINT;\`
+- clears the function's own bit in **IER**, so it cannot interrupt itself
+- puts the old IER and INTM back when the function returns
+
+The priority order in the PIE table only decides who goes first when several requests are **waiting at the same time**. Once a function has run \`EINT;\`, any request whose IER bit is set gets in, whatever its place in the table. Which interrupts may enter a function is therefore yours to decide, with IER, before you open INTM.
+
+Two more facts:
+
+- A PIE group stays blocked until its \`PIEACK\` bit is cleared. The course starter clears it at the top of \`SWI_isr\`, before \`EINT;\`.
+- End a function that ran \`EINT;\` with \`DINT;\`, so that nothing sneaks in between its last statement and the return.
+`,
+      kit: "robot",
+      durationMs: 215,
+      starter: `${PRIORITY_GLOBALS}
+
+${PRIORITY_MAIN}
+
+// Every 20 ms, posted by cpu_timer0_isr
+__interrupt void SWI_isr(void)
+{
+    GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;
+
+    filter_job();
+    numSWIcalls++;
+
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP12;
+}
+
+// Every 23 ms
+__interrupt void cpu_timer2_isr(void)
+{
+    log_job();
+    numTimer2calls++;
+}
+`,
+      solution: `${PRIORITY_GLOBALS}
+
+${PRIORITY_MAIN}
+
+// Every 20 ms, posted by cpu_timer0_isr
+__interrupt void SWI_isr(void)
+{
+    GpioDataRegs.GPCTOGGLE.bit.GPIO94 = 1;
+
+    // Timer 2 has a lower priority: keep it out. The CPU puts IER back
+    // when this function returns.
+    IER &= ~M_INT14;
+    // Let other interrupts in: unblock the group, then clear INTM
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP12;
+    EINT;
+
+    filter_job();
+    numSWIcalls++;
+
+    DINT;
+}
+
+// Every 23 ms
+__interrupt void cpu_timer2_isr(void)
+{
+    // Lowest priority: everything else may interrupt. The CPU has already
+    // cleared this function's own IER bit, and timer 2 has no PIEACK.
+    EINT;
+
+    log_job();
+    numTimer2calls++;
+
+    DINT;
+}
+`,
+      checks: [
+        { kind: "isr", fn: "cpu_timer0_isr", min: 214, max: 216, label: "cpu_timer0_isr runs every 1 ms: no tick is lost", hint: "Ticks are lost while a slow function runs with INTM set. Both slow functions must let timer 0 in." },
+        { kind: "var", name: "numSWIcalls", equals: 10, label: "The filter job ran 10 times", hint: "The software interrupt is posted by cpu_timer0_isr. If timer 0 loses ticks, the SWI comes late too." },
+        { kind: "var", name: "numTimer2calls", equals: 9, label: "The log job ran 9 times" },
+        { kind: "isr-time", fn: "SWI_isr", maxUs: 5100, label: "The filter job is never interrupted by the log job (SWI_isr takes at most 5.1 ms)", hint: "After EINT every interrupt with its IER bit set can enter. Clear M_INT14 in IER before EINT." },
+        { kind: "latency", led: "LED2", after: 140, withinUs: 200, label: "SWI_isr starts on time at 140 ms, while the log job is running", hint: "cpu_timer2_isr must run EINT too. Its own IER bit is already cleared, so only timer 0 and the SWI can enter." },
+        { kind: "var", name: "filterSum", equals: 3909815408, label: "filter_job is unchanged and finished every time" },
+        { kind: "var", name: "logSum", equals: 4049865000, label: "log_job is unchanged and finished every time" },
+        { kind: "reg", reg: "PieCtrlRegs.PIEACK", equals: 0, label: "No PIE group is left blocked at the end" },
+      ],
+      bonus: [
+        { kind: "max-lines", max: 84, label: "Done with six added lines or fewer", hint: "SWI_isr needs an IER line, EINT and DINT, and its PIEACK line moved up. cpu_timer2_isr needs EINT and DINT." },
+      ],
+      watch: ["numTimer0calls", "numSWIcalls", "numTimer2calls"],
+      inspect: ["PieCtrlRegs.PIEACK", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEIFR12"],
+      hints: [
+        "Start with SWI_isr as the course starter has it: acknowledge group 12 first, then `EINT;`, the work, and `DINT;` at the end. Run it and read which check fails next.",
+        "After `EINT;` in SWI_isr, timer 2 can enter as well, because its IER bit is set. Put `IER &= ~M_INT14;` before the `EINT;`. You do not have to restore it: the return does.",
+        "cpu_timer2_isr: `EINT;` as its first line and `DINT;` as its last. Nothing else: no PIEACK (timer 2 is not in the PIE) and no IER line (INT14's own bit is already cleared).",
+      ],
+      takeaway: "Interrupts do not nest until a function says so with EINT, and from then on IER, not the PIE table, decides who may enter. That is how the course starter turns INT12.9 into a low-priority task that every hardware interrupt can interrupt.",
+    },
+    {
+      id: "int-soft-uart",
+      tier: "expert",
+      kind: "code",
+      mode: "write",
+      title: "A serial port made of one pin",
+      goal: "Send text at 9600 baud on GPIO0 with nothing but a timer interrupt: one bit per interrupt.",
+      refs: [{ course: "HW1" }, { course: "L4" }, { trm: "19.6" }, { trm: "3.8" }, { trm: "3.4.4" }],
+      brief: `
+The chip has four serial ports, and they are all in use. You need a fifth, on **GPIO0**. Build the transmitter yourself. A logic analyser on the pin decodes what you send.
+
+## The signal
+At 9600 baud every bit lasts 1/9600 s. One character is 10 bits (HW1, and chapter 6 in detail):
+
+- the line **idles high**
+- one **start bit**, low
+- **8 data bits**, bit 0 first
+- one **stop bit**, high
+
+## What to build
+- A timer 0 interrupt every bit time. Each call of \`cpu_timer0_isr\` puts **one bit** on the pin and nothing more.
+- The first line is \`Hi 0\` followed by \`\\r\\n\`. Its start bit goes out on the first timer interrupt.
+- A new line starts every **192 bit times** (20 ms): \`Hi 1\`, \`Hi 2\` and so on. After \`Hi 9\` comes \`Hi 0\` again.
+- Between lines the pin stays high.
+
+No SCI registers, no serial library, no \`DELAY_US\`.
+
+## Things to work out
+- The bit time is not a whole number of microseconds. How many SYSCLK cycles (200 MHz) is it, and what does that make \`PRD\`?
+- What the interrupt function has to remember between two calls.
+- The level of the pin at the moment it becomes an output. A line that dips low, however briefly, has sent a start bit.
+`,
+      kit: "launchpad",
+      durationMs: 70,
+      starter: `${FREQ}
+
+__interrupt void cpu_timer0_isr(void);
+
+char line[] = "Hi 0\\r\\n";
+
+void main(void)
+{
+${INIT}
+
+    // GPIO0: the transmit pin
+
+${PIE_INIT}
+
+    // Vector, timer (one interrupt per bit), enables
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+}
+`,
+      solution: `${FREQ}
+
+#define LINE_PERIOD 192   // bit times from the start of one line to the next
+
+__interrupt void cpu_timer0_isr(void);
+
+char line[] = "Hi 0\\r\\n";
+uint16_t sending = 1;     // 1 while a line is going out
+uint16_t charIndex = 0;   // character being sent
+uint16_t bitIndex = 0;    // 0 = start bit, 1 to 8 = data bits 0 to 7, 9 = stop bit
+uint16_t bitTime = 0;     // bit times since the line started
+
+void main(void)
+{
+${INIT}
+
+    // GPIO0: the transmit pin. Set the idle level first, then make it an output.
+    GpioDataRegs.GPASET.bit.GPIO0 = 1;
+    GPIO_SetupPinMux(0, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(0, GPIO_OUTPUT, GPIO_PUSHPULL);
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    EDIS;
+
+    // One bit: 200 MHz / 9600 = 20833 clock cycles, so PRD = 20832
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 104.1667);
+    CpuTimer0Regs.TCR.all = 0x4000;
+
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+__interrupt void cpu_timer0_isr(void)
+{
+    if (sending == 1) {
+        if (bitIndex == 0) {
+            GpioDataRegs.GPACLEAR.bit.GPIO0 = 1;    // start bit
+        } else if (bitIndex == 9) {
+            GpioDataRegs.GPASET.bit.GPIO0 = 1;      // stop bit
+        } else if ((line[charIndex] >> (bitIndex - 1)) & 1) {
+            GpioDataRegs.GPASET.bit.GPIO0 = 1;      // data bit is 1
+        } else {
+            GpioDataRegs.GPACLEAR.bit.GPIO0 = 1;    // data bit is 0
+        }
+
+        bitIndex++;
+        if (bitIndex == 10) {
+            bitIndex = 0;
+            charIndex++;
+            if (line[charIndex] == 0) {
+                sending = 0;    // end of the string: the pin stays high
+            }
+        }
+    }
+
+    bitTime++;
+    if (bitTime == LINE_PERIOD) {
+        bitTime = 0;
+        // Next line. Nothing is being sent now, so the text may change.
+        if (line[3] == '9') {
+            line[3] = '0';
+        } else {
+            line[3]++;
+        }
+        charIndex = 0;
+        sending = 1;
+    }
+
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`,
+      checks: [
+        { kind: "uart", pin: 0, baud: 9600, includes: "Hi 0\r\n", label: "A 9600 baud receiver on GPIO0 reads the line Hi 0", hint: "The report shows what the receiver decoded. Wrong letters: check the bit order (bit 0 first) and the bit time. Nothing: check the start bit (low) and the stop bit (high)." },
+        { kind: "uart", pin: 0, baud: 9600, includes: "Hi 0\r\nHi 1\r\nHi 2\r\nHi 3\r\n", label: "The lines Hi 1, Hi 2 and Hi 3 follow", hint: "Change the digit only while no line is being sent." },
+        { kind: "latency", pin: 0, after: 19.9, withinUs: 400, label: "The second line starts 20 ms (192 bit times) after the first", hint: "Count bit times in the interrupt function. The first start bit goes out on the first interrupt." },
+        { kind: "pin", pin: 0, at: 12, level: 1, label: "The line idles high after the first line" },
+        { kind: "pin", pin: 0, at: 39.5, level: 1, label: "The line idles high before the third line" },
+        { kind: "isr", fn: "cpu_timer0_isr", min: 665, max: 678, label: "One interrupt per bit time: 9600 a second", hint: "70 ms at 9600 baud is 672 bit times." },
+        { kind: "source", mustNotMatch: "DELAY_US|SciaRegs|ScibRegs|ScicRegs|ScidRegs|serial_", label: "No SCI, no serial library, no DELAY_US" },
+        { kind: "no-dat-write", label: "The pin is changed through SET and CLEAR" },
+      ],
+      bonus: [
+        { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 20832, label: "The bit time is exact to one clock cycle: PRD is 20832", hint: "200 MHz / 9600 = 20833.3 cycles per bit. ConfigCpuTimer takes a float, so 104.1667 microseconds works, or write CpuTimer0Regs.PRD.all yourself." },
+        { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 1, label: "cpu_timer0_isr never takes more than 1 microsecond", hint: "One bit per call. No loop over the bits or the characters." },
+      ],
+      watch: ["charIndex", "bitIndex"],
+      hints: [
+        "Keep three things between calls: whether a line is going out, which character, and which of its 10 bits. Each call sends the bit they point to, then moves them on.",
+        "Bit k of a character is `(line[charIndex] >> k) & 1`. With bitIndex 0 for the start bit and 9 for the stop bit, the data bit is number `bitIndex - 1`. The string ends where `line[charIndex] == 0`.",
+        "Count every call in a second variable. When it reaches 192: set it to 0, step the digit `line[3]` (after '9' comes '0'), and start again at character 0, bit 0. For the timer: `ConfigCpuTimer(&CpuTimer0, LAUNCHPAD_CPU_FREQUENCY, 104.1667);`",
+      ],
+      takeaway: "A UART is a state machine clocked at the baud rate. The SCI does exactly this in hardware, with a shift register in place of your index. The receiver only needs each edge to be within a fraction of a bit, which is why a timer interrupt is good enough at 9600 baud.",
     },
   ],
 };

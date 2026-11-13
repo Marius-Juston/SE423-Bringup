@@ -85,6 +85,10 @@ export class Sci {
         else next = (next & ~0x80) | (stored & 0x80);
         return next;
       };
+      // TRM 19.14: the receive FIFO interrupt is requested whenever the fill
+      // level is at or above RXFFIL, so clearing the flag with characters
+      // still waiting raises it again.
+      ffrx.after = () => this.rxInterrupt(i);
     });
   }
 
@@ -156,15 +160,19 @@ export class Sci {
       b.mem.writes++;
       dev.set(`${pre}.SCIFFRX`, f.length, "RXFFST");
       dev.set(`${pre}.SCIRXST`, 1, "RXRDY");
-      const fifoOn = dev.get(`${pre}.SCIFFTX`, "SCIFFENA");
-      const fire = fifoOn
-        ? dev.get(`${pre}.SCIFFRX`, "RXFFIENA") && f.length >= dev.get(`${pre}.SCIFFRX`, "RXFFIL")
-        : dev.get(`${pre}.SCICTL2`, "RXBKINTENA");
-      if (fire) {
-        if (fifoOn) dev.set(`${pre}.SCIFFRX`, 1, "RXFFINT");
-        const [g, rxCh] = PIE_CH[port];
-        b.pie.raise(g, rxCh);
-      }
+      if (dev.get(`${pre}.SCIFFTX`, "SCIFFENA")) this.rxInterrupt(port);
+      else if (dev.get(`${pre}.SCICTL2`, "RXBKINTENA")) b.pie.raise(PIE_CH[port][0], PIE_CH[port][1]);
     });
+  }
+
+  /** Requests the receive FIFO interrupt if the level condition holds and the flag is clear. */
+  private rxInterrupt(port: number): void {
+    const dev = this.b.dev;
+    const pre = `Sci${SCI_PORTS[port]}Regs`;
+    if (!dev.get(`${pre}.SCIFFRX`, "RXFFIENA") || dev.get(`${pre}.SCIFFRX`, "RXFFINT")) return;
+    const level = dev.get(`${pre}.SCIFFRX`, "RXFFIL");
+    if (this.fifo[port].length === 0 || this.fifo[port].length < level) return;
+    dev.set(`${pre}.SCIFFRX`, 1, "RXFFINT");
+    this.b.pie.raise(PIE_CH[port][0], PIE_CH[port][1]);
   }
 }
