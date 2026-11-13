@@ -10,18 +10,36 @@ own computer.
 
 ## Playing
 
-- **Map**: chapters unlock in order; every chapter has the same rhythm
-  (briefing, puzzles, complete the code, write the code, debug, checkpoint).
-  Settings has an "unlock every chapter" switch for practising one topic.
+- **Map**: 21 chapters in four parts (Foundations, Analog and motion, Buses
+  and data, The robot). Pick a chapter tile to see its levels. Every chapter
+  has a **core path** (briefing, puzzles, complete the code, write the code,
+  debug, checkpoint) that unlocks the next chapters, optional **practice**
+  levels, and optional **expert challenges**. Settings has an "unlock every
+  chapter" switch for practising one topic.
+- **Briefings** embed interactive figures (a GPIO pin you can configure, the
+  ADC chain from trigger to interrupt, SPI clock modes, an interrupt path
+  whose gates you open and close, a PWM waveform you drag, and many more).
+  They are all collected in the Handbook under "Key diagrams".
 - **Code levels**: write C in the editor. **Run** starts a live board: hold
-  the on-screen push buttons, type into the serial terminal, watch LEDs, pin
-  traces, variables and the registers your code wrote. **Run tests** plays a
-  fixed scenario and lists each check with what was observed.
+  the on-screen push buttons, turn knobs, type into the serial terminal.
+  **Pause**, **Step line** (F10) and **Next write** (F9) walk through the
+  program. The bench shows the board, pins over time, values over time,
+  views for whatever the program uses (PWM outputs, ADC slots, bus traffic,
+  the robot from above, the LIDAR's room, arrays as grids), the serial
+  terminal, and a register **change log**: which line wrote which register,
+  the fields before and after, and the bits that changed.
+- **Run tests** (Ctrl+Enter) plays a fixed scenario and lists each check
+  with what was observed. Code levels also offer **stars** for tighter or
+  lower-level solutions (an interrupt time budget, no helper functions,
+  fewer lines).
 - **Hints**: up to three per level, from a nudge to nearly the answer. The
-  reference solution opens after the level is passed or the last hint is used.
+  reference solution opens after the level is passed or the last hint is
+  used.
 - **Handbook**: every register of the chip with its fields, the pin tables
-  of the course boards, and the formulas.
+  of the course boards, the formulas, and the key diagrams.
 - **Sandbox**: a free board with nothing checked.
+- **Settings**: light or dark theme, text size, keyboard shortcuts, progress
+  export and import.
 
 ## Development
 
@@ -51,17 +69,24 @@ to students, so post the installers where they can reach them.
 src/sim/          the simulator: pure TypeScript, no DOM
   cc/             C-subset lexer, preprocessor, parser, compiler to closures
   device/         register map generated from the TI headers
-  periph/         behavioural models: GPIO, CPU timers, PIE, SCI
+  periph/         built-in models: GPIO, CPU timers, PIE, SCI
+  plugins/        one file per further peripheral or world model: ADC, DAC,
+                  ePWM, eQEP, SPI (+ MPU-9250, DAN28027), I2C, CAN, DMA,
+                  motors/servos/buzzer, LIDAR, robot test bench, signal source
   lib/            course library: TI helper sources (run as C) + natives
-  world/          parts on the course boards (LEDs, buttons)
-  board.ts        memory, time, events, CPU interrupt logic
+  world/          parts on the course boards (LEDs, buttons, knobs, meters)
+  board.ts        memory, time, events, CPU interrupt logic, signal bus
   runner.ts       scripted run + checks (used by "Run tests" and CI)
-  live.ts         interactive run (used by "Run")
+  live.ts         interactive run with pause and stepping (used by "Run")
 src/levels/       level data, one file per chapter
 src/ui/           React interface
+  figures/        interactive figures for briefs, one file per figure
+  views/          bench views shown next to a running program
 src-tauri/        desktop shell (Tauri 2)
-tools/            generators for the register map, TI sources, TRM index
-tests/            simulator tests, the course starter project, level checks
+tools/            generators (register map, TI sources, TRM index), shot.mjs
+tests/            simulator and plugin tests, the course starter project,
+                  level checks, and e2e/ (plays every level in a browser)
+docs/             AUTHORING.md (levels), PLUGINS.md (simulator), VISUALS.md
 ```
 
 Things worth knowing about the simulator:
@@ -79,13 +104,21 @@ Things worth knowing about the simulator:
 - The unmodified course `LABstarter_main.c` runs and is a test fixture
   (`tests/labstarter.test.ts`, skipped when the course repo is not present).
 
-## Adding a level
+## Adding content
 
-Add an entry to a chapter file in `src/levels/chapters/` (or a new
-`chNN_name.ts` exporting a `Chapter`; files are picked up automatically).
-The format is in `src/levels/types.ts`. `npm run check-levels` then verifies
-that the reference solution passes every check with no diagnostics, the
-starter compiles but does not pass, and every TRM citation exists.
+- **A level**: add an entry to a chapter file in `src/levels/chapters/` (or
+  a new `chNN_name.ts` exporting a `Chapter`; files are picked up
+  automatically). See `docs/AUTHORING.md`. `npm run check-levels` verifies
+  that the reference solution passes every check and star with no
+  diagnostics, the starter compiles but does not pass, and every citation
+  and figure exists.
+- **A peripheral or world model**: one file in `src/sim/plugins/`. See
+  `docs/PLUGINS.md`.
+- **A figure or bench view**: one file in `src/ui/figures/` or
+  `src/ui/views/`. See `docs/VISUALS.md`; `node tools/shot.mjs` screenshots
+  a figure or a level for checking.
+- `npm run e2e` builds the game and plays every level through the real
+  interface in a headless browser (needs Playwright's Chromium).
 
 ## Regenerating generated files
 
@@ -99,14 +132,19 @@ node tools/gen-ti-source.mjs <.../C2000Ware_4_01_00_00/device_support/f2837xd>
 node tools/trm-index.mjs <.../tms320f28379D_TechRefi.pdf>     # needs pdftotext
 ```
 
-## Roadmap
+## Campaign
 
-| Milestone | Chapters |
+| Part | Chapters |
 |---|---|
-| M1 (this release) | 0 Bits, 1 Registers, 2 Digital outputs, 3 Digital inputs, 4 CPU timers, 5 Interrupts, 6 Serial |
-| M2 | 7 DAC, 8 ADC, 9 PWM, 10 Motors and actuators, 11 Encoders |
-| M3 | 12 SPI, 13 SPI devices, 14 I2C and CAN, 15 DMA and filters |
-| M4 | 16 Feedback control, 17 Sensors and state machines, 18 Localization |
-| M5 | 19 Vision and planning, 20 Threads |
+| Foundations | 0 Bits and numbers, 1 Registers, 2 Digital outputs, 3 Digital inputs, 4 CPU timers, 5 Interrupts, 6 Serial and ASCII |
+| Analog and motion | 7 DAC, 8 ADC, 9 PWM, 10 Motors and actuators, 11 Encoders |
+| Buses and data | 12 SPI, 13 SPI devices, 14 I2C and CAN, 15 DMA and filters |
+| The robot | 16 Feedback control, 17 Sensors and state machines, 18 Where am I, 19 Seeing and planning, 20 Threads |
+
+Known limits of the simulator are listed at the top of each model file.
+The main ones: timing is nominal, not cycle-accurate; the serial port does
+not draw its waveform on the TX pin; external pin interrupts (XINT) are not
+modelled; chapters 16 and 18 use a self-contained robot test bench (`tb_`
+functions) instead of the PWM and encoder models.
 
 See `THIRD_PARTY.md` for the Texas Instruments licence notice.
