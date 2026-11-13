@@ -2,6 +2,7 @@
 // Screenshots one figure or one level of the game, for checking visuals.
 //   node tools/shot.mjs figure <figure-id> <out.png> [--click "button text"]... [--width 700]
 //   node tools/shot.mjs level <level-id> <out.png> [--code file.c] [--run 1500 | --tests] [--width 1500] [--height 950]
+// Add --dark to either form for the dark theme.
 // Starts its own dev server on a free port. Needs Playwright's Chromium
 // (~/.cache/ms-playwright) or CHROME=<path to a Chromium binary>.
 import { createServer } from "vite";
@@ -38,7 +39,7 @@ const url = server.resolvedUrls.local[0];
 const browser = await chromium.launch({ executablePath: findChrome() });
 const errors = [];
 try {
-  const page = await browser.newPage({ viewport: { width: +opt("width", kind === "figure" ? 700 : 1500), height: +opt("height", 950) }, deviceScaleFactor: kind === "figure" ? 2 : 1 });
+  const page = await browser.newPage({ colorScheme: rest.includes("--dark") ? "dark" : "light", viewport: { width: +opt("width", kind === "figure" ? 700 : 1500), height: +opt("height", 950) }, deviceScaleFactor: kind === "figure" ? 2 : 1 });
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
   if (kind === "figure") {

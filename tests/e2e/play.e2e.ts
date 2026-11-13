@@ -122,11 +122,16 @@ async function solve(l: Level): Promise<void> {
   }
 }
 
+// E2E_FROM=<chapter number> plays only that chapter and the ones after it.
+const FROM = Number(process.env.E2E_FROM ?? 0);
+
 describe("playthrough", () => {
-  for (const c of CHAPTERS) {
+  for (const c of CHAPTERS.filter((x) => x.number >= FROM)) {
     for (const [i, l] of c.levels.entries()) {
       it(`${c.number}.${i + 1} ${l.title} (${kindOf(l)})`, async () => {
         errors.length = 0;
+        // Start from the map whatever the previous level left behind.
+        if (!(await page.locator(".map-cols").count())) await page.locator(".brand").click();
         await page.locator(`button[data-chapter="${c.id}"]`).click();
         await page.locator(`button[data-level="${l.id}"]`).click();
         await page.waitForSelector(".level-head");
@@ -144,7 +149,7 @@ describe("playthrough", () => {
         expect(overflow, "horizontal overflow").toBeLessThanOrEqual(1);
         if (shots) await page.screenshot({ path: join(shots, `${c.number}-${i + 1}-${l.id}.png`) });
         expect(errors).toEqual([]);
-        await page.locator(".level-head").getByRole("button", { name: "Map" }).click();
+        await page.locator(".level-head").getByRole("button", { name: "Map", exact: true }).click();
         await page.waitForSelector(".map-cols");
       });
     }
@@ -161,7 +166,7 @@ describe("playthrough", () => {
     await expect.poll(() => pb.getAttribute("aria-pressed")).toBe("true");
     await pb.dispatchEvent("pointerup");
     // Board and registers are visible together.
-    await page.waitForSelector(".reg-row");
+    await page.waitForSelector(".reglog");
     await page.waitForSelector(".parts");
     if (shots) await page.screenshot({ path: join(shots, "sandbox.png") });
     await page.getByRole("button", { name: "Stop", exact: true }).click();

@@ -17,8 +17,8 @@
   --dim: #c3cbd9;
   --faint: rgba(255, 255, 255, 0.2);
   --accent: #ff5f05;
-  --accent-hover: var(--accent-hover);
-  --accent-ink: var(--accent-ink);
+  --accent-hover: #ff7a2e;
+  --accent-ink: #1a0a00;
   --accent-soft: rgba(255, 95, 5, 0.16);
   --value: #fcb316;
   --info: #4fc3e8;
@@ -26,7 +26,7 @@
   --ok-soft: rgba(122, 215, 154, 0.13);
   --bad: #ff8a73;
   --bad-soft: rgba(255, 138, 115, 0.13);
-  --hi: var(--accent-hover);
+  --hi: #ff7a2e;
   --lo: #4fc3e8;
   --code-kw: #ff9a5c;
   --code-type: #4fc3e8;
@@ -36,10 +36,10 @@
   --code-macro: #d8a6ff;
   --code-fn: #ffe08a;
   --code-prop: #cfe8ff;
-  --select: var(--select);
-  --pcb: var(--pcb);
-  --pcb-edge: var(--pcb-edge);
-  --pcb-ink: var(--pcb-ink);
+  --select: #28508f;
+  --pcb: #0b3a2a;
+  --pcb-edge: #1d6a4d;
+  --pcb-ink: #d7efe4;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
   /* Older names used across components and figures. */
