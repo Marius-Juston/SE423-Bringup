@@ -199,6 +199,8 @@ export class Gpio {
     let tr = this.trace.get(pin);
     if (!tr) this.trace.set(pin, (tr = []));
     tr.push({ t, level: lv as Level });
+    const limit = this.b.historyLimit;
+    if (limit && tr.length > limit) tr.splice(0, tr.length - (limit >> 1));
     for (const l of this.listeners) l(pin, lv as Level, t);
   }
 

@@ -1,3 +1,4 @@
+import { BENCH_FRAME_MS, frameBus } from "./frame";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CodeLevel } from "../../levels/types";
 import { runProgram, type RunResult } from "../../sim/runner";
@@ -133,11 +134,17 @@ export function CodeLevelView({
     live.speed = speed;
     let raf = 0;
     let last = performance.now();
+    let drawn = 0;
     const loop = (now: number) => {
       const dt = Math.min(50, now - last);
       last = now;
       if (!live.paused) live.step(dt);
-      setFrame((f) => f + 1);
+      // Views that show motion follow every frame; the bench as a whole redraws less often (see frame.ts).
+      frameBus.emit(now, !live.running);
+      if (now - drawn >= BENCH_FRAME_MS || !live.running) {
+        drawn = now;
+        setFrame((f) => f + 1);
+      }
       if (live.running) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

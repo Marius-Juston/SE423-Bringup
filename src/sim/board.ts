@@ -211,6 +211,8 @@ export class Board implements Rt {
     if (last && last.v === v) return;
     if (last && last.t === t) last.v = v;
     else tr.push({ t, v });
+    // A live run can go on for minutes: keep the recent history only.
+    if (this.historyLimit && tr.length > this.historyLimit) tr.splice(0, tr.length - (this.historyLimit >> 1));
     this.mem.writes++;
   }
 
@@ -301,6 +303,13 @@ export class Board implements Rt {
         throw new RuntimeError(line, "This code never finishes: it is stuck in a loop that nothing can end (inside an interrupt function, or a function called from an expression).");
     }
   }
+
+  /**
+   * Longest history kept per pin and per output, in entries (0: everything).
+   * A test run keeps everything; a live run sets a limit, because a 20 kHz
+   * PWM pin alone records 40 000 changes a second.
+   */
+  historyLimit = 0;
 
   /** Line of the conditional loop the program is waiting in, and since when (ns). */
   waitLine = 0;

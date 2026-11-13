@@ -42,6 +42,8 @@ export class LiveSession {
    */
   constructor(kitId: string, source: string, private setup: LiveSetup[] = []) {
     this.board = new Board(kitId);
+    // Minutes of running must not fill the memory: about a second of a fast PWM pin, a minute of a 1 kHz signal.
+    this.board.historyLimit = 60_000;
     this.kit = KITS[kitId];
     const b = this.board;
     for (const p of this.kit.parts) if (p.kind === "knob") b.setInput(p.input, p.initial, 0);

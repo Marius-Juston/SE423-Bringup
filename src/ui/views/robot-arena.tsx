@@ -1,3 +1,4 @@
+import { useFrame } from "../code/frame";
 import { useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { Board } from "../../sim/board";
 import type { LidarState } from "../../sim/plugins/lidar";
@@ -69,8 +70,8 @@ const idOf = (b: Board): number => {
 };
 
 const STYLE = `
-.arena { display: grid; gap: 0.5rem; min-width: 0; }
-.arena-pic { position: relative; min-width: 0; }
+.arena { display: grid; gap: 0.5rem; min-width: 0; contain: layout style; }
+.arena-pic { position: relative; min-width: 0; contain: layout paint style; }
 .arena-pic svg { display: block; width: 100%; background: var(--inset); border: 1px solid var(--border); border-radius: var(--radius); touch-action: none; user-select: none; }
 .arena-pic text { font-family: var(--sans); font-size: 11px; fill: var(--dim); }
 .arena-pic text.lbl { fill: var(--text); paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; font-weight: 600; }
@@ -148,10 +149,14 @@ type Grab =
   | { what: "obj"; i: number; from: Pt; orig: Obstacle }
   | { what: "size"; i: number };
 
-function ArenaBody({ board, nowMs, live, preview }: { board: Board | null; nowMs: number; live: boolean; preview?: Scene }) {
+function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board | null; nowMs: number; live: boolean; preview?: Scene }) {
   const ctx = useContext(ArenaContext);
   const size = usePanelSize();
   const session = live && ctx?.session?.running ? ctx.session : null;
+  // The bench redraws about 20 times a second; motion needs every frame, so
+  // this view follows the live run's own clock.
+  useFrame();
+  const nowMs = session ? session.timeMs : benchNowMs;
   const running = !!session && !session.paused;
   const [scanPref, setScanPref] = usePref<ScanMode | "auto">("arena-scan", "auto");
   const [replayT, setReplayT] = useState<number | null>(null);
@@ -171,7 +176,21 @@ function ArenaBody({ board, nowMs, live, preview }: { board: Board | null; nowMs
   const programReads = !!lidarState && (lidarState.scans > 0 || lidarState.reads > 0);
   const scanMode: ScanMode = kind === "bench" ? "off" : scanPref === "auto" ? (kind === "scan" || programReads ? "rays" : "off") : scanPref;
 
-  // The replay clock: the only animation this view runs itself, and only after the student pressed Play.
+  // A fresh test run plays itself once, so the student sees the robot drive rather than only where it ended.
+  // Pressing Run tests is the student's action that starts it; any use of the slider stops it, and it does
+  // not start at all for someone who asked for reduced motion.
+  const played = useRef<Board | null>(null);
+  useEffect(() => {
+    if (live || !board || endMs <= 0 || played.current === board) return;
+    played.current = board;
+    if (kind === "scan" || kind === undefined) return;
+    if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    setSpeed(endMs > 8000 ? 4 : 1);
+    setReplayT(0);
+    setPlaying(true);
+  }, [board, live, endMs, kind]);
+
+  // The replay clock: the only animation this view runs itself, started by Play or by a fresh test run.
   useEffect(() => {
     if (!playing || live) return;
     let raf = 0;
@@ -494,7 +513,7 @@ function ArenaBody({ board, nowMs, live, preview }: { board: Board | null; nowMs
               ))}
             </div>
           )}
-          <p className="arena-hint">Replay of the test run: drag the slider or use the arrow keys.{marks.length ? " The marks are the moments the tests look at." : ""}</p>
+          <p className="arena-hint">Replay of the test run{playing ? ` (playing${speed === 4 ? " at 4x" : ""})` : ""}: drag the slider or use the arrow keys.{marks.length ? " The marks are the moments the tests look at." : ""}</p>
         </div>
       )}
       {play && scene && <ArenaPlayground large={size === "large"} session={play} board={board!} kind={kind} scene={s} objects={objects} tool={tool} setTool={setTool} selected={selected} setSelected={setSelected} placeRobot={placeRobot} moveGoal={moveGoal} setObjects={setObjects} onReset={() => { play.resetWorld(kind); setTrailFrom(play.timeMs); estTrail.current = []; setSelected(null); changed(); }} onWorld={() => { setTrailFrom(play.timeMs); setSelected(null); changed(); }} />}
