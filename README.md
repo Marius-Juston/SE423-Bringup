@@ -92,6 +92,13 @@ Pushing to `main` publishes the web version to GitHub Pages
 and Linux installers and attaches them to a release
 (`.github/workflows/release.yml`), which is where the install scripts look.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). The rules for content, figures and
+the simulator are in `docs/`; [CLAUDE.md](CLAUDE.md) and `.claude/skills/`
+give coding agents the same rules and step-by-step recipes (add a level, add
+a figure, extend the simulator, review content, verify, release).
+
 ## How it is built
 
 ```
