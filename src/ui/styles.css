@@ -15,7 +15,7 @@
   --border-strong: rgba(255, 255, 255, 0.3);
   --text: #ffffff;
   --dim: #c3cbd9;
-  --faint: var(--faint);
+  --faint: rgba(255, 255, 255, 0.2);
   --accent: #ff5f05;
   --accent-hover: var(--accent-hover);
   --accent-ink: var(--accent-ink);
