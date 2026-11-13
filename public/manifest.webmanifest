@@ -1,0 +1,15 @@
+{
+  "name": "Bringup: SE 423 practice",
+  "short_name": "Bringup",
+  "description": "Practice game for SE 423 Introduction to Mechatronics: puzzles and real C on a simulated F28379D board.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0b1a33",
+  "theme_color": "#13294b",
+  "icons": [
+    { "src": "icon-256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

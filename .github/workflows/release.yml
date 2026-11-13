@@ -1,7 +1,7 @@
 name: Release
 
 # Builds installers for Windows, macOS and Linux and attaches them to a
-# draft GitHub release. Runs when a version tag (v0.1.0) is pushed, or by hand.
+# GitHub release. Runs when a version tag (v0.1.0) is pushed, or by hand.
 on:
   push:
     tags: ["v*"]
@@ -59,6 +59,6 @@ jobs:
           tagName: v__VERSION__
           releaseName: "Bringup v__VERSION__"
           releaseBody: "Download the installer for your computer below. See the README for first-run instructions (the installers are not code-signed)."
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

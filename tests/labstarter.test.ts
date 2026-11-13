@@ -6,7 +6,7 @@ import { runProgram } from "../src/sim/runner";
 // (TI and course copyright), so the test is skipped when it is not present.
 const PATH =
   process.env.LABSTARTER ??
-  "/home/marius/GitHub/SE-423---Class-Material/SE423Spring26/C2000Ware_4_01_00_00/device_support/f2837xd/examples/cpu1/LABstarter/cpu01/LABstarter_main.c";
+  "../SE-423---Class-Material/SE423Spring26/C2000Ware_4_01_00_00/device_support/f2837xd/examples/cpu1/LABstarter/cpu01/LABstarter_main.c";
 
 describe.skipIf(!existsSync(PATH))("LABstarter_main.c", () => {
   it("blinks the LEDs and counts interrupts as on the board", () => {

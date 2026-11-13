@@ -5,8 +5,32 @@ Illinois). Students work through short levels that start at bits and hex and
 build up to the robot: background puzzles (wiring, timing diagrams, register
 bits) followed by real course-style C that runs on a simulated TMS320F28379D.
 
-Private course material. It runs offline; progress is saved on the student's
-own computer.
+It runs offline; progress is saved on the student's own computer.
+
+## Play or install
+
+**In the browser, nothing to install:** <https://marius-juston.github.io/SE423-Bringup/>.
+After the first visit it works offline, and the browser can install it as an
+app (the install icon in the address bar, or "Add to Home Screen").
+
+**Desktop app, one line:**
+
+```sh
+# Linux and macOS
+curl -fsSL https://marius-juston.github.io/SE423-Bringup/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://marius-juston.github.io/SE423-Bringup/install.ps1 | iex
+```
+
+The scripts download the installer of the latest release for your computer
+(`.deb`, `.rpm` or AppImage on Linux, the app on macOS, the set-up program on
+Windows). Read them first if you like: `public/install.sh`,
+`public/install.ps1`. The desktop builds are not code-signed, so Windows
+shows "unknown publisher" (More info, then Run anyway); the macOS script
+removes the download quarantine flag for the same reason.
 
 ## Playing
 
@@ -63,12 +87,10 @@ npm run tauri dev      # the desktop app, live reload
 npm run tauri build    # installers in src-tauri/target/release/bundle/
 ```
 
-Pushing a tag `vX.Y.Z` builds Windows, macOS and Linux installers and
-attaches them to a draft release (`.github/workflows/release.yml`). The
-installers are not code-signed: Windows SmartScreen and macOS Gatekeeper
-warn on first launch ("More info" then "Run anyway"; on macOS right-click
-the app and choose Open). Releases of a private repository are not visible
-to students, so post the installers where they can reach them.
+Pushing to `main` publishes the web version to GitHub Pages
+(`.github/workflows/pages.yml`). Pushing a tag `vX.Y.Z` builds Windows, macOS
+and Linux installers and attaches them to a release
+(`.github/workflows/release.yml`), which is where the install scripts look.
 
 ## How it is built
 
