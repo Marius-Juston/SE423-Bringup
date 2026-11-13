@@ -24,7 +24,10 @@ describe("DAC plugin", () => {
     expect(r.runtimeError).toBeUndefined();
     expect(r.diagnostics).toEqual([]);
     for (const c of r.checks) expect(c.pass, c.detail).toBe(true);
-    const locked = runProgram({ kit: "robot", durationMs: 1, source: `void main(void) { DacaRegs.DACVALS.bit.DACVALS = 2048; while (1) {} }` });
+    // TRM Table 12-2: DACOUTEN and DACCTL are protected, DACVALS is not.
+    const locked = runProgram({ kit: "robot", durationMs: 1, source: `void main(void) { DacaRegs.DACOUTEN.bit.DACOUTEN = 1; while (1) {} }` });
     expect(locked.diagnostics.map((d) => d.code)).toContain("eallow");
+    const open = runProgram({ kit: "robot", durationMs: 1, source: `void main(void) { DacaRegs.DACVALS.bit.DACVALS = 2048; while (1) {} }` });
+    expect(open.diagnostics.map((d) => d.code)).not.toContain("eallow");
   });
 });
