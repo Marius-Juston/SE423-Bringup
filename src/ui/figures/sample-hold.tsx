@@ -14,7 +14,8 @@ const CH_PF = 14.5;
 // The middle of code 2048 (1.5000 to 1.5007 V), so a capacitor that is less
 // than half a step off still converts to the pin's own code.
 const VPIN = 1.5004;
-const T_MAX = 1100;
+// The time axis runs past the longest window (1000 ns), which leaves room for the label of the pin voltage.
+const T_MAX = 1250;
 const SOURCES = [
   { r: 50, label: "50 Ω" },
   { r: 1000, label: "1 kΩ" },
@@ -23,6 +24,7 @@ const SOURCES = [
 ];
 const CSS = `
 .shold input[type=range] { flex: 1 1 8rem; min-width: 6rem; padding: 0; accent-color: var(--orange); }
+.shold .shold-win { fill: var(--accent-soft); stroke: var(--orange); stroke-width: 1; }
 .shold .shold-num { font-family: var(--mono); color: var(--harvest); min-width: 2.4em; text-align: right; }
 `;
 const adc = (v: number) => Math.min(4095, Math.max(0, Math.floor((4096 * v) / 3.0)));
@@ -47,9 +49,11 @@ function SampleHold() {
   const X1 = 408;
   const Y1 = 104;
   const Y0 = 172;
-  const pad = 0.2 * Math.abs(prev - VPIN);
-  const lo = Math.min(prev, VPIN) - pad;
-  const hi = Math.max(prev, VPIN) + pad;
+  // More room beyond the pin voltage than beyond the old one: its label sits there, clear of the curve.
+  const span = Math.abs(prev - VPIN);
+  const up = prev < VPIN;
+  const lo = Math.min(prev, VPIN) - (up ? 0.2 : 0.4) * span;
+  const hi = Math.max(prev, VPIN) + (up ? 0.4 : 0.2) * span;
   const x = (t: number) => X0 + (t / T_MAX) * (X1 - X0);
   const y = (v: number) => Y0 - ((v - lo) / (hi - lo)) * (Y0 - Y1);
   let d = `M${x(0)},${y(prev)}`;
@@ -59,6 +63,11 @@ function SampleHold() {
   }
   d += ` H${X1}`;
   const xw = x(windowNs);
+  // The label of the moment the switch opens: beside the window's edge, on the side with room, and
+  // never on the flat part of the curve (a short window or a slow source leaves that near the start).
+  const right = xw < 226;
+  const yh = y(held);
+  const openY = up ? (right && yh > Y0 - 24 ? yh - 6 : Y0 - 9) : right && yh < Y1 + 18 ? yh + 13 : Y1 + 6;
   const rLabel = SOURCES.find((s) => s.r === rs)!.label;
   const mvOff = Math.abs(held - VPIN) * 1000;
 
@@ -75,11 +84,11 @@ function SampleHold() {
         {/* circuit */}
         <rect x="6" y="18" width="62" height="34" rx="4" className="fig-box active" />
         <text x="37" y="32" textAnchor="middle" className="fig-label">sensor</text>
-        <text x="37" y="45" textAnchor="middle" className="fig-value small" style={{ fill: "var(--orange)" }}>{VPIN.toFixed(1)} V</text>
+        <text x="37" y="45" textAnchor="middle" className="fig-value small" style={{ fill: "var(--accent-text)" }}>{VPIN.toFixed(1)} V</text>
         <line x1="68" x2="84" y1="35" y2="35" className="fig-wire hot" />
         <rect x="84" y="30" width="34" height="10" className="fig-box" />
-        <text x="127" y="24" textAnchor="end" className="fig-label">its resistance</text>
-        <text x="101" y="52" textAnchor="middle" className="fig-value small">{rLabel}</text>
+        <text x="101" y="24" textAnchor="middle" className="fig-value small">{rLabel}</text>
+        <text x="101" y="63" textAnchor="middle" className="fig-label">its resistance</text>
         <line x1="118" x2="150" y1="35" y2="35" className="fig-wire hot" />
         <rect x="134" y="29" width="8" height="12" className="fig-pin" />
         <text x="138" y="24" textAnchor="middle" className="fig-label dim">pin</text>
@@ -106,20 +115,20 @@ function SampleHold() {
         <rect x="290" y="14" width="124" height="46" rx="4" className={`fig-box ${off !== 0 || tooShort ? "hot" : "active"}`} />
         <text x="352" y="27" textAnchor="middle" className="fig-label">converter measures</text>
         <text x="352" y="41" textAnchor="middle" className="fig-value">{held.toFixed(4)} V = {code}</text>
-        <text x="352" y="54" textAnchor="middle" className="fig-label" style={{ fill: off !== 0 ? "var(--bad)" : "var(--ok)" }}>{off !== 0 ? `wrong: ${off > 0 ? "+" : "-"}${Math.abs(off)} (pin is ${want})` : `correct (pin is ${want})`}</text>
+        <text x="352" y="54" textAnchor="middle" className="fig-label" style={{ fill: off !== 0 ? "var(--bad)" : "var(--ok)" }}>{off !== 0 ? `wrong: pin is ${want}` : `correct: pin is ${want}`}</text>
         {/* plot */}
         <text x={X0} y="90" className="fig-label dim">capacitor voltage over time</text>
-        <rect x={X0} y={Y1 - 6} width={Math.max(0, xw - X0)} height={Y0 - Y1 + 6} fill="var(--orange)" fillOpacity="0.12" />
+        <rect x={X0} y={Y1 - 6} width={Math.max(0, xw - X0)} height={Y0 - Y1 + 6} className="shold-win" />
         <line x1={X0} x2={X1} y1={Y0} y2={Y0} className="fig-wire" />
         <line x1={X0} x2={X0} y1={Y0} y2={Y1 - 6} className="fig-wire" />
         <line x1={X0} x2={X1} y1={y(VPIN)} y2={y(VPIN)} stroke="var(--orange)" strokeWidth="1.2" strokeDasharray="4 3" />
-        <text x={X0 - 4} y={y(VPIN) + 3} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>{VPIN.toFixed(1)} V</text>
-        <text x={X1} y={y(VPIN) - 4} textAnchor="end" className="fig-label" style={{ fill: "var(--orange)" }}>pin voltage</text>
+        <text x={X0 - 4} y={y(VPIN) + 3} textAnchor="end" className="fig-label" style={{ fill: "var(--accent-text)" }}>{VPIN.toFixed(1)} V</text>
+        <text x={X1} y={up ? y(VPIN) - 5 : y(VPIN) + 12} textAnchor="end" className="fig-label" style={{ fill: "var(--accent-text)" }}>pin voltage</text>
         <text x={X0 - 4} y={y(prev) + 3} textAnchor="end" className="fig-label">{prev.toFixed(1)} V</text>
         <path d={d} className="fig-trace data" />
         <line x1={xw} x2={xw} y1={Y1 - 6} y2={Y0 + 3} stroke="var(--orange)" strokeWidth="1.4" />
         <circle cx={xw} cy={y(held)} r="3.2" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.8" />
-        <text x={xw < 226 ? xw + 5 : xw - 5} y={prev < VPIN ? Y0 - 5 : Y1 + 2} textAnchor={xw < 226 ? "start" : "end"} className="fig-label">switch opens: this voltage is held</text>
+        <text x={right ? xw + 5 : xw - 5} y={openY} textAnchor={right ? "start" : "end"} className="fig-label">switch opens: this voltage is held</text>
         {[0, 500, 1000].map((t) => (
           <g key={t}>
             <line x1={x(t)} x2={x(t)} y1={Y0} y2={Y0 + 3} className="fig-wire" />
@@ -134,7 +143,7 @@ function SampleHold() {
       <div className="fig-controls">
         <div>
           <span>ACQPS</span>
-          <input type="range" min={0} max={199} value={acqps} aria-label="ACQPS" onChange={(e) => setAcqps(+e.target.value)} />
+          <input type="range" min={0} max={199} value={acqps} aria-label="ACQPS" aria-valuetext={`${acqps}, a window of ${windowNs} nanoseconds`} onChange={(e) => setAcqps(+e.target.value)} />
           <span className="shold-num">{acqps}</span>
           <code>window = ({acqps} + 1) x 5 ns = {windowNs} ns</code>
         </div>

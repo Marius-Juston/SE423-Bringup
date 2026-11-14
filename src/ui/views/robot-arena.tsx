@@ -103,7 +103,9 @@ const STYLE = `
 .arena-goal-tol { stroke: var(--ok); stroke-width: 1.5; stroke-dasharray: 4 3; fill: var(--ok-soft); }
 .arena-crash { stroke: var(--bad); stroke-width: 3; fill: none; stroke-linecap: round; }
 .arena-h { cursor: grab; outline: none; }
-.arena-h:focus-visible .arena-ring, .arena-h.on .arena-ring { stroke: var(--focus); stroke-width: 3; opacity: 1; }
+.arena-h.on .arena-ring { stroke: var(--focus); stroke-width: 3; opacity: 1; }
+.arena-focus { display: none; fill: none; stroke: var(--focus); stroke-width: 3; }
+.arena-h:focus-visible .arena-focus { display: inline; }
 .arena-ring { fill: transparent; stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.8; }
 .arena-turn { fill: var(--accent); stroke: var(--inset); stroke-width: 1.5; cursor: grab; }
 .arena-size { fill: var(--accent); stroke: var(--inset); stroke-width: 1.5; cursor: nwse-resize; }
@@ -125,12 +127,12 @@ const STYLE = `
 .arena-opts { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; align-items: center; font-size: 0.82rem; color: var(--dim); }
 .arena-opts select { min-height: 1.75rem; padding: 0.1em 0.3em; font-size: 0.85rem; }
 .arena-replay { display: grid; gap: 0.15rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.35rem 0.5rem; }
-.arena-replay-row { display: flex; gap: 0.5rem; align-items: center; min-width: 0; }
-.arena-replay input[type="range"] { width: 100%; min-width: 0; padding: 0; margin: 0.2rem 0 0; }
+.arena-replay-row { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; align-items: center; min-width: 0; }
+.arena-replay input[type="range"] { width: 100%; min-width: 0; height: 1.5rem; min-height: 24px; padding: 0; margin: 0.2rem 0 0; }
 .arena-replay-row output { font-family: var(--mono); font-size: 0.82rem; white-space: nowrap; color: var(--text); }
-.arena-marks { position: relative; height: 1.5rem; margin: 0 8px; }
-.arena-mark { position: absolute; top: 0; transform: translateX(-50%); min-width: 24px; height: 1.5rem; padding: 0 0.15rem; display: grid; place-items: center; background: none; border: none; color: var(--dim); font-size: 0.7rem; font-family: var(--mono); line-height: 1; }
-.arena-mark::before { content: ""; position: absolute; left: 50%; top: -3px; height: 6px; border-left: 2px solid currentColor; margin-left: -1px; }
+.arena-marks { position: relative; height: 1.5rem; margin: 3px 8px 0; }
+.arena-mark { position: absolute; top: 0; transform: translateX(-50%); min-width: 24px; height: 1.5rem; padding: 0 0.15rem; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--control); border-radius: 4px; color: var(--dim); font-size: 0.7rem; font-family: var(--mono); line-height: 1; }
+.arena-mark::before { content: ""; position: absolute; left: 50%; top: -4px; height: 4px; border-left: 2px solid currentColor; margin-left: -1px; }
 .arena-mark.pass { color: var(--ok); }
 .arena-mark.fail { color: var(--bad); font-weight: 700; }
 .arena-mark:hover { color: var(--text); }
@@ -286,7 +288,8 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
   const before = glide.current;
   const view = moving && !still && before && before.scene === scene0 ? easeView(before.view, target, Math.min(100, clock - before.at)) : target;
   glide.current = { view, at: clock, scene: scene0 };
-  const W = Math.max(220, box.w);
+  // The drawing's border takes a pixel on each side: one unit of the drawing is one pixel on the screen.
+  const W = Math.max(220, box.w - 2);
   const spanX = view.x1 - view.x0;
   const spanY = view.y1 - view.y0;
   const natural = ((W - PAD.l - PAD.r) * spanY) / spanX + PAD.t + PAD.b;
@@ -568,7 +571,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
     <div className={`arena ${size === "large" ? "large" : ""}`} data-arena-kind={kind} data-arena-size={size}>
       <style>{STYLE}</style>
       <div className={`arena-pic tool-${tool}`} ref={pic}>
-        <svg ref={svg} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={said.current.text} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
+        <svg ref={svg} width={W + 2} height={H + 2} viewBox={`0 0 ${W} ${H}`} role={play ? "group" : "img"} aria-label={said.current.text} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}>
           <g aria-hidden="true">
             <clipPath id={clipId}><rect x={PAD.l} y={0} width={W - PAD.l} height={H - PAD.b} /></clipPath>
             {ticks(view.x0, view.x1).map((g) => (
@@ -654,12 +657,14 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
                   <g key={i} className={`arena-h ${on ? "on" : ""}`} data-h={`obj-${i}`} role="button" tabIndex={0} aria-label={`${objName(o, i)}. Arrow keys move it, Shift and an arrow key resize it, Delete removes it.`} onKeyDown={objectKey(i)} onFocus={() => setSelected(i)}>
                     <rect x={px(o.x0)} y={py(o.y1)} width={(o.x1 - o.x0) * k} height={(o.y1 - o.y0) * k} className="arena-box" />
                     <rect x={px(o.x0) - 3} y={py(o.y1) - 3} width={(o.x1 - o.x0) * k + 6} height={(o.y1 - o.y0) * k + 6} className="arena-ring" />
+                    <rect x={px(o.x0) - 7} y={py(o.y1) - 7} width={(o.x1 - o.x0) * k + 14} height={(o.y1 - o.y0) * k + 14} rx={3} className="arena-focus" />
                     {on && <rect data-h={`size-${i}`} x={px(o.x1) - 6} y={py(o.y0) - 6} width={12} height={12} className="arena-size" />}
                   </g>
                 ) : o.kind === "post" ? (
                   <g key={i} className={`arena-h ${on ? "on" : ""}`} data-h={`obj-${i}`} role="button" tabIndex={0} aria-label={`${objName(o, i)}. Arrow keys move it, Shift and an arrow key resize it, Delete removes it.`} onKeyDown={objectKey(i)} onFocus={() => setSelected(i)}>
                     <circle cx={px(o.x)} cy={py(o.y)} r={o.r * k} className="arena-box" />
                     <circle cx={px(o.x)} cy={py(o.y)} r={o.r * k + 4} className="arena-ring" />
+                    <circle cx={px(o.x)} cy={py(o.y)} r={o.r * k + 8} className="arena-focus" />
                     {on && <rect data-h={`size-${i}`} x={px(o.x + o.r) - 6} y={py(o.y) - 6} width={12} height={12} className="arena-size" />}
                   </g>
                 ) : null;
@@ -667,12 +672,15 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
               {s.goal && (
                 <g className="arena-h" data-h="goal" role="button" tabIndex={0} aria-label={`Goal at x ${fmt(s.goal.x)}, y ${fmt(s.goal.y)} feet. Arrow keys move it.`} onKeyDown={goalKey}>
                   <circle cx={px(s.goal.x)} cy={py(s.goal.y)} r={12} className="arena-ring" />
+                  <circle cx={px(s.goal.x)} cy={py(s.goal.y)} r={16} className="arena-focus" />
                 </g>
               )}
               <g className="arena-h" data-h="robot" role="button" tabIndex={0} aria-label={`Robot at x ${fmt(s.pose.x)}, y ${fmt(s.pose.y)} feet, heading ${deg(s.pose.th).toFixed(0)} degrees. Arrow keys move it, L and R turn it left and right.`} onKeyDown={robotKey}>
                 <circle cx={px(s.pose.x)} cy={py(s.pose.y)} r={R + 4} className="arena-ring" />
+                <circle cx={px(s.pose.x)} cy={py(s.pose.y)} r={R + 8} className="arena-focus" />
               </g>
-              <circle data-h="turn" cx={px(s.pose.x) + (R + 14) * Math.cos(s.pose.th)} cy={py(s.pose.y) - (R + 14) * Math.sin(s.pose.th)} r={6} className="arena-turn" />
+              {/* Pointer only: the robot's L and R keys and the heading field of the playground turn it too. */}
+              <circle data-h="turn" aria-hidden="true" cx={px(s.pose.x) + (R + 14) * Math.cos(s.pose.th)} cy={py(s.pose.y) - (R + 14) * Math.sin(s.pose.th)} r={6} className="arena-turn" />
             </g>
           )}
         </svg>

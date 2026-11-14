@@ -6,6 +6,10 @@
 
 import type { Board } from "../board";
 
+// Register names by group (index 1 to 12), built once: evaluate() runs on every request.
+const IFR = Array.from({ length: 13 }, (_, g) => `PieCtrlRegs.PIEIFR${g}`);
+const IER = Array.from({ length: 13 }, (_, g) => `PieCtrlRegs.PIEIER${g}`);
+
 export class Pie {
   /** Vector name per "group.channel", from the TI header's own comments ("12.9 - ..."). */
   private vectors = new Map<string, string>();
@@ -34,8 +38,8 @@ export class Pie {
     };
     dev.reg("PieCtrlRegs.PIECTRL").hook.after = re;
     for (let g = 1; g <= 12; g++) {
-      dev.reg(`PieCtrlRegs.PIEIER${g}`).hook.after = re;
-      dev.reg(`PieCtrlRegs.PIEIFR${g}`).hook.after = re;
+      dev.reg(IER[g]).hook.after = re;
+      dev.reg(IFR[g]).hook.after = re;
     }
   }
 
@@ -49,7 +53,7 @@ export class Pie {
   /** A peripheral requests interrupt INTx.y (step 1: latched in PIEIFRx.y). */
   raise(x: number, y: number): void {
     this.b.mem.writes++;
-    const name = `PieCtrlRegs.PIEIFR${x}`;
+    const name = IFR[x];
     const flags = this.b.dev.get(name);
     const bit = 1 << (y - 1);
     // Still waiting from the last request: this one is lost.
@@ -63,7 +67,7 @@ export class Pie {
     const dev = this.b.dev;
     let reason: string | null = null;
     if (!dev.get("PieCtrlRegs.PIECTRL", "ENPIE")) reason = "the PIE is not enabled. InitPieVectTable() sets ENPIE.";
-    else if (!(dev.get(`PieCtrlRegs.PIEIER${x}`) & (1 << (y - 1)))) {
+    else if (!(dev.get(IER[x]) & (1 << (y - 1)))) {
       const lib = this.libraryEnable.get(`${x}.${y}`);
       reason = lib
         ? `${this.pieBit(x, y)} is 0. Call ${lib} or set the bit that Table 3-2 of the reference manual gives for ${this.vectorName(x, y)}.`
@@ -81,7 +85,7 @@ export class Pie {
     const b = this.b;
     if (b.isrDepth) return;
     // The first request never reached the CPU: the flag is not the problem.
-    if (b.dev.get(`PieCtrlRegs.PIEIFR${x}`) & (1 << (y - 1))) {
+    if (b.dev.get(IFR[x]) & (1 << (y - 1))) {
       this.lost(x, y);
       return;
     }
@@ -103,7 +107,7 @@ export class Pie {
       for (let g = 1; g <= 12; g++) {
         const bit = 1 << (g - 1);
         if (ack & bit) continue;
-        if (dev.get(`PieCtrlRegs.PIEIFR${g}`) & dev.get(`PieCtrlRegs.PIEIER${g}`)) {
+        if (dev.get(IFR[g]) & dev.get(IER[g])) {
           ack |= bit;
           this.b.ifr |= bit;
         }
@@ -116,12 +120,12 @@ export class Pie {
   /** Step 10: the CPU fetches the vector; the highest-priority channel's flag is cleared. */
   take(x: number): string | null {
     const dev = this.b.dev;
-    const ifr = dev.get(`PieCtrlRegs.PIEIFR${x}`);
-    const pending = ifr & dev.get(`PieCtrlRegs.PIEIER${x}`);
+    const ifr = dev.get(IFR[x]);
+    const pending = ifr & dev.get(IER[x]);
     if (!pending) return null;
     let y = 1;
     while (!(pending & (1 << (y - 1)))) y++;
-    dev.set(`PieCtrlRegs.PIEIFR${x}`, ifr & ~(1 << (y - 1)));
+    dev.set(IFR[x], ifr & ~(1 << (y - 1)));
     return this.vectorName(x, y);
   }
 
@@ -134,7 +138,7 @@ export class Pie {
   explain(x: number, y: number): string | null {
     const dev = this.b.dev;
     if (!dev.get("PieCtrlRegs.PIECTRL", "ENPIE")) return "the PIE is not enabled (InitPieVectTable() sets ENPIE)";
-    if (!(dev.get(`PieCtrlRegs.PIEIER${x}`) & (1 << (y - 1)))) return `${this.pieBit(x, y)} is 0`;
+    if (!(dev.get(IER[x]) & (1 << (y - 1)))) return `${this.pieBit(x, y)} is 0`;
     if (!(this.b.ier & (1 << (x - 1)))) return `IER does not have M_INT${x} set`;
     if (this.b.intm) return "interrupts are globally disabled (EINT has not run)";
     if (dev.get("PieCtrlRegs.PIEACK") & (1 << (x - 1))) return `group ${x} was never acknowledged (PieCtrlRegs.PIEACK.all = PIEACK_GROUP${x};)`;

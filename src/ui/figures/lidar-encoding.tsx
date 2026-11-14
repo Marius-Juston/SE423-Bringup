@@ -30,8 +30,8 @@ function LidarEncoding() {
   // Decoding walks up the picture, encoding walks down.
   const row = decode ? ROW_CHAR - step : step;
   const reached = (r: number) => (decode ? r >= row : r <= row);
-  const cls = (r: number) => (r === row ? "hot" : reached(r) ? "" : "off");
-  const dim = (r: number) => (reached(r) ? undefined : 0.55);
+  // A row still to come is drawn with a dashed outline; its text stays readable.
+  const cls = (r: number) => (r === row ? "hot" : reached(r) ? "" : "lenc-later");
   const STEPS = decode
     ? [
         {
@@ -87,7 +87,8 @@ function LidarEncoding() {
     // r: the lower row of the pair this arrow joins. It is lit while that step is shown.
     const lit = decode ? row === r - 1 : row === r;
     const d = decode ? `M${x2},${y2} L${x1},${y1}` : `M${x1},${y1} L${x2},${y2}`;
-    return <path d={d} className={`fig-wire ${lit ? "hot" : ""}`} markerEnd={`url(#${lit ? "lenc-arrow-hot" : "lenc-arrow"})`} opacity={decode ? dim(r - 1) : dim(r)} />;
+    const later = !reached(decode ? r - 1 : r);
+    return <path d={d} className={`fig-wire ${lit ? "hot" : later ? "lenc-later" : ""}`} markerEnd={`url(#${lit ? "lenc-arrow-hot" : "lenc-arrow"})`} />;
   };
   return (
     <figure className="figure lenc" aria-label="Interactive diagram: a LIDAR distance as 12 bits, two 6-bit halves and two characters">
@@ -96,6 +97,8 @@ function LidarEncoding() {
         .lenc-slider input { flex: 1; min-width: 6rem; accent-color: var(--orange); }
         .lenc-slider output { font-family: var(--mono); color: var(--harvest); font-weight: 700; min-width: 4.6rem; }
         .lenc-big { font-size: 15px; }
+        .lenc .lenc-later { stroke-dasharray: 3 2; }
+        /* A primary button that cannot be pressed gives up its orange fill, so it is not told from the live one by a paler orange alone. */
         .lenc-head { fill: var(--dim); }
         .lenc-head-hot { fill: var(--orange); }
       `}</style>
@@ -116,13 +119,13 @@ function LidarEncoding() {
         <text x="4" y="163" className="fig-label dim">+ 0x30:</text>
         <text x="4" y="174" className="fig-label dim">characters</text>
         {/* distance */}
-        <g opacity={dim(ROW_MM)}>
+        <g>
           <rect x="175" y="4" width="100" height="24" rx="4" className={`fig-box ${cls(ROW_MM)}`} />
           <text x="225" y="20" textAnchor="middle" className="fig-value">{mm} mm</text>
         </g>
         {arrow(225, 28, 225, 50, ROW_BITS)}
         {/* bits */}
-        <g opacity={dim(ROW_BITS)}>
+        <g>
           <text x={bitX(0)} y="49" className="fig-label dim">bit 11</text>
           <text x={bitX(11) + CELL} y="49" textAnchor="end" className="fig-label dim">bit 0</text>
           {bits.map((b, k) => (
@@ -135,7 +138,7 @@ function LidarEncoding() {
         {arrow(HX, 74, HX, 96, ROW_HALF)}
         {arrow(LX, 74, LX, 96, ROW_HALF)}
         {/* halves */}
-        <g opacity={dim(ROW_HALF)}>
+        <g>
           <rect x={HX - 62} y="98" width="124" height="26" rx="4" className={`fig-box ${cls(ROW_HALF)}`} />
           <text x={HX} y="109" textAnchor="middle" className="fig-label">high half</text>
           <text x={HX} y="120" textAnchor="middle" className="fig-value small">{bin6(hi)} = {hex2(hi)} = {hi}</text>
@@ -145,10 +148,10 @@ function LidarEncoding() {
         </g>
         {arrow(HX, 124, HX, 146, ROW_CHAR)}
         {arrow(LX, 124, LX, 146, ROW_CHAR)}
-        <text x={HX + 10} y="138" className="fig-label dim" opacity={dim(decode ? ROW_HALF : ROW_CHAR)}>{decode ? "− 0x30" : "+ 0x30"}</text>
-        <text x={LX + 10} y="138" className="fig-label dim" opacity={dim(decode ? ROW_HALF : ROW_CHAR)}>{decode ? "− 0x30" : "+ 0x30"}</text>
+        <text x={HX + 10} y="138" className="fig-label dim">{decode ? "− 0x30" : "+ 0x30"}</text>
+        <text x={LX + 10} y="138" className="fig-label dim">{decode ? "− 0x30" : "+ 0x30"}</text>
         {/* characters */}
-        <g opacity={dim(ROW_CHAR)}>
+        <g>
           <rect x={HX - 62} y="148" width="124" height="30" rx="4" className={`fig-box ${cls(ROW_CHAR)}`} />
           <text x={HX - 30} y="168" textAnchor="middle" className="fig-value lenc-big">'{chars[0]}'</text>
           <text x={HX + 22} y="167" textAnchor="middle" className="fig-value small">{hex2(cHi)}</text>
@@ -174,7 +177,7 @@ function LidarEncoding() {
         <div>
           <span>Distance</span>
           <label className="lenc-slider">
-            <input type="range" min={0} max={MAX_MM} step={1} value={mm} onChange={(e) => setMm(+e.target.value)} aria-label="Distance in millimetres, 0 to 4095" />
+            <input type="range" min={0} max={MAX_MM} step={1} value={mm} onChange={(e) => setMm(+e.target.value)} aria-label="Distance in millimetres, 0 to 4095" aria-valuetext={`${mm} millimetres`} />
             <output>{mm} mm</output>
           </label>
         </div>
@@ -190,7 +193,7 @@ function LidarEncoding() {
           <button className="fig-opt" aria-pressed={!decode} onClick={() => { setDecode(false); setStep(0); }}>encode (the sensor)</button>
         </div>
       </div>
-      <figcaption>One reading on the wire is two printable characters. Decoding goes up the picture, encoding goes down. The second character counts millimetres, the first one counts steps of 64 mm.</figcaption>
+      <figcaption>One reading on the wire is two printable characters. Decoding goes up the picture, encoding goes down. The orange row is the step shown; dashed rows are still to come. The second character counts millimetres, the first one counts steps of 64 mm.</figcaption>
     </figure>
   );
 }

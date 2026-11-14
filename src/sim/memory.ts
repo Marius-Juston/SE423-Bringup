@@ -45,10 +45,16 @@ export class Memory {
   onProtectedWrite: (reg: RegHook) => void = () => {};
   onWrite: ((reg: RegHook, value: number, before: number) => void) | null = null;
 
+  // The page of the last access: a program mostly stays within one page for many accesses in a row.
+  private lastNo = -1;
+  private last: Uint16Array | null = null;
   private page(addr: number): Uint16Array {
     const p = addr >>> PAGE_BITS;
+    if (p === this.lastNo) return this.last!;
     let a = this.pages.get(p);
     if (!a) this.pages.set(p, (a = new Uint16Array(PAGE)));
+    this.lastNo = p;
+    this.last = a;
     return a;
   }
 

@@ -459,7 +459,7 @@ export function CodeLevelView({
           )}
         </div>
         <Editor value={code} onChange={setCode} marks={marks} handle={editor} kit={level.kit} />
-        <div className="problems" aria-live="polite">
+        <div className="problems" role="region" aria-label="Compiler messages" aria-live="polite" tabIndex={0}>
           {problems.length === 0 ? (
             <span className="hint-text">{live || result ? "No problems reported." : "Compiler messages and warnings about your program appear here."}</span>
           ) : (

@@ -16,8 +16,10 @@ const CSS = `
 .io-row input[type="number"] { width: 5.6rem; font-family: var(--mono); font-size: 0.85rem; background: var(--inset); color: var(--harvest); border: 1px solid var(--dim); border-radius: 4px; padding: 0.1em 0.3em; }
 .io-row input[type="range"] { flex: 1; min-width: 7rem; accent-color: var(--orange); }
 .io-code { display: block; margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.85rem; white-space: pre-wrap; }
-.io-ring { fill: none; stroke: var(--dim); stroke-width: 7; opacity: 0.45; }
+.io-ring { fill: none; stroke: var(--control); stroke-width: 7; }
 .io-path { fill: none; stroke: var(--harvest); stroke-width: 2; }
+.io-path.io-idle { stroke-width: 1.2; }
+.io-cross { stroke: var(--inset); stroke-width: 1.6; }
 .io-seam { stroke: var(--text); stroke-width: 2.5; }
 .io-big { fill: var(--harvest); font-family: var(--mono); font-weight: 700; font-size: 15px; }
 .io-bad { fill: var(--bad); }
@@ -78,7 +80,7 @@ function Int16Overflow() {
     <div className="io-row">
       <label htmlFor={`io-${label.slice(-1)}`}>{label}</label>
       <input id={`io-${label.slice(-1)}`} type="number" min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
-      <input type="range" aria-label={`${label.slice(-1)}, slider`} min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
+      <input type="range" aria-label={`${label.slice(-1)}, slider`} aria-valuetext={String(v)} min={-32768} max={32767} value={v} onChange={(e) => set(clamp(+e.target.value))} />
     </div>
   );
   return (
@@ -98,10 +100,17 @@ function Int16Overflow() {
         <text x={CX + 52} y={CY - 54} className="fig-label dim">positive</text>
         <text x={CX - 52} y={CY - 54} textAnchor="end" className="fig-label dim">negative</text>
         {/* the walk */}
-        <path d={d} className="io-path" style={{ strokeDasharray: Math.abs(span) > 4 * 65536 ? "2 3" : undefined, opacity: long ? 0.45 : 1 }} />
-        <line x1={tx} y1={ty} x2={ex} y2={ey} className="io-path" style={{ strokeDasharray: "2 2", opacity: long ? 0.45 : 1 }} />
+        <path d={d} className={`io-path ${long ? "io-idle" : ""}`} style={{ strokeDasharray: Math.abs(span) > 4 * 65536 ? "2 3" : undefined }} />
+        <line x1={tx} y1={ty} x2={ex} y2={ey} className={`io-path ${long ? "io-idle" : ""}`} style={{ strokeDasharray: "2 2" }} />
         <circle cx={sx} cy={sy} r="3" className="fig-dot" />
-        <circle cx={ex} cy={ey} r="5.5" style={{ fill: !long && overflow ? "var(--bad)" : "var(--ok)", stroke: "var(--bg)", strokeWidth: 1.5 }} />
+        {!long && overflow ? (
+          <g>
+            <circle cx={ex} cy={ey} r="6" style={{ fill: "var(--bad)", stroke: "var(--text)", strokeWidth: 2.6 }} />
+            <path d={`M${ex - 2.6},${ey - 2.6} l5.2,5.2 M${ex + 2.6},${ey - 2.6} l-5.2,5.2`} className="io-cross" />
+          </g>
+        ) : (
+          <circle cx={ex} cy={ey} r="5.5" style={{ fill: "var(--ok)", stroke: "var(--bg)", strokeWidth: 1.5 }} />
+        )}
         {/* results */}
         <rect x="216" y="14" width="180" height="48" rx="5" className="fig-box" />
         <text x="224" y="28" className="fig-label dim">true value of {expr}</text>
@@ -115,7 +124,7 @@ function Int16Overflow() {
         <text x="224" y="137" className={`io-big ${!long && overflow ? "io-bad" : "io-ok"}`}>{stored}</text>
         <text x="224" y="153" className="fig-label">{long ? "correct" : overflow ? `WRONG: the low 16 bits, ${hex}` : `correct: bits ${hex}`}</text>
         <text x="216" y="178" className="fig-label dim">Small dot: where the walk starts.</text>
-        <text x="216" y="189" className="fig-label dim">Large dot: where the result lands.</text>
+        <text x="216" y="189" className="fig-label dim">Large dot: the result. A cross: wrong.</text>
       </svg>
       <code className="io-code">
         {`int  a = ${a};\n${long ? "long" : "int "} b = ${b};\nlong r = a ${op} b;   // ${long ? "int and long: 32 bits" : "int and int: 16 bits"}\n// r is ${stored}`}

@@ -88,7 +88,8 @@ export function Arbitration({ startCan = false }: { startCan?: boolean }) {
         {who !== "bus" && loser === who && s > lostAt + 1 && (
           <>
             <path d={`M${x(lostAt + 1)},${y} H${x(s)}`} className="fig-trace dim" strokeDasharray="3 3" />
-            <text x={(x(lostAt + 1) + x(Math.max(s, lostAt + 2))) / 2} y={y + 14} textAnchor="middle" className="fig-label dim">{CW * (s - lostAt - 1) > 60 ? "stopped, listening" : ""}</text>
+            {/* the longer wording only where it fits beside the ring at the largest label size */}
+            <text x={(x(lostAt + 1) + x(Math.max(s, lostAt + 2))) / 2} y={y + 14} textAnchor="middle" className="fig-label dim">{CW * (s - lostAt - 1) >= 100 ? "stopped, listening" : CW * (s - lostAt - 1) >= 52 ? "listening" : ""}</text>
           </>
         )}
       </g>

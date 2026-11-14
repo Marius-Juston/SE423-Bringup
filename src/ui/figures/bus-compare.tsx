@@ -9,7 +9,8 @@ import { useState } from "react";
 // (src/sim/plugins/can.ts SENSOR_BITRATE).
 
 const CSS = `
-.bc-row { fill: transparent; stroke: none; cursor: pointer; }
+.bc-row { fill: transparent; stroke: none; }
+.bc-hit { fill: transparent; stroke: none; cursor: pointer; }
 .bc-row.sel { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
 .bc-name { font-family: var(--sans); font-size: 11px; font-weight: 700; fill: var(--text); }
 .bc-dev { fill: var(--surface); stroke: var(--dim); stroke-width: 1; }
@@ -76,7 +77,8 @@ function BusCompare() {
     // no wire ever runs alongside another device's.
     const lines: JSX.Element[] = [];
     const own = b.id === "uart" || b.id === "spi";
-    const endX = DX(n - 1) + DW;
+    // The strip of own pins is at least wide enough for its label, also with one device.
+    const endX = Math.max(DX(n - 1) + DW, 156);
     const w = (key: string, d: string, color: string, dash?: string) => lines.push(<path key={key} d={d} className="bc-w" style={{ stroke: color, strokeDasharray: dash }} />);
     const shared = b.id === "uart" ? 0 : b.id === "spi" ? 3 : 2;
     const sy = (k: number) => y + (shared === 3 ? 29 + k * 5 : 31 + k * 8);
@@ -117,6 +119,8 @@ function BusCompare() {
               <text x={212} y={y + 30} className="fig-label"><tspan className="fig-label dim">clock: </tspan>{b.clock}</text>
               <text x={212} y={y + 43} className="fig-label"><tspan className="fig-label dim">addressing: </tspan>{b.select}</text>
               <text x={212} y={y + 56} className="fig-label"><tspan className="fig-label dim">speed: </tspan>{b.speed}</text>
+              {/* A row can be clicked; the Bus buttons below do the same for the keyboard. */}
+              <rect x={2} y={y + 1} width={416} height={H - 2} rx="6" className="bc-hit" aria-hidden="true" />
             </g>
           );
         })}
@@ -136,7 +140,7 @@ function BusCompare() {
           <strong>{n} device{n > 1 ? "s" : ""}</strong>
         </div>
       </div>
-      <figcaption>The same devices on each of the four links. Solid wires are shared by all devices, dashed orange wires belong to one device. UART and SPI need more pins for every added device; I2C and CAN stay at two wires and put an address or an identifier in every message instead.</figcaption>
+      <figcaption>The same devices on each of the four links. Choose a link with the Bus buttons, or click its row. Solid wires are shared by all devices, dashed orange wires belong to one device. UART and SPI need more pins for every added device; I2C and CAN stay at two wires and put an address or an identifier in every message instead.</figcaption>
     </figure>
   );
 }

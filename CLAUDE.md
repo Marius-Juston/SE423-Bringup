@@ -19,6 +19,8 @@ npx tsc --noEmit            # type check
 npx vitest run              # simulator, level and logic tests (about 2,000; under a minute)
 npm run check-levels        # only tests/levels.test.ts: every level's content rules
 npm run e2e                 # builds, then solves every level through the real UI in headless Chromium (minutes)
+npm run a11y                # accessibility suite: every screen, level and figure, compared with a11y-baseline.json (about 15 minutes)
+npm run a11y -- --from 9    # the same for the levels from chapter 9 on; --only tokens|screens|levels|figures; --level <id>
 E2E_FROM=9 npx vitest run --config vitest.e2e.config.ts   # e2e from chapter 9 on (after `npx vite build`)
 node tools/shot.mjs level <level-id> out.png [--tests] [--run ms] [--code file.c] [--dark] [--width N] [--height N]
 node tools/shot.mjs figure <figure-id> out.png [--dark] [--width N] [--click "button text"]
@@ -50,8 +52,8 @@ src/ui/             React: map, level view, widgets, bench, handbook, sandbox, s
   figures/          interactive figures, one per file, auto-registered (docs/VISUALS.md)
   views/            bench views shown beside a running program, auto-registered
 tests/              vitest; tests/e2e/ plays the game in a browser
-tools/              screenshot tool, generators
-docs/               AUTHORING.md (levels), PLUGINS.md (simulator), VISUALS.md (figures and views)
+tools/              screenshot tool, generators; a11y/ is the accessibility suite
+docs/               AUTHORING.md (levels), PLUGINS.md (simulator), VISUALS.md (figures and views), ACCESSIBILITY.md (the suite)
 public/             install.sh, install.ps1, web manifest, icons
 ```
 
@@ -80,6 +82,7 @@ Adding a level, a figure, a bench view, a glossary file or a simulator plugin ne
 - A figure teaches one idea: picture, a sentence that reacts to the state, controls, caption. It must be correct at the extremes of every control and legible at 380 px wide. Register a `title` and `description`.
 - Bench views re-render every animation frame: no heavy work, no timers of their own.
 - Look at what you build: take screenshots in light and dark and at a narrow width, and read them.
+- Accessibility is checked, not assumed (`docs/ACCESSIBILITY.md`): WCAG 2.2 AA everywhere, and 7:1 contrast and 44 px touch targets where they can be reached. A state is never shown by colour alone: add a word, an icon or a shape. What appears after an action is in a live region or takes the focus. A box that scrolls can be reached with the keyboard and has a name (`src/ui/ScrollBox.tsx`). Words use `--text`, `--dim`, `--value`, `--info`, `--ok`, `--bad` or `--accent-text`; `--accent` is for fills and edges.
 
 **Writing style (everywhere: levels, UI text, docs, commit messages)**
 - Second person, short plain sentences, no filler, no long dashes. Say what something does, not that it is powerful.
@@ -88,13 +91,15 @@ Adding a level, a figure, a bench view, a glossary file or a simulator plugin ne
 
 1. `npx tsc --noEmit` and `npx vitest run` pass.
 2. For content or UI changes: `npm run e2e` (or `E2E_FROM=<chapter>` for the chapters you touched) passes, and you looked at screenshots of what changed.
-3. State plainly what you verified and what you did not.
+3. For content or UI changes: `npm run a11y` passes (`--from <chapter>` or `--level <id>` while you work, the whole suite before you finish). Fix what it finds. Never raise a count in `a11y-baseline.json` or add an entry to make it pass; after a fix, lower the counts with `npm run a11y -- --update-baseline`.
+4. State plainly what you verified and what you did not.
 
 ## Publishing
 
 - Pushing to `main` runs CI and publishes the web version to GitHub Pages (`.github/workflows/pages.yml`).
 - Installers: bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, refresh the lockfiles, push, then push a tag `vX.Y.Z` (`.github/workflows/release.yml`). The install scripts in `public/` fetch the latest release.
 - Workflow actions are pinned by commit SHA with the version in a comment.
+- `.github/workflows/a11y.yml` runs the accessibility suite: a subset on pull requests, where a finding that is not in the baseline fails the check, and the whole sweep on `main`, reporting only. Findings go to code scanning under the category `accessibility`.
 - Dependabot (`.github/dependabot.yml`) opens grouped update pull requests on Mondays for npm, the Rust crates in `src-tauri` and the workflow actions, and security fixes at once. Merge one when CI is green. The npm group `tauri` and the cargo group `tauri` must be merged together: the JavaScript and Rust sides of Tauri share a minor version. A pull request that touches `src-tauri` or the package files also compiles the desktop app (`.github/workflows/desktop.yml`).
 - Commit messages start with a verb and say what changed for the student or the simulator. End with a `Co-Authored-By:` line when an agent wrote the change; nothing else.
 

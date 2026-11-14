@@ -55,11 +55,11 @@ function LedResistor() {
         <line x1={cx} y1="20" x2={cx} y2="40" className="fig-wire thick" style={{ stroke: "var(--orange)" }} />
         {/* resistor */}
         <rect x={cx - 7} y="40" width="14" height="32" className="fig-box active" />
-        <text x={cx - 14} y="54" textAnchor="end" className="fig-label">resistor</text>
-        <text x={cx - 14} y="66" textAnchor="end" className="fig-value small">{ohm(r)}</text>
+        <text x={cx - 24} y="54" textAnchor="end" className="fig-label">resistor</text>
+        <text x={cx - 24} y="66" textAnchor="end" className="fig-value small">{ohm(r)}</text>
         <line x1={cx} y1="72" x2={cx} y2="98" className="fig-wire thick" style={{ stroke: fwd ? undefined : "var(--orange)" }} />
         {/* LED: the triangle points the way current can flow */}
-        {fwd && ma > 0 && <circle cx={cx} cy="108" r="24" className="lr-glow" opacity={0.3 * bright} />}
+        {fwd && ma > 0 && <circle cx={cx} cy="108" r="20" className="lr-glow" opacity={0.3 * bright} />}
         {fwd ? (
           <>
             <polygon points={`${cx - 11},98 ${cx + 11},98 ${cx},117`} className="lr-led" style={{ fill: `color-mix(in srgb, var(--orange) ${Math.round(bright * 100)}%, var(--surface))` }} />
@@ -71,8 +71,8 @@ function LedResistor() {
             <line x1={cx - 11} y1="98" x2={cx + 11} y2="98" className="fig-wire thick" />
           </>
         )}
-        <text x={cx - 18} y="106" textAnchor="end" className="fig-label">LED</text>
-        <text x={cx - 18} y="118" textAnchor="end" className="fig-label dim">{fwd ? "arrow points down" : "arrow points up"}</text>
+        <text x={cx - 24} y="106" textAnchor="end" className="fig-label">LED</text>
+        <text x={cx - 24} y="118" textAnchor="end" className="fig-label dim">{fwd ? "arrow points down" : "arrow points up"}</text>
         <line x1={cx} y1="117" x2={cx} y2="150" className="fig-wire thick" style={{ stroke: "var(--arches)" }} />
         <line x1={cx - 12} y1="150" x2={cx + 12} y2="150" className="fig-wire thick" />
         <line x1={cx - 7} y1="155" x2={cx + 7} y2="155" className="fig-wire thick" />
@@ -80,10 +80,10 @@ function LedResistor() {
         <text x={cx + 18} y="158" className="fig-label">ground, 0 V</text>
         {fwd && <path d={`M${cx + 14},26 v9 m-3.5,-4 l3.5,4.5 l3.5,-4.5 M${cx + 14},128 v9 m-3.5,-4 l3.5,4.5 l3.5,-4.5`} className="lr-flow" />}
         {/* voltages across each part */}
-        <text x={cx + 16} y="54" className="fig-label dim">across the resistor</text>
-        <text x={cx + 16} y="66" className="fig-value small">{vr.toFixed(1)} V</text>
-        <text x={cx + 16} y="104" className="fig-label dim">across the LED</text>
-        <text x={cx + 16} y="116" className="fig-value small">{fwd ? `about ${VF.toFixed(1)} V` : `${vs} V (blocks)`}</text>
+        <text x={cx + 24} y="54" className="fig-label dim">across the resistor</text>
+        <text x={cx + 24} y="66" className="fig-value small">{vr.toFixed(1)} V</text>
+        <text x={cx + 24} y="104" className="fig-label dim">across the LED</text>
+        <text x={cx + 24} y="116" className="fig-value small">{fwd ? `about ${VF.toFixed(1)} V` : `${vs} V (blocks)`}</text>
         {/* result */}
         <text x="270" y="36" className="fig-label">current</text>
         <text x="270" y="54" className="lr-big" style={{ fill: tooMuch ? "var(--bad)" : undefined }}>{maText}</text>

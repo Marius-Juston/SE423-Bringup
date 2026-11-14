@@ -24,8 +24,8 @@ const CSS = `
 .pm-tick { stroke: var(--harvest); stroke-width: 1.6; }
 .pm-cell { fill: var(--surface); stroke: var(--dim); stroke-width: 0.7; }
 .pm-cell.none { fill: none; stroke-dasharray: 2 2; opacity: 0.6; }
-.pm-cell.mark { fill: var(--harvest); stroke: var(--harvest); }
-.pm-cell.sel { fill: var(--orange); stroke: var(--orange); }
+.pm-cell.mark { fill: var(--harvest); stroke: var(--text); stroke-width: 1.6; }
+.pm-cell.sel { fill: var(--orange); stroke: var(--text); stroke-width: 2; }
 .pm-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.5rem; background: var(--inset); border-radius: 6px; font-size: 0.7rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 `;
 
@@ -83,10 +83,11 @@ function PortMap() {
           const g = port * 32 + b;
           const exists = g <= MAX;
           const cls = !exists ? "none" : b === bit ? "sel" : MARKS[g] && g !== 31 && g !== 34 ? "mark" : "";
-          return <rect key={b} x={CX(b) + 0.8} y="86" width={CW - 1.6} height="18" rx="2" className={`pm-cell ${cls}`} />;
+          // The chosen bit stands taller than the others and marked pins have a heavy outline, so neither shows by colour alone.
+          return <rect key={b} x={CX(b) + 0.8} y={cls === "sel" ? 83 : 86} width={CW - 1.6} height={cls === "sel" ? 24 : 18} rx="2" className={`pm-cell ${cls}`} />;
         })}
         {[31, 24, 16, 8, 0].map((b) => (Math.abs(b - bit) <= 1 ? null : <text key={b} x={CX(b) + CW / 2} y="116" textAnchor="middle" className="fig-label dim">{b}</text>))}
-        <text x={CX(bit) + CW / 2} y="116" textAnchor="middle" className="fig-value small" style={{ fill: "var(--orange)" }}>{bit}</text>
+        <text x={CX(bit) + CW / 2} y="116" textAnchor="middle" className="fig-value small" style={{ fill: "var(--accent-text)" }}>{bit}</text>
         <text x="200" y="128" textAnchor="middle" className="fig-label dim">port {L}'s 32 bits, one per pin, bit 31 on the left as in every GP{L}... register</text>
         <text x="200" y="143" textAnchor="middle" className="fig-value small">{n} / 32 = {port} remainder {bit}</text>
         <text x="200" y="158" textAnchor="middle" className="fig-value">GPIO{n} = port {L}, bit {bit}</text>
@@ -100,7 +101,7 @@ function PortMap() {
         <div className="pm-row">
           <label htmlFor="pm-n">GPIO</label>
           <input id="pm-n" type="number" min={0} max={MAX} value={n} onChange={(e) => set(+e.target.value)} />
-          <input type="range" aria-label="GPIO number, slider" min={0} max={MAX} value={n} onChange={(e) => set(+e.target.value)} />
+          <input type="range" aria-label="GPIO number, slider" min={0} max={MAX} value={n} aria-valuetext={`GPIO${n}, port ${L}, bit ${bit}`} onChange={(e) => set(+e.target.value)} />
         </div>
         <div>
           <span>Robot board</span>

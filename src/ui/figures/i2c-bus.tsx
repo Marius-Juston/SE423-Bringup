@@ -14,7 +14,8 @@ import { useLayoutEffect, useRef, useState } from "react";
 
 const CSS = `
 .ib-res { fill: var(--surface); stroke: var(--text); stroke-width: 1.2; }
-.ib-now { fill: var(--accent-soft); }
+.ib-now-glow { fill: var(--accent-soft); }
+.ib-now { fill: var(--accent); }
 .ib-who { font-family: var(--mono); font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-weight: 700; }
 .ib-key b { font-family: var(--mono); }
 `;
@@ -226,7 +227,7 @@ function I2cBus() {
     }
     return d + ` H${x(end)}`;
   };
-  const whoColor = (w: Item["who"]) => (w === "M" ? "var(--accent)" : w === "S" ? "var(--info)" : "var(--dim)");
+  const whoColor = (w: Item["who"]) => (w === "M" ? "var(--accent-text)" : w === "S" ? "var(--info)" : "var(--dim)");
   return (
     <figure className="figure" aria-label="Interactive diagram of the I2C bus: open-drain devices and a transfer step by step">
       <style>{CSS}</style>
@@ -275,7 +276,9 @@ function I2cBus() {
             const here = (q: { t0: number }) => q.t0 >= from && q.t0 < to;
             return (
               <g key={k} transform={`translate(0,${STRIP_H * k})`}>
-                {here(it) && <rect x={x(it.t0)} y="15" width={x(it.t1) - x(it.t0)} height="77" className="ib-now" />}
+                {/* The half-clock shown now: a bar under it marks it, the tint only helps the eye up the column. */}
+                {here(it) && <rect x={x(it.t0)} y="15" width={x(it.t1) - x(it.t0)} height="75" className="ib-now-glow" />}
+                {here(it) && <rect x={x(it.t0)} y="90" width={x(it.t1) - x(it.t0)} height="3" className="ib-now" />}
                 {groups.filter((g) => here(g) && g.t0 < tEnd).map((g, i) => (
                   <g key={i}>
                     <path d={`M${x(g.t0) + 1.5},13.5 v-3 H${x(Math.min(g.t1, tEnd)) - 1.5}${g.t1 <= tEnd ? " v3" : ""}`} className="fig-wire" style={{ strokeWidth: 1 }} />
@@ -346,7 +349,7 @@ function I2cBus() {
           </>
         )}
       </div>
-      <figcaption>Every device connects to the same two lines and can only close a switch to ground or leave it open. Orange lines are high, blue lines are low. {mode === "xfer" && <span className="ib-key"> In the step-through each press of Next is half a clock: SDA changes while the master holds SCL low and is read while SCL is high. Under the waveform, <b>M</b> means the master sets SDA, <b>D</b> the addressed device, <b>-</b> nobody. <b>S</b> is START, <b>Sr</b> a repeated START, <b>P</b> STOP, <b>A</b> ACK, <b>N</b> NACK.</span>}</figcaption>
+      <figcaption>Every device connects to the same two lines and can only close a switch to ground or leave it open. Orange lines are high, blue lines are low. {mode === "xfer" && <span className="ib-key"> In the step-through each press of Next is half a clock, marked by the bar under the waveform: SDA changes while the master holds SCL low and is read while SCL is high. Under the waveform, <b>M</b> means the master sets SDA, <b>D</b> the addressed device, <b>-</b> nobody. <b>S</b> is START, <b>Sr</b> a repeated START, <b>P</b> STOP, <b>A</b> ACK, <b>N</b> NACK.</span>}</figcaption>
     </figure>
   );
 }

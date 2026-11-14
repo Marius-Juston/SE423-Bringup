@@ -354,20 +354,36 @@ export class Board implements Rt {
     }
   }
 
-  idle(): void {
+  /** Set by a test run cut into slices (runner.ts): a pause there changes nothing the program can see. */
+  sliced = false;
+
+  /**
+   * Skips to the next event. Returns false when it only reached the end of
+   * the run slice and nothing happened: the caller then idles again after
+   * the pause, so where a slice ends never changes what the program does.
+   */
+  idle(): boolean {
     // Another loop is idling now: the waiting loop was left with break or return.
     if (!this.waitIdle) this.waitLine = 0;
     this.waitIdle = false;
     if (this.irq) {
       this.dispatch();
-      return;
+      return true;
     }
+    let acted = false;
     const next = this.events.length ? this.events[0].t : Infinity;
     const target = Math.min(next, this.pauseAt);
     if (target > this.now && target !== Infinity) this.now = target;
-    if (this.events.length && this.events[0].t <= this.now) this.runEvents();
-    if (this.irq) this.dispatch();
+    if (this.events.length && this.events[0].t <= this.now) {
+      this.runEvents();
+      acted = true;
+    }
+    if (this.irq) {
+      this.dispatch();
+      acted = true;
+    }
     if (this.now >= this.pauseAt) this.pause = true;
+    return acted;
   }
 
   /**

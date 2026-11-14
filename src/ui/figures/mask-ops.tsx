@@ -1,32 +1,55 @@
 import { useState } from "react";
+import type React from "react";
 
 // The four mask moves on a 16-bit variable (course L2, Lab 2): OR sets,
 // AND with the inverted mask clears, XOR toggles, AND tests.
 
 type Op = "set" | "clear" | "toggle" | "test";
 
+// One grid. Every cell carries its row (--r), its place in its byte (--c, 0 to 7), its
+// nibble in that byte (--n: 1 for the lower four bits, which stand a little apart in a narrow
+// figure) and its byte (--h: 0 for bits 15 to 8, 1 for bits 7 to 0). A wide figure shows the 16 bits in one
+// line. A narrow one shows the two bytes as two blocks, one under the other, so a mask bit
+// stays at least 24 px wide; the labels are then repeated beside the lower block.
 const CSS = `
-.mo-grid { display: grid; grid-template-columns: 4.1rem repeat(16, minmax(0, 1fr)); column-gap: 2px; row-gap: 4px; align-items: center; margin-top: 0.4rem; }
+.mo-wrap { container-type: inline-size; margin-top: 0.4rem; }
+.mo-grid { display: grid; grid-template-columns: 4.1rem repeat(16, minmax(0, 1fr)); column-gap: 2px; row-gap: 4px; align-items: center; }
+.mo-grid > * { grid-row: var(--r); grid-column: calc(var(--c) + var(--h) * 8 + 2); }
+.mo-grid > .mo-lab { grid-column: 1; }
+.mo-grid > .mo-rule { grid-column: 1 / -1; }
+.mo-grid > .mo-low { display: none; }
 .mo-grid .mo-nib { margin-left: 5px; }
 .mo-lab { font-size: 0.74rem; line-height: 1.15; color: var(--dim); }
 .mo-lab b { display: block; font-family: var(--mono); color: var(--text); font-size: 0.74rem; white-space: nowrap; }
 .mo-lab i { font-style: normal; font-family: var(--mono); color: var(--harvest); }
-.mo-num { text-align: center; font-family: var(--mono); font-size: 0.68rem; color: var(--dim); }
+.mo-num { text-align: center; font-family: var(--mono); font-size: var(--fig-small, 11px); color: var(--dim); }
 .mo-cell { height: 1.7rem; display: grid; place-items: center; padding: 0; min-width: 0; font-family: var(--mono); font-weight: 700; font-size: 0.9rem; border: 1px solid transparent; border-radius: 4px; background: var(--surface); color: var(--dim); }
 .mo-cell.one { color: var(--text); background: var(--surface-2); border-color: var(--dim); }
 button.mo-cell { border-color: var(--dim); border-style: dashed; }
 button.mo-cell[aria-pressed="true"] { background: var(--harvest); border-color: var(--harvest); border-style: solid; color: var(--bg); }
 .mo-cell.inv { opacity: 0.8; }
 .mo-cell.hit { background: var(--accent-soft); border: 2px solid var(--orange); color: var(--text); }
-.mo-rule { grid-column: 1 / -1; border-top: 2px solid var(--dim); height: 0; }
-.mo-mark { text-align: center; font-size: 0.7rem; line-height: 1; color: var(--orange); height: 0.8rem; }
+.mo-rule { border-top: 2px solid var(--dim); height: 0; }
+.mo-mark { text-align: center; font-size: var(--fig-small, 11px); line-height: 1; color: var(--accent-text); height: 0.8rem; }
 .mo-code { display: block; margin: 0.5rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.85rem; white-space: pre-wrap; }
 .mo-n { font-family: var(--mono); font-weight: 700; color: var(--harvest); min-width: 1.4em; text-align: center; display: inline-block; }
+@container (max-width: 33rem) {
+  .mo-grid { grid-template-columns: minmax(0, auto) repeat(4, minmax(24px, 1fr)) 1px repeat(4, minmax(24px, 1fr)); }
+  .mo-grid > * { grid-row: calc(var(--r) + var(--h) * 8); grid-column: calc(var(--c) + var(--n) + 2); }
+  .mo-grid > .mo-low { display: block; }
+  .mo-grid > .mo-gap { height: 0.5rem; }
+  .mo-grid .mo-nib { margin-left: 0; }
+  .mo-lab { padding-right: 0.3rem; }
+  .mo-lab b { white-space: normal; }
+}
 `;
 
 const BITS = Array.from({ length: 16 }, (_, i) => 15 - i);
 const hex4 = (v: number) => "0x" + v.toString(16).toUpperCase().padStart(4, "0");
 const nib = (n: number) => (n % 4 === 3 && n !== 15 ? " mo-nib" : "");
+/** Where a cell goes in the grid: its row, and for a bit its byte and its place in it. */
+const at = (r: number, bit?: number, low = false) =>
+  ({ "--r": r, "--c": bit === undefined ? 0 : 7 - (bit % 8), "--n": bit === undefined || bit % 8 > 3 ? 0 : 1, "--h": bit === undefined ? (low ? 1 : 0) : bit < 8 ? 1 : 0 }) as React.CSSProperties;
 const START = 0x00a5;
 
 function MaskOps() {
@@ -63,33 +86,49 @@ function MaskOps() {
   const operand = op === "clear" ? inv : mask;
   const opSign = { set: "|", clear: "&", toggle: "^", test: "&" }[op];
   const opName = { set: "OR", clear: "AND", toggle: "XOR", test: "AND" }[op];
+  const labX = <><b>x</b><i>{hex4(x)}</i></>;
+  const labMask = <><b>mask</b><i>{m}</i></>;
+  const labInv = <><b>~mask</b><i>{hex4(inv)}</i></>;
+  const labResult = <><b>{op === "test" ? "x & mask" : `x ${opSign} ${op === "clear" ? "~mask" : "mask"}`}</b><i>{hex4(result)}</i></>;
+  const labHits = op === "test" ? "survived" : "changed";
   return (
     <figure className="figure" aria-label="Interactive bit masks: set, clear, toggle and test bits of a 16-bit value">
       <style>{CSS}</style>
-      <div className="mo-grid" role="group" aria-label={`x is ${hex4(x)}, mask is ${m}, result is ${hex4(result)}`}>
-        <span className="mo-lab">bit</span>
-        {BITS.map((b) => <span key={b} className={`mo-num${nib(b)}`}>{b}</span>)}
-        <span className="mo-lab"><b>x</b><i>{hex4(x)}</i></span>
-        {BITS.map((b) => <span key={b} className={`mo-cell${nib(b)}${(x >> b) & 1 ? " one" : ""}`}>{(x >> b) & 1}</span>)}
-        <span className="mo-lab"><b>mask</b><i>{m}</i></span>
-        {BITS.map((b) => (
-          <button key={b} className={`mo-cell${nib(b)}`} aria-pressed={((mask >> b) & 1) === 1} aria-label={`mask bit ${b}`} onClick={() => setMask(mask ^ (1 << b))}>
-            {(mask >> b) & 1}
-          </button>
-        ))}
-        {op === "clear" && (
-          <>
-            <span className="mo-lab"><b>~mask</b><i>{hex4(inv)}</i></span>
-            {BITS.map((b) => <span key={b} className={`mo-cell inv${nib(b)}${(inv >> b) & 1 ? " one" : ""}`}>{(inv >> b) & 1}</span>)}
-          </>
-        )}
-        <span className="mo-rule" />
-        <span className="mo-lab"><b>{op === "test" ? "x & mask" : `x ${opSign} ${op === "clear" ? "~mask" : "mask"}`}</b><i>{hex4(result)}</i></span>
-        {BITS.map((b) => (
-          <span key={b} className={`mo-cell${nib(b)}${(hits >> b) & 1 ? " hit" : (result >> b) & 1 ? " one" : ""}`}>{(result >> b) & 1}</span>
-        ))}
-        <span className="mo-lab">{op === "test" ? "survived" : "changed"}</span>
-        {BITS.map((b) => <span key={b} className={`mo-mark${nib(b)}`} aria-hidden="true">{(hits >> b) & 1 ? "▲" : ""}</span>)}
+      <div className="mo-wrap">
+        <div className="mo-grid" role="group" aria-label={`x is ${hex4(x)}, mask is ${m}, result is ${hex4(result)}`}>
+          <span className="mo-lab" style={at(1)}>bit</span>
+          {BITS.map((b) => <span key={b} className={`mo-num${nib(b)}`} style={at(1, b)}>{b}</span>)}
+          <span className="mo-lab" style={at(2)}>{labX}</span>
+          {BITS.map((b) => <span key={b} className={`mo-cell${nib(b)}${(x >> b) & 1 ? " one" : ""}`} style={at(2, b)}>{(x >> b) & 1}</span>)}
+          <span className="mo-lab" style={at(3)}>{labMask}</span>
+          {BITS.map((b) => (
+            <button key={b} className={`mo-cell${nib(b)}`} style={at(3, b)} aria-pressed={((mask >> b) & 1) === 1} aria-label={`mask bit ${b}, value ${(mask >> b) & 1}`} onClick={() => setMask(mask ^ (1 << b))}>
+              {(mask >> b) & 1}
+            </button>
+          ))}
+          {op === "clear" && (
+            <>
+              <span className="mo-lab" style={at(4)}>{labInv}</span>
+              {BITS.map((b) => <span key={b} className={`mo-cell inv${nib(b)}${(inv >> b) & 1 ? " one" : ""}`} style={at(4, b)}>{(inv >> b) & 1}</span>)}
+            </>
+          )}
+          <span className="mo-rule" style={at(5)} />
+          <span className="mo-lab" style={at(6)}>{labResult}</span>
+          {BITS.map((b) => (
+            <span key={b} className={`mo-cell${nib(b)}${(hits >> b) & 1 ? " hit" : (result >> b) & 1 ? " one" : ""}`} style={at(6, b)}>{(result >> b) & 1}</span>
+          ))}
+          <span className="mo-lab" style={at(7)}>{labHits}</span>
+          {BITS.map((b) => <span key={b} className={`mo-mark${nib(b)}`} style={at(7, b)} aria-hidden="true">{(hits >> b) & 1 ? "▲" : ""}</span>)}
+          {/* a narrow figure shows the lower byte as a second block: the same labels again, not read out twice */}
+          <span className="mo-low mo-gap" style={at(8)} />
+          <span className="mo-lab mo-low" aria-hidden="true" style={at(1, undefined, true)}>bit</span>
+          <span className="mo-lab mo-low" aria-hidden="true" style={at(2, undefined, true)}>{labX}</span>
+          <span className="mo-lab mo-low" aria-hidden="true" style={at(3, undefined, true)}>{labMask}</span>
+          {op === "clear" && <span className="mo-lab mo-low" aria-hidden="true" style={at(4, undefined, true)}>{labInv}</span>}
+          <span className="mo-rule mo-low" style={at(5, undefined, true)} />
+          <span className="mo-lab mo-low" aria-hidden="true" style={at(6, undefined, true)}>{labResult}</span>
+          <span className="mo-lab mo-low" aria-hidden="true" style={at(7, undefined, true)}>{labHits}</span>
+        </div>
       </div>
       <code className="mo-code">
         {stmt}

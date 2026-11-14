@@ -97,7 +97,16 @@ Reuse the CSS classes in `src/ui/styles.css` (`.figure`, `.fig-box`,
 need a new class, put a `<style>` element inside your component (scoped by
 a unique class prefix); do not edit `styles.css`.
 
-Accessibility: real `<button>` / `<input>` controls with labels, visible
+Words in orange use `--accent-text`; `--accent` is for fills and edges. A
+label that a line of the drawing may cross gets the class `fig-halo` (a rim
+in the figure's background). A shape that is only decoration says so:
+`aria-hidden="true"` on it or its group, or a class ending in `-grid`,
+`-guide`, `-glow` or `-ghost`; the checks then do not ask 3:1 of it. A
+slider says its value in words with `aria-valuetext`. The figure wrapper
+names groups of controls and makes a box that scrolls a named region that
+takes the focus: do not add your own.
+
+Accessibility (checked by `npm run a11y`, see `docs/ACCESSIBILITY.md`): real `<button>` / `<input>` controls with labels, visible
 focus (inherited), `aria-pressed` on toggles, an `aria-label` on the SVG
 that states the current state in words, no information by colour alone,
 nothing that animates on its own unless the student started it (and then

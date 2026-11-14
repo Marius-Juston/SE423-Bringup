@@ -10,7 +10,10 @@ const VREF = 3.0;
 const trim = (v: number) => v.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
 const CSS = `
 .sar input[type=range] { flex: 1 1 8rem; min-width: 6rem; padding: 0; accent-color: var(--orange); }
-.sar .sar-num { font-family: var(--mono); color: var(--orange); min-width: 3.6em; text-align: right; font-weight: 700; }
+.sar .fig-controls.row { flex-wrap: wrap; }
+.sar .sar-grid { stroke: var(--border); }
+.sar .sar-band { fill: var(--harvest); stroke: var(--harvest); stroke-width: 1; }
+.sar .sar-num { font-family: var(--mono); color: var(--accent-text); min-width: 3.6em; text-align: right; font-weight: 700; }
 .sar .sar-yes { fill: var(--ok); font-weight: 700; font-size: 13px; font-family: var(--sans); }
 .sar .sar-no { fill: var(--bad); font-weight: 700; font-size: 13px; font-family: var(--sans); }
 `;
@@ -81,7 +84,7 @@ function SarSearch() {
         {/* axes */}
         {[0, 1.5, 3].map((v) => (
           <g key={v}>
-            <line x1={X0} x2={X1} y1={y(v)} y2={y(v)} stroke="var(--border)" />
+            <line x1={X0} x2={X1} y1={y(v)} y2={y(v)} className="sar-grid" />
             <text x={X0 - 4} y={y(v) + 3} textAnchor="end" className="fig-label">{v.toFixed(1)} V</text>
           </g>
         ))}
@@ -93,7 +96,8 @@ function SarSearch() {
           const isCur = i === step - 1;
           return (
             <g key={i}>
-              {shown && <rect x={x + 1} y={y(r.hi)} width={cw - 2} height={Math.max(0.8, y(r.lo) - y(r.hi))} fill="var(--harvest)" fillOpacity={isCur ? 0.3 : 0.16} />}
+              {/* the band: outlined, open at the top where a trial that was too high (the dashed bar) is its edge */}
+              {shown && <path d={`M${x + 1.5},${y(r.hi)} V${y(r.hi) + Math.max(0.8, y(r.lo) - y(r.hi))} H${x + cw - 1.5} V${y(r.hi)}${r.yes ? " Z" : ""}`} className="sar-band" fillOpacity={isCur ? 0.3 : 0.16} />}
               {shown && (r.yes ? <line x1={x + 2} x2={x + cw - 2} y1={y(r.trial)} y2={y(r.trial)} stroke="var(--harvest)" strokeWidth="2.6" /> : <line x1={x + 2} x2={x + cw - 2} y1={y(r.trial)} y2={y(r.trial)} stroke="var(--dim)" strokeWidth="1.6" strokeDasharray="3 2" />)}
               {isCur && <rect x={x + 0.5} y={Y1 - 4} width={cw - 1} height={Y0 - Y1 + 4} fill="none" stroke="var(--orange)" strokeWidth="1" strokeDasharray="2 2" />}
               <rect x={x + 1.5} y={Y0 + 7} width={cw - 3} height="17" rx="3" className={`fig-box ${isCur ? "hot" : shown ? "active" : "off"}`} />
@@ -108,7 +112,7 @@ function SarSearch() {
         {/* comparator panel */}
         <line x1={PX} x2={PX + 12} y1="21" y2="21" stroke="var(--orange)" strokeWidth="1.8" />
         <text x={PX + 16} y="24" className="fig-label dim">held voltage</text>
-        <text x={PX} y="37" className="fig-value" style={{ fill: "var(--orange)" }}>{vin.toFixed(2)} V</text>
+        <text x={PX} y="37" className="fig-value" style={{ fill: "var(--accent-text)" }}>{vin.toFixed(2)} V</text>
         <line x1={PX} x2={PX + 12} y1="52" y2="52" stroke="var(--harvest)" strokeWidth="2.6" />
         <text x={PX + 16} y="55" className="fig-label dim">DAC trial voltage</text>
         <text x={PX} y="68" className="fig-value">{cur ? `${trim(cur.trial)} V` : "none yet"}</text>
@@ -133,7 +137,7 @@ function SarSearch() {
       <div className="fig-controls">
         <div>
           <span>Held voltage</span>
-          <input type="range" min={0} max={VREF} step={0.01} value={vin} aria-label="Held voltage in volts" onChange={(e) => setVin(+e.target.value)} />
+          <input type="range" min={0} max={VREF} step={0.01} value={vin} aria-label="Held voltage in volts" aria-valuetext={`${vin.toFixed(2)} volts`} onChange={(e) => setVin(+e.target.value)} />
           <span className="sar-num">{vin.toFixed(2)} V</span>
         </div>
         <div>
@@ -143,7 +147,7 @@ function SarSearch() {
           <button className="fig-opt" aria-pressed={bits === 12} onClick={() => reset(12)}>12 bits (the chip)</button>
         </div>
       </div>
-      <figcaption>A binary search with a DAC and a comparator. Each column is one comparison: a thick solid bar is a trial voltage that was kept, a dashed bar one that was too high. The shaded band is where the held voltage (the line across) can still be; it halves every round, so N bits need N comparisons.</figcaption>
+      <figcaption>A binary search with a DAC and a comparator. Each column is one comparison: a thick solid bar is a trial voltage that was kept, a dashed bar one that was too high. The shaded, outlined band is where the held voltage (the line across) can still be; it halves every round, so N bits need N comparisons.</figcaption>
     </figure>
   );
 }

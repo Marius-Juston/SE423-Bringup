@@ -84,7 +84,8 @@ function ServoPulse() {
         {/* whole frame */}
         <text x="4" y={FH - 3} className="fig-label">EPWM5A</text>
         <text x="4" y={FH + 9} className="fig-label dim">GPIO8</text>
-        <path d={`M${X0},${FL} V${FH} H${xf(ms)} V${FL} Z M${xf(20)},${FL} V${FH} H${xf(20 + ms)} V${FL} Z`} fill="var(--accent-soft)" />
+        {/* the tint inside a pulse is decoration: the trace draws the pulse */}
+        <path d={`M${X0},${FL} V${FH} H${xf(ms)} V${FL} Z M${xf(20)},${FL} V${FH} H${xf(20 + ms)} V${FL} Z`} fill="var(--accent-soft)" aria-hidden="true" />
         <path d={frame} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         <path d={`M${X0},14 V10 H${xf(20)} V14`} className="fig-wire" />
         <text x={(X0 + xf(20)) / 2} y="8" textAnchor="middle" className="fig-label dim">one frame: 20 ms = {TBPRD} counts (50 Hz)</text>
@@ -93,7 +94,7 @@ function ServoPulse() {
         <path d={`M${X0},${FL + 2} V${ZH - 22} M${xf(ZOOM_MS)},${FL + 2} L${X1},${ZH - 22}`} className="fig-wire" strokeDasharray="2 3" />
         <text x={X0 + 8} y={FL + 23} className="fig-label dim">the first 3.2 ms, enlarged</text>
         {/* zoomed pulse */}
-        <rect x={xz(0.8)} y={ZH - 6} width={xz(2.4) - xz(0.8)} height={ZL - ZH + 6} fill="var(--value)" fillOpacity="0.1" />
+        <rect x={xz(0.8)} y={ZH - 6} width={xz(2.4) - xz(0.8)} height={ZL - ZH + 6} fill="var(--value)" fillOpacity="0.1" stroke="var(--value)" strokeWidth="0.8" />
         {[
           [0.8, "-90°"],
           [1.6, "0°"],
@@ -107,11 +108,11 @@ function ServoPulse() {
         ))}
         <text x="4" y={ZH + 16} className="fig-label">pulse</text>
         <text x="4" y={ZH + 27} className="fig-label dim">width</text>
-        <path d={`M${X0},${ZL} V${ZH} H${xz(ms)} V${ZL} Z`} fill="var(--accent-soft)" />
+        <path d={`M${X0},${ZL} V${ZH} H${xz(ms)} V${ZL} Z`} fill="var(--accent-soft)" aria-hidden="true" />
         <path d={zoom} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         <path d={`M${xz(ms) - 5},${(ZH + ZL) / 2} h-5 l3,-3 m-3,3 l3,3 M${xz(ms) + 5},${(ZH + ZL) / 2} h5 l-3,-3 m3,3 l-3,3`} className="fig-sample-arrow" style={{ strokeWidth: 1.4 }} />
         <text x={Math.min(xz(ms), X1 - 20)} y={ZL + 26} textAnchor="middle" className="fig-value small">{ms.toFixed(2)} ms</text>
-        <rect x={xz(ms) - 12} y={ZH - 4} width="24" height={ZL - ZH + 8} className="srvp-grab" {...drag}><title>Drag to change the pulse width</title></rect>
+        <rect x={xz(ms) - 12} y={ZH - 4} width="24" height={ZL - ZH + 8} className="srvp-grab" aria-hidden="true" {...drag} />
         {/* servo */}
         <rect x={DX - 30} y={DY - 6} width="60" height="46" rx="5" className="fig-box" />
         <path d={`M${DX - R},${DY} A${R},${R} 0 0 1 ${DX + R},${DY}`} className="fig-wire" strokeDasharray="2 3" />
@@ -141,7 +142,7 @@ function ServoPulse() {
       <div className="fig-controls">
         <div>
           <span>Pulse</span>
-          <input type="range" min={CMIN} max={CMAX} step={STEP} value={cmpa} aria-label="CMPA, the pulse width in counts" onChange={(e) => setCmpa(+e.target.value)} />
+          <input type="range" min={CMIN} max={CMAX} step={STEP} value={cmpa} aria-label="CMPA, the pulse width in counts" aria-valuetext={`${cmpa} counts, ${ms.toFixed(2)} milliseconds`} onChange={(e) => setCmpa(+e.target.value)} />
           <code>CMPA = {cmpa}</code>
         </div>
         <div>
@@ -152,7 +153,7 @@ function ServoPulse() {
         </div>
       </div>
       <CodePre><code>{`EPwm5Regs.TBCTL.bit.CLKDIV = 5;  // /32: 640 ns a count\nEPwm5Regs.TBPRD = ${TBPRD};         // 20 ms\nEPwm5Regs.CMPA.bit.CMPA = ${cmpa};  // ${ms.toFixed(2)} ms${over ? "" : `\n// position ${(angle + 90).toFixed(1).replace(/\.0$/, "")}: ${CENTRE - PER_90} + ${(angle + 90).toFixed(1).replace(/\.0$/, "")} * ${2 * PER_90}.0 / 180.0`}`}</code></CodePre>
-      <figcaption>Top: the whole 20 ms frame, in which the pulse is only a sliver. Below: the first 3.2 ms enlarged; the falling edge can be dragged. At 50 MHz a 20 ms frame would be a million counts, too many for the 16-bit TBPRD, so the clock is divided, here by 32.</figcaption>
+      <figcaption>Top: the whole 20 ms frame, in which the pulse is only a sliver. Below: the first 3.2 ms enlarged; the falling edge can be dragged, and the Pulse slider does the same. At 50 MHz a 20 ms frame would be a million counts, too many for the 16-bit TBPRD, so the clock is divided, here by 32.</figcaption>
     </figure>
   );
 }

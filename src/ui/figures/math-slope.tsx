@@ -74,7 +74,7 @@ function MathSlope() {
         </div>
         <div>
           <span>Look at</span>
-          <input className="mk-range" type="range" aria-label="Which pair of samples to look at" min={1} max={N - 1} step={1} value={k} onChange={(e) => setK(+e.target.value)} />
+          <input className="mk-range" type="range" aria-label="Which pair of samples to look at" min={1} max={N - 1} step={1} value={k} aria-valuetext={`samples ${k - 1} and ${k}`} onChange={(e) => setK(+e.target.value)} />
           <span className="mk-num">sample {k}</span>
         </div>
       </div>

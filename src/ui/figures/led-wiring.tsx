@@ -7,11 +7,11 @@ import { useState } from "react";
 // (TRM section 8.3).
 
 const CSS = `
-.lw-glow { fill: var(--orange); opacity: 0.28; }
+.lw-glow { fill: var(--orange); opacity: 0.16; }
 .lw-led { fill: var(--surface); stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; }
 .lw-led.lit { fill: var(--orange); stroke: var(--orange); }
 .lw-flow { fill: none; stroke: var(--harvest); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.lw-panel { fill: none; stroke: var(--border-strong, var(--dim)); stroke-dasharray: 4 3; }
+.lw-panel { fill: none; stroke: var(--control); stroke-dasharray: 4 3; }
 .lw-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.6rem; background: var(--inset); border-radius: 6px; font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 `;
 
@@ -41,7 +41,7 @@ function Circuit({ cx, topV, botV }: { cx: number; topV: 0 | 1; botV: 0 | 1 }) {
         </>
       )}
       <line x1={cx} y1="117" x2={cx} y2={BOT} className="fig-wire thick" style={{ stroke: col(botV) }} />
-      <text x={cx + 34} y="112" className="fig-value" style={{ fill: lit ? "var(--orange)" : "var(--dim)" }}>{lit ? "LIT" : "dark"}</text>
+      <text x={cx + 34} y="112" className="fig-value" style={{ fill: lit ? "var(--accent-text)" : "var(--dim)" }}>{lit ? "LIT" : "dark"}</text>
     </g>
   );
 }
@@ -49,7 +49,7 @@ function Circuit({ cx, topV, botV }: { cx: number; topV: 0 | 1; botV: 0 | 1 }) {
 function LedWiring() {
   const [high, setHigh] = useState(true);
   const v: 0 | 1 = high ? 1 : 0;
-  const col = high ? "var(--orange)" : "var(--arches)";
+  const col = high ? "var(--accent-text)" : "var(--arches)";
   const volts = high ? "3.3 V" : "0 V";
   const why = high
     ? "Pin high. Robot board: 3.3 V above the LED and 0 V below it, so current flows down through it and it lights. LaunchPad: 3.3 V on both sides of the LED, no difference, no current, dark."

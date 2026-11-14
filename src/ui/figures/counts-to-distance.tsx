@@ -52,7 +52,7 @@ function CountsToDistance() {
   const sign = left ? "-" : "";
   return (
     <figure className="figure cd-fig" aria-label="Interactive chain from encoder counts to feet travelled">
-      <style>{`.cd-fig pre{font-size:.74rem;white-space:pre-wrap;overflow-wrap:anywhere}.cd-fig .cd-range{flex:1;min-width:140px;accent-color:var(--orange)}.cd-fig .cd-roll{stroke:var(--harvest);stroke-width:3;fill:none}.cd-fig .cd-tyre{fill:none;stroke:var(--text);stroke-width:3}`}</style>
+      <style>{`.cd-fig pre{font-size:.74rem;white-space:pre-wrap;overflow-wrap:anywhere}.cd-fig pre code{font-size:1em}.cd-fig .cd-range{flex:1;min-width:140px;accent-color:var(--orange)}.cd-fig .cd-roll{stroke:var(--harvest);stroke-width:3;fill:none}.cd-fig .cd-tyre{fill:none;stroke:var(--text);stroke-width:3}`}</style>
       <svg viewBox="0 0 420 240" role="img" aria-label={`${raw} counts are ${fmt(motorTurns, 2)} motor turns, ${fmt(wheelTurns, 4)} wheel turns, ${fmt(angle, 4)} radians and ${fmt(feet, 4)} feet.`}>
         {/* the chain of numbers */}
         {boxes.map((b, i) => (
@@ -120,7 +120,7 @@ function CountsToDistance() {
       <div className="fig-controls">
         <div>
           <span>Roll</span>
-          <input className="cd-range" type="range" aria-label="Distance rolled, in counts" min={-5000} max={50000} step={50} value={fwd} onChange={(e) => setFwd(+e.target.value)} />
+          <input className="cd-range" type="range" aria-label="Distance rolled, in counts" aria-valuetext={`${fwd} counts`} min={-5000} max={50000} step={50} value={fwd} onChange={(e) => setFwd(+e.target.value)} />
           <code>QPOSCNT = {raw}</code>
         </div>
         <div>

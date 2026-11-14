@@ -72,7 +72,7 @@ function MathIntegrate() {
 
   return (
     <figure className="figure mi-fig" aria-label="Interactive figure: adding up small steps of rate times time gives a running total">
-      <style>{`.mi-fig .mi-range{flex:1;min-width:110px;accent-color:var(--orange)}.mi-fig .mi-axis{stroke:var(--dim);stroke-width:1}.mi-fig .mi-bar{fill:var(--accent-soft);stroke:var(--orange);stroke-width:1}.mi-fig .mi-bar.neg{fill:none;stroke:var(--arches);stroke-dasharray:3 2}.mi-fig .mi-bar.todo{fill:none;stroke:var(--faint);stroke-dasharray:none}.mi-fig .mi-rate{fill:none;stroke:var(--text);stroke-width:1.6}.mi-fig .mi-total{fill:none;stroke:var(--harvest);stroke-width:2.4}.mi-fig .mi-exact{fill:none;stroke:var(--dim);stroke-width:1.2;stroke-dasharray:4 3}.mi-fig .mi-now{stroke:var(--orange);stroke-width:1;stroke-dasharray:3 3}.mi-fig .mi-num{font-family:var(--mono);font-size:0.82rem;min-width:3.6rem;text-align:right}`}</style>
+      <style>{`.mi-fig .mi-range{flex:1;min-width:110px;accent-color:var(--orange)}.mi-fig .mi-axis{stroke:var(--dim);stroke-width:1}.mi-fig .mi-bar{fill:var(--accent-soft);stroke:var(--orange);stroke-width:1}.mi-fig .mi-bar.neg{fill:none;stroke:var(--arches);stroke-width:1.8;stroke-dasharray:3 2}.mi-fig .mi-bar.todo{fill:none;stroke:var(--dim);stroke-width:0.8;stroke-dasharray:1 2}.mi-fig .mi-rate{fill:none;stroke:var(--text);stroke-width:1.6}.mi-fig .mi-total{fill:none;stroke:var(--harvest);stroke-width:2.4}.mi-fig .mi-exact{fill:none;stroke:var(--dim);stroke-width:1.2;stroke-dasharray:4 3}.mi-fig .mi-now{stroke:var(--orange);stroke-width:1;stroke-dasharray:3 3}.mi-fig .mi-num{font-family:var(--mono);font-size:0.82rem;min-width:3.6rem;text-align:right}`}</style>
       <svg viewBox="0 0 400 226" role="img" aria-label={`After ${fmt(now, 1)} seconds, ${steps} step${steps === 1 ? "" : "s"} of ${dt} second${dt === 1 ? "" : "s"} ${steps === 1 ? "has" : "have"} been added. The running total is ${fmt(total)}; the exact value is ${fmt(truth)}.`}>
         <text x={X0} y={11} className="fig-label">{w.rate}: each bar is one step, {w.rname} x {dt} s</text>
         <line x1={X0} x2={X1} y1={ry(0)} y2={ry(0)} className="mi-axis" />
@@ -82,7 +82,8 @@ function MathIntegrate() {
         ))}
         {bars}
         <path d={rline} className="mi-rate" />
-        <line x1={sx(now)} x2={sx(now)} y1={ry(2.1)} y2={ty(-0.4)} className="mi-now" />
+        {/* The line of "now" is drawn in each plot, not through the heading between them. */}
+        <line x1={sx(now)} x2={sx(now)} y1={ry(2.1)} y2={ry(-1.1)} className="mi-now" />
 
         <text x={X0} y={112} className="fig-label">{w.total}: the bars added up so far = <tspan className="fig-value small">{fmt(total)}{w.tu ? ` ${w.tu}` : ""}</tspan></text>
         <line x1={X0} x2={X1} y1={ty(0)} y2={ty(0)} className="mi-axis" />
@@ -90,6 +91,7 @@ function MathIntegrate() {
         {[0, 2, 4].map((v) => (
           <text key={v} x={X0 - 4} y={ty(v) + 3} textAnchor="end" className="fig-label dim">{v}</text>
         ))}
+        <line x1={sx(now)} x2={sx(now)} y1={129} y2={ty(-0.4)} className="mi-now" />
         <path d={smooth} className="mi-exact" />
         <path d={`M${pts.join(" L")}`} className="mi-total" />
         <circle cx={sx(now)} cy={ty(total)} r={3.5} style={{ fill: "var(--harvest)" }} />
@@ -120,7 +122,7 @@ function MathIntegrate() {
         </div>
         <div>
           <span>Time</span>
-          <input className="mi-range" type="range" aria-label="Time in seconds" min={0} max={T_END} step={dt} value={now} onChange={(e) => setT(+e.target.value)} />
+          <input className="mi-range" type="range" aria-label="Time in seconds" min={0} max={T_END} step={dt} value={now} aria-valuetext={`${fmt(now, 1)} seconds`} onChange={(e) => setT(+e.target.value)} />
           <span className="mi-num">{fmt(now, 1)} s</span>
         </div>
       </div>

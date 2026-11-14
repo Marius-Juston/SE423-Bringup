@@ -64,13 +64,17 @@ function Kalman1d() {
     const half = text.length * 2.2 + 4;
     const x = Math.max(X0 + half, Math.min(X1 - half, sx(m)));
     const y = 10 + row * 11;
-    return (
-      <g>
-        <path d={`M${x},${y + 3} L${sx(m)},${Math.max(y + 3, peak(m, p) - 2)}`} className={`kf-lead ${cls}`} />
-        <text x={x} y={y} textAnchor="middle" className={`fig-label kf-halo ${cls}`}>{text}</text>
-      </g>
-    );
+    return {
+      lead: <path key={`l${row}`} d={`M${x},${y + 3} L${sx(m)},${Math.max(y + 3, peak(m, p) - 2)}`} className={`kf-lead ${cls}`} />,
+      text: <text key={`t${row}`} x={x} y={y} textAnchor="middle" className={`fig-label kf-halo ${cls}`}>{text}</text>,
+    };
   };
+  // Every leader is drawn before every label, so a label's rim interrupts a leader that passes behind it.
+  const labels = [
+    label(shown.m, shown.p, step === 0 ? `belief: mean ${fmt(prior.m)}, variance ${fmt(prior.p)}` : `prediction: ${fmt(pred.m)}, variance ${fmt(pred.p)}`, "kf-tb", 2),
+    ...(step >= 2 ? [label(z, r, `measurement: z = ${fmt(z)}, variance r = ${fmt(r)}`, "kf-tz", 1)] : []),
+    ...(step === 3 ? [label(post.m, post.p, `updated: ${fmt(post.m)}, variance ${fmt(post.p)}`, "kf-tp", 0)] : []),
+  ];
   const trust = K > 0.75 ? "the sensor is much better than the prediction, so the estimate goes almost all the way to the measurement" : K < 0.25 ? "the prediction is much better than the sensor, so the estimate hardly moves" : K > 0.45 && K < 0.55 ? "both are about equally good, so the estimate lands about halfway" : K >= 0.55 ? "the sensor is the better of the two, so the estimate lands closer to the measurement" : "the prediction is the better of the two, so the estimate stays closer to it";
 
   const reset = () => {
@@ -93,13 +97,14 @@ function Kalman1d() {
 
   return (
     <figure className="figure kf-fig" aria-label="Step-through drawing of a one-dimensional Kalman filter">
-      <style>{`.kf-fig .kf-range{flex:1;min-width:110px;accent-color:var(--orange)}.kf-fig .kf-bel{fill:none;stroke:var(--arches);stroke-width:2.2}.kf-fig .kf-old{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:3 3}.kf-fig .kf-z{fill:none;stroke:var(--orange);stroke-width:2.2}.kf-fig .kf-post{fill:var(--harvest);fill-opacity:.25;stroke:var(--harvest);stroke-width:2.4}.kf-fig .kf-tb{fill:var(--arches)}.kf-fig .kf-tz{fill:var(--orange)}.kf-fig .kf-tp{fill:var(--harvest)}.kf-fig .kf-num{width:3rem;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}.kf-fig .kf-bar{stroke:var(--text);stroke-width:3}.kf-fig .kf-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.kf-fig .kf-lead{fill:none;stroke-width:1;stroke-dasharray:1.5 2.5}.kf-fig .kf-lead.kf-tb{stroke:var(--arches)}.kf-fig .kf-lead.kf-tz{stroke:var(--orange)}.kf-fig .kf-lead.kf-tp{stroke:var(--harvest)}.kf-fig .fig-controls>div>span:first-child{width:8.4rem}.kf-fig .kf-next{color:var(--dim);font-size:.82rem}`}</style>
+      <style>{`.kf-fig .kf-range{flex:1;min-width:110px;accent-color:var(--orange)}.kf-fig .kf-bel{fill:none;stroke:var(--arches);stroke-width:2.2}.kf-fig .kf-old{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:3 3}.kf-fig .kf-z{fill:none;stroke:var(--orange);stroke-width:2.2}.kf-fig .kf-post{fill:var(--harvest);fill-opacity:.25;stroke:var(--harvest);stroke-width:2.4}.kf-fig .kf-tb{fill:var(--arches)}.kf-fig .kf-tz{fill:var(--accent-text)}.kf-fig .kf-tp{fill:var(--harvest)}.kf-fig .kf-num{width:3rem;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}.kf-fig .kf-bar{stroke:var(--text);stroke-width:3}.kf-fig .kf-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.kf-fig .kf-lead{fill:none;stroke-width:1;stroke-dasharray:1.5 2.5}.kf-fig .kf-lead.kf-tb{stroke:var(--arches)}.kf-fig .kf-lead.kf-tz{stroke:var(--orange)}.kf-fig .kf-lead.kf-tp{stroke:var(--harvest)}.kf-fig .fig-controls>div>span:first-child{width:8.4rem}.kf-fig .kf-next{color:var(--dim);font-size:.82rem}.kf-fig .fig-controls.row{flex-wrap:wrap}`}</style>
       <svg viewBox="0 0 420 206" role="img" aria-label={step === 0 ? `Belief: mean ${fmt(prior.m)} feet, variance ${fmt(prior.p)}.` : step < 3 ? `Predicted belief: mean ${fmt(pred.m)}, variance ${fmt(pred.p)}.${step === 2 ? ` Measurement ${fmt(z)}, variance ${fmt(r)}.` : ""}` : `Prediction ${fmt(pred.m)} with variance ${fmt(pred.p)}, measurement ${fmt(z)} with variance ${fmt(r)}, gain ${fmt(K)}, updated mean ${fmt(post.m)}, variance ${fmt(post.p)}.`}>
         <defs>
           <marker id="kf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />
           </marker>
         </defs>
+        {step === 3 && <line x1={sx(post.m)} x2={sx(post.m)} y1={BASE} y2={182} className="fig-sample" />}
         {/* axis */}
         <line x1={X0} x2={X1} y1={BASE} y2={BASE} className="fig-wire" />
         {Array.from({ length: SPAN }, (_, i) => {
@@ -107,7 +112,7 @@ function Kalman1d() {
           return (
             <g key={x}>
               <line x1={sx(x)} x2={sx(x)} y1={BASE} y2={BASE + 4} className="fig-wire" />
-              <text x={sx(x)} y={BASE + 14} textAnchor="middle" className="fig-label dim">{x} ft</text>
+              <text x={sx(x)} y={BASE + 14} textAnchor="middle" className="fig-label dim kf-halo">{x} ft</text>
             </g>
           );
         })}
@@ -123,9 +128,8 @@ function Kalman1d() {
         {step === 3 && <path d={bell(post.m, post.p)} className="kf-post" />}
         <path d={bell(shown.m, shown.p)} className="kf-bel" />
         {step >= 2 && <path d={bell(z, r)} className="kf-z" />}
-        {label(shown.m, shown.p, step === 0 ? `belief: mean ${fmt(prior.m)}, variance ${fmt(prior.p)}` : `prediction: ${fmt(pred.m)}, variance ${fmt(pred.p)}`, "kf-tb", 2)}
-        {step >= 2 && label(z, r, `measurement: z = ${fmt(z)}, variance r = ${fmt(r)}`, "kf-tz", 1)}
-        {step === 3 && label(post.m, post.p, `updated: ${fmt(post.m)}, variance ${fmt(post.p)}`, "kf-tp", 0)}
+        {labels.map((l) => l.lead)}
+        {labels.map((l) => l.text)}
         {step === 3 && (
           <g>
             {/* how far the estimate moves: K of the way from the prediction to the measurement */}
@@ -134,7 +138,6 @@ function Kalman1d() {
             <line x1={sx(pred.m)} x2={sx(pred.m)} y1={181} y2={191} className="kf-bel" />
             <line x1={sx(z)} x2={sx(z)} y1={181} y2={191} className="kf-z" />
             <circle cx={sx(post.m)} cy={186} r={4} className="kf-tp" />
-            <line x1={sx(post.m)} x2={sx(post.m)} y1={BASE} y2={182} className="fig-sample" />
             <text x={Math.max(X0 + 70, Math.min(X1 - 70, sx((pred.m + z) / 2)))} y={203} textAnchor="middle" className="fig-label">K = <tspan className="fig-value small">{fmt(K)}</tspan>: the estimate moves {Math.round(K * 100)} % of the way</text>
           </g>
         )}
@@ -153,20 +156,20 @@ function Kalman1d() {
       <div className="fig-controls">
         <div>
           <span>{step === 0 ? "Belief variance" : "Predicted variance"}</span>
-          <input className="kf-range" type="range" aria-label={step === 0 ? "Variance of the belief" : "Variance of the prediction"} min={step === 0 ? 0.1 : 0.05 + Q} max={step === 0 ? 1.5 : 1.5 + Q} step={0.05} value={step === 0 ? prior.p : pred.p} onChange={(e) => setPrior({ ...prior, p: Math.round((+e.target.value - (step === 0 ? 0 : Q)) * 100) / 100 })} />
+          <input className="kf-range" type="range" aria-label={step === 0 ? "Variance of the belief" : "Variance of the prediction"} aria-valuetext={`variance ${fmt(step === 0 ? prior.p : pred.p)}`} min={step === 0 ? 0.1 : 0.05 + Q} max={step === 0 ? 1.5 : 1.5 + Q} step={0.05} value={step === 0 ? prior.p : pred.p} onChange={(e) => setPrior({ ...prior, p: Math.round((+e.target.value - (step === 0 ? 0 : Q)) * 100) / 100 })} />
           <span className="kf-num">{fmt(step === 0 ? prior.p : pred.p)}</span>
         </div>
         {step >= 2 && (
           <div>
             <span>Sensor variance r</span>
-            <input className="kf-range" type="range" aria-label="Variance of the measurement" min={0.1} max={1.5} step={0.05} value={r} onChange={(e) => setR(+e.target.value)} />
+            <input className="kf-range" type="range" aria-label="Variance of the measurement" aria-valuetext={`variance ${fmt(r)}`} min={0.1} max={1.5} step={0.05} value={r} onChange={(e) => setR(+e.target.value)} />
             <span className="kf-num">{fmt(r)}</span>
           </div>
         )}
         {step >= 2 && (
           <div>
             <span>Measurement z</span>
-            <input className="kf-range" type="range" aria-label="Measured position" min={-2} max={2} step={0.1} value={off} onChange={(e) => setOff(+e.target.value)} />
+            <input className="kf-range" type="range" aria-label="Measured position" aria-valuetext={`${fmt(z)} feet`} min={-2} max={2} step={0.1} value={off} onChange={(e) => setOff(+e.target.value)} />
             <span className="kf-num">{fmt(z)}</span>
           </div>
         )}

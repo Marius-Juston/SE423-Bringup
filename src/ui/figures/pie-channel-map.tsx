@@ -27,7 +27,7 @@ const CSS = `
 .pcm-cell.none { color: var(--dim); }
 .pcm-cell.hit { background: var(--accent-soft); border-color: var(--harvest); }
 .pcm-cell[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); }
-.pcm-rowsel th[scope="row"], th.pcm-colsel { color: var(--orange); }
+.pcm-rowsel th[scope="row"], th.pcm-colsel { color: var(--accent-text); }
 .pcm-note { font-size: 0.72rem; color: var(--dim); margin: 0.2rem 0 0; }
 .pcm-code { display: block; margin: 0.4rem 0 0; padding: 0.4rem 0.5rem; background: var(--surface); border-radius: 6px; font-size: 0.72rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .pcm-find { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }

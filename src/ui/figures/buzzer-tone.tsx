@@ -121,7 +121,8 @@ function BuzzerTone() {
         ))}
         <text x="4" y={PH + 9} className="fig-label">EPWM9A</text>
         <text x="4" y={PH + 20} className="fig-label dim">buzzer</text>
-        <path d={fill} fill="var(--accent-soft)" />
+        {/* Shading under the high half of the square wave; the trace itself shows the level. */}
+        <path d={fill} fill="var(--accent-soft)" aria-hidden="true" />
         <path d={pin} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         {off ? (
           <text x={(X0 + X1) / 2} y={PH + 8} textAnchor="middle" className="fig-label dim">silent</text>

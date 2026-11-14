@@ -21,6 +21,9 @@ const CSS = `
 .pwmp select { padding: 0.15em 0.3em; font-size: 0.82rem; max-width: 100%; }
 .pwmp .pair { white-space: nowrap; }
 .pwmp .unit { color: var(--dim); font-size: 0.78rem; }
+/* A dead-band row keeps its line breaks whatever the number: the time and the code line have the width of their longest text. */
+.pwmp-db .unit { min-width: 9.5em; white-space: nowrap; }
+.pwmp-db code { min-width: calc(24ch + 0.8em); margin-left: 0; }
 .pwmp-read { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.4rem 0; }
 .pwmp-read div { flex: 1 1 6.4rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.5rem; font-size: 0.74rem; color: var(--dim); }
 .pwmp-read b { display: block; font-family: var(--mono); color: var(--value); font-size: 0.9rem; }
@@ -30,26 +33,30 @@ const CSS = `
 .pwmp-presets { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; margin: 0.5rem 0 0.2rem; }
 .pwmp-presets > span { color: var(--dim); font-size: 0.82rem; margin-right: 0.2rem; }
 .pwmp-about { margin: 0.2rem 0 0.5rem; font-size: 0.85rem; color: var(--dim); }
-.pwmp-group { border-top: 1px solid var(--border); }
-.pwmp-group > button { display: flex; flex-wrap: wrap; gap: 0.1rem 0.6rem; align-items: baseline; width: 100%; text-align: left; background: none; border: none; padding: 0.4rem 0.1rem; font-size: 0.9rem; font-weight: 700; }
+.pwmp-group { margin-top: 0.35rem; }
+.pwmp-group > button { display: flex; flex-wrap: wrap; gap: 0.1rem 0.6rem; align-items: baseline; width: 100%; text-align: left; background: none; border: 1px solid var(--control); border-radius: 6px; padding: 0.4rem 0.5rem; font-size: 0.9rem; font-weight: 700; }
 .pwmp-group > button i { font-style: normal; display: inline-block; width: 1em; color: var(--dim); }
 .pwmp-group > button small { font-family: var(--mono); font-weight: 400; font-size: 0.72rem; color: var(--dim); }
-.pwmp-group > .fig-controls, .pwmp-group > .pwmp-body { margin: 0 0 0.6rem; }
+.pwmp-group > .fig-controls, .pwmp-group > .pwmp-body { margin: 0.4rem 0 0.6rem; }
 .pwmp-note { margin: 0.1rem 0 0.3rem; font-size: 0.8rem; color: var(--dim); }
 .pwmp-aq { display: grid; grid-template-columns: auto repeat(6, minmax(0, 1fr)); gap: 3px; align-items: stretch; font-size: 0.74rem; }
 .pwmp-aq .h { text-align: center; color: var(--dim); font-family: var(--mono); padding-bottom: 1px; }
 .pwmp-aq .r { color: var(--dim); font-family: var(--mono); padding-right: 0.3rem; align-self: center; }
-.pwmp-aq button { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; padding: 0.15rem 0; display: grid; justify-items: center; line-height: 1.15; min-width: 0; }
+.pwmp-aq button { background: var(--surface); border: 1px solid var(--control); border-radius: 6px; padding: 0.15rem 0; display: grid; justify-items: center; line-height: 1.15; min-width: 0; }
 .pwmp-aq button b { font-size: 1.05rem; font-family: var(--mono); }
-.pwmp-aq button span { font-size: 0.68rem; overflow: hidden; max-width: 100%; }
+.pwmp-aq button span { font-size: var(--fig-small, 11px); overflow: hidden; max-width: 100%; }
 .pwmp-aq button.act { border-color: var(--accent); background: var(--accent-soft); }
 .pwmp-aq button.never { border-style: dashed; border-color: var(--control); background: none; color: var(--dim); }
 .pwmp-codebox { margin-top: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.5rem; }
 .pwmp-codebox > div { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; font-size: 0.85rem; font-weight: 700; }
 .pwmp-codebox > div button { margin-left: auto; font-weight: 400; }
 .pwmp-codebox pre { margin: 0; font-size: 0.76rem; max-height: 16rem; overflow: auto; background: var(--surface); }
+.pwmp-codebox pre code { font-size: 1em; }
 .pwmp-grab { cursor: ns-resize; touch-action: none; fill: transparent; }
 .pwmp-hit { fill: transparent; cursor: pointer; }
+.pwmp-grid { stroke: var(--faint); stroke-width: 1; }
+.pwmp-hatch { stroke: var(--hi); stroke-width: 1; }
+.pwmp-hatch.dim { stroke: var(--dim); stroke-width: 0.8; }
 .pwmp-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
 `;
 
@@ -355,7 +362,7 @@ function PwmPlayground() {
   const compare = (name: "CMPA" | "CMPB", key: "cmpa" | "cmpb") => (
     <div>
       <span>{name}</span>
-      <input type="range" min={0} max={cmpMax} value={Math.min(s[key], cmpMax)} aria-label={`${name}, the compare value, in counts`} onChange={(e) => patch({ [key]: +e.target.value })} />
+      <input type="range" min={0} max={cmpMax} value={Math.min(s[key], cmpMax)} aria-label={`${name}, the compare value, in counts`} aria-valuetext={`${s[key]} counts`} onChange={(e) => patch({ [key]: +e.target.value })} />
       {num(`${name} in counts`, s[key], 65535, (v) => patch({ [key]: v }))}
       <span className="pair">
         <input type="number" className="pct" min={0} max={200} step={0.1} value={pctOf(s[key])} disabled={!s.tbprd} aria-label={`${name} as a percentage of TBPRD`} onChange={(e) => patch({ [key]: Math.round((+e.target.value / 100) * s.tbprd) })} />
@@ -398,7 +405,7 @@ function PwmPlayground() {
   );
   const when = (label: string, value: number, set: (v: number) => void) => (
     <>
-      <input type="range" min={0} max={120} value={Math.min(120, Math.round((value / unit) * 40))} aria-label={label} onChange={(e) => set(Math.round((+e.target.value / 40) * unit))} />
+      <input type="range" min={0} max={120} value={Math.min(120, Math.round((value / unit) * 40))} aria-label={label} aria-valuetext={`at ${fmtTime(value * r.tickNs)}`} onChange={(e) => set(Math.round((+e.target.value / 40) * unit))} />
       <span className="unit">at {fmtTime(value * r.tickNs)}</span>
     </>
   );
@@ -410,7 +417,16 @@ function PwmPlayground() {
     <figure className="figure pwmp" ref={root} aria-label="Interactive ePWM playground: counter, two compare values, both outputs, dead band and triggers">
       <style>{CSS}</style>
       <svg ref={svg} viewBox={`0 0 ${VW} ${VH}`} role="img" aria-label={words.label}>
-        {cycles.map((t) => <line key={t} x1={x(t)} x2={x(t)} y1={Y1 - 4} y2={axisY - 9} stroke="var(--faint)" strokeWidth="1" />)}
+        <defs>
+          <pattern id="pwmp-high" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="2.5" x2="5" y2="2.5" className="pwmp-hatch" />
+          </pattern>
+          <pattern id="pwmp-high-dim" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="2.5" x2="5" y2="2.5" className="pwmp-hatch dim" />
+          </pattern>
+        </defs>
+        {/* One line per counter period. Without a trigger row they stop above the words "no trigger enabled". */}
+        {cycles.map((t) => <line key={t} x1={x(t)} x2={x(t)} y1={Y1 - 4} y2={trig.length ? axisY - 9 : yy - 18} className="pwmp-grid" />)}
         {/* counter */}
         <text x="4" y={Y1 + 4} className="fig-label">TBCTR</text>
         <text x="4" y={Y1 + 15} className="fig-label dim">counter</text>
@@ -419,43 +435,47 @@ function PwmPlayground() {
         <path d={ctr} className="fig-trace dim" style={{ stroke: "var(--text)" }} />
         {/* TBPRD, CMPB, CMPA */}
         <line x1={X0} x2={X1} y1={y(s.tbprd)} y2={y(s.tbprd)} stroke="var(--info)" strokeWidth="1.3" strokeDasharray="6 3" />
-        <text x={X1 - 2} y={prdY} textAnchor="end" className="fig-value small pwmp-halo" style={{ fill: "var(--info)" }}>{prdText}</text>
-        <line x1={X0} x2={X1} y1={y(s.cmpb)} y2={y(s.cmpb)} stroke="var(--value)" strokeWidth="1.3" strokeDasharray="2 3" opacity={cmpbUsed ? 1 : 0.5} />
-        {cmpbShown && <text x={X1 - 96} y={cmpbY} textAnchor="end" className="fig-value small pwmp-halo">{cmpbText}</text>}
+        <line x1={X0} x2={X1} y1={y(s.cmpb)} y2={y(s.cmpb)} stroke="var(--value)" strokeWidth={cmpbUsed ? 1.3 : 0.9} strokeDasharray="2 3" />
         <path d={cmpaLine} fill="none" stroke="var(--value)" strokeWidth="1.3" strokeDasharray="6 3" />
-        <text x={X1 - 2} y={cmpaY} textAnchor="end" className="fig-value small pwmp-halo">{cmpaText}</text>
         {s.cmpaNext !== null && inView(writeT) && (
           <g>
             <line x1={x(writeT)} x2={x(writeT)} y1={Y1 - 2} y2={Y0} className="fig-sample" />
             {loadT > writeT && <line x1={x(writeT)} x2={x(Math.min(loadT, tEnd))} y1={y(s.cmpaNext)} y2={y(s.cmpaNext)} stroke="var(--value)" strokeWidth="1" strokeDasharray="1 4" />}
-            <text x={x(writeT) + (x(writeT) > X1 - 70 ? -3 : 3)} y={Y1 + 4} textAnchor={x(writeT) > X1 - 70 ? "end" : "start"} className="fig-label pwmp-halo">write {s.cmpaNext}</text>
           </g>
         )}
         {r.syncs.filter(inView).slice(0, 20).map((t) => (
           <line key={t} x1={x(t)} x2={x(t)} y1={Y1 - 4} y2={Y0} stroke="var(--info)" strokeWidth="1" strokeDasharray="3 2" />
         ))}
-        {syncLabel && <text x={syncLabel.x + (syncLabel.end ? -3 : 3)} y={syncLabel.y} textAnchor={syncLabel.end ? "end" : "start"} className="fig-label pwmp-halo" style={{ fill: "var(--info)" }}>sync</text>}
+        {/* The line of the picked edge. Every line and dot comes before every label, so a label's rim keeps it readable. */}
+        {picked && <line x1={x(picked.e.t)} x2={x(picked.e.t)} y1={Y1 - 4} y2={rows[picked.row].top + rows[picked.row].h} className="fig-sample" pointerEvents="none" />}
         {marks.map((m, i) => {
           const hot = m.moved[0] || m.moved[1];
           return <circle key={i} cx={x(m.t)} cy={y(m.ctr)} r={hot ? 2.7 : 1.6} fill={hot ? "var(--accent)" : "var(--inset)"} stroke={hot ? "none" : "var(--dim)"} strokeWidth="1" />;
         })}
+        <text x={X1 - 2} y={prdY} textAnchor="end" className="fig-value small pwmp-halo" style={{ fill: "var(--info)" }}>{prdText}</text>
+        {cmpbShown && <text x={X1 - 96} y={cmpbY} textAnchor="end" className="fig-value small pwmp-halo">{cmpbText}</text>}
+        <text x={X1 - 2} y={cmpaY} textAnchor="end" className="fig-value small pwmp-halo">{cmpaText}</text>
+        {s.cmpaNext !== null && inView(writeT) && (
+          <text x={x(writeT) + (x(writeT) > X1 - 70 ? -3 : 3)} y={Y1 + 4} textAnchor={x(writeT) > X1 - 70 ? "end" : "start"} className="fig-label pwmp-halo">write {s.cmpaNext}</text>
+        )}
+        {syncLabel && <text x={syncLabel.x + (syncLabel.end ? -3 : 3)} y={syncLabel.y} textAnchor={syncLabel.end ? "end" : "start"} className="fig-label pwmp-halo" style={{ fill: "var(--info)" }}>sync</text>}
         {markLabels.map((l) => (
           <text key={l.text} x={l.x + (l.end ? -5 : 6)} y={l.y} textAnchor={l.end ? "end" : "start"} className="fig-label dim pwmp-halo">{l.text}</text>
         ))}
         <path d={`M${X0 - 5},${y(s.tbprd) - 4} L${X0 + 3},${y(s.tbprd)} L${X0 - 5},${y(s.tbprd) + 4} Z`} fill="var(--info)" />
         <path d={`M${X0 - 5},${y(s.cmpb) - 4} L${X0 + 3},${y(s.cmpb)} L${X0 - 5},${y(s.cmpb) + 4} Z`} fill="var(--inset)" stroke="var(--value)" />
         <path d={`M${X0 - 5},${y(s.cmpa) - 4} L${X0 + 3},${y(s.cmpa)} L${X0 - 5},${y(s.cmpa) + 4} Z`} fill="var(--value)" />
-        <rect x={X0 - 10} y={y(s.tbprd) - 6} width={X1 - X0 + 10} height="12" className="pwmp-grab" {...drag("tbprd")}><title>Drag to change TBPRD</title></rect>
-        <rect x={X0 - 10} y={y(s.cmpb) - 6} width={X1 - X0 + 10} height="12" className="pwmp-grab" {...drag("cmpb")}><title>Drag to change CMPB</title></rect>
-        <rect x={X0 - 10} y={y(s.cmpa) - 6} width={X1 - X0 + 10} height="12" className="pwmp-grab" {...drag("cmpa")}><title>Drag to change CMPA</title></rect>
+        <rect x={X0 - 10} y={y(s.tbprd) - 6} width={X1 - X0 + 10} height="12" className="pwmp-grab" aria-hidden="true" {...drag("tbprd")}><title>Drag to change TBPRD</title></rect>
+        <rect x={X0 - 10} y={y(s.cmpb) - 6} width={X1 - X0 + 10} height="12" className="pwmp-grab" aria-hidden="true" {...drag("cmpb")}><title>Drag to change CMPB</title></rect>
+        <rect x={X0 - 10} y={y(s.cmpa) - 6} width={X1 - X0 + 10} height="12" className="pwmp-grab" aria-hidden="true" {...drag("cmpa")}><title>Drag to change CMPA</title></rect>
         {/* outputs */}
         {rows.map((row, k) => (
           <g key={row.name}>
             <text x="4" y={row.top + row.h / 2 + 3} className={`fig-label${row.dim ? " dim" : ""}`}>{row.name}</text>
-            <path d={traces[k].fill} fill="var(--accent-soft)" opacity={row.dim ? 0.6 : 1} />
+            <path d={traces[k].fill} fill={row.dim ? "url(#pwmp-high-dim)" : "url(#pwmp-high)"} />
             <path d={traces[k].d} className={row.dim ? "fig-trace dim" : "fig-trace"} style={row.dim ? undefined : { stroke: "var(--hi)" }} />
             {traces[k].shown.slice(0, 60).map((e) => (
-              <rect key={e.t} x={x(e.t) - 4} y={row.top - 3} width="8" height={row.h + 6} className="pwmp-hit" onPointerEnter={() => setSel({ row: k, t: e.t })} onClick={() => setSel({ row: k, t: e.t })}>
+              <rect key={e.t} x={x(e.t) - 4} y={row.top - 3} width="8" height={row.h + 6} className="pwmp-hit" aria-hidden="true" onPointerEnter={() => setSel({ row: k, t: e.t })} onClick={() => setSel({ row: k, t: e.t })}>
                 <title>{e.why}</title>
               </rect>
             ))}
@@ -465,7 +485,7 @@ function PwmPlayground() {
         {trig.map((tr) => (
           <g key={tr.name}>
             <text x="4" y={tr.y + 8} className="fig-label">{tr.name}</text>
-            <line x1={X0} x2={X1} y1={tr.y + 9} y2={tr.y + 9} stroke="var(--faint)" strokeWidth="1" />
+            <line x1={X0} x2={X1} y1={tr.y + 9} y2={tr.y + 9} className="fig-wire" style={{ strokeWidth: 1 }} />
             {tr.times.filter(inView).slice(0, 80).map((t) => (
               <path key={t} d={`M${x(t)},${tr.y + 9} V${tr.y + 1} M${x(t) - 2.5},${tr.y + 4} L${x(t)},${tr.y + 1} L${x(t) + 2.5},${tr.y + 4}`} fill="none" stroke="var(--value)" strokeWidth="1.5" />
             ))}
@@ -475,7 +495,6 @@ function PwmPlayground() {
         {/* the picked edge */}
         {picked && (
           <g pointerEvents="none">
-            <line x1={x(picked.e.t)} x2={x(picked.e.t)} y1={Y1 - 4} y2={rows[picked.row].top + rows[picked.row].h} className="fig-sample" />
             <rect
               x={x(picked.e.t) > (X0 + X1) / 2 ? x(picked.e.t) - 6 - picked.e.why.length * 5.4 : x(picked.e.t) + 2}
               y={rows[picked.row].top - 11}
@@ -534,7 +553,7 @@ function PwmPlayground() {
           <button className="fig-opt" onClick={() => setZoom(Math.max(0, z - 1))} disabled={z === 0} aria-label="Zoom in: show less time">+</button>
           <button className="fig-opt" onClick={() => setZoom(Math.min(ZOOMS.length - 1, z + 1))} disabled={z === ZOOMS.length - 1} aria-label="Zoom out: show more time">−</button>
           <span className="unit">{ZOOMS[z]} {ZOOMS[z] === 1 ? "period" : "periods"}, from</span>
-          <input type="range" min={0} max={48} value={pan} aria-label="Start of the view, in eighths of a period" onChange={(e) => setPan(+e.target.value)} />
+          <input type="range" min={0} max={48} value={pan} aria-label="Start of the view, in eighths of a period" aria-valuetext={`from ${fmtTime(tStart * r.tickNs)}`} onChange={(e) => setPan(+e.target.value)} />
           <span className="unit">{fmtTime(tStart * r.tickNs)}</span>
         </div>
       </div>
@@ -550,7 +569,7 @@ function PwmPlayground() {
           </div>
           <div>
             <span>Period</span>
-            <input type="range" min={0} max={65535} value={s.tbprd} aria-label="TBPRD, the period register" onChange={(e) => patch({ tbprd: +e.target.value })} />
+            <input type="range" min={0} max={65535} value={s.tbprd} aria-label="TBPRD, the period register" aria-valuetext={`${s.tbprd} counts`} onChange={(e) => patch({ tbprd: +e.target.value })} />
             {num("TBPRD as a number", s.tbprd, 65535, (v) => patch({ tbprd: v }))}
             <code>TBPRD = {s.tbprd};</code>
           </div>
@@ -636,9 +655,9 @@ function PwmPlayground() {
             <code>DBCTL.bit.IN_MODE = {s.dbInMode};</code>
           </div>
           {([["Rising", "DBRED", "dbred"], ["Falling", "DBFED", "dbfed"]] as const).map(([word, reg, key]) => (
-            <div key={reg}>
+            <div key={reg} className="pwmp-db">
               <span>{word} edge</span>
-              <input type="range" min={0} max={Math.max(200, Math.min(16383, Math.round(unit / 2)))} value={s[key]} aria-label={`${reg}: ${word.toLowerCase()}-edge delay in counts`} onChange={(e) => patch({ [key]: +e.target.value })} />
+              <input type="range" min={0} max={Math.max(200, Math.min(16383, Math.round(unit / 2)))} value={s[key]} aria-label={`${reg}: ${word.toLowerCase()}-edge delay in counts`} aria-valuetext={`${s[key]} counts, ${fmtTime(s[key] * r.tickNs)}`} onChange={(e) => patch({ [key]: +e.target.value })} />
               {num(`${reg} in counts`, s[key], 16383, (v) => patch({ [key]: v }))}
               <span className="unit">counts = {fmtTime(s[key] * r.tickNs) || "0"}</span>
               <code>{reg}.bit.{reg} = {s[key]};</code>
@@ -673,7 +692,7 @@ function PwmPlayground() {
           </div>
           <div>
             <span>TBPHS</span>
-            <input type="range" min={0} max={Math.max(1, s.tbprd)} value={Math.min(s.tbphs, s.tbprd)} aria-label="TBPHS, the value loaded into the counter" onChange={(e) => patch({ tbphs: +e.target.value })} />
+            <input type="range" min={0} max={Math.max(1, s.tbprd)} value={Math.min(s.tbphs, s.tbprd)} aria-label="TBPHS, the value loaded into the counter" aria-valuetext={`${s.tbphs} counts`} onChange={(e) => patch({ tbphs: +e.target.value })} />
             {num("TBPHS as a number", s.tbphs, 65535, (v) => patch({ tbphs: v }))}
             <code>TBPHS.bit.TBPHS = {s.tbphs};</code>
           </div>
@@ -697,7 +716,7 @@ function PwmPlayground() {
         <pre tabIndex={0} aria-label="C code for the current settings"><code>{lines.length ? lines.join("\n") : "// Nothing to write: every register has its reset value."}{s.cmpaNext !== null ? `\n// later, while the counter runs:\nEPwm${mod}Regs.CMPA.bit.CMPA = ${s.cmpaNext};` : ""}</code></pre>
       </div>
       <figcaption>
-        One ePWM module from reset, with every register written before the counter starts ({MODE_NAMES[s.ctrmode]} now). Drag the three dashed lines, or use the sliders and number boxes: every control shows the register field it sets. Dots on the counter are events, and a large orange dot moved a pin. The code lists only the fields that differ from their reset value. The game's simulator has no dead-band unit, so in code levels make dead time with CMPA and CMPB. For one idea at a time, see "PWM counter and pin".
+        One ePWM module from reset, with every register written before the counter starts ({MODE_NAMES[s.ctrmode]} now). Drag the three dashed lines, or use the sliders and number boxes: every control shows the register field it sets. Dots on the counter are events, and a large orange dot moved a pin. A hatched stretch is a pin that is high. Point at an edge of a pin or use the two edge buttons to see what caused it. The code lists only the fields that differ from their reset value. The game's simulator has no dead-band unit, so in code levels make dead time with CMPA and CMPB. For one idea at a time, see "PWM counter and pin".
       </figcaption>
     </figure>
   );

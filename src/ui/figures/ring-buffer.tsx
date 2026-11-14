@@ -55,7 +55,7 @@ const CSS = `
 .rb-tail { fill: var(--arches); }
 .rb-old { fill: var(--dim); font-size: max(9px, calc(9px / var(--fig-k, 1))); font-family: var(--mono); opacity: 0.8; text-decoration: line-through; }
 .rb-badge { font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; font-family: var(--sans); fill: var(--text); }
-.rb-row { stroke: var(--border); stroke-width: 1; }
+.rb-row { stroke: var(--control); stroke-width: 1; }
 `;
 
 function RingBuffer() {
@@ -87,7 +87,13 @@ function RingBuffer() {
   // Head marker: outside the ring, pointing in. Tail marker: inside, pointing out.
   const headTri = `M${p(RO + 3, mid(r.head))} L${p(RO + 15, mid(r.head) - 5.5)} L${p(RO + 15, mid(r.head) + 5.5)} Z`;
   const tailTri = `M${p(RI - 3, mid(r.tail))} L${p(RI - 15, mid(r.tail) - 12)} L${p(RI - 15, mid(r.tail) + 12)} Z`;
-  const headLabel = pt(RO + 25, mid(r.head));
+  // The word "head" sits beyond the marker at the top and bottom of the ring. At the
+  // sides there is no room beyond it (the left edge, the numbers on the right), so
+  // there the word goes above the marker in the upper half and below it in the lower.
+  const headSin = Math.sin((mid(r.head) * Math.PI) / 180);
+  const headUp = Math.cos((mid(r.head) * Math.PI) / 180) > 0;
+  const headSide = pt(RO + 11, mid(r.head));
+  const headLabel = Math.abs(headSin) > 0.7 ? [headSide[0] + 3 * Math.sign(headSin), headSide[1] + (headUp ? -19 : 21)] : pt(RO + 27, mid(r.head));
   const tailLabel = pt(RI - 26, mid(r.tail));
 
   let status: string;

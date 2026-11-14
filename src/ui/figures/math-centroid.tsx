@@ -43,7 +43,7 @@ function MathCentroid() {
         .mcen-rowlab { font-size: 0.72rem; color: var(--dim); text-align: right; }
         .mcen-grid { position: relative; grid-column: 2; display: grid; grid-template-columns: repeat(${COLS}, 1fr); gap: 2px; }
         .mcen-labs { display: grid; grid-template-rows: repeat(${ROWS}, 1fr); gap: 2px; align-self: stretch; align-items: center; }
-        .mcen-cell { aspect-ratio: 1.25; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 3px; cursor: pointer; padding: 0; font-family: var(--mono); font-size: 0.7rem; color: var(--dim); }
+        .mcen-cell { aspect-ratio: 1.25; background: var(--surface); border: 1px solid var(--control); border-radius: 3px; cursor: pointer; padding: 0; font-family: var(--mono); font-size: 0.7rem; color: var(--dim); }
         .mcen-cell[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
         .mcen-mark { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 3px solid var(--text); background: var(--harvest); pointer-events: none; box-sizing: border-box; }
         .mcen-sums { margin: 0.5rem 0 0; font-size: 0.82rem; }
@@ -59,7 +59,7 @@ function MathCentroid() {
         </div>
         <div className="mcen-grid">
           {Array.from({ length: ROWS * COLS }, (_, i) => (
-            <button key={i} className="mcen-cell" aria-pressed={on.has(i)} aria-label={`pixel row ${Math.floor(i / COLS)}, column ${i % COLS}`} onClick={() => toggle(i)}>
+            <button key={i} className="mcen-cell" aria-pressed={on.has(i)} aria-label={`pixel row ${Math.floor(i / COLS)}, column ${i % COLS}, value ${on.has(i) ? "1" : "0"}`} onClick={() => toggle(i)}>
               {on.has(i) ? "1" : "0"}
             </button>
           ))}

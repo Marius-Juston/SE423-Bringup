@@ -247,7 +247,7 @@ function Frames() {
 
   return (
     <figure className="figure fr-fig" aria-label="Interactive drawing of the world frame, the robot frame and a point in both">
-      <style>{`.fr-fig .fr-range{flex:1;min-width:70px;accent-color:var(--orange)}.fr-fig .fr-lab{flex:1;display:flex;align-items:center;gap:.3rem;color:var(--dim);font-size:.82rem;min-width:110px}.fr-fig .fr-grid{stroke:var(--border);stroke-width:1}.fr-fig .fr-w{stroke:var(--arches);stroke-width:2;fill:none}.fr-fig .fr-b{stroke:var(--orange);stroke-width:2;fill:none}.fr-fig .fr-wd{stroke:var(--arches);stroke-width:1.2;fill:none;stroke-dasharray:3 3}.fr-fig .fr-bd{stroke:var(--orange);stroke-width:1.6;fill:none;stroke-dasharray:5 3}.fr-fig .fr-t{stroke:var(--dim);stroke-width:1.2;fill:none;stroke-dasharray:2 3}.fr-fig .fr-robot{cursor:grab;touch-action:none}.fr-fig .fr-wt{fill:var(--arches)}.fr-fig .fr-bt{fill:var(--orange)}.fr-fig .fr-eq{white-space:pre}.fr-fig .fr-plate{fill:var(--inset)}.fr-fig .fr-labels{pointer-events:none}.fr-fig .fr-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.fr-fig .fr-num{width:4.6rem;white-space:nowrap;text-align:right;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
+      <style>{`.fr-fig .fr-range{flex:1;min-width:70px;accent-color:var(--orange)}.fr-fig .fr-lab{flex:1;display:flex;align-items:center;gap:.3rem;color:var(--dim);font-size:.82rem;min-width:110px}.fr-fig .fr-grid{stroke:var(--border);stroke-width:1}.fr-fig .fr-w{stroke:var(--arches);stroke-width:2;fill:none}.fr-fig .fr-b{stroke:var(--orange);stroke-width:2;fill:none}.fr-fig .fr-wd{stroke:var(--arches);stroke-width:1.2;fill:none;stroke-dasharray:3 3}.fr-fig .fr-bd{stroke:var(--orange);stroke-width:1.6;fill:none;stroke-dasharray:5 3}.fr-fig .fr-t{stroke:var(--dim);stroke-width:1.2;fill:none;stroke-dasharray:2 3}.fr-fig .fr-robot{cursor:grab;touch-action:none}.fr-fig .fr-wt{fill:var(--arches)}.fr-fig .fr-bt{fill:var(--orange)}.fr-fig .fr-btx{fill:var(--accent-text)}.fr-fig .fr-eq{white-space:pre}.fr-fig .fr-plate{fill:var(--inset)}.fr-fig .fr-labels{pointer-events:none}.fr-fig .fr-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.fr-fig .fr-num{width:4.6rem;white-space:nowrap;text-align:right;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
       <svg ref={svg} viewBox={`0 0 420 ${VH}`} role="img" aria-label={`Robot at ${fmt(pose.x, 1)}, ${fmt(pose.y, 1)} feet, heading ${pose.deg} degrees. Point: ${fmt(pb.x)} ahead and ${fmt(pb.y)} to the left in the robot frame, ${fmt(pw.x)}, ${fmt(pw.y)} in the world frame.`}>
         <defs>
           {[
@@ -258,6 +258,9 @@ function Frames() {
               <path d="M0 0 L8 4 L0 8 Z" className={cls} />
             </marker>
           ))}
+          <clipPath id="fr-clip">
+            <rect x={0} y={0} width={420} height={VH} />
+          </clipPath>
         </defs>
         {Array.from({ length: 9 }, (_, i) => (
           <line key={`v${i}`} x1={wx(i)} x2={wx(i)} y1={wy(0)} y2={wy(5.5)} className="fr-grid" />
@@ -271,18 +274,35 @@ function Frames() {
         {/* T: where the robot is */}
         <path d={`M${wx(0)},${wy(0)} L${rx},${ry}`} className="fr-t" />
         {/* world coordinates of the point */}
-        <path d={`M${pAt.x},${pAt.y} V${wy(0)}`} className="fr-wd" />
-        <path d={`M${pAt.x},${pAt.y} H${wx(0)}`} className="fr-wd" />
-        {/* robot coordinates of the point: ahead, then left */}
-        <path d={`M${rx},${ry} L${kneeAt.x},${kneeAt.y} L${pAt.x},${pAt.y}`} className="fr-bd" />
+        {/* P can be outside the drawing: the lines to it stop at the edge */}
+        <g clipPath="url(#fr-clip)">
+          <path d={`M${pAt.x},${pAt.y} V${wy(0)}`} className="fr-wd" />
+          <path d={`M${pAt.x},${pAt.y} H${wx(0)}`} className="fr-wd" />
+          {/* robot coordinates of the point: ahead, then left */}
+          <path d={`M${rx},${ry} L${kneeAt.x},${kneeAt.y} L${pAt.x},${pAt.y}`} className="fr-bd" />
+        </g>
         {/* robot */}
-        <g
+        <g transform={`translate(${rx},${ry}) rotate(${-pose.deg})`}>
+          <rect x={-13} y={-13} width={30} height={26} rx={5} className="fig-box active" />
+          <rect x={-8} y={-17} width={16} height={5} rx={2} className="fig-dot" />
+          <rect x={-8} y={12} width={16} height={5} rx={2} className="fig-dot" />
+          <path d="M0 0 H38" className="fr-b" markerEnd="url(#fr-ab)" />
+          <path d="M0 0 V-34" className="fr-b" markerEnd="url(#fr-ab)" />
+        </g>
+        {/* Dragging the robot does what the two "Robot at" sliders do, so this handle is for the pointer only. */}
+        <rect
           className="fr-robot"
+          aria-hidden="true"
+          x={-17}
+          y={-36}
+          width={57}
+          height={55}
+          fill="transparent"
           transform={`translate(${rx},${ry}) rotate(${-pose.deg})`}
           onPointerDown={(e) => {
             const p = at(e);
             drag.current = { dx: pose.x - p.x, dy: pose.y - p.y };
-            (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
+            (e.currentTarget as SVGRectElement).setPointerCapture(e.pointerId);
           }}
           onPointerMove={(e) => {
             if (!drag.current) return;
@@ -291,13 +311,7 @@ function Frames() {
           }}
           onPointerUp={() => (drag.current = null)}
           onPointerCancel={() => (drag.current = null)}
-        >
-          <rect x={-13} y={-13} width={30} height={26} rx={5} className="fig-box active" />
-          <rect x={-8} y={-17} width={16} height={5} rx={2} className="fig-dot" />
-          <rect x={-8} y={12} width={16} height={5} rx={2} className="fig-dot" />
-          <path d="M0 0 H38" className="fr-b" markerEnd="url(#fr-ab)" />
-          <path d="M0 0 V-34" className="fr-b" markerEnd="url(#fr-ab)" />
-        </g>
+        />
         {/* the labels, above every line */}
         <g className="fr-labels">
           {xTicks.map((i) => (
@@ -313,8 +327,8 @@ function Frames() {
           {label(yLab, yText, "fig-value small fr-halo")}
           {aheadLab && label(aheadLab, fmt(pb.x), "fig-value small fr-halo")}
           {leftLab && label(leftLab, fmt(pb.y), "fig-value small fr-halo")}
-          {label(bxLab, "x", "fig-label fr-bt")}
-          {label(byLab, "y", "fig-label fr-bt")}
+          {label(bxLab, "x", "fig-label fr-btx fr-halo")}
+          {label(byLab, "y", "fig-label fr-btx fr-halo")}
         </g>
         {/* the point */}
         {outside
@@ -330,13 +344,13 @@ function Frames() {
       <div className="fig-controls">
         <div>
           <span>Robot at</span>
-          <label className="fr-lab">x <input className="fr-range" type="range" aria-label="Robot x in feet" min={X_MIN} max={6} step={0.1} value={pose.x} onChange={(e) => setPose({ ...pose, x: +e.target.value })} /></label>
-          <label className="fr-lab">y <input className="fr-range" type="range" aria-label="Robot y in feet" min={Y_MIN} max={4} step={0.1} value={pose.y} onChange={(e) => setPose({ ...pose, y: +e.target.value })} /></label>
+          <label className="fr-lab">x <input className="fr-range" type="range" aria-label="Robot x in feet" aria-valuetext={`${fmt(pose.x, 1)} feet`} min={X_MIN} max={6} step={0.1} value={pose.x} onChange={(e) => setPose({ ...pose, x: +e.target.value })} /></label>
+          <label className="fr-lab">y <input className="fr-range" type="range" aria-label="Robot y in feet" aria-valuetext={`${fmt(pose.y, 1)} feet`} min={Y_MIN} max={4} step={0.1} value={pose.y} onChange={(e) => setPose({ ...pose, y: +e.target.value })} /></label>
           <span className="fr-num">{fmt(pose.x, 1)}, {fmt(pose.y, 1)}</span>
         </div>
         <div>
           <span>Heading</span>
-          <input className="fr-range" type="range" aria-label="Robot heading in degrees" min={-180} max={180} step={15} value={pose.deg} onChange={(e) => setPose({ ...pose, deg: +e.target.value })} />
+          <input className="fr-range" type="range" aria-label="Robot heading in degrees" aria-valuetext={`${pose.deg} degrees`} min={-180} max={180} step={15} value={pose.deg} onChange={(e) => setPose({ ...pose, deg: +e.target.value })} />
           <span className="fr-num">{pose.deg}°</span>
         </div>
         <div>
@@ -356,15 +370,15 @@ function Frames() {
         {inverse ? (
           <div>
             <span>P in world</span>
-            <label className="fr-lab">x <input className="fr-range" type="range" aria-label="Point world x" min={0} max={7.5} step={0.1} value={pw.x} onChange={(e) => setWorld({ x: +e.target.value, y: pw.y })} /></label>
-            <label className="fr-lab">y <input className="fr-range" type="range" aria-label="Point world y" min={0} max={5} step={0.1} value={pw.y} onChange={(e) => setWorld({ x: pw.x, y: +e.target.value })} /></label>
+            <label className="fr-lab">x <input className="fr-range" type="range" aria-label="Point world x" aria-valuetext={`${fmt(pw.x, 1)} feet`} min={0} max={7.5} step={0.1} value={pw.x} onChange={(e) => setWorld({ x: +e.target.value, y: pw.y })} /></label>
+            <label className="fr-lab">y <input className="fr-range" type="range" aria-label="Point world y" aria-valuetext={`${fmt(pw.y, 1)} feet`} min={0} max={5} step={0.1} value={pw.y} onChange={(e) => setWorld({ x: pw.x, y: +e.target.value })} /></label>
             <span className="fr-num">{fmt(pw.x, 1)}, {fmt(pw.y, 1)}</span>
           </div>
         ) : (
           <div>
             <span>P in robot</span>
-            <label className="fr-lab">ahead <input className="fr-range" type="range" aria-label="Point ahead of the robot" min={-1} max={3} step={0.1} value={body.x} onChange={(e) => setBody({ ...body, x: +e.target.value })} /></label>
-            <label className="fr-lab">left <input className="fr-range" type="range" aria-label="Point to the left of the robot" min={-2} max={2} step={0.1} value={body.y} onChange={(e) => setBody({ ...body, y: +e.target.value })} /></label>
+            <label className="fr-lab">ahead <input className="fr-range" type="range" aria-label="Point ahead of the robot" aria-valuetext={`${fmt(Math.abs(body.x), 1)} feet ${body.x < 0 ? "behind" : "ahead"}`} min={-1} max={3} step={0.1} value={body.x} onChange={(e) => setBody({ ...body, x: +e.target.value })} /></label>
+            <label className="fr-lab">left <input className="fr-range" type="range" aria-label="Point to the left of the robot" aria-valuetext={`${fmt(Math.abs(body.y), 1)} feet to the ${body.y < 0 ? "right" : "left"}`} min={-2} max={2} step={0.1} value={body.y} onChange={(e) => setBody({ ...body, y: +e.target.value })} /></label>
             <span className="fr-num">{fmt(body.x, 1)}, {fmt(body.y, 1)}</span>
           </div>
         )}

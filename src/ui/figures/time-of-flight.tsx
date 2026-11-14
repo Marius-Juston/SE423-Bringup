@@ -69,7 +69,8 @@ function TimeOfFlight() {
           round trip t = 2 d / c = <tspan className="fig-value small">{tNs.toFixed(tNs < 10 ? 2 : 1)} ns</tspan>
         </text>
         <rect x={X0} y="85" width={wall - X0} height="9" className="tof-bar" />
-        <text x="4" y="112" className="fig-label">CPU clock</text>
+        <text x="4" y="101" className="fig-label">CPU</text>
+        <text x="4" y="112" className="fig-label">clock</text>
         <text x="4" y="123" className="fig-label dim">5 ns</text>
         {Array.from({ length: count }, (_, k) => (
           <rect key={k} x={x(k * CLK_NS)} y={HI - 3} width={CLK_NS * PX_PER_NS} height={LO - HI + 6} className="tof-count" />
@@ -101,7 +102,7 @@ function TimeOfFlight() {
         <div>
           <span>Distance</span>
           <label className="tof-slider">
-            <input type="range" min={0.15} max={4} step={0.05} value={d} onChange={(e) => setD(+e.target.value)} aria-label="Distance to the wall in metres" />
+            <input type="range" min={0.15} max={4} step={0.05} value={d} onChange={(e) => setD(+e.target.value)} aria-label="Distance to the wall in metres" aria-valuetext={`${d.toFixed(2)} metres`} />
             <output>{d.toFixed(2)} m</output>
           </label>
         </div>

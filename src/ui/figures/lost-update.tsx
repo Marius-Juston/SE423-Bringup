@@ -209,6 +209,7 @@ function LostUpdate() {
         .lu-fig .lu-log li { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 0.05em 0.45em; }
         .lu-fig .lu-log li.wait { border-style: dashed; color: var(--dim); }
         .lu-fig .lu-verdict { font-weight: 700; }
+        .lu-fig .fig-controls.row { flex-wrap: wrap; }
         .lu-fig .fig-controls pre { margin: 0; font-size: 0.75rem; }
         .lu-fig .fig-controls pre code { margin-left: 0; }
       `}</style>
@@ -258,12 +259,13 @@ function LostUpdate() {
           ))}
         </ol>
       </div>
+      {/* A button that can do nothing more says why, so its state is not shown by its dimmed colour alone. */}
       <div className="fig-controls row">
-        <button className="btn small primary" onClick={() => setM(step(m, 0))} disabled={done(m, 0)}>{m.mode === "threads" ? "Step thread A" : "Step main()"}</button>
+        <button className="btn small primary" onClick={() => setM(step(m, 0))} disabled={done(m, 0)}>{m.mode === "threads" ? (done(m, 0) ? "Thread A is done" : "Step thread A") : done(m, 0) ? "main() is done" : "Step main()"}</button>
         {m.mode === "threads" ? (
-          <button className="btn small primary" onClick={() => setM(step(m, 1))} disabled={done(m, 1)}>Step thread B</button>
+          <button className="btn small primary" onClick={() => setM(step(m, 1))} disabled={done(m, 1)}>{done(m, 1) ? "Thread B is done" : "Step thread B"}</button>
         ) : (
-          <button className="btn small primary" onClick={() => setM(fire(m))} disabled={done(m, 1) || m.pending}>Fire the interrupt</button>
+          <button className="btn small primary" onClick={() => setM(fire(m))} disabled={done(m, 1) || m.pending}>{done(m, 1) ? "Interrupt is done" : m.pending ? "Interrupt is waiting" : "Fire the interrupt"}</button>
         )}
         <button className="btn small" onClick={() => setM(fresh(m.mode, m.guard))}>Reset</button>
       </div>

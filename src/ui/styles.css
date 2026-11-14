@@ -2,12 +2,21 @@
  * Tokens. Dark is the default look; the light theme follows the system
  * setting unless Settings pins one (data-theme on <html>). Every colour in
  * the interface comes from these tokens, so both themes stay consistent.
- * Contrast: text and --dim are at least 7:1 on --bg; accent, value, info,
- * ok and bad are at least 4.5:1 on --bg, --surface and their tinted
- * (-soft) backgrounds in both themes; --control (the edge of buttons,
- * inputs and other things you can operate) is at least 3:1.
+ * Contrast, in both themes (tests/a11y_tokens.test.ts holds these):
+ * - text and --dim are at least 7:1 on --bg, --bg-2, --surface, --surface-2
+ *   and --inset;
+ * - value, info, ok, bad and --accent-text are at least 7:1 on --bg, --bg-2,
+ *   --surface and --inset, and at least 4.5:1 on the tinted (-soft)
+ *   backgrounds;
+ * - the code colours are at least 7:1 on --inset (the editor and code
+ *   blocks) and 4.5:1 on a highlighted line and on a selection;
+ * - --control (the edge of buttons, inputs and other things you can
+ *   operate), --focus and the colours used for marks are at least 3:1.
  * Accent (orange) is kept for the primary action, the current item and
- * focus. Elevation comes from surface lightness and 1 px borders.
+ * marks. It is a fill and an edge, never the colour of words: words use
+ * --accent-text. Elevation comes from surface lightness and 1 px borders.
+ * The light tokens are written twice (system setting, Theme setting): keep
+ * the two blocks the same.
  */
 :root {
   --bg: #0b1a31;
@@ -19,20 +28,22 @@
   --border-strong: rgba(255, 255, 255, 0.3);
   --control: #8291ab;
   --text: #ffffff;
-  --dim: #c3cbd9;
+  --dim: #cbd2de;
   --faint: rgba(255, 255, 255, 0.2);
+  --chip: rgba(255, 255, 255, 0.13);
   --accent: #ff5f05;
   --accent-hover: #ff7a2e;
+  --accent-text: #ffaa7b;
   --accent-ink: #1a0a00;
   --accent-soft: rgba(255, 95, 5, 0.16);
   --value: #fcb316;
-  --info: #4fc3e8;
+  --info: #65cbeb;
   --ok: #7ad79a;
   --ok-soft: rgba(122, 215, 154, 0.13);
-  --bad: #ff8a73;
+  --bad: #ffa897;
   --bad-soft: rgba(255, 138, 115, 0.13);
   --hi: #ff7a2e;
-  --lo: #4fc3e8;
+  --lo: #65cbeb;
   --code-kw: #ff9a5c;
   --code-type: #4fc3e8;
   --code-num: #fcb316;
@@ -41,7 +52,7 @@
   --code-macro: #d8a6ff;
   --code-fn: #ffe08a;
   --code-prop: #cfe8ff;
-  --select: #28508f;
+  --select: #22447a;
   --pcb: #0b3a2a;
   --pcb-edge: #1d6a4d;
   --pcb-ink: #d7efe4;
@@ -74,30 +85,32 @@
   --border-strong: rgba(19, 41, 75, 0.42);
   --control: #6f7c91;
   --text: #0b1b33;
-  --dim: #46546a;
+  --dim: #3d495d;
   --faint: rgba(19, 41, 75, 0.2);
+  --chip: rgba(19, 41, 75, 0.09);
   --accent: #c84113;
   --accent-hover: #a8350e;
+  --accent-text: #922f0e;
   --accent-ink: #ffffff;
   --accent-soft: rgba(200, 65, 19, 0.1);
-  --value: #8a5a00;
-  --info: #006a91;
-  --ok: #1b7a3d;
+  --value: #644100;
+  --info: #004e6c;
+  --ok: #155d2f;
   --ok-soft: rgba(27, 122, 61, 0.1);
-  --bad: #b3261e;
+  --bad: #9c211a;
   --bad-soft: rgba(179, 38, 30, 0.08);
   --hi: #c84113;
-  --lo: #006a91;
-  --code-kw: #b03a0e;
-  --code-type: #006a91;
-  --code-num: #7a4f00;
-  --code-str: #1b7a3d;
-  --code-comment: #4f5b6d;
-  --code-macro: #7a3fb0;
-  --code-fn: #6b4a00;
+  --lo: #004e6c;
+  --code-kw: #832b0b;
+  --code-type: #004e6c;
+  --code-num: #644100;
+  --code-str: #13532a;
+  --code-comment: #404959;
+  --code-macro: #60318b;
+  --code-fn: #614300;
   --code-prop: #1f3d6e;
   --select: #c7d7f0;
-  --pcb: #1f6b4f;
+  --pcb: #1a5e45;
   --pcb-edge: #134a36;
   --pcb-ink: #f0fff8;
   --shadow: 0 8px 24px rgba(19, 41, 75, 0.14);
@@ -114,30 +127,32 @@
   --border-strong: rgba(19, 41, 75, 0.42);
   --control: #6f7c91;
   --text: #0b1b33;
-  --dim: #46546a;
+  --dim: #3d495d;
   --faint: rgba(19, 41, 75, 0.2);
+  --chip: rgba(19, 41, 75, 0.09);
   --accent: #c84113;
   --accent-hover: #a8350e;
+  --accent-text: #922f0e;
   --accent-ink: #ffffff;
   --accent-soft: rgba(200, 65, 19, 0.1);
-  --value: #8a5a00;
-  --info: #006a91;
-  --ok: #1b7a3d;
+  --value: #644100;
+  --info: #004e6c;
+  --ok: #155d2f;
   --ok-soft: rgba(27, 122, 61, 0.1);
-  --bad: #b3261e;
+  --bad: #9c211a;
   --bad-soft: rgba(179, 38, 30, 0.08);
   --hi: #c84113;
-  --lo: #006a91;
-  --code-kw: #b03a0e;
-  --code-type: #006a91;
-  --code-num: #7a4f00;
-  --code-str: #1b7a3d;
-  --code-comment: #4f5b6d;
-  --code-macro: #7a3fb0;
-  --code-fn: #6b4a00;
+  --lo: #004e6c;
+  --code-kw: #832b0b;
+  --code-type: #004e6c;
+  --code-num: #644100;
+  --code-str: #13532a;
+  --code-comment: #404959;
+  --code-macro: #60318b;
+  --code-fn: #614300;
   --code-prop: #1f3d6e;
   --select: #c7d7f0;
-  --pcb: #1f6b4f;
+  --pcb: #1a5e45;
   --pcb-edge: #134a36;
   --pcb-ink: #f0fff8;
   --shadow: 0 8px 24px rgba(19, 41, 75, 0.14);
@@ -158,9 +173,10 @@ p { margin: 0 0 0.7em; }
 code, pre, .mono { font-family: var(--mono); font-size: 0.9em; }
 /* Code must show the characters that were typed: no ligatures (|= is not one glyph). */
 code, pre, .mono, .cm-editor, .cm-editor *, .term, .lcd, input, textarea, .watch, .reg-row, .bit, .readout { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
-code { background: var(--faint); padding: 0.08em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+/* Code inside a sentence: a faint chip, and always the colour of body text, so it keeps 7:1 inside dimmer text too. */
+code { background: var(--chip); color: var(--text); padding: 0.08em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
 pre { background: var(--inset); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.7em 0.9em; overflow-x: auto; margin: 0 0 0.8em; line-height: 1.45; }
-pre code { background: none; padding: 0; overflow-wrap: normal; }
+pre code { background: none; color: inherit; padding: 0; overflow-wrap: normal; }
 /* Code for reading (briefings, hints, the reference solution): long lines wrap with a hanging indent instead of running off the pane. The editor never wraps. */
 .code-block { overflow-x: visible; }
 .code-block .ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: calc((var(--ind, 0) + 4) * 1ch); text-indent: calc((var(--ind, 0) + 4) * -1ch); }
@@ -196,6 +212,9 @@ kbd { font-family: var(--mono); font-size: 0.72rem; border: 1px solid var(--cont
 /* ---- controls ---- */
 button { font: inherit; color: inherit; cursor: pointer; }
 button:disabled, button[aria-disabled="true"] { cursor: not-allowed; opacity: 0.55; }
+/* A button that cannot be pressed has a dashed edge and no fill, so it differs from one that can by more than a paler colour. */
+.btn:disabled, .btn[aria-disabled="true"] { border-style: dashed; }
+.btn.primary:disabled, .btn.primary[aria-disabled="true"] { background: var(--surface); border-color: var(--control); color: var(--text); opacity: 0.75; }
 input, select, textarea { font: inherit; color: var(--text); background: var(--inset); border: 1px solid var(--control); border-radius: var(--radius); padding: 0.35em 0.55em; }
 input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color: var(--accent); }
 input:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -213,6 +232,8 @@ input:disabled { opacity: 0.6; cursor: not-allowed; }
 .icon-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--surface-2); }
 .linkish { background: none; border: none; padding: 0; color: var(--info); text-decoration: underline; font: inherit; text-align: left; }
 .actions { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; align-items: center; }
+/* A long label ("Next: the name of a level") wraps in a narrow window instead of widening the page. */
+.actions .btn { white-space: normal; text-align: left; max-width: 100%; }
 
 /* ---- shell ---- */
 .app { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; container: app / inline-size; }
@@ -227,7 +248,8 @@ input:disabled { opacity: 0.6; cursor: not-allowed; }
 .topnav button[aria-current="page"] { color: var(--text); border-bottom-color: var(--accent); }
 .topnav button:focus-visible { outline-offset: -3px; }
 .progress-pill { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--dim); font-size: var(--fs-2); font-family: var(--mono); white-space: nowrap; }
-main { overflow: auto; min-height: 0; }
+/* A word too long for its line (a register path in a sentence) breaks instead of widening the pane. */
+main { overflow: auto; min-height: 0; overflow-wrap: break-word; }
 /* Every box that scrolls is positioned, so the hidden screen-reader text inside it (.sr-only is absolutely positioned)
    scrolls with it. Without this the hidden text stays where the unscrolled content put it and makes the window itself
    scrollable: a jump to something far down (a chapter's levels on a phone) then pushes the top bar out for good. */
@@ -273,7 +295,7 @@ main:focus { outline: none; }
 .part-head h2 { text-transform: uppercase; letter-spacing: 0.09em; font-size: var(--fs-2); color: var(--value); display: inline-flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .part-done { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.7rem; letter-spacing: 0.07em; color: var(--ok); border: 1px solid var(--ok); border-radius: 999px; padding: 0.05em 0.6em; }
 .part-head p { margin: 0; color: var(--dim); font-size: var(--fs-2); }
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 0.55rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(215px, 100%), 1fr)); gap: 0.55rem; }
 .tile { position: relative; display: flex; align-items: center; gap: 0.7rem; text-align: left; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.6rem 0.7rem; color: var(--text); min-height: 4.4rem; }
 button.tile:hover { background: var(--surface-2); border-color: var(--control); }
 .tile.selected { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -318,7 +340,7 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .tier-group h3 { font-size: var(--fs-1); text-transform: uppercase; letter-spacing: 0.09em; display: flex; justify-content: space-between; color: var(--dim); }
 .tier-group h3 span { font-family: var(--mono); font-weight: 400; }
 .tier-group.practice h3 { color: var(--info); }
-.tier-group.expert h3 { color: var(--accent); }
+.tier-group.expert h3 { color: var(--accent-text); }
 .tier-note { font-size: var(--fs-1); color: var(--dim); margin: 0.1rem 0 0.3rem; }
 .level-list { list-style: none; padding: 0; margin: 0; position: relative; }
 .level-list::before { content: ""; position: absolute; left: 0.86rem; top: 0.9rem; bottom: 0.9rem; width: 2px; background: var(--faint); }
@@ -346,7 +368,7 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .badge { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.7rem; font-weight: 680; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.15em 0.6em; border-radius: 4px; border: 1px solid var(--control); color: var(--dim); white-space: nowrap; }
 .badge.ok { color: var(--ok); border-color: var(--ok); }
 .badge.ok.assisted { border-style: dashed; }
-.badge.tier-expert { color: var(--accent); border-color: var(--accent); }
+.badge.tier-expert { color: var(--accent-text); border-color: var(--accent); }
 .badge.tier-practice { color: var(--info); border-color: var(--info); }
 .warm-step { color: var(--info); }
 .warm-dots { display: inline-flex; gap: 5px; align-items: center; }
@@ -371,14 +393,13 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .level-body.stacked > .pane { overflow: visible; }
 .level-body.stacked > .pane + .pane, .level-body.stacked > .splitter + .pane { border-top: 1px solid var(--border-strong); }
 .level-body.stacked > .splitter { display: none; }
-/* A warm-up question in a narrow window: the question comes first, the briefing is below it for looking things up. */
-.level-body.stacked.warm { display: flex; flex-direction: column; }
-.level-body.stacked.warm > .pane { flex: none; }
-.level-body.stacked.warm > .brief { order: 2; border-top: 1px solid var(--border-strong); }
-.level-body.stacked.warm > .brief + .splitter + .pane { border-top: none; }
+/* A warm-up question in a narrow window: the question comes first (LevelView puts it first), the briefing is below it for looking things up. */
+.level-body.stacked.warm > .splitter + .pane { border-top: none; }
 .level-body.stacked > .editor-pane { height: min(78vh, 42rem); min-height: 22rem; overflow: hidden; }
 /* Narrow window, code level: Read, Code and Board are tabs; the test verdict stays in view above them all. */
 .level-body.tabbed { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+/* A short window (a phone, or a large text size): the header may take most of it. The editor keeps a usable height and the whole level scrolls instead. */
+.level:has(> .level-body.tabbed) { height: auto; min-height: 100%; grid-template-rows: auto minmax(min(36rem, 150vh), 1fr); }
 .level-body.tabbed > .splitter { display: none; }
 .level-body.tabbed > .pane[hidden] { display: none; }
 .level-tabs { display: grid; gap: 0; background: var(--bg-2); border-bottom: 1px solid var(--border-strong); }
@@ -485,7 +506,8 @@ tr.target td:first-child { color: var(--bad); }
 /* ---- timing ---- */
 .timing { overflow-x: auto; padding: 3px; }
 .timing table { border-collapse: collapse; table-layout: fixed; width: 100%; max-width: calc(4.5rem + var(--slots) * 2.8rem); min-width: calc(4.5rem + var(--slots) * 1.6rem); }
-.timing th { font-size: var(--fs-1); color: var(--dim); font-weight: 680; padding: 0 0 4px; text-align: center; overflow: hidden; }
+/* A slot name too long for its column wraps, letter by letter if it must, instead of being cut off. */
+.timing th { font-size: var(--fs-1); color: var(--dim); font-weight: 680; padding: 0 0 4px; text-align: center; overflow-wrap: anywhere; }
 .timing th.rowname { width: 4.5rem; text-align: right; padding-right: 0.6rem; font-family: var(--mono); color: var(--text); overflow-wrap: anywhere; }
 .wave { width: 100%; height: 3rem; background: var(--inset); border: none; border-right: 1px dashed var(--control); padding: 0; position: relative; display: block; border-radius: 0; }
 .wave:hover:not(:disabled) { background: var(--surface-2); }
@@ -494,7 +516,9 @@ tr.target td:first-child { color: var(--bad); }
 .wave.lo::after { bottom: 8px; }
 .wave.edge::before { content: ""; position: absolute; left: -1px; top: 8px; bottom: 8px; width: 3px; background: var(--info); }
 .wave:disabled { opacity: 1; cursor: default; }
-.wave:disabled::after, .wave:disabled.edge::before { background: var(--dim); }
+/* A given trace: grey and dashed, so it differs from one you can change by more than its colour. */
+.wave:disabled::after { background: none; height: 0; border-top: 3px dashed var(--dim); }
+.wave:disabled.edge::before { background: none; width: 0; border-left: 3px dashed var(--dim); }
 .wave[data-wrong] { background: var(--bad-soft); box-shadow: inset 0 0 0 2px var(--bad); }
 .wave:focus-visible { outline-offset: -2px; z-index: 1; }
 
@@ -503,6 +527,7 @@ tr.target td:first-child { color: var(--bad); }
 .order li { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto; gap: 0.6rem; align-items: center; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.5rem 0.7rem; margin-bottom: 0.4rem; }
 .order li::before { counter-increment: step; content: counter(step); font-family: var(--mono); color: var(--value); font-weight: 700; text-align: center; }
 .order li p:last-of-type { margin-bottom: 0; }
+.order li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .order li.right { border-color: var(--ok); }
 .order li.wrong { border-color: var(--bad); border-style: dashed; }
 .order .moves { display: flex; gap: 0.25rem; }
@@ -534,7 +559,8 @@ tr.target td:first-child { color: var(--bad); }
 .editor-pane { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; padding: 0; overflow: hidden; container-type: inline-size; }
 .toolbar { display: grid; gap: 0.35rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); background: var(--bg-2); }
 .tool-row { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; min-width: 0; }
-.tool-tip { color: var(--dim); font-size: var(--fs-1); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 0; }
+/* The tip is never cut short: when the row has no room for it, it takes a line of its own. */
+.tool-tip { color: var(--dim); font-size: var(--fs-1); min-width: 0; flex: 1 1 16rem; }
 .tool-row .speed { margin-left: auto; }
 .tool-note { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; font-size: var(--fs-2); padding: 0.35rem 0.5rem; border: 1px solid var(--border-strong); border-left: 3px solid var(--value); border-radius: var(--radius); background: var(--surface); }
 .tool-note > span { margin-right: auto; }
@@ -616,7 +642,7 @@ tr.target td:first-child { color: var(--bad); }
 .parts { display: flex; flex-wrap: wrap; gap: 0.7rem 0.9rem; background: var(--pcb); border: 1px solid var(--pcb-edge); border-radius: 10px; padding: 0.8rem; }
 /* The board is the same green in both themes, so its parts use fixed colours. */
 /* The LEDs of a display keep their place: the grid is the board's. It comes last on the board, on a row of its own. */
-.led-grid { display: grid; grid-auto-columns: minmax(3.4rem, auto); gap: 0.45rem 0.5rem; justify-content: start; order: 2; flex-basis: 100%; padding-top: 0.5rem; border-top: 1px dashed var(--pcb-edge); }
+.led-grid { display: grid; grid-auto-columns: minmax(0, 3.4rem); gap: 0.45rem 0.5rem; justify-content: start; order: 2; flex-basis: 100%; padding-top: 0.5rem; border-top: 1px dashed var(--pcb-edge); }
 .led { display: grid; justify-items: center; gap: 2px; font-size: 0.72rem; color: var(--pcb-ink); min-width: 3rem; }
 .led i { width: 20px; height: 20px; border-radius: 50%; background: #17231f; border: 2px solid #b9cdc5; display: block; }
 .led.on.red i { background: #ff4a3d; box-shadow: 0 0 12px 3px #ff4a3d; border-color: #ffd0cb; }
@@ -624,6 +650,8 @@ tr.target td:first-child { color: var(--bad); }
 .led.on.amber i { background: #ffc233; box-shadow: 0 0 12px 3px #ffc233; border-color: #fff0c9; }
 .led.on.green i { background: #5df08a; box-shadow: 0 0 12px 3px #5df08a; border-color: #d9ffe5; }
 .led .pinno, .pb .pinno { font-family: var(--mono); font-size: 0.7rem; }
+/* Five columns of a display on a phone with large text: the cells shrink and a long pin name wraps. */
+.led-grid .led { min-width: 0; overflow-wrap: anywhere; text-align: center; }
 .pb { display: grid; justify-items: center; gap: 2px; font-size: 0.72rem; color: var(--pcb-ink); }
 .pb button { width: 34px; height: 34px; border-radius: 50%; background: #20252b; border: 3px solid #c3ccd4; }
 .pb button:focus-visible { outline-color: #ffd98a; }
@@ -693,6 +721,9 @@ tr.target td:first-child { color: var(--bad); }
 .rb.chg { border: 2px solid var(--accent); background: var(--accent-soft); color: var(--text); }
 .rb.gap { margin-right: 5px; }
 .regnow td:last-child, .regnow th:last-child { text-align: right; }
+/* A long register name wraps instead of making the panel wider than a phone. */
+table.regnow td.mono { white-space: normal; overflow-wrap: anywhere; }
+.regnow .linkish { overflow-wrap: anywhere; }
 .regnow td:last-child { color: var(--value); }
 
 /* ---- handbook ---- */
@@ -721,7 +752,7 @@ tr.target td:first-child { color: var(--bad); }
 .glossary dd { margin: 0.1rem 0 0; color: var(--dim); max-width: 36rem; }
 .hb-filter { display: grid; gap: 0.3rem; margin: 0.6rem 0; }
 .hb-filter .weeks { margin-top: 0; }
-.hb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; }
+.hb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr)); gap: 0.6rem; }
 .hb-card { display: grid; gap: 0.25rem; justify-items: start; align-content: start; text-align: left; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.7rem 0.8rem; color: var(--text); min-height: 5.6rem; }
 .hb-card:hover { background: var(--surface-2); border-color: var(--control); }
 .hb-card-title { font-weight: 680; }
@@ -741,13 +772,15 @@ tr.target td:first-child { color: var(--bad); }
 .hb-regs { display: grid; grid-template-columns: minmax(10rem, 13rem) minmax(10rem, 14rem) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 0 1rem; height: 100%; }
 .hb-regs-head { grid-column: 1 / -1; padding-bottom: 0.8rem; }
 .hb-regs-head input { width: 100%; max-width: 36rem; }
-.hb-col { overflow: auto; min-height: 0; padding: 0 0.3rem 1.5rem 0; }
+/* The heading of a list stays at its top: a button that takes the focus scrolls to below it, not under it. */
+.hb-col { overflow: auto; min-height: 0; padding: 0 0.3rem 1.5rem 0; scroll-padding-top: 2.2rem; }
 .hb-col .eyebrow { position: sticky; top: 0; background: var(--bg); padding: 0.2rem 0 0.4rem; z-index: 1; }
 .hb-col button:not(.linkish) { display: flex; justify-content: space-between; gap: 0.5rem; width: 100%; text-align: left; background: none; border: none; padding: 0.25rem 0.45rem; min-height: 24px; border-radius: 4px; font-family: var(--mono); font-size: 0.82rem; color: var(--dim); overflow-wrap: anywhere; }
 .hb-col button:not(.linkish):hover { background: var(--surface-2); color: var(--text); }
 .hb-col button[aria-current] { background: var(--surface-2); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
 .hb-col button:focus-visible { outline-offset: -2px; }
-.hb-reg-detail:focus { outline: none; }
+.hb-reg-detail:focus:not(:focus-visible) { outline: none; }
+.hb-reg-detail:focus-visible, .table-scroll:focus-visible, .problems:focus-visible { outline-offset: -2px; }
 .handbook .regname { font-size: 1.3rem; overflow-wrap: anywhere; }
 
 /* ---- settings ---- */
@@ -764,10 +797,11 @@ table.keys td:first-child { white-space: nowrap; }
 .figure { margin: 0.9rem 0 1.1rem; padding: 0.7rem; background: var(--inset); border: 1px solid var(--border); border-radius: var(--radius); }
 .figure svg { width: 100%; display: block; }
 .figure figcaption { color: var(--dim); font-size: 0.85rem; margin-top: 0.5rem; }
-.fig-chip { fill: var(--accent-soft); stroke: var(--border); stroke-dasharray: 4 3; }
+.fig-chip { fill: var(--accent-soft); stroke: var(--control); stroke-dasharray: 4 3; }
 .fig-box { fill: var(--surface); stroke: var(--dim); stroke-width: 1; }
 .fig-box.active { stroke: var(--text); }
-.fig-box.off { opacity: 0.45; }
+/* A part that is off: a dashed edge says so; it is only a little paler, so it keeps 3:1. */
+.fig-box.off { opacity: 0.7; stroke-dasharray: 4 3; }
 .fig-box.hot { fill: var(--accent-soft); stroke: var(--orange); stroke-width: 2; }
 .fig-pin { fill: var(--harvest); }
 .fig-dot { fill: var(--text); }
@@ -793,7 +827,7 @@ table.keys td:first-child { white-space: nowrap; }
 .fig-controls > div > span:first-child { width: 4.6rem; color: var(--dim); font-size: 0.82rem; }
 .fig-controls code { font-size: 0.75rem; margin-left: 0.3rem; }
 .fig-controls.row { display: flex; align-items: center; gap: 0.5rem; }
-.fig-opt { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 0.12em 0.7em; font-size: 0.82rem; }
+.fig-opt { background: var(--surface); border: 1px solid var(--control); border-radius: 999px; padding: 0.12em 0.7em; font-size: 0.82rem; }
 .fig-opt[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
 .fig-dots { display: flex; gap: 4px; margin-left: auto; }
 .fig-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); display: block; }
@@ -806,7 +840,7 @@ table.keys td:first-child { white-space: nowrap; }
   .map-hero { gap: 1.2rem; }
   .stats { justify-content: flex-start; }
   .chapter-detail { position: static; max-height: none; }
-  .stepper { max-width: 100%; order: 10; flex-basis: 100%; }
+  .stepper { max-width: 100%; flex-basis: 100%; }
 }
 @container app (max-width: 46rem) {
   /* The section list becomes a row across the top. */
@@ -845,6 +879,9 @@ table.keys td:first-child { white-space: nowrap; }
   .progress-pill { font-size: 0; gap: 0; }
 }
 @container app (max-width: 36rem) {
+  /* The two move buttons of a step sit one above the other, so the step's words keep most of the width. */
+  .order li { grid-template-columns: 1.3rem minmax(0, 1fr) auto; gap: 0.45rem; padding: 0.45rem 0.5rem; }
+  .order .moves { flex-direction: column; }
   .setting-row { grid-template-columns: minmax(0, 1fr); gap: 0.2rem; }
   h1 { font-size: 1.4rem; }
 }
@@ -863,3 +900,23 @@ table.keys td:first-child { white-space: nowrap; }
 .code-wrap:hover > .copy-btn, .code-wrap:focus-within > .copy-btn, .copy-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .copy-btn { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .copy-btn { transition: none; } }
+
+/* A finger needs more room than a mouse pointer. On a touch screen what you press is at least 44 by 44 px (WCAG 2.5.5).
+   Left small on purpose: the level dots (the arrows beside them and the map reach every level), the bits of a register
+   and the cells of a waveform (sixteen or more in a row have to fit a phone), and links inside a sentence. */
+@media (any-pointer: coarse) {
+  .btn, .btn.small, .week, select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), .panel-tool, .copy-btn, .hb-sections button, .hb-col button:not(.linkish), .level-tabs [role="tab"], .tabs button, .problem button, .speed select, .fig-zoom, .fig-opt { min-height: 44px; min-width: 44px; }
+  .icon-btn, .wirelist button, .pb button { width: 44px; height: 44px; }
+  .topnav button, .brand { min-width: 44px; min-height: 44px; }
+  .level-row, .panel > h3 button, .option, .hb-hit { min-height: 44px; }
+  .option { align-items: center; }
+  .option input { margin-top: 0; }
+  .refs li { padding-block: 0; }
+  .refs a, .linkish { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; }
+  .skip:focus { display: inline-flex; align-items: center; min-height: 44px; }
+  p .linkish, li .linkish, span .linkish { display: inline; min-height: 0; min-width: 0; }
+  summary { padding-block: 0.65rem; }
+  input[type="range"] { min-height: 44px; }
+  input[type="checkbox"], input[type="radio"] { min-width: 1.25rem; min-height: 1.25rem; }
+  .tiny.check { min-height: 44px; }
+}

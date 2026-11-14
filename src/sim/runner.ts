@@ -107,7 +107,22 @@ export interface RunResult {
 
 const fmtMs = (ms: number) => `${+ms.toFixed(3)} ms`;
 
+/** Runs a program to the end of its test and evaluates the checks. */
 export function runProgram(spec: RunSpec): RunResult {
+  const run = runProgramSteps(spec, Infinity);
+  for (;;) {
+    const step = run.next();
+    if (step.done) return step.value;
+  }
+}
+
+/**
+ * The same run in slices of simulated time, for a caller that must stay
+ * responsive (the page): it yields the fraction of the test done after each
+ * slice and returns the result at the end. The result is the same whatever
+ * the slice (tests/runner_slices.test.ts compares them on every code level).
+ */
+export function* runProgramSteps(spec: RunSpec, sliceMs: number): Generator<number, RunResult> {
   const kit = KITS[spec.kit];
   if (!kit) throw new Error(`unknown kit ${spec.kit}`);
   const b = new Board(spec.kit);
@@ -177,7 +192,16 @@ export function runProgram(spec: RunSpec): RunResult {
 
   const gen = b.run();
   try {
-    b.runUntil(gen, end);
+    // A pause can add a statement or two to the count (a wait is resumed), so a level judged
+    // on its statement count runs in one piece. Those are short computations, not long drives.
+    const counted = [...(spec.checks ?? []), ...(spec.bonus ?? [])].some((c) => c.kind === "max-steps");
+    const slice = counted ? Infinity : Math.max(1, sliceMs) * MS;
+    b.sliced = true;
+    for (let t = Math.min(end, slice); ; t = Math.min(end, t + slice)) {
+      b.runUntil(gen, t);
+      if (t >= end) break;
+      yield t / end;
+    }
     res.ran = true;
   } catch (e) {
     if (e instanceof RuntimeError) res.runtimeError = { line: e.line, msg: e.message, tMs: b.now / MS };
@@ -423,6 +447,10 @@ export function runProgram(spec: RunSpec): RunResult {
         pass = (c.equals === undefined || (exact ? v === c.equals : Math.abs(v - c.equals) < 1e-6 * Math.max(1, Math.abs(c.equals)))) && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
         const want = c.equals !== undefined ? `${c.equals}` : c.min === undefined ? `at most ${c.max}` : c.max === undefined ? `at least ${c.min}` : `${c.min} to ${c.max}`;
         detail = `${c.name} is ${Number.isInteger(v) ? v : +v.toPrecision(7)}${pass ? "" : `, expected ${want}`}.`;
+        // The likely cause when a local of the same name exists: the program set that one, not the global read here.
+        const hiddenAt = b.compiler.hidden.get(c.name);
+        if (!pass && hiddenAt)
+          detail += ` Line ${hiddenAt} declares another variable named ${c.name} that exists only inside its function: the program changes that one, and this test reads the global at the top of the file. Remove the type in front on line ${hiddenAt} to use the global.`;
         break;
       }
       case "isr": {

@@ -12,7 +12,8 @@ function CIntDivision() {
   const r = a % b;
   const real = a / b;
   const colW = Math.min(40, 304 / (q + (r ? 1 : 0) || 1));
-  const dot = (cx: number, i: number, cls: string, key: string) => <circle key={key} cx={cx} cy={25 + i * 13} r="5" className={cls} />;
+  // A dot in a full group is filled; a left-over dot is a ring, so the two differ by more than colour.
+  const dot = (cx: number, i: number, cls: string, key: string) => <circle key={key} cx={cx} cy={25 + i * 13} r={cls === "cdv-rest" ? 4 : 5} className={cls} />;
   const why =
     a === 0
       ? `There is nothing to share out: 0 / ${b} is 0 and 0 % ${b} is 0. Raise a.`
@@ -25,7 +26,7 @@ function CIntDivision() {
     <figure className="figure" aria-label="Interactive picture of whole-number division and remainder">
       <style>{`
         .cdv-dot { fill: var(--orange); }
-        .cdv-rest { fill: var(--harvest); }
+        .cdv-rest { fill: var(--inset); stroke: var(--harvest); stroke-width: 2; }
         .cdv-group { fill: none; stroke: var(--dim); stroke-width: 1; }
         .cdv-left { fill: none; stroke: var(--harvest); stroke-width: 1.2; stroke-dasharray: 3 2; }
         .cdv-sum { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-family: var(--mono); font-size: 0.95rem; margin: 0.4rem 0; }
@@ -64,16 +65,16 @@ function CIntDivision() {
       <div className="fig-controls cdv-ctl">
         <label>
           <span>a, the number to share out</span>
-          <input type="range" min="0" max="30" value={a} onChange={(e) => setA(+e.target.value)} />
+          <input type="range" min="0" max="30" value={a} aria-valuetext={`a = ${a}`} onChange={(e) => setA(+e.target.value)} />
           <output>{a}</output>
         </label>
         <label>
           <span>b, the size of one group</span>
-          <input type="range" min="2" max="9" value={b} onChange={(e) => setB(+e.target.value)} />
+          <input type="range" min="2" max="9" value={b} aria-valuetext={`b = ${b}`} onChange={(e) => setB(+e.target.value)} />
           <output>{b}</output>
         </label>
       </div>
-      <figcaption>With two whole numbers, <code>a / b</code> counts the full groups and <code>a % b</code> is what is left over. Orange dots are in full groups, yellow dots in the dashed box are the remainder.</figcaption>
+      <figcaption>With two whole numbers, <code>a / b</code> counts the full groups and <code>a % b</code> is what is left over. Filled orange dots are in full groups, the yellow rings in the dashed box are the remainder.</figcaption>
     </figure>
   );
 }

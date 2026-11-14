@@ -26,6 +26,8 @@ function GpioPin() {
   const short = driving && ext !== null && ext !== latch;
   const level: 0 | 1 | null = !gpio ? null : driving ? latch : ext !== null ? ext : pullup ? 1 : null;
   const color = level === null ? "var(--dim)" : level ? "var(--orange)" : "var(--arches)";
+  // Orange is a colour for lines. Words that say "3.3 V" use the orange made for text.
+  const wordColor = level === 1 ? "var(--accent-text)" : color;
   const dash = level === null ? "3 2" : undefined;
   const why = !gpio
     ? "The mux has handed this pin to a peripheral (for example a PWM output or the serial port). The GPIO output latch no longer reaches the pin: the peripheral decides whether it is driven. GPxDAT still reads the pin."
@@ -62,7 +64,7 @@ function GpioPin() {
         <text x="51" y="80" textAnchor="middle" className="fig-value">{latch}</text>
         {/* driver */}
         <line x1="84" y1="69" x2="104" y2="69" className="fig-wire" style={{ stroke: driving ? (latch ? "var(--orange)" : "var(--arches)") : undefined }} />
-        <polygon points="104,56 104,82 128,69" className={`fig-box ${driving ? "active" : "off"}`} />
+        <polygon points="104,56 104,82 128,69" className={`fig-box ${driving ? "active" : "off"}`} style={{ strokeDasharray: driving ? undefined : "3 2" }} />
         <text x="116" y="97" textAnchor="middle" className="fig-label dim">{!gpio ? "mux ignores the latch" : output ? "output: driver on" : "input: driver off"}</text>
         {/* mux */}
         <rect x="140" y="50" width="46" height="38" rx="4" className="fig-box" />
@@ -72,7 +74,7 @@ function GpioPin() {
         {/* pin line */}
         <line x1="186" y1="69" x2="262" y2="69" className="fig-wire thick" style={{ stroke: color, strokeDasharray: dash }} />
         <rect x="236" y="60" width="14" height="18" className="fig-pin" />
-        <text x="243" y="54" textAnchor="middle" className="fig-label">pin</text>
+        <text x="247" y="54" className="fig-label">pin</text>
         {/* pull-up */}
         <text x="210" y="24" textAnchor="middle" className="fig-label">3.3 V</text>
         <line x1="210" y1="27" x2="210" y2="33" className="fig-wire" />
@@ -108,7 +110,7 @@ function GpioPin() {
             <text x="334" y="73" className="fig-label">3.3 V source</text>
           </>
         )}
-        <text x="262" y="150" className="fig-value" style={{ fill: short ? "var(--bad)" : color }}>
+        <text x="262" y="150" className="fig-value" style={{ fill: short ? "var(--bad)" : wordColor }}>
           {pinWords}
         </text>
       </svg>
@@ -120,7 +122,7 @@ function GpioPin() {
         <div><span>Pull-up</span><Btn on={!pullup} set={() => setPullup(false)}>off</Btn><Btn on={pullup} set={() => setPullup(true)}>on</Btn><code>GPxPUD bit = {pullup ? "0 (enabled)" : "1 (disabled, the reset state)"}</code></div>
         <div><span>Outside</span><Btn on={outside === "nothing"} set={() => setOutside("nothing")}>nothing</Btn><Btn on={outside === "released"} set={() => setOutside("released")}>button, released</Btn><Btn on={outside === "pressed"} set={() => setOutside("pressed")}>button, pressed</Btn><Btn on={outside === "high"} set={() => setOutside("high")}>3.3 V source</Btn></div>
       </div>
-      <figcaption>One GPIO pin. The latch always holds a value; it reaches the pin only when the mux says GPIO and the direction is output. GPxDAT always reads the pin itself. Orange is 3.3 V, blue is 0 V, dashed grey is undefined.</figcaption>
+      <figcaption>One GPIO pin. The latch always holds a value; it reaches the pin only when the mux says GPIO and the direction is output. GPxDAT always reads the pin itself. Orange is 3.3 V, blue is 0 V, dashed grey is undefined. The driver triangle is drawn dashed while it is off.</figcaption>
     </figure>
   );
 }

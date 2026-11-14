@@ -135,7 +135,7 @@ function PiTuner() {
 
   return (
     <figure className="figure pt-fig" aria-label="Interactive step response of the wheel under P or PI control">
-      <style>{`.pt-fig .pt-range{flex:1;min-width:120px;accent-color:var(--orange)}.pt-fig .pt-ref{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.pt-fig .pt-grid{stroke:var(--border);stroke-width:1}.pt-fig .pt-sat{fill:var(--bad);opacity:.22}.pt-fig .pt-raw{fill:none;stroke:var(--dim);stroke-width:1.2;stroke-dasharray:2 2}.pt-fig .pt-u{fill:none;stroke:var(--orange);stroke-width:2.2}.pt-fig .pt-int{fill:none;stroke:var(--harvest);stroke-width:1.4}.pt-fig .pt-chips{display:flex;flex-wrap:wrap;gap:.3rem .9rem;margin:.4rem 0;font-size:.85rem;color:var(--dim)}.pt-fig .pt-chips b{color:var(--harvest);font-family:var(--mono)}`}</style>
+      <style>{`.pt-fig .pt-range{flex:1;min-width:120px;accent-color:var(--orange)}.pt-fig .pt-ref{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.pt-fig .pt-grid{stroke:var(--border);stroke-width:1}.pt-fig .pt-sat{fill:var(--bad);fill-opacity:.22;stroke:var(--bad);stroke-width:1}.pt-fig .pt-raw{fill:none;stroke:var(--dim);stroke-width:1.2;stroke-dasharray:2 2}.pt-fig .pt-u{fill:none;stroke:var(--orange);stroke-width:2.2}.pt-fig .pt-int{fill:none;stroke:var(--harvest);stroke-width:1.4}.pt-fig .pt-chips{display:flex;flex-wrap:wrap;gap:.3rem .9rem;margin:.4rem 0;font-size:.85rem;color:var(--dim)}.pt-fig .pt-chips b{color:var(--harvest);font-family:var(--mono)}`}</style>
       <svg viewBox="0 0 420 240" role="img" aria-label={`Kp ${kp}, Ki ${ki}. The wheel ends at ${fmt(sim.final, 3)} feet per second; ${chips.map((c) => `${c[0]} ${c[1]}`).join(", ")}.`}>
         {/* speed */}
         <text x={X0} y={10} className="fig-label">speed <tspan className="fig-label dim">and reference (dashed), ft/s</tspan></text>
@@ -179,12 +179,12 @@ function PiTuner() {
       <div className="fig-controls">
         <div>
           <span>Kp</span>
-          <input className="pt-range" type="range" aria-label="Kp" min={0} max={60} step={1} value={kp} onChange={(e) => setKp(+e.target.value)} />
+          <input className="pt-range" type="range" aria-label="Kp" aria-valuetext={`Kp ${kp}`} min={0} max={60} step={1} value={kp} onChange={(e) => setKp(+e.target.value)} />
           <code>float Kp = {kp.toFixed(1)};</code>
         </div>
         <div>
           <span>Ki</span>
-          <input className="pt-range" type="range" aria-label="Ki" min={0} max={800} step={10} value={ki} onChange={(e) => setKi(+e.target.value)} />
+          <input className="pt-range" type="range" aria-label="Ki" aria-valuetext={`Ki ${ki}`} min={0} max={800} step={10} value={ki} onChange={(e) => setKi(+e.target.value)} />
           <code>float Ki = {ki.toFixed(1)};</code>
         </div>
         <div>

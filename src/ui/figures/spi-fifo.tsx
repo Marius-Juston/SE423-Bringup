@@ -8,7 +8,7 @@ import { useState } from "react";
 // The words here come back unchanged, as in the loopback levels.
 
 const CSS = `
-.sf-slot { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
+.sf-slot { fill: var(--surface); stroke: var(--control); stroke-width: 0.8; }
 .sf-slot.full { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
 .sf-slot.next { stroke-width: 1.8; }
 .sf-word { font-family: var(--mono); font-size: max(8.5px, calc(9px / var(--fig-k, 1))); fill: var(--text); letter-spacing: -0.5px; }
@@ -121,7 +121,7 @@ function SpiFifo() {
         <text x={X0} y={RY + 33} className="fig-label dim">next read</text>
         <text x={Math.max(X0 + 48, markX + (markX > 300 ? -3 : 3))} y={RY + 33} textAnchor={markX > 300 ? "end" : "start"} className="fig-value small">RXFFIL = {ffil}</text>
         <text x={X0} y={RY + 48} className="fig-label">receive FIFO: RXFFST = <tspan className="sf-num" style={{ fill: "var(--value)" }}>{s.rx.length}</tspan></text>
-        <text x={404} y={RY + 48} textAnchor="end" className="fig-label" style={{ fill: irq ? "var(--accent)" : "var(--dim)", fontWeight: irq ? 700 : 400 }}>
+        <text x={404} y={RY + 48} textAnchor="end" className="fig-label" style={{ fill: irq ? "var(--accent-text)" : "var(--dim)", fontWeight: irq ? 700 : 400 }}>
           {irq ? "RXFFST >= RXFFIL: receive interrupt" : "RXFFST < RXFFIL: no interrupt"}
         </text>
       </svg>
@@ -142,7 +142,7 @@ function SpiFifo() {
         </div>
         <div>
           <span>RXFFIL</span>
-          <input type="range" min={1} max={16} value={ffil} aria-label="Receive FIFO interrupt level RXFFIL" onChange={(e) => setFfil(+e.target.value)} />
+          <input type="range" min={1} max={16} value={ffil} aria-label="Receive FIFO interrupt level RXFFIL" aria-valuetext={`${ffil} word${ffil > 1 ? "s" : ""}`} onChange={(e) => setFfil(+e.target.value)} />
           <code>SpibRegs.SPIFFRX.bit.RXFFIL = {ffil};</code>
         </div>
       </div>

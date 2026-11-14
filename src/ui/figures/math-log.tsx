@@ -98,7 +98,7 @@ function MathLog() {
       </code></pre>
       <p className="fig-why" role="status">{status}</p>
       <div className="fig-controls">
-        <div><span>a</span>{CHOICES.map((v) => <button key={v} className="fig-opt" aria-pressed={a === v} aria-label={`a = ${name(v)}`} onClick={() => setA(v)}>{name(v)}</button>)}</div>
+        <div><span>Number a</span>{CHOICES.map((v) => <button key={v} className="fig-opt" aria-pressed={a === v} aria-label={`a = ${name(v)}`} onClick={() => setA(v)}>{name(v)}</button>)}</div>
         <div><span>times b</span>{CHOICES.map((v) => <button key={v} className="fig-opt" aria-pressed={b === v} aria-label={`b = ${name(v)}`} onClick={() => setB(v)}>{name(v)}</button>)}</div>
       </div>
       <figcaption>The blue arrow is ln a, the orange arrow is ln b, laid end to end from 0. The yellow dot is where they end: ln of the product. The lower scale shows the plain numbers at the place of their logarithm: 1 sits at 0, numbers above 1 to the right, numbers below 1 to the left.</figcaption>

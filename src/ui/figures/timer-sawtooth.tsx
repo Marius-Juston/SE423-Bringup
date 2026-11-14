@@ -156,7 +156,7 @@ function TimerSawtooth() {
         .ts-fig input[type=range] { flex: 1 1 6rem; min-width: 5rem; max-width: 12rem; accent-color: var(--orange); }
         .ts-fig .ts-formula { font-family: var(--mono); font-size: 0.86rem; overflow-wrap: anywhere; }
         .ts-fig .ts-formula b { color: var(--harvest); }
-        .ts-fig .ts-us { width: 7.5em; font: inherit; font-family: var(--mono); background: var(--inset); color: var(--text); border: 1px solid var(--border-strong, var(--dim)); border-radius: 4px; padding: 0.1em 0.3em; }
+        .ts-fig .ts-us { width: 7.5em; font: inherit; font-family: var(--mono); background: var(--inset); color: var(--text); border: 1px solid var(--control); border-radius: 4px; padding: 0.1em 0.3em; }
         .ts-fig .ts-real pre { white-space: pre-wrap; overflow-wrap: anywhere; }
         .ts-fig .ts-real h4 { margin: 0 0 0.3rem; font-size: 0.9rem; }
         .ts-fig .ts-bad { color: var(--bad); }
@@ -274,6 +274,7 @@ function TimerSawtooth() {
             <label>
               Period in microseconds: <input className="ts-us" type="number" min={1} step={1} value={us} onChange={(e) => setUs(e.target.value)} />
             </label>{" "}
+            <span role="group" aria-label="Set the period to">
             {[
               ["1 ms", "1000"],
               ["10 ms", "10000"],
@@ -281,6 +282,7 @@ function TimerSawtooth() {
             ].map(([name, v]) => (
               <button key={v} className="fig-opt" aria-pressed={us === v} onClick={() => setUs(v)}>{name}</button>
             ))}
+            </span>
           </p>
           {!valid ? (
             <p className="ts-bad">Enter a period of at least 0.005 microseconds (one clock cycle).</p>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { Board } from "../../sim/board";
 import type { Kit } from "../../sim/world/kits";
 import type { PinChange } from "../../sim/periph/gpio";
@@ -100,30 +101,55 @@ export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: K
 
 /** Logic-analyser view of the kit's pins over [fromMs, toMs]. */
 export function Scope({ kit, traces, fromMs, toMs, marks }: { kit: Kit; traces: Map<number, PinChange[]>; fromMs: number; toMs: number; marks?: { tMs: number; label: string }[] }) {
+  // One unit of the drawing is one pixel, whatever the width of the panel: the labels keep their size (11.5 px) in a narrow column.
+  const [box, setBox] = useState<SVGSVGElement | null>(null);
+  const [W, setW] = useState(400);
+  useEffect(() => {
+    if (!box || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setW(Math.max(220, Math.round(box.clientWidth))));
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [box]);
   const rows = kit.parts.filter((p): p is Extract<typeof p, { pin: number }> => "pin" in p && traces.has(p.pin));
   if (!rows.length) return <p style={{ color: "var(--dim)", fontSize: "0.9rem" }}>No pin has changed yet.</p>;
-  const W = 400;
   const left = 46;
   const rowH = 26;
   const H = rows.length * rowH + 22;
   const span = Math.max(1e-9, toMs - fromMs);
   const x = (tMs: number) => left + ((tMs - fromMs) / span) * (W - left - 6);
-  const ticks = 4;
+  // Fewer time labels when they are long (615.61 ms), so two never lie over each other.
+  const stamp = (t: number) => `${span >= 10 ? t.toFixed(0) : toMs >= 100 ? t.toFixed(1) : t.toFixed(2)} ms`;
+  const ticks = Math.max(1, Math.min(4, Math.floor((W - left - 6) / (stamp(toMs).length * 7.2 + 14))));
+  // Marks close together in time share one label, so the names never lie over each other.
+  const CHAR = 7.2;
+  const shown: { tMs: number; label: string }[] = [];
+  let holder = -1;
+  let end = -Infinity;
+  for (const m of [...(marks ?? [])].filter((k) => k.tMs >= fromMs && k.tMs <= toMs).sort((a, b) => a.tMs - b.tMs)) {
+    if (holder >= 0 && x(m.tMs) + 2 < end) {
+      shown[holder].label += `, ${m.label}`;
+      shown.push({ tMs: m.tMs, label: "" });
+    } else {
+      holder = shown.length;
+      shown.push({ tMs: m.tMs, label: m.label });
+    }
+    end = x(shown[holder].tMs) + 2 + shown[holder].label.length * CHAR + 6;
+  }
   return (
-    <svg className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Signal traces for ${rows.map((r) => r.id).join(", ")} from ${fromMs.toFixed(1)} to ${toMs.toFixed(1)} milliseconds`}>
+    <svg ref={setBox} className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Signal traces for ${rows.map((r) => r.id).join(", ")} from ${fromMs.toFixed(1)} to ${toMs.toFixed(1)} milliseconds`}>
       {Array.from({ length: ticks + 1 }, (_, i) => {
         const t = fromMs + (span * i) / ticks;
         return (
           <g key={i}>
             <line x1={x(t)} x2={x(t)} y1={0} y2={H - 16} stroke="var(--faint)" />
-            <text x={x(t)} y={H - 4} textAnchor={i === 0 ? "start" : i === ticks ? "end" : "middle"}>{span >= 10 ? t.toFixed(0) : t.toFixed(2)} ms</text>
+            <text x={x(t)} y={H - 4} textAnchor={i === 0 ? "start" : i === ticks ? "end" : "middle"}>{stamp(t)}</text>
           </g>
         );
       })}
-      {(marks ?? []).filter((m) => m.tMs >= fromMs && m.tMs <= toMs).map((m, i) => (
+      {shown.map((m, i) => (
         <g key={`m${i}`}>
           <line x1={x(m.tMs)} x2={x(m.tMs)} y1={0} y2={H - 16} stroke="var(--accent)" strokeDasharray="3 3" />
-          <text x={x(m.tMs) + 2} y={9} style={{ fill: "var(--accent)" }}>{m.label}</text>
+          {m.label && <text x={x(m.tMs) + 2} y={9} style={{ fill: "var(--accent-text)" }}>{m.label}</text>}
         </g>
       ))}
       {rows.map((r, ri) => {

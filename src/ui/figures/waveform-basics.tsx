@@ -18,7 +18,7 @@ const CSS = `
 .wb-num { color: var(--value); font-family: var(--mono); min-width: 3.4em; text-align: right; font-size: 0.86rem; }
 .wb-dim { stroke: var(--harvest); stroke-width: 1.2; fill: none; }
 .wb-grid { stroke: var(--border); stroke-width: 1; }
-.wb-fill { fill: var(--accent-soft); }
+.wb-hatch { stroke: var(--hi); stroke-width: 1; }
 `;
 
 function WaveformBasics() {
@@ -62,7 +62,12 @@ function WaveformBasics() {
         {Array.from({ length: 11 }, (_, k) => (
           <line key={k} x1={x(k)} y1={HI - 6} x2={x(k)} y2={LO + 6} className="wb-grid" />
         ))}
-        <path d={fill} className="wb-fill" />
+        <defs>
+          <pattern id="wb-high" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="3" x2="6" y2="3" className="wb-hatch" />
+          </pattern>
+        </defs>
+        <path d={fill} fill="url(#wb-high)" />
         <path d={path} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         {!flat && (
           <>
@@ -87,11 +92,11 @@ function WaveformBasics() {
         </div>
         <div>
           <span>Duty cycle</span>
-          <input type="range" min={0} max={100} step={10} value={pct} aria-label="Duty cycle in percent" onChange={(e) => setPct(+e.target.value)} />
+          <input type="range" min={0} max={100} step={10} value={pct} aria-label="Duty cycle in percent" aria-valuetext={`${pct} percent`} onChange={(e) => setPct(+e.target.value)} />
           <span className="wb-num">{pct} %</span>
         </div>
       </div>
-      <figcaption>A waveform is voltage drawn against time, left to right. Each grey line is 1 ms. Period T is the time of one full cycle; frequency f = 1 / T is how many cycles fit in one second.</figcaption>
+      <figcaption>A waveform is voltage drawn against time, left to right. Each grey line is 1 ms. The hatched parts are the time the signal is high. Period T is the time of one full cycle; frequency f = 1 / T is how many cycles fit in one second.</figcaption>
     </figure>
   );
 }

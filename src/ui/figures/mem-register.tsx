@@ -47,23 +47,28 @@ function MemRegister() {
         {/* button, counted into PRESSES */}
         <rect x="210" y="42" width="60" height="20" rx="4" className="fig-box" />
         <text x="240" y="55" textAnchor="middle" className="fig-label">push button</text>
-        <path d={`M210,52 H${cellX(3) + 8}`} className="fig-wire" style={{ stroke: last === "press" ? "var(--orange)" : undefined }} />
-        <polygon points={`${cellX(3) + 9},47 ${cellX(3) + 9},57 ${cellX(3)},52`} className="fig-arrowhead" style={{ fill: last === "press" ? "var(--orange)" : undefined }} />
-        <text x={cellX(3) + 12} y="46" className="fig-label dim">counts</text>
+        {/* A press shows as a thicker wire, a larger arrowhead and the word "counted", not by colour alone. */}
+        <path d={`M210,52 H${cellX(3) + 8}`} className={last === "press" ? "fig-wire hot" : "fig-wire"} />
+        {last === "press" ? (
+          <polygon points={`${cellX(3) + 12},45 ${cellX(3) + 12},59 ${cellX(3)},52`} className="fig-arrowhead" style={{ fill: "var(--orange)" }} />
+        ) : (
+          <polygon points={`${cellX(3) + 9},47 ${cellX(3) + 9},57 ${cellX(3)},52`} className="fig-arrowhead" />
+        )}
+        <text x="210" y="74" className="fig-label dim">{last === "press" ? "counted a press" : "counts presses"}</text>
       </svg>
       <code className="mem-out">int n = {n === null ? "?" : n};     // the program's own variable</code>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
           <span>Program</span>
-          <button className="fig-opt" aria-pressed={on === 0} onClick={() => { setOn(0); setLast("on"); }}>0</button>
-          <button className="fig-opt" aria-pressed={on === 1} onClick={() => { setOn(1); setLast("on"); }}>1</button>
+          <button className="fig-opt" aria-pressed={on === 0} aria-label="ON = 0" onClick={() => { setOn(0); setLast("on"); }}>0</button>
+          <button className="fig-opt" aria-pressed={on === 1} aria-label="ON = 1" onClick={() => { setOn(1); setLast("on"); }}>1</button>
           <code>LampRegs.ON = {on};</code>
         </div>
         <div>
           <span>Program</span>
           {[1, 2, 3].map((k) => (
-            <button key={k} className="fig-opt" aria-pressed={level === k} onClick={() => { setLevel(k); setLast("level"); }}>{k}</button>
+            <button key={k} className="fig-opt" aria-pressed={level === k} aria-label={`LEVEL = ${k}`} onClick={() => { setLevel(k); setLast("level"); }}>{k}</button>
           ))}
           <code>LampRegs.LEVEL = {level};</code>
         </div>

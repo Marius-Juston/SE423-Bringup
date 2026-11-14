@@ -177,14 +177,14 @@ function InterruptPath() {
     <figure className="figure ip-fig" aria-label="Interactive diagram of the path of a timer interrupt request through the PIE and the CPU">
       <style>{`
         .ip-fig ol { list-style: none; margin: 0; padding: 0; }
-        .ip-fig .ip-row { display: grid; grid-template-columns: 36px 1fr; }
+        .ip-fig .ip-row { display: grid; grid-template-columns: 46px 1fr; }
         .ip-fig .ip-rail { position: relative; display: flex; align-items: center; justify-content: center; }
         .ip-fig .ip-rail::before { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; margin-left: -1.5px; background: var(--dim); opacity: 0.45; }
         .ip-fig .ip-row.hot .ip-rail::before { background: var(--orange); opacity: 1; }
         .ip-fig .ip-row.first .ip-rail::before { top: 50%; }
         .ip-fig .ip-row.last .ip-rail::before { bottom: 50%; }
         .ip-fig .ip-zone.top .ip-rail::before { display: none; }
-        .ip-fig .ip-rail svg { position: relative; width: 34px; height: 24px; }
+        .ip-fig .ip-rail svg { position: relative; width: 44px; height: 31px; }
         .ip-fig .ip-bar { stroke: var(--text); stroke-width: 4; stroke-linecap: round; }
         .ip-fig .ip-bar.open { stroke: var(--ok); }
         .ip-fig .ip-body { padding: 0.1rem 0.4rem; margin: 1px 0; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 0 0.45rem; align-items: center; min-height: 1.9rem; border: 2px solid transparent; }

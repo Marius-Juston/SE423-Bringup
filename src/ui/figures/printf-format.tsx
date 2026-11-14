@@ -77,13 +77,12 @@ const hex4 = (w: number) => "0x" + w.toString(16).toUpperCase().padStart(4, "0")
 
 const CSS = `
 .pf-piece { fill: var(--surface); stroke: var(--dim); stroke-width: 1; }
-.pf-piece.none { stroke-dasharray: 3 3; opacity: 0.6; }
+.pf-piece.none { stroke-dasharray: 3 3; }
 .pf-mono { font-family: var(--mono); font-weight: 700; fill: var(--value); font-size: max(12px, calc(10px / var(--fig-k, 1))); }
-.pf-cell { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1; }
+.pf-cell { fill: var(--surface); stroke: var(--control); stroke-width: 1; }
 .pf-cell.space { fill: none; stroke-dasharray: 2 2; }
 .pf-char { font-family: var(--mono); font-weight: 700; fill: var(--text); }
 .pf-char.space { fill: var(--dim); font-weight: 400; }
-.pf-word.unread { opacity: 0.5; }
 .pf-word.beyond { stroke-dasharray: 4 3; }
 .pf-ok { fill: var(--ok); font-weight: 700; }
 .pf-bad { fill: var(--bad); font-weight: 700; }

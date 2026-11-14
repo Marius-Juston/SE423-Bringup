@@ -128,15 +128,19 @@ const rc = (cell: number) => `(${Math.floor(cell / COLS)}, ${cell % COLS})`;
 
 const CSS = `
 .sx-cell { cursor: pointer; outline: none; }
-.sx-cell:focus-visible .sx-bg { stroke: var(--focus); stroke-width: 3; stroke-dasharray: none; }
-.sx-bg { fill: var(--surface); stroke: var(--border); stroke-width: 1; }
-.sx-bg.wall { fill: var(--dim); fill-opacity: 0.85; stroke: var(--dim); }
+.sx-focus { display: none; fill: none; stroke: var(--focus); stroke-width: 2.5; }
+.sx-cell:focus-visible .sx-focus { display: inline; }
+.sx-bg { fill: var(--surface); stroke: var(--control); stroke-width: 1; }
+.sx-bg.wall { fill: var(--dim); fill-opacity: 0.85; stroke: var(--dim); stroke-width: 2; }
 .sx-bg.open { fill: var(--arches); fill-opacity: 0.1; stroke: var(--arches); stroke-width: 2; stroke-dasharray: 4 3; }
 .sx-bg.closed { fill: var(--arches); fill-opacity: 0.24; stroke: var(--arches); stroke-width: 1.5; }
 .sx-bg.cur { stroke: var(--orange); stroke-width: 3; stroke-dasharray: none; }
 .sx-x { stroke: var(--inset); stroke-width: 2; }
-.sx-path { fill: none; stroke: var(--ok); stroke-width: 13; stroke-linecap: round; stroke-linejoin: round; opacity: 0.5; }
-.sx-path.key { stroke-width: 7; }
+.sx-bg.path { stroke: var(--ok); stroke-width: 4; stroke-dasharray: none; }
+.sx-path { fill: none; stroke: var(--ok); stroke-width: 7; }
+.sx-row { flex-wrap: wrap; }
+/* In the larger view the whole grid and its key stay in the window. */
+.fig-big .sx-svg { width: min(100%, 68vh); margin: 0 auto; }
 .sx-tag { font-size: max(9px, calc(9px / var(--fig-k, 1))); font-weight: 700; font-family: var(--sans); fill: var(--inset); }
 .sx-tagbox { fill: var(--text); }
 .sx-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.5rem; }
@@ -217,7 +221,7 @@ function SearchExplorer() {
   return (
     <figure className="figure" aria-label="Interactive grid search: breadth-first, greedy best-first and A star, one expansion at a time">
       <style>{CSS}</style>
-      <svg viewBox={`0 0 420 ${Y0 + ROWS * S + 30}`} role="group" aria-label={label}>
+      <svg className="sx-svg" viewBox={`0 0 420 ${Y0 + ROWS * S + 30}`} role="group" aria-label={label}>
         {Array.from({ length: COLS }, (_, c) => (
           <text key={`c${c}`} x={X0 + c * S + S / 2} y={11} textAnchor="middle" className="fig-label dim">{c}</text>
         ))}
@@ -229,9 +233,10 @@ function SearchExplorer() {
           const y = Y0 + Math.floor(cell / COLS) * S;
           const st = s.st[cell];
           const isCur = cell === s.cur && !s.done;
-          const cls = wall ? "wall" : `${st === 1 ? "open" : st === 2 ? "closed" : ""} ${isCur ? "cur" : ""}`;
+          const onPath = s.path.includes(cell);
+          const cls = wall ? "wall" : `${st === 1 ? "open" : st === 2 ? "closed" : ""} ${isCur ? "cur" : ""} ${onPath ? "path" : ""}`;
           const h = heuristic(cell, goal);
-          const what = wall ? "obstacle" : `${cell === start ? "start, " : cell === goal ? "goal, " : ""}${st === 0 ? "not seen" : `${st === 1 ? "on the frontier" : "expanded"}, g ${s.g[cell]}${algo === "bfs" ? "" : `, h ${h}`}${algo === "astar" ? `, f ${s.g[cell] + h}` : ""}`}`;
+          const what = wall ? "obstacle" : `${cell === start ? "start, " : cell === goal ? "goal, " : ""}${st === 0 ? "not seen" : `${onPath ? "on the path, " : ""}${st === 1 ? "on the frontier" : "expanded"}, g ${s.g[cell]}${algo === "bfs" ? "" : `, h ${h}`}${algo === "astar" ? `, f ${s.g[cell] + h}` : ""}`}`;
           const act = tool === "wall" ? (wall ? "remove the obstacle" : "put an obstacle here") : `move the ${tool} here`;
           return (
             <g
@@ -250,10 +255,17 @@ function SearchExplorer() {
             >
               <rect x={x + 2} y={y + 2} width={S - 4} height={S - 4} rx={4} className={`sx-bg ${cls}`} />
               {wall && <path d={`M${x + 14} ${y + 14} L${x + S - 14} ${y + S - 14} M${x + S - 14} ${y + 14} L${x + 14} ${y + S - 14}`} className="sx-x" />}
+              <rect x={x + 0.5} y={y + 0.5} width={S - 1} height={S - 1} rx={5} className="sx-focus" />
             </g>
           );
         })}
-        {s.path.length > 1 && <path d={`M${s.path.map((c) => `${cx(c)} ${cy(c)}`).join(" L")}`} className="sx-path" pointerEvents="none" />}
+        {/* The path: its cells have a thick green edge, and a short green link joins each to the next across the border between them, clear of the numbers. */}
+        {s.path.slice(1).map((c, i) => {
+          const mx = (cx(c) + cx(s.path[i])) / 2;
+          const my = (cy(c) + cy(s.path[i])) / 2;
+          const across = cy(c) === cy(s.path[i]);
+          return <path key={c} d={across ? `M${mx - 5} ${my} H${mx + 5}` : `M${mx} ${my - 5} V${my + 5}`} className="sx-path" pointerEvents="none" />;
+        })}
         <g pointerEvents="none" aria-hidden="true">
           {walls.map((wall, cell) => {
             const x = X0 + (cell % COLS) * S;
@@ -297,7 +309,7 @@ function SearchExplorer() {
           <text x={119} y={10} className="fig-label">expanded (filled)</text>
           <rect x={203} y={0} width={13} height={13} rx={3} className="sx-bg closed cur" />
           <text x={221} y={10} className="fig-label">last expanded</text>
-          <path d="M291 7 H305" className="sx-path key" />
+          <rect x={292} y={0} width={13} height={13} rx={3} className="sx-bg closed path" />
           <text x={311} y={10} className="fig-label">path</text>
         </g>
       </svg>
@@ -305,10 +317,11 @@ function SearchExplorer() {
         {status}
         {!s.done && algo === "bfs" && frontier.length > 1 && <> Queue, oldest first: {frontier.map(rc).join(" ")}.</>}
       </div>
-      <div className="fig-controls row">
-        <button className="btn small primary" onClick={() => setS(step(s, algo, walls, goal))} disabled={!!s.done}>Step</button>
+      <div className="fig-controls row sx-row">
+        {/* The highlighted button is the one to press next: Step while the search runs, Reset once it is over. */}
+        <button className={`btn small ${s.done ? "" : "primary"}`} onClick={() => setS(step(s, algo, walls, goal))} disabled={!!s.done}>Step</button>
         <button className="btn small" onClick={() => setS(runAll(algo, walls, start, goal))} disabled={!!s.done}>Run to the end</button>
-        <button className="btn small" onClick={() => restart()} disabled={s.cur === -1 && !s.done}>Reset</button>
+        <button className={`btn small ${s.done ? "primary" : ""}`} onClick={() => restart()} disabled={s.cur === -1 && !s.done}>Reset</button>
         <span className="sx-count">expanded: <strong>{s.expanded}</strong></span>
       </div>
       <div className="fig-controls">
@@ -337,6 +350,7 @@ function SearchExplorer() {
           <p className="sx-hint">Click a cell of the grid (or move to it with Tab and press Enter). The search starts again on the new map.</p>
         </div>
       </details>
+      <div>
       <table className="sx-table">
         <caption>The three searches on this map, run to the end</caption>
         <thead>
@@ -362,6 +376,7 @@ function SearchExplorer() {
           })}
         </tbody>
       </table>
+      </div>
       <figcaption>
         {preset >= 0 ? PRESETS[preset].note : "Your own map."} Each Step is one round of the loop: take a cell off the frontier, stop if it is the goal, otherwise mark it expanded and put its free neighbours on the frontier. g is the cost so far, h the Manhattan distance to the goal, and f = g + h.
       </figcaption>

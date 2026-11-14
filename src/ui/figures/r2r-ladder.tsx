@@ -28,7 +28,18 @@ function R2RLadder() {
 
   return (
     <figure className="figure r2r" aria-label="Interactive 8-bit R-2R ladder DAC">
-      <style>{`.r2r .r2r-sw { cursor: pointer; } .r2r .r2r-bits { font-family: var(--mono); }`}</style>
+      <style>{`
+        .r2r .r2r-sw { cursor: pointer; }
+        .r2r .r2r-bits { font-family: var(--mono); }
+        .r2r .r2r-term { r: 2.4px; fill: var(--inset); stroke-width: 1.2; }
+        .r2r .r2r-term.v3 { stroke: var(--orange); }
+        .r2r .r2r-term.v0 { stroke: var(--arches); }
+        .r2r .r2r-term.on { r: 3.4px; stroke-width: 0; }
+        .r2r .r2r-term.v3.on { fill: var(--orange); }
+        .r2r .r2r-term.v0.on { fill: var(--arches); }
+        .r2r .r2r-v3 { fill: var(--accent-text); }
+        .r2r .r2r-v0 { fill: var(--arches); }
+      `}</style>
       <svg viewBox="0 0 420 168" role="img" aria-label={`Switches ${binSpaced}, number ${code}. Output ${trim(vout)} volts.`}>
         {/* output */}
         <text x="4" y="14" className="fig-label dim">Vout</text>
@@ -72,14 +83,15 @@ function R2RLadder() {
               <line x1={x} x2={x} y1="64" y2="74" className="fig-wire" style={{ stroke: col }} />
               <line x1={x} x2={hi ? x - 9 : x + 9} y1="74" y2="88" className="fig-wire thick" style={{ stroke: col }} />
               <circle cx={x} cy="74" r="2" className="fig-dot" />
-              <circle cx={x - 9} cy="90" r="3" fill="var(--orange)" opacity={hi ? 1 : 0.45} />
-              <circle cx={x + 9} cy="90" r="3" fill="var(--arches)" opacity={hi ? 0.45 : 1} />
-              <text x={x - 9} y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)", opacity: hi ? 1 : 0.6 }}>3 V</text>
-              <text x={x + 9} y="104" textAnchor="middle" className="fig-label" style={{ fill: "var(--arches)", opacity: hi ? 0.6 : 1 }}>0 V</text>
+              {/* The terminal the switch rests on is a filled dot, the other one a ring. */}
+              <circle cx={x - 9} cy="90" className={`r2r-term v3 ${hi ? "on" : ""}`} />
+              <circle cx={x + 9} cy="90" className={`r2r-term v0 ${hi ? "" : "on"}`} />
+              <text x={x - 9} y="104" textAnchor="middle" className={`fig-label r2r-v3 ${hi ? "on" : ""}`}>3 V</text>
+              <text x={x + 9} y="104" textAnchor="middle" className={`fig-label r2r-v0 ${hi ? "" : "on"}`}>0 V</text>
               <text x={x} y="122" textAnchor="middle" className={hi ? "fig-value small" : "fig-label dim"}>{hi ? `+${mvOf(weight(k))}` : "0"}</text>
               <text x={x} y="136" textAnchor="middle" className="fig-label dim">bit {k}</text>
               {/* large invisible click target; the buttons below do the same for keyboards */}
-              <rect x={x - 18} y="38" width="36" height="102" fill="transparent" className="r2r-sw" onClick={() => setCode(code ^ (1 << k))} />
+              <rect x={x - 18} y="38" width="36" height="102" fill="transparent" className="r2r-sw" aria-hidden="true" onClick={() => setCode(code ^ (1 << k))} />
             </g>
           );
         })}
@@ -100,7 +112,7 @@ function R2RLadder() {
           <button className="fig-opt" onClick={() => setCode(0)}>all off</button>
         </div>
       </div>
-      <figcaption>An 8-bit R-2R ladder with a 3.0 V reference. Only two resistor values are needed. Each switch puts its leg on 3.0 V (orange, bit = 1) or on ground (blue, bit = 0), and each bit adds half as much as the bit to its left. Click a switch or use the buttons below.</figcaption>
+      <figcaption>An 8-bit R-2R ladder with a 3.0 V reference. Only two resistor values are needed. Each switch puts its leg on 3.0 V (orange, bit = 1) or on ground (blue, bit = 0); the filled dot is the side it rests on, and each bit adds half as much as the bit to its left. Click a switch or use the buttons below.</figcaption>
     </figure>
   );
 }

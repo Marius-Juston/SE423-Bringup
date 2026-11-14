@@ -114,7 +114,8 @@ function DeadReckoning() {
   };
   const error = sim.err[sim.err.length - 1];
   const errTop = Math.max(0.02, ...full.err, ...sim.err) * 1.1;
-  const errPath = sim.err.map((e, i) => `${i ? "L" : "M"}${(40 + (i / (sim.err.length - 1 || 1)) * (T / 10) * 372).toFixed(1)},${(262 - (e / errTop) * 34).toFixed(1)}`).filter((_, i, a) => i % Math.max(1, Math.floor(a.length / 300)) === 0 || i === a.length - 1).join(" ");
+  // The error over time is drawn as an area standing on its zero line, so it is not taken for a third path.
+  const errPath = `${sim.err.map((e, i) => `${i ? "L" : "M"}${(40 + (i / (sim.err.length - 1 || 1)) * (T / 10) * 372).toFixed(1)},${(262 - (e / errTop) * 34).toFixed(1)}`).filter((_, i, a) => i % Math.max(1, Math.floor(a.length / 300)) === 0 || i === a.length - 1).join(" ")} L${(40 + (T / 10) * 372).toFixed(1)},262 L40,262 Z`;
 
   const turnText = Math.abs(omega) < 1e-9 && Math.abs(V) < 1e-9 ? "Both wheels stand still: the robot does not move." : Math.abs(omega) < 1e-9 ? "Both wheels run at the same speed: the robot drives straight." : `The ${omega > 0 ? "right" : "left"} wheel is faster, so the robot turns ${omega > 0 ? "left (omega positive)" : "right (omega negative)"}${Math.abs(V) > 1e-9 ? ` on a circle of radius v / omega = ${fmt(Math.abs(V / omega))} ft` : " on the spot"}.`;
   const why =
@@ -126,7 +127,7 @@ function DeadReckoning() {
 
   return (
     <figure className="figure dr-fig" aria-label="Interactive dead reckoning: true path and estimated path of a two-wheeled robot">
-      <style>{`.dr-fig pre{font-size:.76rem;white-space:pre-wrap;overflow-wrap:anywhere}.dr-fig .dr-range{flex:1;min-width:110px;accent-color:var(--orange)}.dr-fig .dr-map{fill:var(--surface);stroke:var(--border)}.dr-fig .dr-grid{stroke:var(--border);stroke-width:1}.dr-fig .dr-true{fill:none;stroke:var(--arches);stroke-width:2.2}.dr-fig .dr-est{fill:none;stroke:var(--harvest);stroke-width:2;stroke-dasharray:5 3}.dr-fig .dr-rt{fill:var(--arches);stroke:var(--text);stroke-width:1}.dr-fig .dr-re{fill:none;stroke:var(--harvest);stroke-width:1.6;stroke-dasharray:3 2}.dr-fig .dr-err{stroke:var(--bad);stroke-width:1.5}.dr-fig .dr-errp{fill:none;stroke:var(--bad);stroke-width:1.8}.dr-fig .dr-num{width:5.4rem;white-space:nowrap;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
+      <style>{`.dr-fig pre{font-size:var(--fig-small,11px);white-space:pre-wrap;overflow-wrap:anywhere}.dr-fig pre code{font-size:1em}.dr-fig .dr-range{flex:1;min-width:110px;accent-color:var(--orange)}.dr-fig .dr-map{fill:var(--surface);stroke:var(--control)}.dr-fig .dr-grid{stroke:var(--border);stroke-width:1}.dr-fig .dr-true{fill:none;stroke:var(--arches);stroke-width:2.2}.dr-fig .dr-est{fill:none;stroke:var(--harvest);stroke-width:2;stroke-dasharray:5 3}.dr-fig .dr-rt{fill:var(--arches);stroke:var(--text);stroke-width:1}.dr-fig .dr-re{fill:none;stroke:var(--harvest);stroke-width:1.6;stroke-dasharray:3 2}.dr-fig .dr-err{stroke:var(--bad);stroke-width:1.5}.dr-fig .dr-errp{fill:var(--bad-soft);stroke:var(--bad);stroke-width:1.8;stroke-linejoin:round}.dr-fig .dr-num{width:5.4rem;white-space:nowrap;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
       <svg viewBox="0 0 420 278" role="img" aria-label={`After ${fmt(T, 1)} seconds and ${fmt(sim.dist, 1)} feet the robot is at ${fmt(sim.end.x)}, ${fmt(sim.end.y)}; the estimate is ${fmt(error, 3)} feet off.`}>
         <clipPath id="dr-clip"><rect x={4} y={4} width={W} height={H} /></clipPath>
         <rect x={4} y={4} width={W} height={H} className="dr-map" />
@@ -144,7 +145,7 @@ function DeadReckoning() {
           {robot(sim.end, "dr-rt")}
           {robot(sim.endEst, "dr-re")}
         </g>
-        <text x={10} y={16} className="fig-label dim">grid: {grid} ft</text>
+        <text x={4} y={212} className="fig-label dim">grid squares: {grid} ft</text>
         <path d="M232 209 h16" className="dr-true" />
         <text x={252} y={212} className="fig-label">true path</text>
         <path d="M312 209 h16" className="dr-est" />
@@ -162,12 +163,12 @@ function DeadReckoning() {
       <div className="fig-controls">
         <div>
           <span>Left wheel</span>
-          <input className="dr-range" type="range" aria-label="Left wheel speed" min={-0.5} max={1.5} step={0.05} value={vL} onChange={(e) => setVL(+e.target.value)} />
+          <input className="dr-range" type="range" aria-label="Left wheel speed" min={-0.5} max={1.5} step={0.05} value={vL} aria-valuetext={`${fmt(vL)} feet per second`} onChange={(e) => setVL(+e.target.value)} />
           <span className="dr-num">{fmt(vL)} ft/s</span>
         </div>
         <div>
           <span>Right wheel</span>
-          <input className="dr-range" type="range" aria-label="Right wheel speed" min={-0.5} max={1.5} step={0.05} value={vR} onChange={(e) => setVR(+e.target.value)} />
+          <input className="dr-range" type="range" aria-label="Right wheel speed" min={-0.5} max={1.5} step={0.05} value={vR} aria-valuetext={`${fmt(vR)} feet per second`} onChange={(e) => setVR(+e.target.value)} />
           <span className="dr-num">{fmt(vR)} ft/s</span>
         </div>
         <div>
@@ -181,7 +182,7 @@ function DeadReckoning() {
         <div className="fig-controls">
           <div>
             <span>Drive for</span>
-            <input className="dr-range" type="range" aria-label="Driving time" min={0.2} max={10} step={0.1} value={T} onChange={(e) => setT(+e.target.value)} />
+            <input className="dr-range" type="range" aria-label="Driving time" min={0.2} max={10} step={0.1} value={T} aria-valuetext={`${fmt(T, 1)} seconds`} onChange={(e) => setT(+e.target.value)} />
             <span className="dr-num">{fmt(T, 1)} s</span>
           </div>
           <div>

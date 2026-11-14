@@ -76,16 +76,16 @@ function MathProportional() {
         {/* wanted distance */}
         <line x1="8" x2="300" y1={yOf(REF)} y2={yOf(REF)} className="mprop-ref" />
         <text x="296" y={turnY > yOf(REF) - 13 && turnY < yOf(REF) + 5 ? yOf(REF) + 11 : yOf(REF) - 4} textAnchor="end" className="fig-label">wanted: {REF} ft</text>
-        {/* measured distance */}
+        {/* measured distance; its number stays below the dashed line */}
         <line x1={ROBOT_X - 34} x2={ROBOT_X - 34} y1={y} y2={WALL_Y - 2} className="mprop-meas" />
         <line x1={ROBOT_X - 39} x2={ROBOT_X - 29} y1={y} y2={y} className="mprop-meas" />
-        <text x={ROBOT_X - 40} y={Math.min((y + WALL_Y) / 2 + 3, WALL_Y - 6)} textAnchor="end" className="fig-value small">{d.toFixed(1)} ft</text>
+        <text x={ROBOT_X - 40} y={Math.min(Math.max((y + WALL_Y) / 2 + 3, yOf(REF) + 12), WALL_Y - 6)} textAnchor="end" className="fig-value small">{d.toFixed(1)} ft</text>
         {/* robot, driving to the right */}
         <rect x={ROBOT_X - 18} y={y - 9} width="30" height="18" rx="4" className="mprop-robot" />
         <polygon points={`${ROBOT_X + 12},${y - 6} ${ROBOT_X + 22},${y} ${ROBOT_X + 12},${y + 6}`} className="mprop-robot" />
         {/* where it steers */}
         <path d={`M${ROBOT_X + 24},${y} Q${ROBOT_X + 70},${y} ${ROBOT_X + 112},${y + bend}`} className="mprop-path" markerEnd="url(#mprop-arrow)" />
-        <text x={ROBOT_X + 118} y={turnY} className="fig-label">{onTarget ? "straight" : turn > 0 ? "turns right" : "turns left"}</text>
+        <text x={ROBOT_X + 118} y={turnY} className="fig-label fig-halo">{onTarget ? "straight" : turn > 0 ? "turns right" : "turns left"}</text>
         {/* turn gauge */}
         <text x="362" y="12" textAnchor="middle" className="fig-label">{limited ? "turn (limited)" : "turn"}</text>
         <rect x="354" y={gy(-LIMIT)} width="16" height={gy(LIMIT) - gy(-LIMIT)} rx="3" className="mprop-gauge" />
@@ -93,7 +93,7 @@ function MathProportional() {
         <text x="348" y={gy(-LIMIT) + 8} textAnchor="end" className="fig-label dim">left -{LIMIT.toFixed(1)}</text>
         <text x="348" y={gy(0) + 3} textAnchor="end" className="fig-label dim">0</text>
         <text x="348" y={gy(LIMIT)} textAnchor="end" className="fig-label dim">right +{LIMIT.toFixed(1)}</text>
-        <rect x="354" y={Math.min(gy(0), gy(turn))} width="16" height={Math.abs(gy(turn) - gy(0))} className="mprop-mark" opacity="0.35" />
+        <rect x="354" y={Math.min(gy(0), gy(turn))} width="16" height={Math.abs(gy(turn) - gy(0))} className="mprop-mark" />
         <polygon points={`376,${gy(turn)} 386,${gy(turn) - 5} 386,${gy(turn) + 5}`} className="mprop-mark" />
         <text x="389" y={gy(turn) + 3} className="fig-value small">{signed(turn, 1)}</text>
       </svg>
@@ -107,7 +107,7 @@ function MathProportional() {
         <div>
           <span>Measured</span>
           <label className="mprop-slider">
-            <input type="range" min={0.4} max={3} step={0.1} value={d} onChange={(e) => setD(+e.target.value)} aria-label="Measured distance to the wall in feet" />
+            <input type="range" min={0.4} max={3} step={0.1} value={d} onChange={(e) => setD(+e.target.value)} aria-label="Measured distance to the wall in feet" aria-valuetext={`${d.toFixed(1)} feet`} />
             <output>{d.toFixed(1)} ft</output>
           </label>
         </div>

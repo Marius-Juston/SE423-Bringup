@@ -12,9 +12,9 @@ import { CodePre } from "../CopyButton";
 // distance in mm, least significant byte first: 256 * raw[1] + raw[0].
 
 const CSS = `
-.cf-field { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1; cursor: pointer; }
+.cf-field { fill: var(--surface); stroke: var(--control); stroke-width: 1; cursor: pointer; }
 .cf-field.sel { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
-.cf-byte { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
+.cf-byte { fill: var(--surface); stroke: var(--control); stroke-width: 0.8; }
 .cf-byte.dist { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.6; }
 .cf-mono { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--value); }
 .cf-calc pre { margin: 0.4rem 0 0; font-size: 0.78rem; background: var(--surface); border-radius: 6px; padding: 0.4rem 0.6rem; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -64,7 +64,7 @@ function CanFrame() {
           fx += q.w;
           return (
             <g key={q.id} onClick={() => setSel(q.id)}>
-              <rect x={x0} y={15} width={q.w - 2} height={36} rx="3" className={`cf-field ${sel === q.id ? "sel" : ""}`} />
+              <rect x={x0} y={15} width={q.w - 2} height={36} rx="3" aria-hidden="true" className={`cf-field ${sel === q.id ? "sel" : ""}`} />
               <text x={x0 + (q.w - 2) / 2} y={29} textAnchor="middle" className="fig-label">{q.name}</text>
               <text x={x0 + (q.w - 2) / 2} y={44} textAnchor="middle" className={q.id === "id" || q.id === "ctl" ? "fig-value small" : "fig-label dim"}>
                 {q.id === "id" ? id : q.id === "ctl" ? "DLC = 8" : q.id === "data" ? "8 bytes" : `${q.bits} bit${q.bits > 1 ? "s" : ""}`}
@@ -106,7 +106,7 @@ function CanFrame() {
         </div>
         <div>
           <span>Distance</span>
-          <input type="range" min={0} max={4000} step={1} value={dist} aria-label="Distance the sensor measures, millimetres" onChange={(e) => setDist(+e.target.value)} />
+          <input type="range" min={0} max={4000} step={1} value={dist} aria-label="Distance the sensor measures, millimetres" aria-valuetext={`${dist} millimetres`} onChange={(e) => setDist(+e.target.value)} />
           <code>{dist} mm = 0x{h2(bytes[1])}{h2(bytes[0])}</code>
           <button className="fig-opt" aria-pressed={dist === 255} onClick={() => setDist(255)}>255 mm</button>
           <button className="fig-opt" aria-pressed={dist === 256} onClick={() => setDist(256)}>256 mm</button>
@@ -118,7 +118,7 @@ function CanFrame() {
           <code>identifier 0x060B01ss, ss = {sensor}</code>
         </div>
       </div>
-      <figcaption>One extended CAN data frame in the order it is sent (field widths are not to scale). After five equal bits in a row the sender inserts one opposite bit, a stuff bit, so the receivers always have edges to time the bits from. From 255 to 256 mm byte 0 goes back to 0x00 and byte 1 becomes 0x01: the low byte comes first.</figcaption>
+      <figcaption>One extended CAN data frame in the order it is sent (field widths are not to scale). The Field buttons pick a field; clicking it in the drawing does the same. After five equal bits in a row the sender inserts one opposite bit, a stuff bit, so the receivers always have edges to time the bits from. From 255 to 256 mm byte 0 goes back to 0x00 and byte 1 becomes 0x01: the low byte comes first.</figcaption>
     </figure>
   );
 }

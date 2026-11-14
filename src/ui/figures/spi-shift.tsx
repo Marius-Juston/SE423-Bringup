@@ -81,6 +81,9 @@ function SpiShift() {
         {/* SIMO: master top bit, over the top, into the slave's bit 0 */}
         <path d={`M${MX},${Y + 12} H10 V24 H410 V${Y + 12} H${SX + 8 * W + 5}`} className="fig-wire" style={{ stroke: done ? undefined : lv(simo), strokeWidth: 2 }} />
         <polygon points={`${SX + 8 * W},${Y + 12} ${SX + 8 * W + 6},${Y + 8} ${SX + 8 * W + 6},${Y + 16}`} style={{ fill: done ? "var(--dim)" : lv(simo) }} />
+        {/* the level is also written beside each arrowhead, so it does not rest on the colour */}
+        {!done && <text x={SX + 8 * W + 7} y={Y + 3} textAnchor="middle" className="fig-label">{simo}</text>}
+        {!done && <text x={MX + 8 * W + 7} y={Y + 3} textAnchor="middle" className="fig-label">{somi}</text>}
         <text x={210} y={19} textAnchor="middle" className="fig-label">SIMO: master out, slave in{done ? "" : `, carrying ${simo}`}</text>
         {/* SOMI: slave top bit into the master's bit 0 */}
         <line x1={SX} y1={Y + 12} x2={MX + 8 * W + 5} y2={Y + 12} className="fig-wire" style={{ stroke: done ? undefined : lv(somi), strokeWidth: 2 }} />

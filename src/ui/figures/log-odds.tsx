@@ -101,13 +101,13 @@ function LogOdds() {
           <>
             <path d="M52 35 H262" className="lodd-beam" />
             <path d="M266 35 l-8,-4.5 v9 Z" className="lodd-beamhead" />
-            <rect x="270" y="14" width="6" height="42" className="fig-box" />
+            <rect x="270" y="22" width="6" height="26" className="fig-box" />
             <text x="100" y="28" textAnchor="middle" className="fig-label">passes through</text>
             <text x="282" y="38" className="fig-label dim">it ends further on</text>
           </>
         )}
-        <text x="206" y={last === false ? 60 : 30} className="fig-value">p = {fp(p)}</text>
-        <text x="206" y={last === false ? 72 : 44} className="fig-label">{verdict}</text>
+        <text x="206" y={last === false ? 63 : 30} className="fig-value">p = {fp(p)}</text>
+        <text x="206" y={last === false ? 75 : 44} className="fig-label">{verdict}</text>
         {/* log-odds axis */}
         <text x="4" y="110" className="fig-label">log-odds l</text>
         <line x1={X0} x2={X1} y1="106" y2="106" className="lodd-axis" />

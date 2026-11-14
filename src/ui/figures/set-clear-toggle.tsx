@@ -51,6 +51,8 @@ const CSS = `
 `;
 
 const lv = (b: Bit) => (b ? "var(--orange)" : "var(--arches)");
+/** The same two levels as the colour of words: orange is a fill and an edge only. */
+const lvText = (b: Bit) => (b ? "var(--accent-text)" : "var(--arches)");
 const volts = (b: Bit) => (b ? "3.3 V" : "0 V");
 
 function SetClearToggle() {
@@ -62,6 +64,7 @@ function SetClearToggle() {
     text: "Press a register button: it writes a 1 to bit 22 only. Every other bit is written as 0, and a 0 written to SET, CLEAR or TOGGLE does nothing.",
   });
   const frames = mode === "dat" ? DAT : SAFE;
+  const stepping = mode !== "free";
   const f: Frame = mode === "free" ? { l22: free.l22, l31: 1, p22: free.l22, p31: 1, copy: null, phase: "settle", line: -1, text: free.text } : frames[step];
   const code = mode === "dat" ? DAT_CODE : mode === "safe" ? SAFE_CODE : free.stmt ? [free.stmt] : [];
   const act = (reg: "SET" | "CLEAR" | "TOGGLE") => {
@@ -113,7 +116,7 @@ function SetClearToggle() {
               {/* pin */}
               <line x1="232" y1={mid} x2="301" y2={mid} className="fig-wire thick" style={{ stroke: pinColor, strokeDasharray: r.lag ? "4 3" : undefined }} />
               <rect x="301" y={mid - 9} width="14" height="18" className="fig-pin" />
-              <text x="321" y={mid - 3} className="fig-value small" style={{ fill: pinColor }}>{volts(r.pin)}{r.lag ? " still" : ""}</text>
+              <text x="321" y={mid - 3} className="fig-value small" style={{ fill: lvText(r.pin) }}>{volts(r.pin)}{r.lag ? " still" : ""}</text>
               <text x="321" y={mid + 9} className="fig-label dim">{r.lag ? (r.latch ? "on its way up" : "on its way down") : r.note || (r.pin ? "high" : "low")}</text>
               <circle cx="270" cy={mid} r="2.5" className="fig-dot" />
             </g>
@@ -133,17 +136,6 @@ function SetClearToggle() {
         </ol>
       )}
       <p className="fig-why" role="status">{f.text}</p>
-      {mode !== "free" && (
-        <div className="fig-controls row">
-          {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus at the last step */}
-          <button className="fig-opt" aria-disabled={step === 0} onClick={() => setStep(Math.max(0, step - 1))}>Back</button>
-          <button className="fig-opt" aria-disabled={step === frames.length - 1} onClick={() => setStep(Math.min(frames.length - 1, step + 1))}>Next</button>
-          <button className="fig-opt" aria-disabled={step === 0} onClick={() => setStep(0)}>Reset</button>
-          <span className="fig-dots" role="img" aria-label={`step ${step + 1} of ${frames.length}`}>
-            {frames.map((_, i) => <i key={i} className={i <= step ? "on" : ""} />)}
-          </span>
-        </div>
-      )}
       <div className="fig-controls">
         <div>
           <span>Write a 1</span>
@@ -156,6 +148,21 @@ function SetClearToggle() {
           <span>Two lines</span>
           <button className="fig-opt" aria-pressed={mode === "dat"} onClick={() => begin("dat")}>through GPADAT.bit</button>
           <button className="fig-opt" aria-pressed={mode === "safe"} onClick={() => begin("safe")}>through GPASET and GPACLEAR</button>
+        </div>
+        {/* Always there, so the figure keeps its height: the steps belong to the two-line programs. */}
+        <div>
+          <span>Step</span>
+          {/* aria-disabled, not disabled: a disabled button would drop the keyboard focus at the last step */}
+          <button className="fig-opt" aria-disabled={stepping ? step === 0 : true} onClick={() => stepping && setStep(Math.max(0, step - 1))}>Back</button>
+          <button className="fig-opt" aria-disabled={stepping ? step === frames.length - 1 : true} onClick={() => stepping && setStep(Math.min(frames.length - 1, step + 1))}>Next</button>
+          <button className="fig-opt" aria-disabled={stepping ? step === 0 : true} onClick={() => stepping && setStep(0)}>Reset</button>
+          {stepping ? (
+            <span className="fig-dots" role="img" aria-label={`step ${step + 1} of ${frames.length}`}>
+              {frames.map((_, i) => <i key={i} className={i <= step ? "on" : ""} />)}
+            </span>
+          ) : (
+            <code>choose a two-line program first</code>
+          )}
         </div>
       </div>
       <figcaption>Two pins of port A. SET, CLEAR and TOGGLE change only the bits you write as 1. A .bit write to GPADAT reads the whole port from the pins, changes one bit and writes all 32 bits back, so a pin that had not reached its new level yet gets its old level again.</figcaption>

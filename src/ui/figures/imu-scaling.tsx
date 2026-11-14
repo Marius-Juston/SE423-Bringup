@@ -7,7 +7,7 @@ import { useState } from "react";
 // +-4 g and converts with raw * range / 32767.0.
 
 const CSS = `
-.is-cell { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
+.is-cell { fill: var(--surface); stroke: var(--control); stroke-width: 0.8; }
 .is-cell.sign { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.4; }
 .is-bit { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--text); }
 .is-axis { stroke: var(--dim); stroke-width: 1.2; }
@@ -60,7 +60,7 @@ function ImuScaling() {
             <text x={X0 + i * 22.5 + (i >= 8 ? 1.5 : 0) + 10.25} y={27} textAnchor="middle" className="is-bit">{(u16 >> (15 - i)) & 1}</text>
           </g>
         ))}
-        <text x={X0} y={44} className="fig-label" style={{ fill: "var(--accent)" }}>sign bit: {neg ? "1, negative" : "0, positive"}</text>
+        <text x={X0} y={44} className="fig-label" style={{ fill: "var(--accent-text)" }}>sign bit: {neg ? "1, negative" : "0, positive"}</text>
         <text x={X1} y={44} textAnchor="end" className="fig-value small">
           0x{h(u16, 4)} = {signed ? `${raw} as int16_t` : `${u16} as uint16_t`}
         </text>
@@ -87,7 +87,7 @@ function ImuScaling() {
       <div className="fig-controls">
         <div>
           <span>Raw count</span>
-          <input type="range" min={-32768} max={32767} value={raw} aria-label="Raw 16-bit count from the sensor" onChange={(e) => setRaw(+e.target.value)} />
+          <input type="range" min={-32768} max={32767} value={raw} aria-label="Raw 16-bit count from the sensor" aria-valuetext={`${raw} counts, ${num(truth)} ${r.unit}`} onChange={(e) => setRaw(+e.target.value)} />
           <button className="fig-opt" onClick={() => setRaw(-32768)}>most negative</button>
           <button className="fig-opt" onClick={() => setRaw(0)}>zero</button>
           <button className="fig-opt" onClick={() => setRaw(32767)}>most positive</button>

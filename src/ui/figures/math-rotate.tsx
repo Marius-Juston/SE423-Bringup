@@ -25,6 +25,27 @@ function MathRotate() {
   const p = { x: ax.x + ly.x, y: ax.y + ly.y };
   const px = (v: number) => CX + v * S;
   const py = (v: number) => CY - v * S;
+  // Labels of the two points. A label is 12 units tall and at most LW wide (labels grow in a
+  // narrow column). "after" takes the first corner around its point where it covers neither
+  // "before", nor the axis letter y, nor the numbers on the right.
+  type Rect = { x: number; y: number; w: number; h: number };
+  const hits = (a: Rect, b: Rect) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  const beforeAt = { x: px(x) + 6, y: py(y) + (y >= 0 ? -5 : 12) };
+  const busy: Rect[] = [{ x: CX + 2, y: 6, w: 10, h: 14 }];
+  if (deg !== 0) busy.push({ x: beforeAt.x - 2, y: beforeAt.y - 11, w: 38, h: 15 });
+  const afterW = deg === 0 ? 76 : 28;
+  const corners = [
+    { dx: 7, dy: -6, end: false },
+    { dx: -7, dy: -6, end: true },
+    { dx: 7, dy: 13, end: false },
+    { dx: -7, dy: 13, end: true },
+  ];
+  if (px(p.x) > 222) corners.sort((a, b) => +b.end - +a.end);
+  const room = (k: { dx: number; dy: number; end: boolean }): Rect => ({ x: px(p.x) + k.dx - (k.end ? afterW : 0), y: py(p.y) + k.dy - 10, w: afterW, h: 12 });
+  const corner = corners.find((k) => {
+    const r = room(k);
+    return r.x >= 2 && r.x + r.w <= 268 && r.y >= 1 && !busy.some((b) => hits(r, b));
+  }) ?? corners[0];
   const why =
     deg === 0
       ? "Angle 0: nothing turns. cos 0 = 1 and sin 0 = 0, so the formulas give back x and y unchanged. Move the angle slider."
@@ -43,18 +64,19 @@ function MathRotate() {
         <line x1={px(-2.9)} x2={px(2.9)} y1={CY} y2={CY} className="mr-axis" />
         <line x1={CX} x2={CX} y1={py(2.6)} y2={py(-2.6)} className="mr-axis" />
         <text x={px(2.9)} y={CY + 11} textAnchor="end" className="fig-label dim">x</text>
-        <text x={CX + 4} y={py(2.6) + 8} className="fig-label dim">y</text>
+        <text x={CX + 4} y={py(2.6) + 7} className="fig-label dim">y</text>
         {/* before the turn */}
         <path d={`M${CX},${CY} L${px(x)},${CY} L${px(x)},${py(y)}`} className="mr-old" />
         <circle cx={px(x)} cy={py(y)} r={3.5} style={{ fill: "var(--dim)" }} />
-        {deg !== 0 && <text x={px(x) + 6} y={py(y) + (y >= 0 ? -5 : 12)} className="fig-label dim">before</text>}
         {/* after the turn */}
         <line x1={CX} y1={CY} x2={px(ax.x)} y2={py(ax.y)} className="mr-a" />
         <line x1={px(ax.x)} y1={py(ax.y)} x2={px(p.x)} y2={py(p.y)} className="mr-l" />
         {deg !== 0 && <path d={`M${CX + 18},${CY} A18,18 0 0 ${deg > 0 ? 0 : 1} ${(CX + 18 * c).toFixed(1)},${(CY - 18 * s).toFixed(1)}`} className="mr-arc" />}
         <circle cx={px(p.x)} cy={py(p.y)} r={4.5} style={{ fill: "var(--text)" }} />
-        <text x={px(p.x) > 222 ? px(p.x) - 7 : px(p.x) + 7} y={py(p.y) - 6} textAnchor={px(p.x) > 222 ? "end" : "start"} className="fig-label">{deg === 0 ? "before = after" : "after"}</text>
         <circle cx={CX} cy={CY} r={2.5} className="fig-dot" />
+        {/* the two labels last, with a rim: they follow the points over the grid and the legs */}
+        {deg !== 0 && <text x={beforeAt.x} y={beforeAt.y} className="fig-label dim fig-halo">before</text>}
+        <text x={px(p.x) + corner.dx} y={py(p.y) + corner.dy} textAnchor={corner.end ? "end" : "start"} className="fig-label fig-halo">{deg === 0 ? "before = after" : "after"}</text>
 
         <text x={272} y={14} className="fig-label">cos = <tspan className="fig-value small">{fmt(c, 3)}</tspan></text>
         <text x={272} y={27} className="fig-label">sin = <tspan className="fig-value small">{fmt(s, 3)}</tspan></text>
@@ -74,17 +96,17 @@ function MathRotate() {
       <div className="fig-controls">
         <div>
           <span>Angle</span>
-          <input className="mr-range" type="range" aria-label="Rotation angle in degrees" min={-180} max={180} step={15} value={deg} onChange={(e) => setDeg(+e.target.value)} />
+          <input className="mr-range" type="range" aria-label="Rotation angle in degrees" min={-180} max={180} step={15} value={deg} aria-valuetext={`${deg} degrees`} onChange={(e) => setDeg(+e.target.value)} />
           <span className="mr-num">{deg} deg</span>
         </div>
         <div>
           <span>x</span>
-          <input className="mr-range" type="range" aria-label="x of the point before the turn" min={0} max={2} step={0.1} value={x} onChange={(e) => setX(+e.target.value)} />
+          <input className="mr-range" type="range" aria-label="x of the point before the turn" min={0} max={2} step={0.1} value={x} aria-valuetext={`x = ${fmt(x, 1)}`} onChange={(e) => setX(+e.target.value)} />
           <span className="mr-num">{fmt(x, 1)}</span>
         </div>
         <div>
           <span>y</span>
-          <input className="mr-range" type="range" aria-label="y of the point before the turn" min={-1.5} max={1.5} step={0.1} value={y} onChange={(e) => setY(+e.target.value)} />
+          <input className="mr-range" type="range" aria-label="y of the point before the turn" min={-1.5} max={1.5} step={0.1} value={y} aria-valuetext={`y = ${fmt(y, 1)}`} onChange={(e) => setY(+e.target.value)} />
           <span className="mr-num">{fmt(y, 1)}</span>
         </div>
         <div>

@@ -7,3 +7,4 @@ src-tauri/gen
 
 # A checkout of the course starter repository, used by tests of the course starters. Never commit it.
 SE423Spring26/
+a11y-out

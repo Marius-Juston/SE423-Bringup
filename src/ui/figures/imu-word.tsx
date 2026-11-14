@@ -20,10 +20,10 @@ const CSS = `
 .iw-cell.addr { stroke: var(--text); stroke-width: 1.2; }
 .iw-cell.data { stroke: var(--value); stroke-width: 1.4; }
 .iw-bit { font-family: var(--mono); font-size: max(10px, calc(9px / var(--fig-k, 1))); font-weight: 700; fill: var(--text); }
-.iw-byte { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
+.iw-byte { fill: var(--surface); stroke: var(--control); stroke-width: 0.8; }
 .iw-byte.use { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.3; }
 .iw-byte.temp { stroke-dasharray: 3 2; }
-.iw-byte.none { stroke-dasharray: 1 2; opacity: 0.7; }
+.iw-byte.none { stroke-dasharray: 2 2; }
 .iw-hex { display: inline-flex; align-items: center; gap: 0.15rem; font-family: var(--mono); font-size: 0.85rem; }
 .iw-hex input { width: 2.6em; padding: 0.1em 0.3em; }
 .iw-fig input[type=range] { flex: 1 1 7rem; min-width: 6rem; max-width: 12rem; padding: 0; accent-color: var(--accent); }
@@ -133,10 +133,10 @@ function ImuWord() {
               <text x={34} y={y + 10.5} className="fig-value small">{r.k === 0 || read ? `0x${h4(r.k === 0 ? first : 0)}` : "2 values"}</text>
               {byteBox(86, y, r.a, read && r.whole)}
               {byteBox(216, y, r.b, read && (r.whole || (r.k === 0 && words === 1)))}
-              {read && r.whole && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent)" }}>= {name(r.a!).replace(" high", "")}</text>}
+              {read && r.whole && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent-text)" }}>= {name(r.a!).replace(" high", "")}</text>}
               {read && r.a !== null && isTemp(r.a) && isTemp(r.b) && <text x={348} y={y + 10.5} className="fig-label dim">skip this word</text>}
               {read && r.k === 0 && words > 1 && <text x={348} y={y + 10.5} className="fig-label dim">{isHigh(reg) && !isTemp(reg) ? "half a reading" : wholes.length ? "throw away" : "& 0x00FF"}</text>}
-              {read && r.k === 0 && words === 1 && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent)" }}>& 0x00FF</text>}
+              {read && r.k === 0 && words === 1 && <text x={348} y={y + 10.5} className="fig-label" style={{ fill: "var(--accent-text)" }}>& 0x00FF</text>}
             </g>
           );
         })}
@@ -170,7 +170,7 @@ function ImuWord() {
         </div>
         <div>
           <span>Words</span>
-          <input type="range" min={1} max={maxWords(reg)} value={words} aria-label="Number of 16-bit words in the transfer" onChange={(e) => setWords(+e.target.value)} />
+          <input type="range" min={1} max={maxWords(reg)} value={words} aria-label="Number of 16-bit words in the transfer" aria-valuetext={`${words} word${words > 1 ? "s" : ""}`} onChange={(e) => setWords(+e.target.value)} />
           <span className="iw-n">{words}</span>
         </div>
         <div>

@@ -77,7 +77,7 @@ const CSS = `
 .cst-code { list-style: none; margin: 0; padding: 0.35rem 0; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-family: var(--mono); font-size: 0.82rem; overflow-x: auto; }
 .cst-code li { display: flex; white-space: pre; padding: 0.02rem 0.5rem 0.02rem 0; border-left: 3px solid transparent; }
 .cst-code li .cst-no { width: 2.1rem; text-align: right; padding-right: 0.6rem; color: var(--dim); flex: none; user-select: none; }
-.cst-code li .cst-mark { width: 1.1rem; flex: none; color: var(--orange); font-weight: 700; }
+.cst-code li .cst-mark { width: 1.1rem; flex: none; color: var(--accent-text); font-weight: 700; }
 .cst-code li[aria-current="step"] { background: var(--accent-soft); border-left-color: var(--orange); font-weight: 700; }
 .cst-mem { display: flex; flex-wrap: wrap; gap: 0.6rem 1rem; margin: 0.6rem 0 0; min-height: 4.6rem; align-items: flex-start; }
 .cst-group { border: 1px dashed var(--border); border-radius: 6px; padding: 0.25rem 0.5rem 0.45rem; }
@@ -86,13 +86,15 @@ const CSS = `
 .cst-box { text-align: center; font-family: var(--mono); }
 .cst-box .cst-name { display: block; font-size: 0.78rem; }
 .cst-box .cst-val { display: block; min-width: 3.2rem; padding: 0.3rem 0.4rem; border: 2px solid var(--dim); border-radius: 4px; background: var(--surface); color: var(--harvest); font-weight: 700; font-size: 1rem; }
-.cst-box.cst-new .cst-val { border-color: var(--orange); background: var(--accent-soft); }
-.cst-box .cst-note { display: block; font-size: 0.68rem; font-family: var(--sans); color: var(--dim); min-height: 1em; }
+/* A box that just changed: a thicker edge as well as the colour (the padding gives the 2 px back). */
+.cst-box.cst-new .cst-val { border-color: var(--orange); border-width: 4px; padding: calc(0.3rem - 2px) calc(0.4rem - 2px); background: var(--accent-soft); }
+.cst-box .cst-note { display: block; font-size: var(--fig-small, 11px); font-family: var(--sans); color: var(--dim); min-height: 1em; }
 .cst-empty { color: var(--dim); font-size: 0.85rem; margin: 0.4rem 0; }
 .cst-out { margin: 0.6rem 0 0; }
 .cst-out h5 { margin: 0 0 0.2rem; font-size: 0.75rem; font-weight: 600; color: var(--dim); }
 .cst-out pre { margin: 0; min-height: 2.4em; padding: 0.3rem 0.5rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; font-size: 0.82rem; white-space: pre-wrap; }
 .cst-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin: 0.5rem 0; }
+/* A primary button that cannot be pressed loses its fill and gets a dashed edge: not by colour alone. */
 .cst-count { color: var(--dim); font-size: 0.82rem; margin-left: auto; }
 `;
 
