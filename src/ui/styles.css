@@ -335,8 +335,8 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .stars .empty { color: var(--control); }
 
 /* ---- level ---- */
-.level { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
-.level-head { display: flex; align-items: center; gap: 0.5rem 0.7rem; padding: 0.45rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-2); flex-wrap: wrap; }
+.level { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
+.level-head { display: flex; align-items: center; gap: 0.5rem 0.7rem; padding: 0.45rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg-2); flex-wrap: wrap; min-width: 0; max-width: 100%; box-sizing: border-box; }
 .crumbs { display: grid; min-width: 0; }
 .crumbs h1 { font-size: 1.08rem; letter-spacing: 0; }
 .badge { display: inline-flex; align-items: center; gap: 0.3em; font-size: 0.7rem; font-weight: 680; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.15em 0.6em; border-radius: 4px; border: 1px solid var(--control); color: var(--dim); white-space: nowrap; }
@@ -534,8 +534,9 @@ tr.target td:first-child { color: var(--bad); }
 .tool-note { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; font-size: var(--fs-2); padding: 0.35rem 0.5rem; border: 1px solid var(--border-strong); border-left: 3px solid var(--value); border-radius: var(--radius); background: var(--surface); }
 .tool-note > span { margin-right: auto; }
 .tool-note .btn { white-space: normal; text-align: left; }
-.speed { font-size: var(--fs-1); color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; }
-.speed select { padding: 0.15em 0.3em; font-size: var(--fs-2); min-height: 1.75rem; }
+.speed { font-size: var(--fs-1); color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; white-space: nowrap; min-width: 0; max-width: 100%; }
+/* A long choice (a starting program's name) is cut short in a narrow window instead of widening the page. */
+.speed select { padding: 0.15em 0.3em; font-size: var(--fs-2); min-height: 1.75rem; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
 .chip { display: inline-flex; align-items: center; gap: 0.4rem; font-size: var(--fs-2); font-weight: 680; padding: 0.15em 0.65em; min-height: 1.75rem; border-radius: 999px; border: 1px solid var(--control); color: var(--dim); white-space: nowrap; }
 .chip i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--dim); display: block; }
 .chip.state-running, .chip.state-ok { color: var(--ok); border-color: var(--ok); }
@@ -609,6 +610,8 @@ tr.target td:first-child { color: var(--bad); }
 .plots { display: grid; gap: 0.4rem; }
 .parts { display: flex; flex-wrap: wrap; gap: 0.7rem 0.9rem; background: var(--pcb); border: 1px solid var(--pcb-edge); border-radius: 10px; padding: 0.8rem; }
 /* The board is the same green in both themes, so its parts use fixed colours. */
+/* The LEDs of a display keep their place: the grid is the board's. It comes last on the board, on a row of its own. */
+.led-grid { display: grid; grid-auto-columns: minmax(3.4rem, auto); gap: 0.45rem 0.5rem; justify-content: start; order: 2; flex-basis: 100%; padding-top: 0.5rem; border-top: 1px dashed var(--pcb-edge); }
 .led { display: grid; justify-items: center; gap: 2px; font-size: 0.72rem; color: var(--pcb-ink); min-width: 3rem; }
 .led i { width: 20px; height: 20px; border-radius: 50%; background: #17231f; border: 2px solid #b9cdc5; display: block; }
 .led.on.red i { background: #ff4a3d; box-shadow: 0 0 12px 3px #ff4a3d; border-color: #ffd0cb; }

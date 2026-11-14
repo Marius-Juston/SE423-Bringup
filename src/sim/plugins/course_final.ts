@@ -65,11 +65,11 @@
 //   program sends there goes nowhere.
 // - The LPR510 analog gyro on ADCINC5 and the other ADCC inputs read what
 //   their signal-bus inputs say (0 V unless set).
-// - setupSpib() is the library's (plugins/spi.ts): it does not write the
-//   MPU-9250's configuration registers as the final project's own version
-//   does, so the accelerometer stays at its reset range of 2 g (the starter
-//   scales for 4 g and shows 2.0 where the board shows 1.0). The gyro range
-//   is 250 deg/s either way.
+// - setupSpib() is the library's (plugins/spi.ts) and sets the port only. The
+//   MPU-9250 configuration the final project's own version writes is not
+//   sent over SPI; only the accelerometer's 4 g range, which the project
+//   scales for, is selected (by InitSE423DefaultGPIO). The gyro range is
+//   250 deg/s either way.
 // - The time the native functions take is nominal (one statement each for
 //   the short ones, twenty for PIcontrol, xy_control and the 3 x 3 products).
 
@@ -127,6 +127,7 @@ void setEPWM5B_RCServo(float angle);
 void setEPWM6A_RCServo(float angle);
 void PIcontrol(float *uLeftlocal, float *uRightlocal, float vreflocal, float turnlocal,
                float LeftWheellocal, float RightWheellocal);
+void __se423_imu(void);
 void __se423_out(Uint16 pin, Uint16 level)
 {
     GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, 0);
@@ -144,6 +145,7 @@ void InitSE423DefaultGPIO(void)
         GPIO_SetupPinOptions(pin, GPIO_INPUT, GPIO_PULLUP);
     }
     __se423_out(19, 1); __se423_out(29, 1); __se423_out(66, 1); __se423_out(125, 1);
+    __se423_imu();
 }
 uint16_t readbuttons(void)
 {
@@ -350,6 +352,14 @@ function install(b: Board): void {
     });
   sum("Matrix3x1_Add", 1);
   sum("Matrix3x3_Add", 3);
+  // The final project's own SPIB set-up also selects the accelerometer's 4 g range, and the project scales
+  // for it. The library's setupSpib() sets the port only, so the range is selected here, for programs that
+  // use the final project's board set-up.
+  c.defineNative("__se423_imu", () => {
+    const imu = b.plugins.get("spi_devices") as { mpuRegs?: Uint8Array } | undefined;
+    if (imu?.mpuRegs) imu.mpuRegs[0x1c] = 0x08;
+    return 0;
+  });
   c.defineNative("Matrix3x3_Trans", (a, _t, line) => {
     const m = getM(a[0], 3, 3);
     cost(line, 9);

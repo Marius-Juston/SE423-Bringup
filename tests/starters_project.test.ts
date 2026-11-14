@@ -327,3 +327,17 @@ describe("the Sandbox's own FFT and final project starting programs", () => {
     expect(wall).toBeLessThan(2500);
   });
 });
+
+describe("the final project's board set-up and the IMU", () => {
+  it("selects the accelerometer's 4 g range, which the project scales for", () => {
+    const src = `void main(void) {
+    InitSysCtrl();
+    InitGpio();
+    InitSE423DefaultGPIO();
+    while (1) {}
+}`;
+    const r = runProgram({ kit: "robot", source: src, durationMs: 1, checks: [] });
+    expect(r.compileError).toBeUndefined();
+    expect((r.board!.plugins.get("spi_devices") as { mpuRegs: Uint8Array }).mpuRegs[0x1c]).toBe(0x08);
+  });
+});
