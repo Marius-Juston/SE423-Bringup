@@ -5,7 +5,7 @@ import { Board, type Diagnostic, type IsrLog } from "./board";
 import { CError } from "./cc/lexer";
 import { RuntimeError } from "./cc/compile";
 import { KITS, findPart, type Kit } from "./world/kits";
-import type { PinChange } from "./periph/gpio";
+import { PIN_COUNT, PORTS, type PinChange } from "./periph/gpio";
 
 const MS = 1e6;
 
@@ -32,12 +32,23 @@ export type Check = { label: string; hint?: string } & (
   | { kind: "serial-period"; port?: number; periodMs: number; tolPct?: number }
   | { kind: "lcd"; line: 1 | 2; matches: string }
   | { kind: "reg"; reg: string; field?: string; equals: number; at?: number }
+  /**
+   * The output latch of a whole port ("A" to "F"): what DAT / SET / CLEAR / TOGGLE writes left in
+   * it, also for pins that are inputs, where the pin itself shows nothing. Read at `at` ms (default: end).
+   */
+  | { kind: "latch"; port: "A" | "B" | "C" | "D" | "E" | "F"; equals: number; at?: number }
   | { kind: "var"; name: string; equals?: number; min?: number; max?: number; at?: number }
   | { kind: "isr"; fn: string; min?: number; max?: number }
   /** A named output of the signal bus (e.g. "DACA" in volts) at time `at` ms (default: end of run). */
   | { kind: "signal"; name: string; at?: number; equals?: number; tol?: number; min?: number; max?: number }
   /** Fraction of time an LED or pin is on/high between `from` and `to`, in percent. */
   | { kind: "duty"; led?: string; pin?: number; pct: number; tolPct?: number; from?: number; to?: number }
+  /**
+   * Time from one switch-on of an LED (or rising edge of a pin) to the next, between `from` and `to` (ms).
+   * Unlike `blink` it does not assume equal on and off times, so it fits a PWM waveform. Every
+   * period in the window must be within `tolPct` percent (default 2) of `periodMs`.
+   */
+  | { kind: "period"; led?: string; pin?: number; periodMs: number; tolPct?: number; from?: number; to?: number }
   /** The pin changes within `withinUs` microseconds after time `after` (ms), e.g. after a button press. */
   | { kind: "latency"; led?: string; pin?: number; after: number; withinUs: number }
   /** Text sent on a pin as a UART waveform (start bit, 8 data bits LSB first, stop bit), decoded at `baud`. */
@@ -158,6 +169,7 @@ export function runProgram(spec: RunSpec): RunResult {
     if ((c.kind === "reg" || c.kind === "var") && c.at !== undefined) {
       b.at(c.at * MS, () => samples.set(c, c.kind === "reg" ? b.dev.get(c.reg, c.field) : b.readVar(c.name)));
     }
+    if (c.kind === "latch" && c.at !== undefined) b.at(c.at * MS, () => samples.set(c, b.gpio.latchOf(PORTS.indexOf(c.port))));
   }
 
   const gen = b.run();
@@ -187,12 +199,36 @@ export function runProgram(spec: RunSpec): RunResult {
     return lv < 0 ? false : activeLow ? lv === 0 : lv === 1;
   };
 
+  /**
+   * The part of the run a check measures over, ms. `empty` is set, as the sentence to show, when
+   * that part has no length: a window that ends where it starts, or one that starts after the test.
+   */
+  const windowOf = (c: { from?: number; to?: number }): { from: number; to: number; empty?: string } => {
+    const from = c.from ?? 0;
+    const to = Math.min(c.to ?? spec.durationMs, spec.durationMs);
+    if (to > from) return { from, to };
+    const why = from >= spec.durationMs ? `it starts at ${fmtMs(from)}, and the test ends at ${fmtMs(spec.durationMs)}` : `it runs from ${fmtMs(from)} to ${fmtMs(c.to ?? spec.durationMs)}, which is no time at all`;
+    return { from, to, empty: `Not measured: the time window of this check is empty (${why}). This is a mistake in the level, not in your program.` };
+  };
+  /** Why a pin that never changed in a window is probably not doing what the program wants. */
+  const whyStill = (pin: number): string =>
+    b.gpio.mux(pin) !== 0
+      ? ` GPIO${pin} is handed to a peripheral in the pin mux, and that peripheral's signal did not change.`
+      : !b.gpio.isOutput(pin)
+        ? ` GPIO${pin} is not set as an output.`
+        : "";
+  const NAN_NOTE = " NaN means \"not a number\": the result of a calculation such as 0.0 / 0.0 or sqrt() of a negative number.";
+
   const evaluate = (c: Check, into: CheckResult[]): void => {
     let pass = false;
     let detail = "";
     let value: number | undefined;
     if (!res.ran && c.kind !== "source" && c.kind !== "max-lines") {
-      into.push({ label: c.label, pass: false, detail: "Not checked: the program stopped with an error.", hint: c.hint });
+      const e = res.runtimeError;
+      // A program stuck in an interrupt function is only given up on long after the test's end: no time then.
+      const early = e && e.tMs < spec.durationMs;
+      const when = e ? `${early ? ` at ${fmtMs(e.tMs)}` : ""}${e.line ? `${early ? "," : ""} on line ${e.line}` : ""}${early ? ", before the test was over" : ""}` : "";
+      into.push({ label: c.label, pass: false, detail: `Not checked: the program stopped with an error${when}.`, hint: c.hint });
       return;
     }
     switch (c.kind) {
@@ -236,13 +272,16 @@ export function runProgram(spec: RunSpec): RunResult {
       }
       case "blink": {
         const p = pinOf(c);
-        const from = (c.from ?? 0) * MS;
-        const to = (c.to ?? spec.durationMs) * MS;
+        const w = windowOf(c);
+        if (w.empty) {
+          detail = w.empty;
+          break;
+        }
+        const from = w.from * MS;
+        const to = w.to * MS;
         const tr = (b.gpio.trace.get(p.pin) ?? []).filter((x) => x.t >= from && x.t <= to);
         if (tr.length < 3) {
-          detail = `${p.name} changed ${tr.length} time${tr.length === 1 ? "" : "s"} in the test window, so it is not blinking.`;
-          if (b.gpio.mux(p.pin) !== 0) detail += ` GPIO${p.pin} is handed to a peripheral in the pin mux, and that peripheral's signal did not change.`;
-          else if (!b.gpio.isOutput(p.pin)) detail += ` GPIO${p.pin} is not set as an output.`;
+          detail = `${p.name} changed ${tr.length} time${tr.length === 1 ? "" : "s"} in the test window, so it is not blinking.${whyStill(p.pin)}`;
           break;
         }
         // Median gap between changes: start-up transitions do not skew it.
@@ -252,6 +291,39 @@ export function runProgram(spec: RunSpec): RunResult {
         const tol = (c.tolPct ?? 2) / 100;
         pass = Math.abs(period - c.periodMs) <= c.periodMs * tol;
         detail = `${p.name} blinks with a period of ${fmtMs(period)} (changes every ${fmtMs(half)})${pass ? "" : `, expected ${fmtMs(c.periodMs)}`}.`;
+        break;
+      }
+      case "period": {
+        const p = pinOf(c);
+        const w = windowOf(c);
+        if (w.empty) {
+          detail = w.empty;
+          break;
+        }
+        const onLevel = p.activeLow ? 0 : 1;
+        const verb = c.led ? "switches on" : "rises";
+        // Switch-on edges: the level becomes "on" and was not "on" just before.
+        const starts: number[] = [];
+        let prev = -1;
+        for (const x of b.gpio.trace.get(p.pin) ?? []) {
+          if (x.t > w.to * MS) break;
+          if (x.level === onLevel && prev !== onLevel && x.t >= w.from * MS) starts.push(x.t);
+          prev = x.level;
+        }
+        if (starts.length < 2) {
+          detail = `${p.name} ${c.led ? "switched on" : "rose"} ${starts.length} time${starts.length === 1 ? "" : "s"} between ${fmtMs(w.from)} and ${fmtMs(w.to)}. Two are needed to measure a period.${starts.length ? "" : whyStill(p.pin)}`;
+          break;
+        }
+        const gaps = starts.slice(1).map((t, i) => (t - starts[i]) / MS).sort((x, y) => x - y);
+        const lo = gaps[0];
+        const hi = gaps[gaps.length - 1];
+        const tol = c.periodMs * ((c.tolPct ?? 2) / 100);
+        value = gaps[gaps.length >> 1];
+        pass = Math.abs(lo - c.periodMs) <= tol && Math.abs(hi - c.periodMs) <= tol;
+        const even = hi - lo <= 1e-6 * Math.max(1, hi);
+        detail = even
+          ? `${p.name} ${verb} every ${fmtMs(value)}${pass ? "" : `, expected every ${fmtMs(c.periodMs)}`}.`
+          : `${p.name} ${verb} at uneven intervals, from ${fmtMs(lo)} to ${fmtMs(hi)}${pass ? "" : `; expected every ${fmtMs(c.periodMs)}`}.`;
         break;
       }
       case "serial": {
@@ -304,11 +376,44 @@ export function runProgram(spec: RunSpec): RunResult {
         detail = `${name} is ${fmtVal(v)}${pass ? "" : `, expected ${fmtVal(c.equals >>> 0)}`}.`;
         break;
       }
+      case "latch": {
+        const port = PORTS.indexOf(c.port);
+        const v = (c.at !== undefined && samples.has(c) ? samples.get(c)! : b.gpio.latchOf(port)) >>> 0;
+        const want = c.equals >>> 0;
+        pass = v === want;
+        const hex = (x: number) => `0x${x.toString(16).toUpperCase().padStart(8, "0")}`;
+        detail = `The output latch of port ${c.port} holds ${hex(v)}${pass ? "" : `, expected ${hex(want)}`}.`;
+        if (!pass) {
+          // Name the pins: a latch bit of an input shows on no pin, so say why it still matters.
+          const pins = (mask: number) => {
+            const list: number[] = [];
+            for (let n = 0; n < 32; n++) if ((mask >>> n) & 1 && port * 32 + n < PIN_COUNT) list.push(port * 32 + n);
+            return list.length > 4 ? `GPIO${list[0]} to GPIO${list[list.length - 1]} (${list.length} pins)` : list.map((n) => `GPIO${n}`).join(", ");
+          };
+          const extra = (v & ~want) >>> 0;
+          const missing = (want & ~v) >>> 0;
+          if (extra) {
+            detail += ` Extra 1 bits: ${pins(extra)}.`;
+            const hidden: number[] = [];
+            for (let n = 0; n < 32; n++) {
+              const pin = port * 32 + n;
+              if ((extra >>> n) & 1 && pin < PIN_COUNT && !(b.gpio.mux(pin) === 0 && b.gpio.isOutput(pin))) hidden.push(pin);
+            }
+            if (hidden.length) detail += ` ${hidden.length === 1 ? `GPIO${hidden[0]} is` : "Some of them are"} not an output now, so nothing shows, but the latch remembers the 1 and drives the pin high the moment it becomes an output.`;
+          }
+          if (missing) detail += ` Missing 1 bits: ${pins(missing)}.`;
+        }
+        break;
+      }
       case "var": {
         // A reading asked for at the very end of the run is the final value.
         const v = c.at !== undefined && samples.has(c) ? samples.get(c) : b.readVar(c.name);
         if (v === undefined) {
           detail = `There is no global variable named ${c.name}.`;
+          break;
+        }
+        if (Number.isNaN(v)) {
+          detail = `${c.name} is NaN.${NAN_NOTE}`;
           break;
         }
         const exact = Number.isInteger(v) && (c.equals === undefined || Number.isInteger(c.equals));
@@ -325,6 +430,14 @@ export function runProgram(spec: RunSpec): RunResult {
       }
       case "signal": {
         const v = b.output(c.name, c.at !== undefined ? c.at * MS : undefined);
+        if (v === undefined && c.at !== undefined && b.output(c.name) !== undefined) {
+          detail = `${c.name} had not produced a value yet at ${fmtMs(c.at)}. Its first value came later in the test.`;
+          break;
+        }
+        if (v !== undefined && Number.isNaN(v)) {
+          detail = `${c.name} was NaN${c.at !== undefined ? ` at ${fmtMs(c.at)}` : ""}.${NAN_NOTE}`;
+          break;
+        }
         if (v === undefined) {
           detail = `${c.name} never produced a value during the test. Either the program never reached the code that produces it, or the peripheral is not switched on, or its pin is not selected in the pin mux.`;
           break;
@@ -337,22 +450,33 @@ export function runProgram(spec: RunSpec): RunResult {
       }
       case "duty": {
         const p = pinOf(c);
-        const from = (c.from ?? 0) * MS;
-        const to = (c.to ?? spec.durationMs) * MS;
+        const w = windowOf(c);
+        if (w.empty) {
+          detail = w.empty;
+          break;
+        }
+        const from = w.from * MS;
+        const to = w.to * MS;
         let on = 0;
+        let defined = 0;
         let lv = b.gpio.levelAt(p.pin, from);
         let last = from;
         for (const x of b.gpio.trace.get(p.pin) ?? []) {
           if (x.t <= from) continue;
           if (x.t >= to) break;
           if (lv >= 0 && (p.activeLow ? lv === 0 : lv === 1)) on += x.t - last;
+          if (lv >= 0) defined += x.t - last;
           last = x.t;
           lv = x.level;
         }
         if (lv >= 0 && (p.activeLow ? lv === 0 : lv === 1)) on += to - last;
-        const pct = to > from ? (100 * on) / (to - from) : 0;
+        if (lv >= 0) defined += to - last;
+        const pct = (100 * on) / (to - from);
         pass = Math.abs(pct - c.pct) <= (c.tolPct ?? 2);
-        detail = `${p.name} was ${c.led ? "on" : "high"} ${pct.toFixed(1)}% of the time${pass ? "" : `, expected ${c.pct}%`}.`;
+        detail = `${p.name} was ${c.led ? "on" : "high"} ${pct.toFixed(1)}% of the time between ${fmtMs(w.from)} and ${fmtMs(w.to)}${pass ? "" : `, expected ${c.pct}%`}.`;
+        // No level at all is not the same as a pin held low: say which it was.
+        if (!pass && defined === 0) detail = `GPIO${p.pin} had no level between ${fmtMs(w.from)} and ${fmtMs(w.to)}: nothing drove it, so ${c.led ? `${p.name} was never on` : "it was never high"}, expected ${c.pct}% of the time.${whyStill(p.pin)}`;
+        else if (!pass && c.led && pct === 0 && whyStill(p.pin)) detail += whyStill(p.pin);
         break;
       }
       case "latency": {

@@ -1992,7 +1992,10 @@ With \`ALPHA = 0.998\` and a 1 ms step, the gyro dominates over times shorter th
 ## What to do
 \`theta_gyro\` and \`theta_enc\` are computed for you. Add the line that computes the blended \`theta\`.
 
-One honest note: on this bench the wheels never slip, so \`theta_enc\` alone would do well here. On the floor it does not, and the gyro is what catches a slipping wheel.
+## A slipping wheel
+From 7.7 s to 7.9 s the left wheel slips: it turns, but the robot does not follow. \`theta_enc\` counts that turn and is 0.17 rad off from then on. The gyro feels what the robot really does, so the blended heading stays close. The tests look right at the end of the slip.
+
+Long after a slip this filter creeps towards the wrong encoder heading. Only a look at the outside world (a landmark, in the next level) repairs that.
 ${BENCH}
 - \`tb_gyro_z()\`: turn rate in rad/s, with bias and noise.
 `,
@@ -2002,6 +2005,9 @@ ${BENCH}
         { at: 0, set: "TB_GYRO_NOISE", value: 0.01 },
         { at: 0, set: "TB_ENC_NOISE", value: 0.05 },
         { at: 3000, set: "TB_GYRO_BIAS", value: 0.08 },
+        // The left wheel spins without moving the robot for 0.2 s: the encoder heading is wrong from here on.
+        { at: 7700, set: "TB_SLIP_LEFT", value: 1 },
+        { at: 7900, set: "TB_SLIP_LEFT", value: 0 },
       ],
       starter: prog(
         `#define ALPHA 0.998
@@ -2070,7 +2076,15 @@ uint32_t numTimer0calls = 0;`,
       checks: [
         { kind: "signal", name: "TB_EST_ERR_RAD", at: 2900, max: 0.02, label: "Before the bias changes, the heading is within 0.02 rad" },
         { kind: "signal", name: "TB_EST_ERR_RAD", at: 5000, max: 0.06, label: "2 s after the bias changed, the error is bounded (below 0.06 rad)", hint: "The gyro alone is 0.16 rad off here and still drifting." },
-        { kind: "signal", name: "TB_EST_ERR_RAD", max: 0.06, label: "5 s after the bias changed, the error is no larger", hint: "The gyro alone is 0.4 rad off by now." },
+        { kind: "signal", name: "TB_EST_ERR_RAD", at: 7600, max: 0.06, label: "4.6 s after the bias changed, the error is no larger", hint: "The gyro alone is 0.37 rad off by now." },
+        {
+          kind: "signal",
+          name: "TB_EST_ERR_RAD",
+          at: 7905,
+          max: 0.06,
+          label: "At the end of the wheel slip (7.9 s) the heading is still within 0.06 rad",
+          hint: "The encoder heading alone is 0.17 rad off here: the wheel turned and the robot did not. The gyro step `theta + gyro * 0.001` must carry most of the weight (ALPHA), with only the small rest on theta_enc.",
+        },
         { kind: "source", mustMatch: "theta\\s*=[^;]*gyro", label: "The blended heading still uses the gyro" },
       ],
       watch: ["theta_gyro", "theta_enc", "theta"],

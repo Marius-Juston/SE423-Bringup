@@ -89,7 +89,9 @@ wall and post) all use it. A level or test chooses the world with inputs:
   ray casts bit for bit with the model before obstacles existed.
 - `WORLD_KIND` (0, the default, leaves the choice to `LIDAR_ROOM`): 1 two
   rooms and a door, 2 slalom of posts, 3 U-shaped dead end, 4 narrow gap,
-  5 random maze.
+  5 random maze, 6 one long slanted wall (the line y = 0.5 x - 2, nothing
+  else, no goal: for line fits, where a wall along an axis hides a missing
+  `atan`).
 - `WORLD_SEED`: the maze's seed (the same seed gives the same maze on
   every machine: the generator is `mulberry32`, never `Math.random`), or
   the layout number of the slalom and the U.

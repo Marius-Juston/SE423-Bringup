@@ -111,16 +111,16 @@ function SarSearch() {
         <text x={PX} y="37" className="fig-value" style={{ fill: "var(--orange)" }}>{vin.toFixed(2)} V</text>
         <line x1={PX} x2={PX + 12} y1="52" y2="52" stroke="var(--harvest)" strokeWidth="2.6" />
         <text x={PX + 16} y="55" className="fig-label dim">DAC trial voltage</text>
-        <text x={PX} y="68" className="fig-value">{cur ? `${trim(cur.trial)} V` : "-"}</text>
-        <rect x={PX - 4} y="78" width="112" height="39" rx="4" className={`fig-box ${cur ? "hot" : ""}`} />
-        <text x={PX + 2} y="91" className="fig-label">comparator: held is</text>
-        <text x={PX + 2} y="102" className="fig-label">at least the trial?</text>
-        {cur && <text x={PX + 104} y="113" textAnchor="end" className={cur.yes ? "sar-yes" : "sar-no"}>{cur.yes ? "YES" : "NO"}</text>}
+        <text x={PX} y="68" className="fig-value">{cur ? `${trim(cur.trial)} V` : "none yet"}</text>
+        <rect x={PX - 4} y="76" width="112" height="43" rx="4" className={`fig-box ${cur ? "hot" : ""}`} />
+        <text x={PX + 2} y="88" className="fig-label">comparator: held is</text>
+        <text x={PX + 2} y="99" className="fig-label">at least the trial?</text>
+        {cur && <text x={PX + 104} y="115.5" textAnchor="end" className={cur.yes ? "sar-yes" : "sar-no"}>{cur.yes ? "YES" : "NO"}</text>}
         <text x={PX} y="131" className="fig-value">{cur ? `bit ${cur.bit} = ${cur.yes ? 1 : 0}` : " "}</text>
         <text x={PX} y="143" className="fig-label dim">{cur ? (cur.yes ? "kept" : "cleared") : "press Next to start"}</text>
-        <text x={PX} y="160" className="fig-label dim">voltage (V) is between</text>
-        <text x={PX} y="172" className="fig-value small">{trim(cur ? cur.lo : 0)} and</text>
-        <text x={PX} y="184" className="fig-value small">{trim(cur ? cur.hi : VREF)}</text>
+        <text x={PX} y="160" className="fig-label dim">the held voltage is</text>
+        <text x={PX} y="172" className="fig-value small">from {trim(cur ? cur.lo : 0)} V</text>
+        <text x={PX} y="184" className="fig-value small">to {trim(cur ? cur.hi : VREF)} V</text>
         <text x={PX} y="196" className="fig-label dim">a band {width >= 0.1 ? `${trim(width)} V` : `${(width * 1000).toFixed(2)} mV`} wide</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>

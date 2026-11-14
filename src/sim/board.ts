@@ -109,6 +109,8 @@ export class Board implements Rt {
   private writeCount = 0;
   diagnostics = new Map<string, Diagnostic>();
   mainReturned = false;
+  /** How many times in a row an interrupt was already requested again when its function returned. */
+  private again = 0;
   /** InitSysCtrl() has run (or its absence has been reported once). */
   sysInit = false;
   /** Report a program that writes registers without InitSysCtrl(). Tests of one peripheral run bare programs and switch this off. */
@@ -467,7 +469,15 @@ export class Board implements Rt {
   }
 
   private dispatch(): void {
+    let backToBack = 0;
     while (!this.intm && (this.ifr & this.ier) !== 0) {
+      // The run slice is over: a request that is already waiting again is served when the program resumes.
+      // (Without this a function slower than its own period would run on far past the end of the test.)
+      if (backToBack > 0 && this.now >= this.pauseAt) {
+        this.pause = true;
+        break;
+      }
+      backToBack++;
       const pending = this.ifr & this.ier;
       let n = 0;
       while (!(pending & (1 << n))) n++;
@@ -529,6 +539,28 @@ export class Board implements Rt {
       this.line = saved.line;
       this.intm = false;
       this.pie.evaluate();
+      const redo = this.isrDepth === 0 && (this.ifr & this.ier & (1 << n)) !== 0;
+      // A quick function that comes back a thousand times in a row has not removed the cause of its interrupt.
+      if (redo && this.again + 1 === 1000 && entry.dur < 20_000 && ![...this.diagnostics.values()].some((d) => d.severity === "error"))
+        this.warn(
+          fn.line,
+          `isr-repeats-${vector}`,
+          `'${fn.name}' has run 1000 times in a row without main() getting a turn: what requests the interrupt is still there when the function returns. ` +
+            `Clear the peripheral's interrupt flag in the function, or read the data that raised it (a receive FIFO interrupts for as long as it holds enough words).`,
+          "error",
+        );
+      // The same request is waiting again the moment the function returns, time after time: main() gets no turn.
+      // (A timer cannot queue requests, so a few in a row is proof; a FIFO interrupt may empty 16 characters in a row.)
+      this.again = this.isrDepth === 0 && (this.ifr & this.ier & (1 << n)) !== 0 ? this.again + 1 : 0;
+      // A quick function that comes straight back has not cleared its flag: the peripheral reports that itself.
+      if (this.again >= (vector.startsWith("TIMER") ? 4 : 20) && entry.dur >= 20_000)
+        this.warn(
+          fn.line,
+          `isr-starves-main-${vector}`,
+          `'${fn.name}' takes ${fmtDur(entry.dur)} but its interrupt comes more often than that, so it runs again the moment it returns and main() never gets a turn. ` +
+            `Keep the function short: set a flag in it and do the slow work (printing, DELAY_US, long loops) in the while(1) loop of main().`,
+          "error",
+        );
     }
     this.updateIrq();
   }
@@ -598,4 +630,9 @@ export class Board implements Rt {
     if (t.k === "ptr") return this.mem.peek(g.addr, 2);
     return undefined;
   }
+}
+
+/** A duration in ns as a student reads it: "3.0 ms", "42 us". */
+function fmtDur(ns: number): string {
+  return ns >= 1e6 ? `${(ns / 1e6).toFixed(1)} ms` : `${Math.max(1, Math.round(ns / 1000))} us`;
 }

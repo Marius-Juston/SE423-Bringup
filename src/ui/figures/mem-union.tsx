@@ -18,14 +18,14 @@ const BX = (bit: number) => 16 + (15 - bit) * BW;
 
 function MemUnion() {
   const [v, setV] = useState([1, 2, 5]);
-  const [last, setLast] = useState(1);
+  const [last, setLast] = useState<number | null>(null);
   const all = v[0] | (v[1] << 1) | (v[2] << 3);
   const hex = "0x" + all.toString(16).toUpperCase().padStart(4, "0");
   const set = (k: number, x: number) => {
     setV(v.map((old, i) => (i === k ? x : old)));
     setLast(k);
   };
-  const f = FIELDS[last];
+  const f = last === null ? null : FIELDS[last];
   const fieldOf = (bit: number) => FIELDS.findIndex((x) => bit >= x.lo && bit < x.lo + x.width);
   return (
     <figure className="figure" aria-label="Interactive diagram: one register as a whole number and as named bit fields">
@@ -63,9 +63,11 @@ function MemUnion() {
           .all: the same 16 bits read as one number = <tspan className="fig-value">{all}</tspan> ({hex})
         </text>
       </svg>
-      <code className="mem-out">LampRegs.CTRL.bit.{f.name} = {v[last]};{"\n"}// now LampRegs.CTRL.all is {all}</code>
+      <code className="mem-out">{f && last !== null ? `LampRegs.CTRL.bit.${f.name} = ${v[last]};\n// now LampRegs.CTRL.all is ${all}` : `// nothing written yet\n// LampRegs.CTRL.all is ${all}`}</code>
       <p className="fig-why" role="status">
-        Writing .bit.{f.name} changed only bit{f.width > 1 ? `s ${f.lo + f.width - 1} to ${f.lo}` : ` ${f.lo}`} of the box. The other fields kept their values. .all is not a second box: it is the same 16 bits read as a single number, so it changed too. How the bits add up to that number is the subject of chapter 0.
+        {f
+          ? `Writing .bit.${f.name} changed only bit${f.width > 1 ? `s ${f.lo + f.width - 1} to ${f.lo}` : ` ${f.lo}`} of the box. The other fields kept their values. .all is not a second box: it is the same 16 bits read as a single number, so it changed too. How the bits add up to that number is the subject of chapter 0.`
+          : `Nothing is written yet. The box holds ON = ${v[0]}, MODE = ${v[1]} and LEVEL = ${v[2]}. .all is not a second box: it is the same 16 bits read as a single number, ${all}. Choose a value below to write one field and see which bits change.`}
       </p>
       <div className="fig-controls">
         <div>

@@ -217,11 +217,11 @@ function HBridge() {
       </div>
       {pwm && (
         <>
-          <svg viewBox="0 0 420 116" role="img" aria-label={`Transfer line of setEPWM1A: control effort ${u} gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
+          <svg viewBox="0 -4 420 120" role="img" aria-label={`Transfer line of setEPWM1A: control effort ${u} gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
             <rect x={X0} y={Y1} width={tx(-10) - X0} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
             <rect x={tx(10)} y={Y1} width={X1 - tx(10)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
-            <text x={(X0 + tx(-10)) / 2} y={Y1 + 12} textAnchor="middle" className="fig-label dim">saturated</text>
-            <text x={(X1 + tx(10)) / 2} y={Y0 - 6} textAnchor="middle" className="fig-label dim">saturated</text>
+            <text x={X0 + 4} y={Y1 + 12} className="fig-label dim">saturated</text>
+            <text x={X1 - 4} y={Y0 - 8} textAnchor="end" className="fig-label dim">saturated</text>
             {[0, 1250, 2500].map((c, i) => (
               <g key={c}>
                 <line x1={X0 - 6} x2={X1} y1={ty(c)} y2={ty(c)} stroke="var(--border)" />

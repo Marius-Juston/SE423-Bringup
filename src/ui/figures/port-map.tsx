@@ -66,7 +66,7 @@ function PortMap() {
               <rect x={PX(p)} y="22" width={w} height="18" rx="3" className={`pm-port ${p === port ? "sel" : ""}`} />
               {p === 5 && <rect x={PX(p) + w} y="22" width={PW - w} height="18" className="pm-cell none" />}
               <text x={PX(p) + PW / 2} y="53" textAnchor="middle" className="fig-label dim">
-                <tspan className="fig-value">{c}</tspan> {p * 32} to {p === 5 ? 168 : p * 32 + 31}
+                <tspan className="fig-value">{c}</tspan> {p * 32}-{p === 5 ? 168 : p * 32 + 31}
               </text>
             </g>
           );

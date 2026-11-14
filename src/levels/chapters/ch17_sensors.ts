@@ -1,6 +1,7 @@
 import type { Chapter } from "../types";
 import type { Stimulus } from "../../sim/runner";
 import { FT_PER_MM, LADAR_MAX_READING, dataLines, pointDeg, scan, type Pose } from "../../sim/plugins/lidar";
+import { KIND_SLANT, SLANT_C, SLANT_M, slantedWall } from "../../sim/world/terrain";
 
 // ---------- expected values, from the same model the simulated sensor uses ----------
 
@@ -1010,6 +1011,12 @@ const WORLD_POSES: Pose[] = [
   { room: 2, x: -3, y: 1, theta: -0.4, offset: SENSOR_OFFSET },
 ];
 const WORLD_N = WORLD_POSES.map((p) => scan(p).filter((v) => v >= 20).length);
+// A third pose, in front of a wall that is not parallel to an axis (y = 0.5x - 2). With the wall
+// along the x axis the slope is 0, and atan(0) = 0 hides a missing atan() in wall_angle.
+const SLANT_POSE: Pose = { room: 0, world: slantedWall(), x: 2, y: 1.5, theta: 0.2, offset: SENSOR_OFFSET };
+const SLANT_N = scan(SLANT_POSE).filter((v) => v >= 20).length;
+const SLANT_DIST = Math.abs(SLANT_M * SLANT_POSE.x - SLANT_POSE.y + SLANT_C) / Math.sqrt(SLANT_M * SLANT_M + 1);
+const SLANT_ANGLE = Math.atan(SLANT_M) - SLANT_POSE.theta;
 /** World coordinates of point i of the scan taken at pose p, with the formulas of the level. */
 const worldPoint = (p: Pose, i: number): [number, number] => {
   const d = ft(scan(p)[i]);
@@ -2823,17 +2830,20 @@ c = (Sy - m*Sx) / n;
 - \`wall_angle\`: \`atan(m) - robot_theta\`. \`atan\` turns a slope into the angle of the line, in radians. A wall parallel to the robot's path gives 0
 
 ## The test
-The robot is looked at in two different poses. If your transform is right, \`wall_m\` and \`wall_c\` come out the same both times, because the wall did not move. The tests also read where one point of the wall lands (\`mark_x\`, \`mark_y\`, copied for you).
+The robot is looked at in two different poses. If your transform is right, \`wall_m\` and \`wall_c\` come out the same both times, because the wall did not move. The tests also read where one point of the wall lands (\`mark_x\`, \`mark_y\`, copied for you). A third scan is taken in front of a slanted wall, the line y = 0.5x - 2, where the slope is not 0.
 
 ## Where the work runs (the star)
 The given \`process_scan()\` calls your two functions. Together they call \`sin\` and \`cos\` over 900 times, and each call takes about 1 us: 1.5 ms in all. The starter calls \`process_scan()\` from the timer interrupt. The answers are right, but for 1.5 ms no other interrupt runs, and on the robot the wheel controller must run every 1 ms. An interrupt should only do what cannot wait. So, as with printing in chapters 5 and 6: in the interrupt only set \`newScan = 1;\`, and in \`while (1)\` call \`process_scan()\` when the flag is set, after setting it back to 0.
 `,
       kit: "robot",
-      durationMs: 260,
+      durationMs: 360,
       stimuli: [
         { at: 0, set: "LIDAR_OFFSET_FT", value: SENSOR_OFFSET },
         ...poseStimuli(0, WORLD_POSES[0]),
         ...poseStimuli(150, WORLD_POSES[1]),
+        // The third scan looks at another world: one slanted wall.
+        { at: 250, set: "WORLD_KIND", value: KIND_SLANT },
+        ...poseStimuli(250, { x: SLANT_POSE.x, y: SLANT_POSE.y, theta: SLANT_POSE.theta }),
       ],
       starter: worldProgram(`    // TODO`, `    // TODO`),
       solution: worldProgram(
@@ -2880,14 +2890,19 @@ The given \`process_scan()\` calls your two functions. Together they call \`sin\
         near("wall_c", -2, 0.02, 160, "First pose: the wall is the line y = -2", "Off by a few hundredths: the sensor is not at the robot's centre. Add LADAR_OFFSET along the robot's heading."),
         near("wall_dist", 2.5, 0.02, 160, "First pose: the robot's centre is 2.5 ft from the wall", "fabs(wall_m*robot_x - robot_y + wall_c) / sqrt(wall_m*wall_m + 1.0), computed after wall_m and wall_c."),
         near("wall_angle", -0.3, 0.005, 160, "First pose: the wall is at -0.3 rad relative to the heading", "atan(wall_m) - robot_theta. The wall lies along the x axis and the robot's heading is 0.3 rad."),
-        near("mark_x", WORLD_MARKS[1][0], 0.03, undefined, `Second pose: point ${WORLD_MARK} is at x = ${WORLD_MARKS[1][0].toFixed(2)} ft in the world`, "Right in the first pose and wrong here: the heading has the other sign now. Check the signs of the two sin(robot_theta) terms."),
-        near("mark_y", WORLD_MARKS[1][1], 0.03, undefined, `Second pose: point ${WORLD_MARK} is on the wall, at y = ${WORLD_MARKS[1][1].toFixed(2)} ft`),
-        { kind: "var", name: "npts", equals: WORLD_N[1], label: `Second pose: ${WORLD_N[1]} points have an echo` },
-        near("wall_m", 0, 0.004, undefined, "Second pose: still slope 0"),
-        near("wall_c", -2, 0.02, undefined, "Second pose: still y = -2"),
-        near("wall_dist", 3, 0.02, undefined, "Second pose: 3 ft from the wall"),
-        near("wall_angle", 0.4, 0.005, undefined, "Second pose: the wall is at +0.4 rad relative to the heading"),
-        { kind: "var", name: "numScans", equals: 2, label: "Each of the two scans was worked on once", hint: "A huge number: newScan is never set back to 0, so main works on the same scan again and again. 0 or 1: process_scan() is not called for every scan." },
+        near("mark_x", WORLD_MARKS[1][0], 0.03, 260, `Second pose: point ${WORLD_MARK} is at x = ${WORLD_MARKS[1][0].toFixed(2)} ft in the world`, "Right in the first pose and wrong here: the heading has the other sign now. Check the signs of the two sin(robot_theta) terms."),
+        near("mark_y", WORLD_MARKS[1][1], 0.03, 260, `Second pose: point ${WORLD_MARK} is on the wall, at y = ${WORLD_MARKS[1][1].toFixed(2)} ft`),
+        { kind: "var", name: "npts", at: 260, equals: WORLD_N[1], label: `Second pose: ${WORLD_N[1]} points have an echo` },
+        near("wall_m", 0, 0.004, 260, "Second pose: still slope 0"),
+        near("wall_c", -2, 0.02, 260, "Second pose: still y = -2"),
+        near("wall_dist", 3, 0.02, 260, "Second pose: 3 ft from the wall"),
+        near("wall_angle", 0.4, 0.005, 260, "Second pose: the wall is at +0.4 rad relative to the heading"),
+        { kind: "var", name: "npts", equals: SLANT_N, label: `Slanted wall: ${SLANT_N} points have an echo` },
+        near("wall_m", SLANT_M, 0.004, undefined, "Slanted wall: the slope is 0.5", "Right for the first wall and wrong here: a slope of 0 hides mistakes. Check the least squares lines: m = (n*Sxy - Sx*Sy) / (n*Sxx - Sx*Sx)."),
+        near("wall_c", SLANT_C, 0.02, undefined, "Slanted wall: the line is y = 0.5x - 2", "c = (Sy - m*Sx) / n, computed after m."),
+        near("wall_dist", SLANT_DIST, 0.02, undefined, `Slanted wall: the robot's centre is ${SLANT_DIST.toFixed(2)} ft from the wall`, "The shortest distance to a slanted line needs the whole formula: fabs(wall_m*robot_x - robot_y + wall_c) / sqrt(wall_m*wall_m + 1.0)."),
+        near("wall_angle", SLANT_ANGLE, 0.005, undefined, `Slanted wall: the wall is at ${SLANT_ANGLE.toFixed(3)} rad relative to the heading`, "A slope is not an angle. A slope of 0.5 is an angle of atan(0.5) = 0.4636 rad: wall_angle = atan(wall_m) - robot_theta."),
+        { kind: "var", name: "numScans", equals: 3, label: "Each of the three scans was worked on once", hint: "A huge number: newScan is never set back to 0, so main works on the same scan again and again. 0 or 1: process_scan() is not called for every scan." },
       ],
       bonus: [
         {

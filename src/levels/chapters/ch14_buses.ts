@@ -1345,7 +1345,7 @@ Both distance sensors are in use now: message object 1 receives sensor 1 (identi
 Write the whole function. One interrupt serves both message objects, so first find out which one it is:
 
 1. \`status = CANgetInterruptCause(CANB_BASE);\` returns the number of the message object, or \`CAN_INT_INT0ID_STATUS\` for a status interrupt (the module reports a change of its own state, such as a bus error).
-2. For \`CAN_INT_INT0ID_STATUS\`: call \`CANgetStatus(CANB_BASE);\`. Reading the status clears that interrupt.
+2. For \`CAN_INT_INT0ID_STATUS\`: call \`CANgetStatus(CANB_BASE);\`. Reading the status clears that interrupt. The tests disturb the bus at 70 ms, so this case happens.
 3. For \`RX_MSG_OBJ_ID_1\`: \`CANreadMessage(CANB_BASE, RX_MSG_OBJ_ID_1, rxMsgData);\`, compute \`dis_1\` from \`rxMsgData[0]\` and \`rxMsgData[1]\`, then \`CANclearInterruptStatus(CANB_BASE, RX_MSG_OBJ_ID_1);\` and set \`newData = 1\`.
 4. The same for \`RX_MSG_OBJ_ID_2\` and \`dis_2\`.
 5. At the end, always: \`CANclearGlobalInterruptStatus(CANB_BASE, CAN_GLOBAL_INT_CANINT0);\` and \`InterruptclearACKGroup(INTERRUPT_ACK_GROUP9);\`
@@ -1369,6 +1369,8 @@ An LED must go off again when its condition no longer holds.
       stimuli: [
         { at: 60, set: "CAN_DIST1_MM", value: 299 },
         { at: 60, set: "CAN_DIST2_MM", value: 200 },
+        // A disturbed bus: 100 damaged frames take the receive error counter past 96, which is a status interrupt.
+        { at: 70, set: "CAN_ERROR_FRAMES", value: 100 },
         { at: 160, set: "CAN_DIST1_MM", value: 600 },
         { at: 160, set: "CAN_DIST2_MM", value: 299 },
         { at: 260, set: "CAN_DIST1_MM", value: 1000 },
@@ -1402,7 +1404,11 @@ An LED must go off again when its condition no longer holds.
         { kind: "led", led: "LED2", at: 550, on: false, label: "999 mm: LED2 off" },
         { kind: "led", led: "LED2", at: 650, on: true, label: "300 mm: LED2 on" },
         { kind: "led", led: "LED3", at: 650, on: false, label: "300 mm: LED3 off", hint: "Below 300 means dis_1 < 300, not <= 300." },
-        { kind: "no-diagnostic", code: "can-int-stuck", label: "Every message object interrupt is cleared", hint: "Call CANclearInterruptStatus(CANB_BASE, ...) with the number of the message object you just read." },
+        {
+          kind: "no-diagnostic", code: "can-int-stuck",
+          label: "Every cause is cleared: both message objects, and the status interrupt when the bus is disturbed at 70 ms",
+          hint: "For a message object call CANclearInterruptStatus(CANB_BASE, ...) with its number. For CAN_INT_INT0ID_STATUS call CANgetStatus(CANB_BASE): reading the status is what clears it.",
+        },
       ],
       bonus: [
         { kind: "isr-time", fn: "can_isr", maxUs: 0.7, label: "can_isr takes less than 0.7 microseconds", hint: "Store the distance and set newData in can_isr. Leave the LEDs to show_distance() in main()." },
@@ -1499,7 +1505,7 @@ serial_printf(&SerialA, "T %.1f C, D %ld mm\\r\\n", tempC, dis_1);
 
 So a line looks like \`T 25.0 C, D 500 mm\`. The sensor sends every 100 ms, so that is how often a line appears. Printing takes milliseconds: it belongs in \`main()\`, never in the interrupt function. The same is true for the I2C read, which waits for the bus.
 
-The tests change both knobs while the program runs.
+The tests change both knobs while the program runs. At 150 ms they disturb the CAN bus, which causes a status interrupt.
 `,
       kit: "robot",
       starter: checkpoint({
@@ -1522,6 +1528,8 @@ The tests change both knobs while the program runs.
       stimuli: [
         { at: 120, set: "TEMP_C", value: 31.5 },
         { at: 120, set: "CAN_DIST1_MM", value: 1234 },
+        // A disturbed bus: 100 damaged frames take the receive error counter past 96, which is a status interrupt.
+        { at: 150, set: "CAN_ERROR_FRAMES", value: 100 },
         { at: 220, set: "TEMP_C", value: -7.5 },
         { at: 220, set: "CAN_DIST1_MM", value: 80 },
       ],
@@ -1537,6 +1545,11 @@ The tests change both knobs while the program runs.
         { kind: "serial", includes: "T -7.5 C, D 80 mm\r\n", label: "The fourth line shows a negative temperature: T -7.5 C, D 80 mm", hint: "tempRaw must be an int16_t, and the division by 256.0." },
         { kind: "serial-period", periodMs: 100, label: "One line per frame: every 100 ms", hint: "A line every millisecond or two means newDistance is never set back to 0 in main()." },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside the interrupt function", hint: "Set newDistance = 1 in can_isr and print from while (1)." },
+        {
+          kind: "no-diagnostic", code: "can-int-stuck",
+          label: "can_isr clears every cause, also the status interrupt when the bus is disturbed at 150 ms",
+          hint: "When CANgetInterruptCause returns CAN_INT_INT0ID_STATUS, call CANgetStatus(CANB_BASE): reading the status clears that interrupt. Without it can_isr runs again and again.",
+        },
         { kind: "isr-time", fn: "can_isr", maxUs: 50, label: "can_isr does not wait for the I2C bus (it returns within 50 us)", hint: "An I2C read takes about 300 us of waiting. Call read_temperature() from while (1) in main(), not from can_isr." },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the values", hint: "dis_1 is 32 bits wide: %ld. tempC is a float: %.1f." },
       ],
@@ -2312,6 +2325,20 @@ Write \`sda()\`, \`scl()\`, \`send_byte()\` and the transfer in \`main()\`. Coun
         { kind: "signal", name: "TMP_THIGH_C", equals: 30.5, label: "The sensor's high limit is 30.5 degrees C", hint: "30.5 x 256 = 7808 = 0x1E80: send 0x1E, then 0x80." },
         { kind: "var", name: "acks", equals: 4, label: "acks counts all four bytes", hint: "Release SDA, raise SCL, wait, then read GPBDAT.bit.GPIO40 while SCL is still high. 0 means acknowledged." },
         { kind: "signal", name: "I2C_STOPS", equals: 1, label: "The transfer ends with one STOP", hint: "SDA low while SCL is low, SCL high, then SDA high." },
+        {
+          kind: "signal",
+          name: "I2C_SCL_MIN_LOW_US",
+          min: 5,
+          label: "Every SCL low time lasts 5 microseconds or more",
+          hint: "Measured on the pin, from SCL falling to SCL rising. Put DELAY_US(5); between setting SDA and raising SCL, in the ninth clock and before the STOP too.",
+        },
+        {
+          kind: "signal",
+          name: "I2C_SCL_MIN_HIGH_US",
+          min: 5,
+          label: "Every SCL high time lasts 5 microseconds or more",
+          hint: "Measured on the pin, from SCL rising to SCL falling. Put DELAY_US(5); between scl(1) and scl(0), in the ninth clock too.",
+        },
         { kind: "pin", pin: 40, at: 2.9, level: 1, label: "SDA is released at the end" },
         { kind: "pin", pin: 41, at: 2.9, level: 1, label: "SCL is released at the end" },
         { kind: "no-diagnostic", code: "short", label: "No output fights the sensor", hint: "Both pins must be open-drain: GPIO_OPENDRAIN | GPIO_PULLUP." },
@@ -2362,6 +2389,8 @@ The star is for speed: at 400 kHz the whole scan fits in 4 ms.
       checks: [
         { kind: "serial", equals: "0x48\r\n0x68\r\n2 devices\r\n", label: "The terminal lists 0x48 and 0x68, then: 2 devices" },
         { kind: "var", name: "count", equals: 2, label: "count is 2" },
+        { kind: "var", name: "found[0]", equals: 0x48, label: "found[0] holds 0x48, the first address that answered", hint: "Store each acknowledged address as it is found: found[count] = address; then count++." },
+        { kind: "var", name: "found[1]", equals: 0x68, label: "found[1] holds 0x68, the second address that answered", hint: "Store the address before count goes up, so the second device lands in found[1]." },
         { kind: "var", name: "scanDone", equals: 1, label: "scanDone is set" },
         { kind: "signal", name: "I2C_ADDR_NACKS", equals: 110, label: "Exactly the 110 empty addresses from 0x08 to 0x77 were called and not acknowledged", hint: "112 addresses, 2 devices. More means reserved addresses were called or an address was tried twice." },
         { kind: "signal", name: "I2C_STOPS", equals: 112, label: "Every probe ends with a STOP", hint: "After a NACK: I2cbRegs.I2CMDR.bit.STP = 1; then clear the flag with I2cbRegs.I2CSTR.all = 0x0002;" },
@@ -2370,7 +2399,7 @@ The star is for speed: at 400 kHz the whole scan fits in 4 ms.
       bonus: [
         { kind: "var", name: "scanDone", at: 4, equals: 1, label: "The scan is finished within 4 ms", hint: "That needs SCL at 400 kHz: with a 10 MHz module clock, (I2CCLKL + 5) + (I2CCLKH + 5) = 25." },
       ],
-      watch: ["count", "scanDone"],
+      watch: ["count", "found[0]", "found[1]", "scanDone"],
       inspect: ["I2cbRegs.I2CSTR", "I2cbRegs.I2CMDR", "I2cbRegs.I2CPSC"],
       hints: [
         "Write a function that probes one address and returns 1 or 0. It is read_temp() from \"Is anybody there?\" with a count of 1.",

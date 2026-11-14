@@ -30,6 +30,19 @@ function MathPolar() {
   const arcR = 24;
   const arcEnd = `${OX + arcR * c},${OY - arcR * s}`;
 
+  // The angle's label stands on the bisector, just outside the arc. With a
+  // short beam the letter y (beside the dashed leg) is there too: then the
+  // angle moves out past it.
+  const yShown = Math.abs(y) > 0.4;
+  const degW = 7 * (String(deg).length + 1);
+  const yLabelY = (OY + py) / 2;
+  const hitsY = (r: number) => yShown && x >= 0 && Math.abs(OY - r * Math.sin(rad / 2) - yLabelY) < 12 && OX + r * Math.cos(rad / 2) + 2 < px + 16 && OX + r * Math.cos(rad / 2) + 2 + degW > px + 2;
+  const degR = hitsY(30) ? (px + 16 - OX) / Math.cos(rad / 2) : 30;
+
+  // The letter d stands beside the middle of the beam, on the side away
+  // from the two legs.
+  const dSide = Math.abs(c) < 1e-9 ? (s > 0 ? 1 : -1) : s * c < 0 ? -1 : 1;
+
   const side = Math.abs(y) < 0.005 ? "neither left nor right" : y > 0 ? `${f2(y)} ft to its left` : `${f2(-y)} ft to its right`;
   const ahead = Math.abs(x) < 0.005 ? "level with the sensor" : x > 0 ? `${f2(x)} ft ahead of the sensor` : `${f2(-x)} ft behind the sensor`;
   const why =
@@ -74,10 +87,10 @@ function MathPolar() {
         <line x1={OX} x2={px} y1={OY} y2={py} className="mpolar-beam" />
         <circle cx={px} cy={py} r="4" className="mpolar-hit" />
         {deg !== 0 && <path d={`M${OX + arcR},${OY} A${arcR},${arcR} 0 0 ${deg > 0 ? 0 : 1} ${arcEnd}`} className="mpolar-arc" />}
-        <text x={OX + 30 * Math.cos(rad / 2) + 2} y={OY - 30 * Math.sin(rad / 2) + 3} className="fig-label">{deg}°</text>
-        <text x={(OX + px) / 2 - (deg > 0 ? 8 : -8) * s - 4} y={(OY + py) / 2 - 7 * Math.abs(c) - 3} textAnchor="middle" className="fig-value small">d</text>
+        <text x={OX + degR * Math.cos(rad / 2) + 2} y={OY - degR * Math.sin(rad / 2) + 3} className="fig-label">{deg}°</text>
+        <text x={(OX + px) / 2 + dSide * -s * 10} y={(OY + py) / 2 + dSide * -c * 10 + 3} textAnchor="middle" className="fig-value small">d</text>
         {Math.abs(x) > 0.4 && <text x={(OX + px) / 2} y={OY + (x < 0 ? (y >= 0 ? 22 : -15) : y >= 0 ? 12 : -5)} textAnchor="middle" className="fig-label">x</text>}
-        {Math.abs(y) > 0.4 && <text x={px + (x >= 0 ? 5 : -5)} y={(OY + py) / 2 + 3} textAnchor={x >= 0 ? "start" : "end"} className="fig-label">y</text>}
+        {yShown && <text x={px + (x >= 0 ? 5 : -5)} y={(OY + py) / 2 + 3} textAnchor={x >= 0 ? "start" : "end"} className="fig-label">y</text>}
         {/* the numbers */}
         <text x="298" y="16" className="fig-label dim">distance d</text>
         <text x="298" y="29" className="fig-value small">{d.toFixed(1)} ft</text>

@@ -385,6 +385,28 @@ export function narrowGap(): World {
   });
 }
 
+/** Slope and intercept of the slanted wall: the line y = SLANT_M * x + SLANT_C. */
+export const SLANT_M = 0.5;
+export const SLANT_C = -2;
+
+/**
+ * One long, straight wall that is not parallel to an axis: the line
+ * y = 0.5 x - 2, and nothing else. A program that fits a line to it finds a
+ * slope that is not 0, so a slope and the angle of a line (atan of the
+ * slope, 0.4636 rad here) are different numbers. Like LIDAR room 2 it is
+ * open on the other three sides: there is no goal to drive to.
+ */
+export function slantedWall(): World {
+  const x0 = -100;
+  const x1 = 100;
+  return makeWorld({
+    name: "slanted wall",
+    boundary: [[x0, SLANT_M * x0 + SLANT_C, x1, SLANT_M * x1 + SLANT_C]],
+    start: [0, 0, 0],
+    bounds: [-4, -4, 16, 6],
+  });
+}
+
 // ---------- choosing a world by numbers ----------
 
 /** Values of the simulator input WORLD_KIND. 0 leaves the choice to LIDAR_ROOM. */
@@ -394,6 +416,7 @@ export const KIND_SLALOM = 2;
 export const KIND_U_TRAP = 3;
 export const KIND_GAP = 4;
 export const KIND_MAZE = 5;
+export const KIND_SLANT = 6;
 
 export interface WorldSpec {
   kind: number;
@@ -420,6 +443,8 @@ export function terrain(s: WorldSpec): World | undefined {
       return narrowGap();
     case KIND_MAZE:
       return mazeWorld(makeMaze(s.size ?? 4, s.seed ?? 1, !!s.loops));
+    case KIND_SLANT:
+      return slantedWall();
     default:
       return undefined;
   }
@@ -436,6 +461,7 @@ export const TERRAINS: { id: string; label: string; spec: WorldSpec }[] = [
   { id: "u-trap", label: "U-shaped dead end", spec: { kind: KIND_U_TRAP, seed: 0 } },
   { id: "gap", label: "Narrow gap", spec: { kind: KIND_GAP } },
   { id: "maze", label: "Random maze", spec: { kind: KIND_MAZE, size: 5, seed: 1234 } },
+  { id: "slant", label: "Slanted wall", spec: { kind: KIND_SLANT } },
 ];
 
 // ---------- objects placed by hand ----------

@@ -128,6 +128,14 @@ export function Editor({ value, onChange, marks, handle, kit = "robot" }: { valu
           EditorView.contentAttributes.of({ "aria-label": "C source code editor. Press Escape then Tab to leave the editor.", "aria-describedby": "editor-exit", tabindex: "0" }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) changed.current(u.state.doc.toString());
+            // The completion list scrolls: name it and let it take the focus, as any scrolling region must
+            // (it is still operated from the editor with the arrow keys).
+            const list = u.view.dom.querySelector<HTMLElement>(".cm-tooltip-autocomplete > ul:not([tabindex])");
+            if (list) {
+              // Tab indents in the editor, so this adds no stop to the Tab order while typing.
+              list.tabIndex = 0;
+              list.setAttribute("aria-label", "Suggestions");
+            }
           }),
         ],
       }),

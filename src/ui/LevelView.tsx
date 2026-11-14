@@ -69,7 +69,7 @@ export function refLinks(refs: Ref[]): RefLink[] {
 function RefAnchor({ link }: { link: RefLink }) {
   if (!link.href) return <span title={link.title}>{link.label}</span>;
   return (
-    <a href={link.href} target="_blank" rel="noreferrer" title={`${link.title}. Opens in your browser.`} aria-label={`${link.title} (opens in your browser)`} onClick={(e) => openExternal(e, link.href!)}>
+    <a href={link.href} target="_blank" rel="noreferrer" title={`${link.title}. Opens in your browser.`} aria-label={`${link.title.includes(link.label) ? link.title : `${link.label}: ${link.title}`} (opens in your browser)`} onClick={(e) => openExternal(e, link.href!)}>
       {link.label}
     </a>
   );

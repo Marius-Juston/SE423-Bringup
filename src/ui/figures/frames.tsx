@@ -57,7 +57,34 @@ function Frames() {
       ? "at the robot's centre"
       : `${fmt(Math.abs(x), d)} ft ${x >= 0 ? "ahead" : "behind"} and ${Math.abs(y) < 0.005 ? "neither left nor right" : `${fmt(Math.abs(y), d)} ft to its ${y > 0 ? "left" : "right"}`}`;
   const near = (v: number, tick: number) => Math.abs(v - tick) < 0.5;
-  const outside = pw.x < -0.9 || pw.x > 8 || pw.y < -0.5 || pw.y > 5.6;
+  // P can ride out of the drawing. Its mark then stops at the edge and
+  // becomes an arrowhead that points to where P really is.
+  const pX = clamp(wx(pw.x), 8, 412);
+  const pY = clamp(wy(pw.y), 8, 282);
+  const outside = pX !== wx(pw.x) || pY !== wy(pw.y);
+  // Left of the world y axis the mark stands in the margin, so P's y value moves off its line: above the mark, or beside it in the corner.
+  const leftOut = pX < OX - 2;
+  // Below the world x axis the letter P stands beside the mark, clear of the number under the axis.
+  const below = pY > OY + 2;
+  // In the bottom left corner both numbers and the letter share the margin.
+  const corner = leftOut && pY > OY - 12;
+  const pLab = corner
+    ? { x: pX - 4, y: pY - 9, end: false }
+    : leftOut
+      ? { x: pX + 9, y: pY + 3, end: false }
+      : below
+        ? { x: pX + (pX > 380 ? -19 : 19), y: pY + 3, end: pX > 380 }
+        : { x: pX + (pX > 396 ? -8 : 7), y: pY + (pY < 22 ? 15 : -6), end: pX > 396 };
+  // A number on the dashed path stays inside the drawing, clear of the axis
+  // names, and is left out where it would cover the letter P.
+  const pathLab = (x: number, y: number) => {
+    const cx = clamp(x, OX + 20, 402);
+    const cy = clamp(y, cx < 104 ? 28 : 8, OY - 9) + 3;
+    return Math.abs(cx - (pLab.x + (pLab.end ? -3 : 3))) < 22 && Math.abs(cy - pLab.y) < 11 ? null : { x: cx, y: cy };
+  };
+  const aheadLab = pathLab(wx((pose.x + knee.x) / 2) + 11 * s, wy((pose.y + knee.y) / 2) + 11 * c);
+  const leftLab = pathLab(wx((knee.x + pw.x) / 2) + 14 * c * Math.sign(pb.x || 1), wy((knee.y + pw.y) / 2) - 14 * s * Math.sign(pb.x || 1));
+  const pTurn = (Math.atan2(wy(pw.y) - pY, wx(pw.x) - pX) * 180) / Math.PI;
 
   return (
     <figure className="figure fr-fig" aria-label="Interactive drawing of the world frame, the robot frame and a point in both">
@@ -88,20 +115,25 @@ function Frames() {
         {/* world frame */}
         {arrow(0, 0, 7.9, 0, "fr-w", "fr-aw")}
         {arrow(0, 0, 0, 5.45, "fr-w", "fr-aw")}
-        <text x={wx(7.9)} y={OY + 22} textAnchor="end" className="fig-label fr-wt">world x, ft</text>
-        <text x={OX + 5} y={wy(5.4) + 4} className="fig-label fr-wt">world y</text>
+        {/* The axis names make room when P's mark stands at the edge where they are. */}
+        {below && pX > 300
+          ? <text x={wx(1)} y={OY + 22} className="fig-label fr-wt">world x, ft</text>
+          : <text x={wx(7.9)} y={OY + 22} textAnchor="end" className="fig-label fr-wt">world x, ft</text>}
+        {!(pY < 30 && pX < 110) && <text x={OX + 5} y={wy(5.4) + 4} className="fig-label fr-wt">world y</text>}
         {/* T: where the robot is */}
         <path d={`M${wx(0)},${wy(0)} L${wx(pose.x)},${wy(pose.y)}`} className="fr-t" />
         <text x={wx(pose.x / 2) + 4} y={wy(pose.y / 2) + 11} className="fig-label dim fr-halo">T</text>
         {/* world coordinates of the point */}
         <path d={`M${wx(pw.x)},${wy(pw.y)} V${wy(0)}`} className="fr-wd" />
         <path d={`M${wx(pw.x)},${wy(pw.y)} H${wx(0)}`} className="fr-wd" />
-        <text x={clamp(wx(pw.x), 14, 406)} y={OY + 11} textAnchor="middle" className="fig-value small fr-halo">{fmt(pw.x)}</text>
-        <text x={OX - 5} y={clamp(wy(pw.y), 6, 284) + 3} textAnchor="end" className="fig-value small fr-halo">{fmt(pw.y)}</text>
+        <text x={corner ? OX + 22 : clamp(wx(pw.x), 20, 402)} y={OY + 11} textAnchor="middle" className="fig-value small fr-halo">{fmt(pw.x)}</text>
+        {leftOut
+          ? <text x={corner ? pX + 9 : OX - 5} y={pY + (corner ? 3 : pY < 22 ? 17 : -8)} textAnchor={corner ? "start" : "end"} className="fig-value small fr-halo">{fmt(pw.y)}</text>
+          : <text x={OX - 5} y={clamp(wy(pw.y), 9, 284) + 3} textAnchor="end" className="fig-value small fr-halo">{fmt(pw.y)}</text>}
         {/* robot coordinates of the point: ahead, then left */}
         <path d={`M${wx(pose.x)},${wy(pose.y)} L${wx(knee.x)},${wy(knee.y)} L${wx(pw.x)},${wy(pw.y)}`} className="fr-bd" />
-        {Math.abs(pb.x) >= 0.45 && <text x={wx((pose.x + knee.x) / 2) + 11 * s} y={wy((pose.y + knee.y) / 2) + 11 * c + 3} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.x)}</text>}
-        {Math.abs(pb.y) >= 0.45 && <text x={wx((knee.x + pw.x) / 2) + 14 * c * Math.sign(pb.x || 1)} y={wy((knee.y + pw.y) / 2) - 14 * s * Math.sign(pb.x || 1) + 3} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.y)}</text>}
+        {Math.abs(pb.x) >= 0.45 && aheadLab && <text x={aheadLab.x} y={aheadLab.y} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.x)}</text>}
+        {Math.abs(pb.y) >= 0.45 && leftLab && <text x={leftLab.x} y={leftLab.y} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.y)}</text>}
         {/* robot */}
         <g
           className="fr-robot"
@@ -128,8 +160,10 @@ function Frames() {
         <text x={wx(pose.x) + 36 * c - 9 * s} y={wy(pose.y) - 36 * s - 9 * c + 3} textAnchor="middle" className="fig-label fr-bt">x</text>
         <text x={wx(pose.x) - 32 * s - 9 * c} y={wy(pose.y) - 32 * c + 9 * s + 3} textAnchor="middle" className="fig-label fr-bt">y</text>
         {/* the point */}
-        <circle cx={wx(pw.x)} cy={wy(pw.y)} r={4.5} fill="var(--harvest)" stroke="var(--inset)" strokeWidth={1} />
-        <text x={wx(pw.x) + 7} y={wy(pw.y) - 6} className="fig-label fr-halo">P</text>
+        {outside
+          ? <path d="M6,0 L-5,-5 L-5,5 Z" transform={`translate(${pX},${pY}) rotate(${pTurn})`} fill="var(--harvest)" stroke="var(--inset)" strokeWidth={1} />
+          : <circle cx={pX} cy={pY} r={4.5} fill="var(--harvest)" stroke="var(--inset)" strokeWidth={1} />}
+        <text x={pLab.x} y={pLab.y} textAnchor={pLab.end ? "end" : "start"} className="fig-label fr-halo">P</text>
       </svg>
       <div className="fig-why" role="status">
         {inverse

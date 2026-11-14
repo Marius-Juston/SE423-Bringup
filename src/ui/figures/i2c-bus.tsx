@@ -136,6 +136,9 @@ function I2cBus() {
   // Opens on a write to the sensor, the transfer of level bus-i2c-start.
   const [read, setRead] = useState(false);
   const [step, setStep] = useState(0);
+  // Another address or direction is another transfer: start it from the top.
+  const pickAddr = (a: number) => { if (a !== addr) { setAddr(a); setStep(0); } };
+  const pickRead = (r: boolean) => { if (r !== read) { setRead(r); setStep(0); } };
   const { items, groups, slave } = build(addr, read);
   const s = Math.min(step, items.length - 1);
   const it = items[s];
@@ -272,15 +275,15 @@ function I2cBus() {
             </div>
             <div>
               <span>Address</span>
-              <button className="fig-opt" aria-pressed={addr === 0x48} onClick={() => setAddr(0x48)}>0x48, the sensor</button>
-              <button className="fig-opt" aria-pressed={addr === 0x68} onClick={() => setAddr(0x68)}>0x68, the clock chip</button>
-              <button className="fig-opt" aria-pressed={addr === 0x49} onClick={() => setAddr(0x49)}>0x49, nobody</button>
+              <button className="fig-opt" aria-pressed={addr === 0x48} onClick={() => pickAddr(0x48)}>0x48, the sensor</button>
+              <button className="fig-opt" aria-pressed={addr === 0x68} onClick={() => pickAddr(0x68)}>0x68, the clock chip</button>
+              <button className="fig-opt" aria-pressed={addr === 0x49} onClick={() => pickAddr(0x49)}>0x49, nobody</button>
               <code>I2cbRegs.I2CSAR.all = 0x{h2(addr)};</code>
             </div>
             <div>
               <span>Direction</span>
-              <button className="fig-opt" aria-pressed={!read} onClick={() => setRead(false)}>write a register number</button>
-              <button className="fig-opt" aria-pressed={read} onClick={() => setRead(true)}>read a register</button>
+              <button className="fig-opt" aria-pressed={!read} onClick={() => pickRead(false)}>write a register number</button>
+              <button className="fig-opt" aria-pressed={read} onClick={() => pickRead(true)}>read a register</button>
               <code>address byte = (0x{h2(addr)} &lt;&lt; 1) | R/W: 0x{h2((addr << 1) & 0xff)} to write{read ? `, 0x${h2(((addr << 1) | 1) & 0xff)} to read` : ""}</code>
             </div>
           </>

@@ -135,11 +135,19 @@ function TimerSawtooth() {
           : `${counts} TIF is 0: the counter has not passed zero since it was cleared.`;
 
   const usNum = Number(us);
-  const product = Math.floor(200 * usNum);
+  // ConfigCpuTimer(struct CPUTIMER_VARS *Timer, float Freq, float Period)
+  // computes temp = (Uint32)(Freq * Period) in 32-bit float arithmetic, as
+  // the simulator runs it (src/sim/lib/ti_source.ts): both numbers and their
+  // product are rounded to a float, which keeps 24 bits (about 7 digits),
+  // then the fraction is dropped. The product must fit in 32 bits.
+  const exact = 200 * usNum;
+  const product32 = Math.fround(200 * Math.fround(usNum));
+  const product = Math.trunc(product32);
   const valid = us.trim() !== "" && Number.isFinite(usNum) && product >= 1;
-  // ConfigCpuTimer computes (Uint32)(Freq * Period): the product itself must fit in 32 bits.
-  const fits = valid && product <= 4294967295;
-  const whole = Number.isInteger(200 * usNum);
+  const fits = valid && product32 < 4294967296;
+  const whole = Number.isInteger(exact);
+  // The float result differs from the exact product (more than by its dropped fraction).
+  const rounded = valid && product !== Math.floor(exact);
   const prdReal = product - 1;
 
   return (
@@ -278,12 +286,12 @@ function TimerSawtooth() {
             <p className="ts-bad">Enter a period of at least 0.005 microseconds (one clock cycle).</p>
           ) : !fits ? (
             <p className="ts-bad">
-              200 x {us} = {product} does not fit in the 32-bit PRD. The longest period without the prescaler is about 21.47 s.
+              200 x {us} = {Math.floor(exact)}{rounded && product32 !== exact ? `, which the function's float arithmetic rounds to ${product32},` : ""} does not fit in the 32-bit PRD. The longest period without the prescaler is about 21.47 s.
             </p>
           ) : (
             <pre>
               <code>
-                {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = ${whole ? `200 x ${us}` : `(whole part of 200 x ${us})`} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
+                {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n${rounded ? `// a float keeps about 7 digits:\n// 200 x ${us} gives ${product32}\n// PRD = ${Number.isInteger(product32) ? product32 : `(whole part of ${product32})`} - 1 = ${prdReal}, prescaler = 0\n` : `// PRD = ${whole ? `200 x ${us}` : `(whole part of 200 x ${us})`} - 1 = ${prdReal}, prescaler = 0\n`}// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
               </code>
             </pre>
           )}

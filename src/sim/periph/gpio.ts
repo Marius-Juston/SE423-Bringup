@@ -202,6 +202,15 @@ export class Gpio {
     for (let n = 0; n < 32; n++) if ((changed >>> n) & 1 && port * 32 + n < PIN_COUNT) this.refresh(port * 32 + n, t);
   }
 
+  /**
+   * The output latch of a port (0 = A .. 5 = F), one bit per pin. It holds
+   * what was written through DAT / SET / CLEAR / TOGGLE for every pin, also
+   * for inputs and peripheral pins, where it does not reach the pin (TRM 8.3).
+   */
+  latchOf(port: number): number {
+    return this.latch[port] >>> 0;
+  }
+
   /** Mux position 0..15 of a pin (GMUX in the upper two bits). */
   mux(pin: number): number {
     const c = this.cfg[pin >> 5];

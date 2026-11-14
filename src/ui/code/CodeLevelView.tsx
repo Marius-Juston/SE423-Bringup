@@ -64,7 +64,7 @@ function Term({ text, label, live }: { text: string; label: string; live: "off" 
     </div>
   );
 }
-const PIN_CHECKS = new Set(["led", "pin", "blink", "steady", "opposite", "duty", "latency", "uart"]);
+const PIN_CHECKS = new Set(["led", "pin", "blink", "period", "steady", "opposite", "duty", "latency", "uart"]);
 
 export function CodeLevelView({
   level,

@@ -35,7 +35,8 @@
 //   WORLD_KIND        0 (default): the room LIDAR_ROOM names. Otherwise a
 //                     terrain of src/sim/world/terrain.ts: 1 two rooms and
 //                     a door, 2 slalom of posts, 3 U-shaped dead end,
-//                     4 narrow gap, 5 random maze
+//                     4 narrow gap, 5 random maze, 6 one slanted wall
+//                     (the line y = 0.5 x - 2)
 //   WORLD_SEED        maze: the seed; slalom and U: the layout number
 //   WORLD_SIZE        maze: cells per side, 3 to 8 (2 ft cells; default 4)
 //   WORLD_LOOPS       maze: 1 takes away extra walls (more than one way)

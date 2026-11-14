@@ -23,6 +23,16 @@
 //
 // integrated over arcs of at most 0.25 ms from the exact wheel distances.
 //
+// Wheel slip, a scriptable input per wheel: "TB_SLIP_LEFT" / "TB_SLIP_RIGHT"
+// is the share (0 to 1) of that wheel's rotation that does not move the
+// robot. 0 is a wheel that grips, 1 a wheel that spins on the spot. The
+// wheel itself turns as before, so the wheel speed the encoder reports
+// (tb_left_speed) does not change, while the pose, the gyro and the
+// position fix follow what the robot really does: in the equations above
+// vL and vR are replaced by (1 - slip) * v. Not modelled: a slipping wheel
+// speeding up because it carries less load, and slip that depends on the
+// effort or on the floor.
+//
 // Sensors: ideal wheel speeds (plus optional bounded reading noise), a rate
 // gyro (true rate + constant bias + white noise) and a 100 Hz position fix
 // with white noise (OptiTrack stand-in). All noise comes from seeded
@@ -48,7 +58,10 @@ const TICK_NS = 1e6;
 const SUBSTEP_S = 0.25e-3;
 
 interface Wheel {
+  /** Speed of the wheel's rim, ft/s: what the encoder sees. */
   v: number;
+  /** Share of the rotation lost to slip, 0 to 1. */
+  slip: number;
   u: number;
   load: number;
   peak: number;
@@ -125,7 +138,7 @@ export function stepWheel(w: { v: number }, uNet: number, dt: number): number {
 }
 
 function install(b: Board): void {
-  const wheel = (): Wheel => ({ v: 0, u: 0, load: 0, peak: 0, noise: 0 });
+  const wheel = (): Wheel => ({ v: 0, slip: 0, u: 0, load: 0, peak: 0, noise: 0 });
   const p: Plant = {
     t: 0, left: wheel(), right: wheel(), x: 0, y: 0, theta: 0, started: false,
     gpsX: 0, gpsY: 0, gpsFresh: false, gpsSlot: -1, gpsSum: 0, gpsN: 0, estSum: 0, estN: 0,
@@ -146,8 +159,9 @@ function install(b: Board): void {
     const n = Math.max(1, Math.ceil(dt / SUBSTEP_S));
     dt /= n;
     for (let i = 0; i < n; i++) {
-      const dL = stepWheel(p.left, uL, dt);
-      const dR = stepWheel(p.right, uR, dt);
+      // A slipping wheel turns, but only part of that moves the robot.
+      const dL = stepWheel(p.left, uL, dt) * (1 - p.left.slip);
+      const dR = stepWheel(p.right, uR, dt) * (1 - p.right.slip);
       const dTheta = (dR - dL) / WHEEL_BASE;
       const ds = (dL + dR) / 2;
       // Chord of the arc driven in this step.
@@ -217,6 +231,15 @@ function install(b: Board): void {
       advance(t);
       w.load = v;
     });
+  // A wheel that turns without moving the robot (wholly, or in part).
+  for (const [name, w] of [["TB_SLIP_LEFT", p.left], ["TB_SLIP_RIGHT", p.right]] as const)
+    b.onInput(name, (v, t) => {
+      if (!Number.isFinite(v)) return;
+      start();
+      advance(t);
+      w.slip = Math.max(0, Math.min(1, v));
+      b.mem.writes++;
+    });
   // Picking the robot up and putting it down somewhere else.
   const place = (name: string, set: (v: number) => void) =>
     b.onInput(name, (v, t) => {
@@ -268,7 +291,8 @@ function install(b: Board): void {
   c.defineNative("tb_gyro_z", () => {
     sync();
     b.mem.liveReads++;
-    const omega = (p.right.v - p.left.v) / WHEEL_BASE;
+    // The gyro turns with the robot, not with the wheels.
+    const omega = (p.right.v * (1 - p.right.slip) - p.left.v * (1 - p.left.slip)) / WHEEL_BASE;
     return Math.fround(omega + b.input("TB_GYRO_BIAS") + b.input("TB_GYRO_NOISE") * nGyro());
   });
   const gps = (): void => {

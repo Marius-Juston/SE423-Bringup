@@ -139,3 +139,44 @@ describe("a program without InitSysCtrl()", () => {
     expect(codes(`void main(void) {\n    InitSysCtrl();\n${body}`)).not.toContain("no-initsysctrl");
   });
 });
+
+describe("an interrupt function slower than its period", () => {
+  const src = (us: number) => `__interrupt void cpu_timer0_isr(void);
+uint32_t n = 0;
+void main(void) {
+    InitSysCtrl();
+    InitGpio();
+    DINT;
+    InitPieCtrl();
+    IER = 0x0000;
+    IFR = 0x0000;
+    InitPieVectTable();
+    EALLOW;
+    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
+    EDIS;
+    InitCpuTimers();
+    ConfigCpuTimer(&CpuTimer0, 200, 1000);
+    CpuTimer0Regs.TCR.all = 0x4000;
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+    EINT;
+    while (1) {}
+}
+__interrupt void cpu_timer0_isr(void) {
+    n++;
+    DELAY_US(${us});
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}`;
+  it("ends at the end of the test and is told that main() is starved", () => {
+    for (const us of [3000, 20000]) {
+      const r = runProgram({ kit: "robot", source: src(us), durationMs: 100, stimuli: [], checks: [] });
+      expect(r.board!.now / 1e6).toBeLessThan(100 + us / 1000 + 1);
+      expect(r.diagnostics.map((d) => d.code)).toContain("isr-starves-main-TIMER0_INT");
+    }
+  });
+  it("is not reported for a function that fits in its period", () => {
+    const r = runProgram({ kit: "robot", source: src(500), durationMs: 100, stimuli: [], checks: [] });
+    expect(r.diagnostics.map((d) => d.code)).toEqual([]);
+    expect(r.board!.readVar("n")).toBe(99);
+  });
+});

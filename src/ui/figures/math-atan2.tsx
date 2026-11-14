@@ -32,7 +32,7 @@ function MathAtan2() {
   // The label stays inside the drawing and clear of the axis labels at both ends of the x axis.
   const tgt = (() => {
     const anchor = tx > 226 ? "end" : tx < 46 ? "start" : dx >= 0 ? "start" : "end";
-    const nearEnd = Math.abs(ty - CY) < 18 && (tx < 76 || tx > 196);
+    const nearEnd = Math.abs(ty - CY) < 18 && (tx < 92 || tx > 168);
     const above = ty <= CY;
     return { anchor, x: anchor === "start" ? tx + 8 : tx - 8, y: nearEnd ? (above ? CY - 20 : CY + 27) : above ? ty - 6 : ty + 13 } as const;
   })();
@@ -52,8 +52,9 @@ function MathAtan2() {
         <text x={CX + 2.9 * S - 2} y={CY - 4} textAnchor="end" className="fig-label dim">x: angle 0</text>
         <text x={CX - 2.9 * S + 2} y={CY - 4} className="fig-label dim">+3.14</text>
         <text x={CX - 2.9 * S + 2} y={CY + 11} className="fig-label dim">-3.14</text>
-        <text x={CX + 4} y={CY - 2.3 * S + 8} className="fig-label dim">y: +1.57</text>
-        <text x={CX + 4} y={CY + 2.3 * S - 2} className="fig-label dim">-1.57</text>
+        {/* The y axis is labelled on the side the target's own label does not use. */}
+        <text x={CX + (dx >= 0 ? -4 : 4)} y={CY - 2.3 * S + 8} textAnchor={dx >= 0 ? "end" : "start"} className="fig-label dim">y: +1.57</text>
+        <text x={CX + (dx >= 0 ? -4 : 4)} y={CY + 2.3 * S - 2} textAnchor={dx >= 0 ? "end" : "start"} className="fig-label dim">-1.57</text>
         <line x1={CX} y1={CY} x2={tx} y2={CY} className="mt-dx" />
         <line x1={tx} y1={CY} x2={tx} y2={ty} className="mt-dy" />
         {!zero && <path d={`M${CX + 20},${CY} A20,20 0 0 ${ang > 0 ? 0 : 1} ${(CX + 20 * Math.cos(ang)).toFixed(1)},${(CY - 20 * Math.sin(ang)).toFixed(1)}`} className="mt-arc" />}
@@ -87,7 +88,7 @@ function MathAtan2() {
         </div>
       </div>
       <div className="fig-step">
-        <CodePre><code>{`// dy comes first\nalpha = atan2(dy, dx);           // ${zero ? "no direction" : `${fmt(ang)} rad`}\ndist  = sqrt(dx * dx + dy * dy); // ${fmt(len)} ft`}</code></CodePre>
+        <CodePre><code>{`// dy comes first\nalpha = atan2(dy, dx);  // ${zero ? "no direction" : `${fmt(ang)} rad`}\ndist = sqrt(dx*dx + dy*dy);  // ${fmt(len)} ft`}</code></CodePre>
       </div>
       <figcaption>sin and cos turn an angle into "across and up". atan2 goes the other way: from across (dx) and up (dy) to the angle, anywhere round the circle, between -PI and PI. The dotted red line is where the result jumps from +3.14 to -3.14.</figcaption>
     </figure>

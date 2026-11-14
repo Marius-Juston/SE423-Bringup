@@ -20,6 +20,17 @@
 //   with IntPnd), the line enables IE0 / SIE, CAN_GLB_INT_EN / _FLG / _CLR,
 //   and the PIE interrupt CANB0 = INT9.7 (CANA0 = INT9.5). Reading CAN_ES
 //   clears RxOk / TxOk and the status interrupt.
+// - 22.6.3 / 22.15.2.2 / 22.15.2.3: bus errors seen as a receiver. A
+//   damaged frame on the bus (the stimulus "CAN_ERROR_FRAMES", below) sets
+//   CAN_ES.LEC to 6 (CRC error) and raises the receive error counter
+//   CAN_ERRC.REC by 1; a frame received without error lowers it by 1, as the
+//   CAN specification's fault confinement rules say. CAN_ES.EWarn is 1
+//   while REC is 96 or more, EPass (and CAN_ERRC.RP) from 128. With
+//   CAN_CTL.EIE = 1 a change of EWarn raises the status interrupt (CAN_INT =
+//   0x8000), which stays pending until CAN_ES is read. With SIE = 1 every
+//   damaged frame raises it too (LEC changed, 22.6.2). The TRM names EWarn
+//   as an error interrupt event without saying which edge; this model
+//   interrupts on both, as the Bosch C_CAN manual describes the EIE bit.
 // - 22.10.1: transmit objects (TxRqst, TxOk, IntPnd if TxIE).
 // - 22.2: pins as the course starter sets them: CANRXB = GPIO17 and CANTXB
 //   = GPIO12, both mux position 2.
@@ -32,8 +43,10 @@
 // txMsgData. They do the same register and IF transfers as the C source.
 // As in the course file, setCANBitRate always programs CAN-B.
 //
-// Not modelled: the bit stream itself (no waveform on the pins, no CRC, bit
-// stuffing or error frames; error counters stay 0, so EIE never fires),
+// Not modelled: the bit stream itself (no waveform on the pins, no CRC or
+// bit stuffing: a damaged frame is an event, not a bit pattern), transmit
+// errors (TEC stays 0, so the module never goes bus-off and BOff stays 0),
+// the parity error PER, the +8 steps of the receive error counter,
 // remote frames, FIFO buffers of several objects (EoB), IF3, the second
 // interrupt line (CAN_IP_MUX21, IE1), test modes, parity, auto-bus-on,
 // other pin choices for CAN-B, and anything connected to CAN-A. The Busy
@@ -56,9 +69,17 @@
 // Distances come from the signal-bus inputs "CAN_DIST1_MM" and
 // "CAN_DIST2_MM"; a negative value unplugs that sensor.
 //
+// A disturbed bus: setting the signal-bus input "CAN_ERROR_FRAMES" to N puts
+// N damaged frames on the CAN-B bus from that moment, back to back, one
+// every 131 bit times (the length of an 8-byte extended frame; a real
+// damaged frame is cut short by an error flag). A sensor frame that falls
+// inside the burst is damaged too and is not received. 100 of them push the
+// receive error counter past the warning limit of 96.
+//
 // Signal-bus outputs: CAN_BITRATE, CAN_RX_FRAMES (frames stored in a
 // message object), CAN_TX_FRAMES, CAN_SENSOR1_PERIOD_MS,
-// CAN_SENSOR2_PERIOD_MS.
+// CAN_SENSOR2_PERIOD_MS, CAN_RX_ERRORS (the receive error counter),
+// CAN_STATUS_INTS (status interrupts requested so far).
 
 import type { Board } from "../board";
 import { SYSCLK_NS } from "../consts";
@@ -78,6 +99,14 @@ const CTL_RESET = 0x1401;
 const ES_LEC = 0x0007;
 const ES_TXOK = 0x0008;
 const ES_RXOK = 0x0010;
+const ES_EPASS = 0x0020;
+const ES_EWARN = 0x0040;
+const CTL_EIE = 0x0008;
+/** LEC value for a damaged frame: 6 = CRC error (TRM Table 22-11). */
+const LEC_CRC = 6;
+/** Error warning limit and error passive level of the receive error counter (TRM Tables 22-11, 22-12). */
+const REC_WARN = 96;
+const REC_PASSIVE = 128;
 // CAN_IFxCMD
 const CMD_DATA_B = 1 << 16;
 const CMD_DATA_A = 1 << 17;
@@ -135,6 +164,12 @@ export class CanModule {
   onTx: ((f: CanFrame, t: number) => void)[] = [];
   onStart: (() => void)[] = [];
   private statusPending = false;
+  /** Receive error counter (CAN_ERRC.REC); 128 stands for "error passive". */
+  private rec = 0;
+  /** Status interrupts requested since power-up. */
+  private statusInts = 0;
+  /** The bus is disturbed until this time (ns): a frame that ends before it is damaged. */
+  noiseUntil = -1;
   private txBusy = false;
   private storm = 0;
   private stormId = 0;
@@ -222,6 +257,8 @@ export class CanModule {
     for (let i = 0; i <= 32; i++) this.objs.push({ msk: 0xffffffff, arb: 0, mctl: 0, data: [0, 0, 0, 0, 0, 0, 0, 0] });
     this.put("CAN_CTL", CTL_RESET);
     this.put("CAN_ES", 7);
+    this.rec = 0;
+    this.put("CAN_ERRC", 0);
     this.put("CAN_BTR", 0x2301);
     this.put("CAN_GLB_INT_EN", 0);
     this.put("CAN_GLB_INT_FLG", 0);
@@ -344,10 +381,48 @@ export class CanModule {
     this.updateInt();
   }
 
+  /** A status interrupt is requested: CAN_INT reads 0x8000 until CAN_ES is read (TRM 22.6). */
+  private requestStatus(): void {
+    if (!this.statusPending) this.b.publish("CAN_STATUS_INTS", ++this.statusInts);
+    this.statusPending = true;
+  }
+
+  /** Writes the receive error counter to CAN_ERRC and EWarn / EPass to CAN_ES; EIE reports a change of EWarn. */
+  private setRec(rec: number): void {
+    this.rec = Math.max(0, Math.min(REC_PASSIVE, rec));
+    const passive = this.rec >= REC_PASSIVE;
+    this.put("CAN_ERRC", (passive ? 0x8000 : 0) | (Math.min(127, this.rec) << 8));
+    const es = this.get("CAN_ES");
+    const next = (es & ~(ES_EWARN | ES_EPASS)) | (this.rec >= REC_WARN ? ES_EWARN : 0) | (passive ? ES_EPASS : 0);
+    this.put("CAN_ES", next);
+    this.b.publish("CAN_RX_ERRORS", this.rec);
+    if ((es ^ next) & ES_EWARN && this.get("CAN_CTL") & CTL_EIE) this.requestStatus();
+  }
+
+  /** Whether the module hears the bus at all: running, CANRX on its pin, the bus's bit rate. */
+  private listening(): boolean {
+    return !this.initMode && this.b.gpio.mux(this.rxPin) === this.mux && Math.abs(this.bitRate() - SENSOR_BITRATE) <= 0.01 * SENSOR_BITRATE;
+  }
+
+  /** A damaged frame went by on the bus: last error code, receive error counter (TRM 22.15.2.2, 22.15.2.3). */
+  busError(): void {
+    if (!this.listening()) return;
+    this.put("CAN_ES", (this.get("CAN_ES") & ~ES_LEC) | LEC_CRC);
+    if (this.get("CAN_CTL") & CTL_SIE) this.requestStatus();
+    this.setRec(this.rec + 1);
+    this.b.mem.writes++;
+    this.updateInt();
+  }
+
   /** A data frame arrives from the bus (called at the end of the frame). */
   receive(f: CanFrame): void {
     const b = this.b;
     if (this.initMode) return;
+    // The bus is disturbed: this frame is damaged like the others around it.
+    if (b.now <= this.noiseUntil) {
+      this.busError();
+      return;
+    }
     const L = this.letter.toUpperCase();
     if (b.gpio.mux(this.rxPin) !== this.mux) {
       b.warn(b.line, `can-rx-mux`, `CAN-${L} is running, but GPIO${this.rxPin} is not switched to CANRX${L} (mux position ${this.mux}), so it hears nothing from the bus. Use GPIO_SetupPinMux(${this.rxPin}, GPIO_MUX_CPU1, ${this.mux});`, "error");
@@ -362,7 +437,9 @@ export class CanModule {
       b.warn(b.line, "can-tx-mux", `GPIO${this.txPin} is not switched to CANTX${L} (mux position ${this.mux}): CAN-${L} cannot acknowledge the frames it receives or send any. Use GPIO_SetupPinMux(${this.txPin}, GPIO_MUX_CPU1, ${this.mux});`);
 
     this.put("CAN_ES", (this.get("CAN_ES") & ~ES_LEC) | ES_RXOK);
-    if (this.get("CAN_CTL") & CTL_SIE) this.statusPending = true;
+    if (this.get("CAN_CTL") & CTL_SIE) this.requestStatus();
+    // A frame received without error takes the receive error counter down by one.
+    if (this.rec > 0) this.setRec(Math.min(this.rec, 127) - 1);
     this.storm = 0;
     this.stormId = 0;
 
@@ -416,7 +493,7 @@ export class CanModule {
       o.mctl &= ~(MC_TXRQST | MC_NEWDAT);
       if (o.mctl & MC_TXIE) o.mctl |= MC_INTPND;
       this.put("CAN_ES", (this.get("CAN_ES") & ~ES_LEC) | ES_TXOK);
-      if (this.get("CAN_CTL") & CTL_SIE) this.statusPending = true;
+      if (this.get("CAN_CTL") & CTL_SIE) this.requestStatus();
       this.sent.push({ ...frame, t });
       b.publish("CAN_TX_FRAMES", ++this.sentTotal, t);
       // A live run keeps the recent frames only.
@@ -587,6 +664,13 @@ function install(b: Board): void {
       can.b.receive({ id: 0x1f0b01ff, extended: true, data: [0, 0x39, 0x30, 0x00, 0x10, 0x01, 0x02, 0x01] });
     };
     b.at((Math.floor(b.now / 1e9) + 1) * 1e9, heartbeat);
+  });
+  // A disturbed bus: N damaged frames, back to back, from the moment the input is set.
+  b.onInput("CAN_ERROR_FRAMES", (v, t) => {
+    const n = Math.max(0, Math.min(1000, Math.round(v)));
+    const frameNs = (frameBits({ id: 0, extended: true, data: [0, 0, 0, 0, 0, 0, 0, 0] }) * 1e9) / SENSOR_BITRATE;
+    if (n > 0) can.b.noiseUntil = Math.max(can.b.noiseUntil, t + n * frameNs);
+    for (let i = 1; i <= n; i++) b.at(t + i * frameNs, () => can.b.busError());
   });
   can.b.onTx.push((f, t) => {
     for (const s of sensors) s.hear(f, t);
