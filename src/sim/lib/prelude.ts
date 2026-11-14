@@ -4,7 +4,7 @@
 
 import type { Board } from "../board";
 import { RuntimeError, floatBits } from "../cc/compile";
-import { sizeOf, type CType } from "../cc/types";
+import { sizeOf, typeName, type CType } from "../cc/types";
 import { TI_SOURCE } from "./ti_source";
 import { formatPrintf, type PrintfArg } from "./printf";
 
@@ -317,11 +317,16 @@ export function installLibrary(b: Board): void {
       if (t.k === "float") return { kind: "float", words: 2, bits: floatBits(v), value: v };
       if (t.k === "ptr" || t.k === "array") return { kind: "ptr", words: 2, bits: v >>> 0, value: v };
       const w = t.k === "int" ? t.w : 1;
-      return { kind: "int", words: w, bits: w === 1 ? v & 0xffff : v >>> 0, value: v };
+      return { kind: "int", words: w, bits: w === 1 ? v & 0xffff : v >>> 0, value: v, signed: t.k === "int" ? t.s : true, type: typeName(t) };
     });
   const format = (args: number[], types: CType[], fmtIndex: number, line: number): string =>
-    formatPrintf(cstr(args[fmtIndex], line), varargs(args, types, fmtIndex + 1), (a) => cstr(a, line), (code, msg) =>
-      b.warn(b.line, code, msg),
+    formatPrintf(
+      cstr(args[fmtIndex], line),
+      varargs(args, types, fmtIndex + 1),
+      (a) => cstr(a, line),
+      (code, msg) => b.warn(b.line, code, msg),
+      // %n stores the number of characters printed so far in the int it is given the address of.
+      (addr, words, value) => mem.write(addr, words, value),
     );
 
   c.defineNative("__eallow", () => {
@@ -401,9 +406,17 @@ export function installLibrary(b: Board): void {
     for (; i < a[2]; i++) if (!b.sci.sendBuffered(port, mem.peek(a[1] + i, 1) & 0xff)) break;
     return i;
   });
+  // UART_printfLine(line, format, ...) writes one of the two lines of the robot board's LCD (20 characters
+  // each). Only the robot board has that screen.
   c.defineNative("UART_printfLine", (a, t, line) => {
     const row = a[0];
-    if (row !== 1 && row !== 2) b.warn(b.line, "lcd-line", `The LCD has lines 1 and 2; line ${row} does not exist.`);
+    if (b.kit !== "robot")
+      b.warn(
+        b.line,
+        "lcd-no-screen",
+        "UART_printfLine prints on the two-line LCD of the robot board, and this board has no LCD, so nothing is shown. To print here use serial_printf(&SerialA, ...), which goes to the serial terminal.",
+      );
+    else if (row !== 1 && row !== 2) b.warn(b.line, "lcd-line", `The LCD has lines 1 and 2; line ${row} does not exist.`);
     else b.lcd[row - 1] = format(a, t, 1, line).slice(0, 20);
     mem.writes++;
     return 0;

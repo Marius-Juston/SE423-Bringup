@@ -19,6 +19,8 @@ import { setStimuli, worldSetup } from "../views/robot-arena-model";
 import { Guard } from "../Markdown";
 import { findLevel } from "../../levels/index";
 import { compareBests, measure, type BestNote } from "../bests";
+import { usePref } from "../prefs";
+import { autoWindowMs, windowName, WINDOW_DEFAULT_MS, WINDOW_STEPS_MS } from "./window";
 
 interface Problem {
   line: number;
@@ -37,6 +39,8 @@ function problemsOf(diags: Diagnostic[], err?: { line: number; msg: string } | n
 const SERIAL_CHECKS = new Set(["serial", "serial-period", "uart"]);
 /** The program talks over a serial port (serial_printf, the SCI registers, the UART helpers). */
 const usesSerial = (src: string) => /serial_|Serial[A-D]\b|Sci[a-d]Regs|UART_/.test(src);
+/** The program writes to the robot board's two-line LCD. */
+const usesLcd = (src: string) => /\bUART_printfLine\s*\(/.test(src);
 /** The program prints with plain printf, which goes to the debugger's console and not to a serial port. */
 const usesPrintf = (src: string) => /(^|[^\w.])printf\s*\(/.test(src);
 
@@ -344,7 +348,14 @@ export function CodeLevelView({
 
   const nowMs = live ? live.timeMs : (result?.endMs ?? 0);
   const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
-  const windowMs = live ? Math.min(Math.max(nowMs, 1), 400) : Math.max(nowMs, 1);
+  // A live run shows a window that moves with time: sized from what the program does, or fixed by hand.
+  // A test run is finite, and shows all of it.
+  const [windowPref, setWindowPref] = usePref<number>("bench-window", 0);
+  const autoWindow = useRef<number | undefined>(undefined);
+  if (live) autoWindow.current = autoWindowMs({ isrLog: live.board.isrLog, pins: live.board.gpio.trace.values() }, autoWindow.current);
+  else autoWindow.current = undefined;
+  const chosenMs = WINDOW_STEPS_MS.includes(windowPref) ? windowPref : (autoWindow.current ?? WINDOW_DEFAULT_MS);
+  const windowMs = live ? Math.min(Math.max(nowMs, 1), chosenMs) : Math.max(nowMs, 1);
   const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : "set" in s ? `${s.set}=${s.value}` : `'${s.type}'` })) : [];
   // The serial terminal is for programs that use a serial port; plain printf has its own console.
   const showSerial = sandbox || uses.serial || serial !== "" || usesSerial(code);
@@ -551,6 +562,17 @@ export function CodeLevelView({
               {live ? (live.running ? `${live.paused ? `paused at line ${live.board.line}` : "running"} · t = ${nowMs.toFixed(nowMs < 100 ? 4 : 1)} ms${live.load < 0.9 ? ` · ${Math.round(live.load * 100)}% of requested speed` : ""}` : `stopped at ${nowMs.toFixed(3)} ms`) : result ? `test run · ${nowMs.toFixed(1)} ms` : "Press Run to power the board."}
               {board?.mainReturned ? " · main() has returned" : ""}
             </p>
+            {live && (
+              <label className="speed bench-window">
+                Time shown{" "}
+                <select value={WINDOW_STEPS_MS.includes(windowPref) ? windowPref : 0} onChange={(e) => setWindowPref(+e.target.value)} title="How much of the recent past the interrupt, pin and signal panels show while the program runs">
+                  <option value={0}>automatic: last {windowName(autoWindow.current ?? WINDOW_DEFAULT_MS)}</option>
+                  {WINDOW_STEPS_MS.map((ms) => (
+                    <option key={ms} value={ms}>last {windowName(ms)}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             {level.watch && level.watch.length > 0 && board && (
               <dl className="watch">
                 {level.watch.map((w) => {
@@ -564,8 +586,12 @@ export function CodeLevelView({
                 })}
               </dl>
             )}
-            {level.kit !== "launchpad" && board && (board.lcd[0] || board.lcd[1]) ? (
-              <div className="lcd" role="img" aria-label={`LCD: ${board.lcd[0]} / ${board.lcd[1]}`}>{board.lcd[0].padEnd(20)}{"\n"}{board.lcd[1].padEnd(20)}</div>
+            {/* The robot board's LCD: two lines of 20 characters, written with UART_printfLine. It shows as soon as the program uses it. */}
+            {level.kit === "robot" && board && (board.lcd[0] || board.lcd[1] || usesLcd(code)) ? (
+              <figure className="lcd-wrap">
+                <div className="lcd" role="img" aria-label={board.lcd[0] || board.lcd[1] ? `LCD, line 1: ${board.lcd[0] || "empty"}. Line 2: ${board.lcd[1] || "empty"}.` : "LCD: nothing printed yet"}>{board.lcd[0].padEnd(20)}{"\n"}{board.lcd[1].padEnd(20)}</div>
+                <figcaption>The robot's LCD: 2 lines of 20 characters. <code>UART_printfLine(1, ...)</code> writes the top line, <code>UART_printfLine(2, ...)</code> the bottom one.</figcaption>
+              </figure>
             ) : null}
           </Panel>
           {board && VIEWS.filter((v) => v.relevant(board, kit) && !(arenaFirst && v === arenaView)).map((v) => viewPanel(v, false))}

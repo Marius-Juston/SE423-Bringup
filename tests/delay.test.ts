@@ -180,3 +180,25 @@ __interrupt void cpu_timer0_isr(void) {
     expect(r.board!.readVar("n")).toBe(99);
   });
 });
+
+describe("UART_printfLine and the robot board's LCD", () => {
+  const src = `void main(void) {
+    InitSysCtrl();
+    UART_printfLine(1, "Count %d", 7);
+    UART_printfLine(2, "A line that is longer than twenty characters");
+    while (1) {}
+}`;
+  it("writes the two lines of the robot's LCD, 20 characters each", () => {
+    const r = runProgram({ kit: "robot", source: src, durationMs: 1, stimuli: [], checks: [] });
+    expect(r.diagnostics).toEqual([]);
+    expect(r.board!.lcd).toEqual(["Count 7", "A line that is longe"]);
+  });
+  it("says that a board without an LCD shows nothing", () => {
+    for (const kit of ["redboard", "launchpad"]) {
+      const r = runProgram({ kit, source: src, durationMs: 1, stimuli: [], checks: [] });
+      // One message per line that calls it.
+      expect(r.diagnostics.map((d) => d.code)).toEqual(["lcd-no-screen", "lcd-no-screen"]);
+      expect(r.board!.lcd).toEqual(["", ""]);
+    }
+  });
+});

@@ -734,6 +734,71 @@ const X_ADC_INIT = `    EALLOW;
     PieCtrlRegs.PIEIER7.bit.INTx2 = 1;  // DMA channel 2 is INT7.2
     IER |= M_INT7;`;
 
+// "How loud is it?": the robot board's microphone on ADCINB4, sampled from the timer interrupt.
+const mic = (isr: string) => `${FREQ}
+#define BLOCK 1000               // samples per measurement: 0.1 s
+
+__interrupt void cpu_timer0_isr(void);
+
+float micVolts = 0;              // the newest sample, volts
+float vmax = 0;                  // highest and lowest sample of the block so far
+float vmin = 3.0;
+int16_t count = 0;               // samples in the block so far
+float mic_pp = 0;                // peak to peak of the last whole block, volts
+float mic_mid = 0;               // middle of the last whole block, volts
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    // ADCB: clock, 12-bit mode, power, and the 1 ms the data sheet asks for
+    EALLOW;
+    AdcbRegs.ADCCTL2.bit.PRESCALE = 6;
+    AdcSetMode(ADC_ADCB, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE);
+    AdcbRegs.ADCCTL1.bit.ADCPWDNZ = 1;
+    DELAY_US(1000);
+    AdcbRegs.ADCSOC0CTL.bit.CHSEL = 4;     // SOC0 converts ADCINB4, the microphone
+    AdcbRegs.ADCSOC0CTL.bit.ACQPS = 99;    // sample window of 500 ns
+    AdcbRegs.ADCSOC0CTL.bit.TRIGSEL = 0;   // started by software only
+    EDIS;
+    AdcbRegs.ADCSOCFRC1.bit.SOC0 = 1;      // the first conversion
+
+${TIMER0}
+
+    while (1) {
+    }
+}
+
+// Every 0.1 ms: one sample of the microphone
+__interrupt void cpu_timer0_isr(void)
+{
+    // the conversion started 0.1 ms ago is long finished
+    micVolts = AdcbResultRegs.ADCRESULT0 * 3.0 / 4096.0;
+    AdcbRegs.ADCSOCFRC1.bit.SOC0 = 1;      // start the next one
+
+${isr}
+
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
+}
+`;
+
+const MIC_ISR = `    if (micVolts > vmax) vmax = micVolts;
+    if (micVolts < vmin) vmin = micVolts;
+    count++;
+    if (count == BLOCK) {
+        mic_pp = vmax - vmin;
+        mic_mid = (vmax + vmin) / 2;
+        if (mic_pp > 1.0) GpioDataRegs.GPASET.bit.GPIO22 = 1;
+        else GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
+        vmax = 0;
+        vmin = 3.0;
+        count = 0;
+    }`;
+
 export const ch15: Chapter = {
   id: "dma-filters",
   number: 15,
@@ -1768,6 +1833,71 @@ A star if \`DMA_ISR\` stays under 1 us: it reports, main() calculates.
         "`DmaRegs.CH2.SRC_ADDR_SHADOW = (Uint32)&AdcaResultRegs.ADCRESULT0;` `DmaRegs.CH2.DST_ADDR_SHADOW = (Uint32)samples;` `DmaRegs.CH2.CONTROL.all = 0x0091;` and in DMA_ISR: `PieCtrlRegs.PIEACK.all = PIEACK_GROUP7;` `bufferReady = 1;` `DMAcount += 1;`",
       ],
       takeaway: "ePWM, ADC and DMA now run the whole sampling chain, and the CPU hears of it once per buffer. On the robot the same block points at ADCB and a microphone.",
+    },
+
+    {
+      id: "dmaf-mic",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "How loud is it?",
+      goal: "Measure how loud the robot board's microphone hears a tone: the peak-to-peak voltage of each 0.1 s block of samples.",
+      refs: [{ course: "Lab 4" }, { trm: "11.6.4" }, { trm: "11.4.5" }],
+      brief: `
+The robot board has a **microphone**. A small amplifier turns the sound into a voltage on the pin **ADCINB4**, channel 4 of ADC B.
+
+## What its voltage looks like
+Sound is air pressure that swings up and down, and a pin cannot go below 0 V. So the amplifier puts silence in the middle of the ADC's range, about **1.5 V**, and sound swings around that: between about 0.5 V and 2.5 V for the loudest sound it passes (Lab 4).
+
+One sample therefore says nothing about loudness: a loud tone passes through 1.5 V thousands of times a second. Loudness is how **far** the voltage swings. A simple measure is **peak to peak**: the highest sample minus the lowest in a stretch of time.
+
+Example: the samples of a block range from 0.9 V to 2.1 V. Peak to peak is 2.1 - 0.9 = 1.2 V, and the middle is (2.1 + 0.9) / 2 = 1.5 V.
+
+## What is given
+\`main()\` powers up ADC B and sets SOC0 to ADCINB4, started by software. The timer interrupt runs every 0.1 ms, 10000 samples a second: enough for tones up to 5000 Hz. It stores the newest sample in \`micVolts\` and starts the next conversion.
+
+## Your task
+In \`cpu_timer0_isr\`, after the given lines:
+
+1. Keep the highest sample of the block in \`vmax\` and the lowest in \`vmin\`, and count the samples in \`count\`.
+2. When \`count\` reaches \`BLOCK\` (1000 samples, 0.1 s): set \`mic_pp = vmax - vmin\` and \`mic_mid = (vmax + vmin) / 2\`. Switch LED1 (GPIO22) on when \`mic_pp\` is above 1.0 V, otherwise off. Then start a new block: \`vmax = 0\`, \`vmin = 3.0\`, \`count = 0\`.
+
+The tests play a 440 Hz tone, loud at first and quieter after 0.25 s.
+`,
+      kit: "robot",
+      starter: mic("    // TODO: vmax, vmin and count; at the end of a block mic_pp, mic_mid, LED1, and start again"),
+      solution: mic(MIC_ISR),
+      durationMs: 520,
+      stimuli: [
+        { at: 0, set: "MIC_TONE_HZ", value: 440 },
+        { at: 0, set: "MIC_AMPL_V", value: 1.0 },
+        { at: 250, set: "MIC_AMPL_V", value: 0.3 },
+      ],
+      checks: [
+        { kind: "isr", fn: "cpu_timer0_isr", min: 5000, label: "A sample every 0.1 ms" },
+        {
+          kind: "var", name: "mic_pp", at: 240, min: 1.95, max: 2.01,
+          label: "The loud tone swings 0.5 V to 2.5 V: mic_pp is 2.0 V",
+          hint: "In the thousands: the samples are still counts, use micVolts. 2.5: vmin never moved, it must start at 3.0 so the first sample is below it.",
+        },
+        { kind: "var", name: "mic_mid", at: 240, min: 1.48, max: 1.52, label: "Its middle is 1.5 V" },
+        { kind: "led", led: "LED1", at: 240, on: true, label: "Loud: LED1 is on" },
+        {
+          kind: "var", name: "mic_pp", min: 0.58, max: 0.61,
+          label: "The quiet tone swings 1.2 V to 1.8 V: mic_pp is 0.6 V",
+          hint: "Still 2.0: vmax and vmin keep the extremes of the loud tone. Start every block afresh: vmax = 0; vmin = 3.0; count = 0;",
+        },
+        { kind: "var", name: "mic_mid", min: 1.48, max: 1.52, label: "Its middle is still 1.5 V" },
+        { kind: "led", led: "LED1", at: 515, on: false, label: "Quiet: LED1 is off", hint: "Switch the LED off as well as on: else GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;" },
+        { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
+      ],
+      watch: ["micVolts", "mic_pp", "mic_mid", "count"],
+      hints: [
+        "Two comparisons per sample: is it above the highest so far, is it below the lowest so far.",
+        "`if (micVolts > vmax) vmax = micVolts;` `if (micVolts < vmin) vmin = micVolts;` `count++;`",
+        "`if (count == BLOCK) { mic_pp = vmax - vmin; mic_mid = (vmax + vmin) / 2; if (mic_pp > 1.0) GpioDataRegs.GPASET.bit.GPIO22 = 1; else GpioDataRegs.GPACLEAR.bit.GPIO22 = 1; vmax = 0; vmin = 3.0; count = 0; }`",
+      ],
+      takeaway: "A microphone's signal swings around a middle voltage. Its loudness is the size of the swing over many samples, never one sample.",
     },
 
     // ------------------------------------------------------------------ expert

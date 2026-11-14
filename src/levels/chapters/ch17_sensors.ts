@@ -1337,7 +1337,7 @@ export const ch17: Chapter = {
 A robot that drives has to know how far away things are. Without that it finds a wall by hitting it.
 
 ## Passive and active sensors
-A **passive** sensor only listens: a camera, a thermometer. An **active** sensor sends energy out and measures what comes back, so it works in the dark. The robot's use **infrared** (IR) light: light just beyond red, which your eye cannot see.
+A **passive** sensor only listens: a camera, a thermometer. An **active** sensor sends energy out and measures what comes back, so it works in the dark. The robot's distance sensors use **infrared** (IR) light: light just beyond red, which your eye cannot see.
 
 ## Infrared distance sensors
 A simple IR sensor lights the scene with an infrared LED and measures how strong the reflection is: closer means stronger. The light spreads out, so at twice the distance the reflection is four times weaker, and a dark surface reflects less than a white one. Such a sensor is cheap, but it sees one direction only and reaches about 80 cm.
@@ -1362,7 +1362,7 @@ The robot carries a **LIDAR**, a Hokuyo URG-04LX (the course code says LADAR). I
 
 Its laser is class 1: safe to look at. With stronger lasers, invisible infrared is the more dangerous kind: your eye does not see it, so you do not blink or look away.
 
-The sensor reports millimetres. The course's robot code works in **feet** (ft): 1 ft = 12 inches = 304.8 mm.
+The sensor reports millimetres. The course's robot code works in **feet** (ft): 1 ft = 12 inches = 304.8 mm. A reading of 1907 mm is 1907 / 304.8 = 6.26 ft.
 
 ## From a scan to a decision
 The scan arrives as text over a serial port (chapter 6). Your code asks for it every 100 ms, decodes it, and then decides: drive on, turn, or follow the wall. You will write all three parts.
@@ -2135,7 +2135,7 @@ Everything together, on the real serial path. You have written every piece in th
 Send \`G_command\` to the LIDAR.
 
 ## The parser
-Paste your data state from "The parser is a state machine". The course stores **feet**, and stores "very far" when the sensor sends an error code instead of a distance (0 or 6: no usable echo). So replace the line that stored \`ladar_mm[dis_index]\` by
+Paste your data state from "The parser is a state machine". The course stores **feet**, and stores "very far" when the sensor sends an error code instead of a distance (any reading below 20 is one; this sensor sends 0 or 6: no usable echo). So replace the line that stored \`ladar_mm[dis_index]\` by
 
 \`\`\`c
 if (distance == 0 || distance == 6) {
@@ -2263,7 +2263,7 @@ The last field is the reason for the LIDAR. An IR sensor looks in one direction 
         "For the dark box, write the signal it really gives, then ask which distance gives the same signal with the calibration reflectivity.",
         "signal ratio = (d1 / d2) squared. A quarter of the signal looks like twice the distance, because 2 * 2 = 4 (2 is the square root of 4): 30 cm is reported as 60 cm.",
       ],
-      takeaway: "Strength of reflection is a cheap but rough measure of distance. The robot's own IR sensors (on the CAN bus, chapter 14) and its LIDAR time the light instead, which hardly depends on the surface.",
+      takeaway: "Strength of reflection is a cheap but rough measure of distance. The robot's own IR sensors (on the CAN bus, chapter 14) and its LIDAR time the light instead, which hardly depends on the surface. The Sharp sensor of chapter 12 measures where the reflection lands, not how strong it is.",
     },
     {
       id: "sens-tof",

@@ -6,75 +6,19 @@ import { usePref } from "./prefs";
 import type { CodeLevel } from "../levels/types";
 import { CodeLevelView } from "./code/CodeLevelView";
 import { Markdown } from "./Markdown";
-import { findLevel } from "../levels/index";
-import { SANDBOX_STARTERS } from "./sandbox-starters";
+import { SANDBOX_STARTERS, sandboxWorld } from "./sandbox-starters";
+import { BLINK_SOURCE, BLINK_WATCH } from "./sandbox-starters/blink";
 
-const STARTER = `// Free play: nothing is checked here.
-__interrupt void cpu_timer0_isr(void);
-
-uint32_t numTimer0calls = 0;
-
-void main(void)
-{
-    InitSysCtrl();
-    InitGpio();
-
-    GPIO_SetupPinMux(22, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
-    GPIO_SetupPinOptions(157, GPIO_INPUT, GPIO_PULLUP);    // PB1
-
-    DINT;
-    InitPieCtrl();
-    IER = 0x0000;
-    IFR = 0x0000;
-    InitPieVectTable();
-    EALLOW;
-    PieVectTable.TIMER0_INT = &cpu_timer0_isr;
-    EDIS;
-
-    InitCpuTimers();
-    ConfigCpuTimer(&CpuTimer0, 200, 100000);   // 100 ms
-    CpuTimer0Regs.TCR.all = 0x4000;
-    init_serialSCIA(&SerialA, 115200);
-
-    IER |= M_INT1;
-    PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
-    EINT;
-
-    while (1) {
-        if (GpioDataRegs.GPEDAT.bit.GPIO157 == 0) {
-            GpioDataRegs.GPASET.bit.GPIO22 = 1;     // hold PB1: LED1 stays on
-        }
-    }
-}
-
-__interrupt void cpu_timer0_isr(void)
-{
-    numTimer0calls++;
-    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
-    PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
-}
-`;
-
-/** "blink" and "arena" are the Sandbox's own; any other value is the id of a program in sandbox-starters. */
+/** "blink" is offered on every board; any other value is the id of a program in sandbox-starters. */
 type Program = string;
 
-// The "Robot arena" program: the reference solution of the capstone level
-// "cap-wall" (PI speed control on both motors, dead reckoning to a goal, and
-// a stop when the LIDAR sees something close ahead), in that level's room.
-// Its stimuli switch the robot world on, so the arena's playground works
-// here without a level.
-const arenaLevel = (): CodeLevel | undefined => {
-  const l = findLevel("cap-wall")?.level;
-  return l?.kind === "code" ? l : undefined;
-};
-
+// No starting program is the solution of a level, a lab or a homework:
+// tests/sandbox_starters.test.ts runs each one against every code level.
 const mk = (kit: CodeLevel["kit"], program: Program): CodeLevel => {
-  const arena = program === "arena" && kit === "robot" ? arenaLevel() : undefined;
-  if (arena) return { ...BASE, id: "sandbox-robot-arena", kit, starter: arena.solution, solution: arena.solution, stimuli: arena.stimuli, watch: arena.watch };
   const own = SANDBOX_STARTERS.find((x) => x.id === program && x.kit === kit);
-  if (own) return { ...BASE, id: `sandbox-${kit}-${own.id}`, kit, starter: own.source, solution: own.source, watch: own.watch, stimuli: own.stimuli };
-  return { ...BASE, id: `sandbox-${kit}`, kit };
+  const stimuli = [...sandboxWorld(kit), ...(own?.stimuli ?? [])];
+  if (own) return { ...BASE, id: `sandbox-${kit}-${own.id}`, kit, starter: own.source, solution: own.source, watch: own.watch, stimuli };
+  return { ...BASE, id: `sandbox-${kit}`, kit, stimuli };
 };
 
 const BASE: CodeLevel = {
@@ -86,21 +30,23 @@ const BASE: CodeLevel = {
   brief: "",
   refs: [],
   kit: "robot",
-  starter: STARTER,
-  solution: STARTER,
+  starter: BLINK_SOURCE,
+  solution: BLINK_SOURCE,
   durationMs: 1000,
   checks: [],
-  watch: ["numTimer0calls"],
+  watch: BLINK_WATCH,
 };
 
 const ABOUT = `
 Write any program and press **Run**. Hold the on-screen push buttons, type into the serial terminal, and watch the pins and registers.
 
 - The course helper functions are available: \`GPIO_SetupPinMux\`, \`GPIO_SetupPinOptions\`, \`InitCpuTimers\`, \`ConfigCpuTimer\`, \`init_serialSCIA\`, \`serial_printf\`, \`UART_printfLine\`, \`DELAY_US\`.
+- \`serial_printf\` prints to the serial terminal. On the robot board \`UART_printfLine(1, ...)\` and \`UART_printfLine(2, ...)\` write the two lines of its LCD, shown on the board; the other boards have no LCD.
 - \`printf\` output appears in its own console under the terminal.
 - Time is simulated: a slower speed lets you watch fast signals.
 - The simulator models behaviour, not exact timing: confirm on the real board.
-- On the robot board, the starting program **Robot arena** drives the robot through a room. While it runs, the **Robot arena** panel lets you drag the robot and the goal, choose another room or a random maze, and put boxes and posts in the way.
+- The starting programs show what a board can do through its library. None of them is the answer to a level, a lab or a homework.
+- On the robot board, the starting program **Robot arena** drives the robot in a circle. While it runs, the **Robot arena** panel lets you drag the robot, choose another room or a random maze, and put boxes and posts in the way.
 `;
 
 export function Sandbox() {
@@ -111,7 +57,6 @@ export function Sandbox() {
   // The programs this board has: the blinking LED on every board, the others on the board they are written for.
   const programs: { id: Program; label: string; about?: string }[] = [
     { id: "blink", label: "Blink an LED" },
-    ...(kit === "robot" ? [{ id: "arena", label: "Robot arena" }] : []),
     ...SANDBOX_STARTERS.filter((x) => x.kit === kit).map((x) => ({ id: x.id, label: x.label, about: x.about })),
   ];
   const program = programs.some((x) => x.id === programPref) ? programPref : "blink";

@@ -932,6 +932,83 @@ ${msgObject(1, "0x060b0101")}
 
 ${CAN_START}`;
 
+// "Stop before the wall": sensor 1 looks ahead of a robot that drives at a wall (robot world).
+const canRange = (isr: string, drive: string) => `#define RX_MSG_DATA_LENGTH    8
+#define RX_MSG_OBJ_ID_1       1  // measurement from sensor 1
+
+__interrupt void can_isr(void);
+
+extern uint16_t rxMsgData[8];
+uint32_t dis_1 = 0;              // sensor 1 distance, mm (only when front_ok is 1)
+uint16_t front_ok = 0;           // 1 when the last measurement was valid
+uint16_t newData = 0;            // set by can_isr when a measurement has arrived
+
+// Called for every measurement: drive on, or stop
+void drive(void)
+{
+${drive}
+}
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+
+    init_EPWM1and2();            // the two motor outputs, both motors stopped
+${CAN_PINS_INIT}
+
+    EALLOW;
+    PieVectTable.CANB0_INT = &can_isr;
+    EDIS;
+
+${CAN_PIE_ENABLE}
+    CanbRegs.CAN_GLB_INT_EN.bit.GLBINT0_EN = 1;
+    EINT;
+
+${msgObject(1, "0x060b0101")}
+
+${CAN_START}
+
+    while (1) {
+        if (newData == 1) {
+            newData = 0;
+            drive();
+        }
+    }
+}
+
+__interrupt void can_isr(void)
+{
+    uint32_t status;
+
+    status = CANgetInterruptCause(CANB_BASE);
+
+    if (status == CAN_INT_INT0ID_STATUS) {
+        status = CANgetStatus(CANB_BASE);
+    } else if (status == RX_MSG_OBJ_ID_1) {
+        CANreadMessage(CANB_BASE, RX_MSG_OBJ_ID_1, rxMsgData);
+${isr}
+        CANclearInterruptStatus(CANB_BASE, RX_MSG_OBJ_ID_1);
+        newData = 1;
+    }
+
+    CANclearGlobalInterruptStatus(CANB_BASE, CAN_GLOBAL_INT_CANINT0);
+    InterruptclearACKGroup(INTERRUPT_ACK_GROUP9);
+}
+`;
+
+const CAN_RANGE_ISR = `        dis_1 = 256 * (uint32_t)rxMsgData[1] + rxMsgData[0];
+        if (rxMsgData[2] == 0) front_ok = 1;
+        else front_ok = 0;`;
+
+const CAN_RANGE_DRIVE = `    if (front_ok == 1 && dis_1 < 400) {
+        setEPWM1A(0);
+        setEPWM2A(0);
+    } else {
+        setEPWM1A(3.0);
+        setEPWM2A(-3.0);
+    }`;
+
 export const ch14: Chapter = {
   id: "buses",
   number: 14,
@@ -2282,6 +2359,87 @@ The sensor sends every 100 ms. The tests move it to 1234 mm, then to 300 mm.
         "The finished block is in \"Hear sensor 1\", from the comment //GPIO17 down to the two CAN_CTL lines before while(1).",
       ],
       takeaway: "Pins, InitCANB, bit rate, interrupt path, message objects, then Init = 0. Adding a sensor is one more message object and one more branch in can_isr.",
+    },
+
+    {
+      id: "bus-can-range",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Stop before the wall",
+      goal: "Use the status byte of the distance message so the robot drives up to a wall and stops 400 mm in front of it.",
+      refs: [{ course: "L14", slide: 20, note: "time of flight" }, { course: "Project", note: "the SEN-36005 data sheet and CAN user's guide are in the course repository" }, { trm: "22.11.9" }],
+      brief: `
+So far a knob set the distance. Here the robot stands in a room, 10 ft square, and sensor 1 looks straight ahead from its nose at the wall it faces.
+
+## What the sensor can and cannot see
+The SEN-36005 measures by **time of flight**: it sends a pulse of infrared laser light and times how long the echo takes. It reports the nearest thing inside a cone 27 degrees wide, in whole millimetres, every 100 ms.
+
+Its range is limited. In **short mode**, the mode it starts in, it measures up to 1.3 m (user's guide, "Ranging configuration"). Beyond that the echo is too weak, and the message says so in **byte 2, the ranging status**:
+
+- 0: the distance in bytes 0 and 1 is valid
+- 2: the return signal is too weak. Bytes 0 and 1 are **not a distance** (this sensor sends 0).
+
+Example: the bytes \`0x2C 0x01 0x00\` are 300 mm, valid. The bytes \`0x00 0x00 0x02\` are not "0 mm, touching the wall". They mean "nothing within 1.3 m".
+
+The robot starts 1570 mm from the wall, so the first measurements have status 2.
+
+## Your task
+In \`can_isr\`, after \`CANreadMessage\`: compute \`dis_1\` from \`rxMsgData[0]\` and \`rxMsgData[1]\` as before, and set \`front_ok\` to 1 when \`rxMsgData[2]\` is 0, otherwise to 0.
+
+In \`drive()\`, which \`main()\` calls for every measurement:
+
+- When the measurement is valid **and** below 400 mm: stop. \`setEPWM1A(0); setEPWM2A(0);\`
+- Otherwise drive forward: \`setEPWM1A(3.0); setEPWM2A(-3.0);\`
+
+\`setEPWM1A\` (left motor) and \`setEPWM2A\` (right motor, mounted the other way round, hence the minus) come from the board's library. Writing them is part of Lab 3.
+
+Watch the Robot arena: the cone is drawn dashed while the sensor sees nothing.
+`,
+      kit: "robot",
+      starter: canRange("        // dis_1 from bytes 0 and 1, front_ok from byte 2", "    // stop when the measurement is valid and below 400 mm, otherwise drive forward"),
+      solution: canRange(CAN_RANGE_ISR, CAN_RANGE_DRIVE),
+      durationMs: 6000,
+      stimuli: [
+        { at: 0, set: "LIDAR_ROOM", value: 0 },
+        { at: 0, set: "ROBOT_START_X_FT", value: 4.5 },
+        { at: 0, set: "ROBOT_START_Y_FT", value: 5 },
+        { at: 0, set: "ROBOT_START_THETA_RAD", value: 0 },
+        { at: 0, set: "ROBOT_WORLD", value: 1 },
+      ],
+      checks: [
+        { kind: "isr", fn: "can_isr", min: 50, label: "can_isr runs for every measurement" },
+        {
+          kind: "var", name: "front_ok", at: 250, equals: 0,
+          label: "At the start the wall is out of range: front_ok is 0",
+          hint: "Byte 2 of the message is the ranging status. Only 0 means valid: front_ok = 1 when rxMsgData[2] == 0, otherwise 0.",
+        },
+        {
+          kind: "signal", name: "ROBOT_X_FT", at: 1500, min: 4.9,
+          label: "The robot drives while the sensor sees nothing",
+          hint: "It never left. A status of 2 comes with 0 in the distance bytes: that is not a wall 0 mm away. Stop only when front_ok is 1 and dis_1 is below 400.",
+        },
+        { kind: "var", name: "front_ok", equals: 1, label: "Near the wall the measurements are valid: front_ok is 1" },
+        {
+          kind: "var", name: "dis_1", min: 330, max: 400,
+          label: "It stands 330 to 400 mm from the wall, by its own sensor",
+          hint: "dis_1 = 256 * (uint32_t)rxMsgData[1] + rxMsgData[0]; The sensor reports every 100 ms and the robot rolls a little after the motors stop, so it ends a few centimetres inside 400 mm.",
+        },
+        {
+          kind: "signal", name: "ROBOT_X_FT", min: 8.3, max: 8.45,
+          label: "The robot stopped where the room says: 1.2 to 1.35 ft between its nose and the wall",
+          hint: "Past 8.45 ft it stopped too late or not at all: check the byte order of dis_1 and the comparison with 400.",
+        },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", equals: 0, tol: 0.05, label: "The wheels stand still at the end", hint: "Stop with setEPWM1A(0); setEPWM2A(0);" },
+        { kind: "signal", name: "ROBOT_CRASHED", equals: 0, label: "The robot never touched the wall" },
+      ],
+      watch: ["dis_1", "front_ok"],
+      hints: [
+        "Two facts decide: is the measurement valid, and is it below 400 mm. A measurement that is not valid must never stop the robot.",
+        "In can_isr: `dis_1 = 256 * (uint32_t)rxMsgData[1] + rxMsgData[0];` then `if (rxMsgData[2] == 0) front_ok = 1; else front_ok = 0;`",
+        "In drive(): `if (front_ok == 1 && dis_1 < 400) { setEPWM1A(0); setEPWM2A(0); } else { setEPWM1A(3.0); setEPWM2A(-3.0); }`",
+      ],
+      takeaway: "A distance is only a distance when the status says so. Every sensor has a range, and what it sends outside it looks like a number too.",
     },
 
     // ------------------------------------------------------------------ expert

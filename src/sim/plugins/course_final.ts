@@ -52,10 +52,9 @@
 //   in feet and radians, with the heading brought to the turn count of the
 //   pose passed in; sets *flag to 1 when the packet holds a tracked pose.
 //
-// World: while the robot world is on (input ROBOT_WORLD = 1) and nothing
-// else has set the gyro, the MPU-9250's Z rate IMU_GZ_DPS follows the
-// robot's own turning rate, so a program that integrates the gyro sees the
-// robot turn.
+// World: while the robot world is on (input ROBOT_WORLD = 1) the MPU-9250
+// feels the robot's motion. That is the IMU's model (spi_devices.ts), for
+// every program, not something this library adds.
 //
 // Not modelled (inert: the variables exist and never change):
 // - OptiTrack: no packet ever arrives, new_optitrack stays 0.
@@ -63,8 +62,9 @@
 //   NewCAMData... flags stay 0.
 // - LabVIEW and the Linux commands on SCID: nothing arrives, and what the
 //   program sends there goes nowhere.
-// - The LPR510 analog gyro on ADCINC5 and the other ADCC inputs read what
-//   their signal-bus inputs say (0 V unless set).
+// - Outside the robot world the LPR510 analog gyro's pins (ADCINC2 to 5) read
+//   what their signal-bus inputs say (0 V unless set). In the robot world
+//   they follow the robot's turn rate (robot_sensors.ts).
 // - setupSpib() is the library's (plugins/spi.ts) and sets the port only. The
 //   MPU-9250 configuration the final project's own version writes is not
 //   sent over SPI; only the accelerometer's 4 g range, which the project
@@ -76,7 +76,6 @@
 import type { Board } from "../board";
 import { bitsFloat, floatBits } from "../cc/compile";
 import type { SimPlugin } from "../plugin";
-import { WHEEL_BASE } from "./plant";
 import { FT_PER_WHEEL_RAD } from "./robot_world";
 
 const PRELUDE = `
@@ -461,19 +460,6 @@ function install(b: Board): void {
   });
 
   for (const name of REPLACEABLE) c.fns.get(name)!.replaceable = true;
-
-  // The gyro turns with the robot while the robot world is on and nobody else has set it.
-  let own: number | undefined;
-  const gyro = (_v: number, t: number) => {
-    if (!b.inputs.get("ROBOT_WORLD")) return;
-    const now = b.inputs.get("IMU_GZ_DPS");
-    if (now !== undefined && now !== 0 && now !== own) return;
-    const w = (((b.inputs.get("RIGHT_WHEEL_RADPS") ?? 0) - (b.inputs.get("LEFT_WHEEL_RADPS") ?? 0)) * FT_PER_WHEEL_RAD) / WHEEL_BASE;
-    own = Math.max(-250, Math.min(250, (w * 180) / Math.PI));
-    if (own !== now) b.setInput("IMU_GZ_DPS", own, t);
-  };
-  b.onInput("LEFT_WHEEL_RADPS", gyro);
-  b.onInput("RIGHT_WHEEL_RADPS", gyro);
 }
 
 export const plugin: SimPlugin = {

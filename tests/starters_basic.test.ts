@@ -3,10 +3,8 @@ import { describe, expect, it } from "vitest";
 import { runProgram, type Check } from "../src/sim/runner";
 import { LiveSession } from "../src/sim/live";
 import { LED_LETTER_PINS, ledMask } from "../src/sim/plugins/course_leds";
-import { starter as xint } from "../src/ui/sandbox-starters/xint";
-import { starter as homework } from "../src/ui/sandbox-starters/homework";
-import { starter as ladar } from "../src/ui/sandbox-starters/ladar";
 
+// The Sandbox's own starting programs are tested in sandbox_starters.test.ts.
 // The course starter projects must run unchanged. They live outside this
 // repo (TI and course copyright), so these tests are skipped when the
 // checkout is not present.
@@ -242,78 +240,5 @@ void main(void) {
     clean(r);
     expect(ledMask(7)).toBe(0b11111_00001_00001);
     expect(ledMask(8)).toBe(0b11111_10101_11111);
-  });
-});
-
-describe("the Sandbox's own starting programs", () => {
-  for (const s of [xint, homework, ladar]) {
-    it(`${s.id}: plain ASCII, short lines, runs with no diagnostics on the ${s.kit} board`, () => {
-      for (const line of s.source.split("\n")) {
-        expect(line.length, line).toBeLessThanOrEqual(100);
-        expect(/^[\x20-\x7e]*$/.test(line), line).toBe(true);
-      }
-      const r = runProgram({ kit: s.kit, source: s.source, durationMs: 1000, checks: [] });
-      clean(r);
-      for (const name of s.watch) expect(r.board.compiler.globals.has(name), name).toBe(true);
-    });
-  }
-
-  it("xint: PB1 and PB2 are counted and printed, the display steps", () => {
-    const r = runProgram({
-      kit: "redboard",
-      source: xint.source,
-      durationMs: 2000,
-      stimuli: [
-        { at: 500, press: "PB1" }, { at: 600, release: "PB1" },
-        { at: 1000, press: "PB2" }, { at: 1100, release: "PB2" },
-        { at: 1200, press: "PB2" }, { at: 1300, release: "PB2" },
-      ],
-      checks: [
-        { kind: "blink", led: "RED", periodMs: 200, label: "red" },
-        { kind: "var", name: "Xint1Count", equals: 1, label: "XINT1" },
-        { kind: "var", name: "Xint2Count", equals: 2, label: "XINT2" },
-        { kind: "serial", includes: "NumXInt1=1,NumXInt2=2\r\n", label: "print" },
-      ],
-    });
-    clean(r);
-    expect(shownDigit(r.board.gpio.level)).toBeGreaterThanOrEqual(0);
-  });
-
-  it("homework: blinks, prints every 2 s, steps the display every 2.5 s", () => {
-    const r = runProgram({
-      kit: "redboard",
-      source: homework.source,
-      durationMs: 5200,
-      stimuli: [{ at: 3000, type: "ab" }],
-      checks: [
-        { kind: "blink", led: "RED", periodMs: 20, label: "red" },
-        { kind: "blink", led: "BLUE", periodMs: 80, label: "blue" },
-        { kind: "serial", equals: "Num Timer2:50 Num SerialRX: 0\r\nNum Timer2:100 Num SerialRX: 2\r\n", label: "prints" },
-      ],
-    });
-    clean(r);
-    expect(shownDigit(r.board.gpio.level)).toBe(1);
-  });
-
-  it("ladar: the LCD shows the distance ahead and to the right front", () => {
-    const r = runProgram({
-      kit: "robot",
-      source: ladar.source,
-      durationMs: 2000,
-      stimuli: [
-        { at: 0, set: "LIDAR_ROOM", value: 0 },
-        { at: 0, set: "LIDAR_X_FT", value: 7 },
-        { at: 0, set: "LIDAR_Y_FT", value: 4 },
-        { at: 0, set: "LIDAR_THETA_RAD", value: 0 },
-      ],
-      checks: [
-        { kind: "var", name: "LADARfront", min: 2.98, max: 3.02, label: "front" },
-        { kind: "var", name: "LADARrightfront", min: 4.4, max: 4.45, label: "right front" },
-        { kind: "var", name: "numScans", min: 8, max: 10, label: "scans" },
-        { kind: "lcd", line: 1, matches: "^Scans \\d+$", label: "lcd 1" },
-        { kind: "lcd", line: 2, matches: "^F[23]\\.\\d{4} R4\\.\\d{4}$", label: "lcd 2" },
-      ],
-    });
-    clean(r);
   });
 });

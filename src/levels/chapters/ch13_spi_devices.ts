@@ -151,6 +151,121 @@ void measure(void)
 }
 `;
 
+// ---- imu-configure: the configuration block in one transfer, as the addendum writes it ----
+const imuConfigure = (body: string) => `// Given functions, written out below main(). These three lines only announce them.
+void mpu_write(uint16_t reg, uint16_t value);
+uint16_t mpu_read(uint16_t reg);
+void measure(void);
+
+uint16_t r19 = 0;
+uint16_t r1a = 0;
+uint16_t r1b = 0;
+uint16_t r1c = 0;
+uint16_t r1d = 0;
+float gyroz = 0;              // degrees per second
+float accelz = 0;             // g
+
+// Configures the MPU-9250: registers 0x19 to 0x1D in one transfer
+void setup_mpu(void)
+{
+    uint16_t temp;
+
+${body}
+}
+
+void main(void)
+{
+${START}
+${SPIB}
+    setup_mpu();
+    mpu_write(0x6B, 0x01);                    // PWR_MGMT_1: awake, best clock (its power-up value)
+
+    r19 = mpu_read(0x19);
+    r1a = mpu_read(0x1A);
+    r1b = mpu_read(0x1B);
+    r1c = mpu_read(0x1C);
+    r1d = mpu_read(0x1D);
+
+    while (1) {
+        measure();
+        DELAY_US(200);
+    }
+}
+
+${MPU_WRITE}
+${MPU_READ}
+// Given: reads the Z turn rate and the Z acceleration for the ranges +-2000 deg/s and +-8 g
+void measure(void)
+{
+    int16_t temp;
+    int16_t raw;
+
+    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = 0x8000 | 0x4600;      // 0x46, then 0x47 and 0x48: gyro Z
+    SpibRegs.SPITXBUF = 0x0000;
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 2);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    temp = SpibRegs.SPIRXBUF;
+    raw = SpibRegs.SPIRXBUF;
+    gyroz = raw * 2000.0 / 32767.0;
+    DELAY_US(10);
+
+    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = 0x8000 | 0x3E00;      // 0x3E, then 0x3F and 0x40: acceleration Z
+    SpibRegs.SPITXBUF = 0x0000;
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 2);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    temp = SpibRegs.SPIRXBUF;
+    raw = SpibRegs.SPIRXBUF;
+    accelz = raw * 8.0 / 32767.0;
+    DELAY_US(10);
+}
+`;
+
+// ---- imu-noise: a real part, with an offset and noise ----
+const imuNoise = (body: string) => `// Given function, written out below main(). This line only announces it.
+float read_gz(void);
+
+float offset = 0;             // degrees per second: what this gyro reads at rest
+float gyroz = 0;              // degrees per second, with the offset taken out
+
+// Measures the gyro's offset while the robot stands still
+void calibrate(void)
+{
+${body}
+}
+
+void main(void)
+{
+${START}
+${SPIB}
+    calibrate();
+
+    while (1) {
+        gyroz = read_gz() - offset;
+        DELAY_US(1000);
+    }
+}
+
+// Given: one reading of gyro Z in degrees per second (range +-250)
+float read_gz(void)
+{
+    int16_t temp;
+    int16_t raw;
+
+    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = 0x8000 | 0x4600;      // 0x46, then 0x47 and 0x48: gyro Z
+    SpibRegs.SPITXBUF = 0x0000;
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 2);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    temp = SpibRegs.SPIRXBUF;
+    raw = SpibRegs.SPIRXBUF;
+    DELAY_US(10);
+
+    return raw * 250.0 / 32767.0;
+}
+`;
+
 export const ch13: Chapter = {
   id: "spi-devices",
   number: 13,
@@ -164,9 +279,14 @@ export const ch13: Chapter = {
       kind: "brief",
       title: "Registers behind a serial port",
       goal: "Learn how the MPU-9250's registers are read and written over SPI, then answer three questions.",
-      refs: [{ course: "L12", slide: [31, 36, 30] }, { course: "HW3" }, { trm: "18.3.1" }],
+      refs: [
+        { course: "L12", slide: [31, 36, 30] },
+        { course: "HW3" },
+        { course: "MPU-9250 addendum", note: "product specification 7.5 and 9.1: the SPI rules and the axes; then the timing diagrams" },
+        { trm: "18.3.1" },
+      ],
       brief: `
-The **MPU-9250** on the robot is an **IMU** (inertial measurement unit). Its gyroscope measures how fast the board turns, in degrees per second. Its accelerometer measures acceleration in **g**: 1 g is the pull of gravity, so a board lying still reads 1 g. Each measures along three **axes**: directions at right angles, called X, Y and Z (Z points up out of the board). The robot uses the gyro's Z axis to know how far it has turned.
+The **MPU-9250** on the robot is an **IMU** (inertial measurement unit). Its gyroscope measures how fast the board turns, in degrees per second. Its accelerometer measures acceleration in **g**: 1 g is the pull of gravity, so a board lying still reads 1 g. Each measures along three **axes**: directions at right angles, called X, Y and Z. In this game the chip lies flat: X to the robot's nose, Y to its left, Z up. A turn to the left is a positive rate about Z, the axis the robot uses to know how far it has turned.
 
 SPI only moves bits. What they **mean** is in each device's datasheet. Seen from the bus, the MPU-9250 is a list of 8-bit **registers**, each with a 7-bit address.
 
@@ -345,7 +465,7 @@ Complete \`mpu_read(reg)\`. It reads one register and returns its 8-bit value:
 \`main()\` then reads two registers whose values are known:
 
 - **0x75 WHO_AM_I** must be 0x71
-- **0x6B PWR_MGMT_1** is 0x01 after power-up
+- **0x6B PWR_MGMT_1** is 0x01 after power-up: the chip is awake and uses its best clock
 
 and switches LED1 on if the identity is right.
 `,
@@ -446,6 +566,122 @@ ${SPIB}
         "`GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;` `SpibRegs.SPITXBUF = 0x8000 | (reg << 8);` `while (SpibRegs.SPIFFRX.bit.RXFFST != 1);` `GpioDataRegs.GPCSET.bit.GPIO66 = 1;` `value = SpibRegs.SPIRXBUF & 0x00FF;`",
       ],
       takeaway: "If WHO_AM_I reads 0x71, the wiring, the clock mode, the word length and the chip select are all right. Always read it first.",
+    },
+    {
+      id: "imu-regmap",
+      kind: "calc",
+      title: "Reading the register map",
+      goal: "Look up addresses, bit fields and reset values in the MPU-9250's register map, and turn a setting into the byte to write.",
+      refs: [
+        { course: "L12", slide: [32, 29], note: "the register map table: address, read or write, high and low bytes" },
+        { course: "MPU-9250 register map", note: "section 3 (the table of all registers), sections 4.4 to 4.8 and 4.34" },
+        { course: "HW3" },
+      ],
+      brief: `
+Every number you send to the MPU-9250 comes from one document: its **register map**, the list of all its registers and what each bit does. HW3 asks you to explain register values from it, so learn to read a page before you need one.
+
+## How it is laid out
+Section 3 is one table of all registers: address, name, whether you can write it, and its eight bits. Section 4 has a page per register. The page titles count in **decimal**: "4.6 Register 27" is address 0x1B, because 27 = 16 + 11.
+
+## A worked look-up: GYRO_CONFIG
+\`\`\`c
+4.6 Register 27 - Gyroscope Configuration
+    R/W        Reset value: 0x00
+bits 7..5  self-test, one bit per axis
+bits 4..3  GYRO_FS_SEL
+           00 = +-250     01 = +-500
+           10 = +-1000    11 = +-2000 dps
+bit  2     reserved
+bits 1..0  Fchoice_b: leave at 00, then
+           the filter in CONFIG is used
+\`\`\`
+
+Four facts are on that page:
+
+- **Address**: 27, so 0x1B.
+- **R/W**: it can be written and read back.
+- **Reset value** 0x00: what it holds after power-up. Every field is 0, so the range is +-250 dps until you change it.
+- **Fields**: GYRO_FS_SEL sits in bits 4 and 3. For +-2000 the field is binary 11 = 3. Its lowest bit is bit 3, so the byte is \`3 << 3\` = 0x18. All other fields stay 0.
+
+## The pages for this level
+\`\`\`c
+Register 25   SMPLRT_DIV      reset 0x00
+  samples per second =
+  1000 / (1 + SMPLRT_DIV)
+  (while a filter code 1 to 6 is set)
+Register 26   CONFIG          reset 0x00
+  bits 2..0   DLPF_CFG, the gyro's filter
+  1 = 184 Hz   2 = 92 Hz   3 = 41 Hz
+  4 = 20 Hz    5 = 10 Hz   6 = 5 Hz
+Register 28   ACCEL_CONFIG    reset 0x00
+  bits 4..3   ACCEL_FS_SEL
+  00 = +-2 g   01 = +-4 g
+  10 = +-8 g   11 = +-16 g
+Register 29   ACCEL_CONFIG2   reset 0x00
+  bits 2..0   A_DLPFCFG, its filter:
+  same codes as DLPF_CFG
+Register 107  PWR_MGMT_1      reset 0x01
+  bit 6       SLEEP
+  bits 2..0   CLKSEL (1 = best clock)
+\`\`\`
+
+A **filter** here smooths the readings: a lower frequency gives a calmer number that follows a change later.
+`,
+      fields: [
+        {
+          id: "a29",
+          label: "Address of ACCEL_CONFIG2 (register 29), in hex",
+          format: "hex",
+          answer: 0x1d,
+          why: "29 = 16 + 13, and 13 is the hex digit D: 0x1D. It follows ACCEL_CONFIG at 0x1C.",
+        },
+        {
+          id: "a107",
+          label: "Address of PWR_MGMT_1 (register 107), in hex",
+          format: "hex",
+          answer: 0x6b,
+          why: "107 = 6 x 16 + 11, and 11 is the hex digit B: 0x6B.",
+        },
+        {
+          id: "gfs",
+          label: "Byte to write to GYRO_CONFIG for +-1000 dps",
+          format: "hex",
+          answer: 0x10,
+          why: "The field value is binary 10 = 2. The field starts at bit 3: 2 << 3 = 0x10.",
+        },
+        {
+          id: "afs",
+          label: "Byte to write to ACCEL_CONFIG for +-16 g",
+          format: "hex",
+          answer: 0x18,
+          why: "Field value binary 11 = 3, shifted to bit 3: 3 << 3 = 0x18.",
+        },
+        {
+          id: "lpf",
+          label: "Byte to write to ACCEL_CONFIG2 for a 10 Hz filter",
+          format: "hex",
+          answer: 0x05,
+          why: "The code in front of 10 Hz is 5. The field starts at bit 0, so the code is the byte. The byte is the code, not the frequency.",
+        },
+        {
+          id: "div",
+          label: "SMPLRT_DIV for 250 samples per second",
+          answer: 3,
+          why: "1000 / (1 + SMPLRT_DIV) = 250, so 1 + SMPLRT_DIV = 4.",
+        },
+        {
+          id: "clk",
+          label: "CLKSEL after power-up (PWR_MGMT_1 holds its reset value)",
+          answer: 1,
+          why: "The reset value 0x01 is binary 0000 0001: SLEEP (bit 6) is 0, so the chip is awake, and CLKSEL (bits 2..0) is 1, the best clock.",
+        },
+      ],
+      hints: [
+        "Two steps for an address: how many 16s fit in the decimal number, and what is left over. Left-overs of 10 to 15 are the digits A to F.",
+        "For a byte: find the field's code in the table, then shift it up to the field's lowest bit. A field at bits 4..3 is shifted by 3, a field at bits 2..0 not at all.",
+        "0x1D, 0x6B, 2 << 3 = 0x10, 3 << 3 = 0x18, code 5 = 0x05, 1000 / 250 - 1 = 3, and 0x01 has CLKSEL = 1.",
+      ],
+      takeaway: "A register page gives you four things: the address, whether you can write it, the reset value, and where each field sits. The byte you write is every field's code shifted to its place.",
     },
     {
       id: "imu-config",
@@ -601,6 +837,88 @@ int16_t read_accel_z(void)
         "`mpu_write(0x1B, 0x08); mpu_write(0x1C, 0x10);` then `cfg1b = mpu_read(0x1B); cfg1c = mpu_read(0x1C);`.",
       ],
       takeaway: "The range decides what a raw number means. Whenever you change a range register, the scale factor in your code changes with it.",
+    },
+    {
+      id: "imu-configure",
+      kind: "code",
+      mode: "write",
+      title: "Configure the chip in one transfer",
+      goal: "Write the MPU-9250's five configuration registers in one transfer, the way the course's addendum does, with values you take from the register map.",
+      refs: [
+        { course: "L12", slide: [35, 34], note: "writing several registers at once" },
+        { course: "MPU-9250 addendum", note: "pages 2 and 3: writing three, five or seven registers" },
+        { course: "MPU-9250 register map", note: "sections 4.4 to 4.8" },
+        { course: "MPU-9250 specification", note: "section 7.5: the SPI rules; Tables 1 and 2: filter range" },
+        { course: "HW3" },
+      ],
+      brief: `
+The course's set-up writes the chip's settings the way the instructor's **addendum** shows (pages 2 and 3): registers that are neighbours go out in **one** transfer. HW3 has you do that for a longer run. Here you do it for registers 0x19 to 0x1D, with your own values.
+
+## The addendum's steps
+1. Chip select low.
+2. First word: the first register's address in the upper byte, its value in the lower byte.
+3. Each further word: the values of the next two registers, the lower-numbered one in the upper byte.
+4. Wait until as many words have come back as you sent (\`RXFFST\`).
+5. Chip select high.
+6. Read that many words from \`SPIRXBUF\` and throw them away.
+7. \`DELAY_US(10);\` before the next transfer.
+
+Example, three registers: 0x1B = 0x18, 0x1C = 0x08, 0x1D = 0x02 are the words \`0x1B18\` and \`0x0802\`. Wait for 2 words, read 2. With 16-bit words a transfer always writes an odd number of registers.
+
+## What this robot needs
+Look the values up as in "Reading the register map".
+
+- 0x19: **500** samples a second
+- 0x1A: gyro filter **41 Hz**, which takes the jitter out of the readings and still follows a turn within about 20 ms
+- 0x1B: gyro range **+-2000** degrees per second
+- 0x1C: accelerometer range **+-8 g**
+- 0x1D: accelerometer filter **20 Hz**
+
+With 500 samples a second, a program that reads every millisecond gets each sample twice. Reading more often than the chip measures gains nothing.
+
+## Your part
+Write \`setup_mpu()\`: the seven steps, one transfer. \`main()\` then writes PWR_MGMT_1 (given), reads the five registers back and measures again and again. The test turns the robot at 1500 degrees per second, then at -300.
+`,
+      kit: "robot",
+      durationMs: 200,
+      stimuli: [
+        { at: 0, set: "IMU_GZ_DPS", value: 1500 },
+        { at: 100, set: "IMU_GZ_DPS", value: -300 },
+      ],
+      starter: imuConfigure("    // TODO: the seven steps for registers 0x19 to 0x1D"),
+      solution: imuConfigure(`    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = (0x1900 | 0x0001);    // address 0x19; 0x19 = 1: 500 samples a second
+    SpibRegs.SPITXBUF = (0x0300 | 0x0018);    // 0x1A = 3: 41 Hz; 0x1B = 0x18: +-2000 deg/s
+    SpibRegs.SPITXBUF = (0x1000 | 0x0004);    // 0x1C = 0x10: +-8 g; 0x1D = 4: 20 Hz
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 3);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    temp = SpibRegs.SPIRXBUF;
+    temp = SpibRegs.SPIRXBUF;
+    temp = SpibRegs.SPIRXBUF;
+    DELAY_US(10);`),
+      checks: [
+        { kind: "var", name: "r19", equals: 0x01, label: "Register 0x19 holds 0x01: 500 samples a second", hint: "1000 / (1 + SMPLRT_DIV) = 500. Still 0: the transfer did not reach the chip, or the first word does not start with the address 0x19. If the program then hangs in mpu_write(), the three words that came back during your transfer are still in the FIFO: read them out." },
+        { kind: "var", name: "r1a", equals: 0x03, label: "Register 0x1A holds 0x03: the gyro filter is at 41 Hz", hint: "0x1A is the upper byte of the second word. The value is the code in front of 41 Hz." },
+        { kind: "var", name: "r1b", equals: 0x18, label: "Register 0x1B holds 0x18: +-2000 degrees per second", hint: "0x1B is the lower byte of the second word. The field value 3 goes to bits 4..3: 3 << 3." },
+        { kind: "var", name: "r1c", equals: 0x10, label: "Register 0x1C holds 0x10: +-8 g", hint: "0x1C is the upper byte of the third word. Field value 2 at bits 4..3." },
+        { kind: "var", name: "r1d", equals: 0x04, label: "Register 0x1D holds 0x04: the accelerometer filter is at 20 Hz", hint: "0x1D is the lower byte of the third word." },
+        { kind: "signal", name: "MPU_WRITE_FRAMES", equals: 2, label: "The five registers were written in one transfer", hint: "Count the chip-select pulses that write: one for your burst and one for PWR_MGMT_1 in main(). Five calls of mpu_write are five transfers." },
+        { kind: "signal", name: "IMU_RATE_HZ", equals: 500, label: "The chip makes 500 samples a second", hint: "No value: registers 0x19 to 0x1D were never written. 8000 or 32000: no filter code from 1 to 6 is in register 0x1A, so the divider in 0x19 is not used." },
+        { kind: "var", name: "gyroz", at: 60, min: 1495, max: 1505, label: "Turning at 1500 degrees per second: gyroz is 1500", hint: "A reading stuck near 250, 500 or 1000 means the range in register 0x1B is too small. measure() scales for +-2000." },
+        { kind: "var", name: "accelz", at: 60, min: 0.98, max: 1.02, label: "Lying still: accelz is 1 g", hint: "measure() scales for +-8 g: register 0x1C must select that range." },
+        { kind: "var", name: "gyroz", at: 104.9, min: 250, max: 450, label: "4 ms after the turn changes, the 41 Hz filter is two thirds of the way", hint: "Already at -300: no filter is selected in register 0x1A. Hardly moved: the filter is slower than 41 Hz." },
+        { kind: "var", name: "gyroz", min: -303, max: -297, label: "Turning at -300 degrees per second: gyroz is -300" },
+        { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported", hint: "Wait for all the words before you raise the chip select, and read every one of them out of the FIFO." },
+        { kind: "no-diagnostic", code: "mpu", label: "The MPU-9250 has nothing to remark", hint: "The message names the step of the addendum that was left out." },
+      ],
+      watch: ["r19", "r1a", "r1b", "r1c", "r1d", "gyroz", "accelz"],
+      inspect: ["SpibRegs.SPIFFRX"],
+      hints: [
+        "Five registers and the address byte are six bytes: three words. Write down which two registers each of the last two words holds.",
+        "The values: 0x19 = 1, 0x1A = 3, 0x1B = 0x18, 0x1C = 0x10, 0x1D = 4. Wait for RXFFST to reach 3 and read SPIRXBUF three times into temp.",
+        "`SpibRegs.SPITXBUF = (0x1900 | 0x0001);` `SpibRegs.SPITXBUF = (0x0300 | 0x0018);` `SpibRegs.SPITXBUF = (0x1000 | 0x0004);` between the chip select going low and `while (SpibRegs.SPIFFRX.bit.RXFFST != 3);`, then chip select high, three reads, `DELAY_US(10);`.",
+      ],
+      takeaway: "One chip select, one address, then the values in register order. What you configure is what you get: the range, how often a new sample appears, and how calm and how late it is.",
     },
     {
       id: "imu-gyroz",
@@ -1406,7 +1724,7 @@ ${MPU_READ}`,
 The library's \`setupSpib()\` sets up the port. How the **chip** should measure is your decision, and no library knows it. The answer is in the chip's **register map**: the part of its data sheet that lists every register and what its bits do. This is what it says about four registers:
 
 \`\`\`c
-0x19 SMPLRT_DIV    measurements per second = 1000 / (1 + SMPLRT_DIV)
+0x19 SMPLRT_DIV    measurements per second = 1000 / (1 + SMPLRT_DIV), with filter code 1 to 6
 0x1A CONFIG        bits 2..0, DLPF_CFG: low-pass filter
                    1 = 184 Hz   2 = 92 Hz   3 = 41 Hz   4 = 20 Hz   5 = 10 Hz
 0x1B GYRO_CONFIG   bits 4..3, GYRO_FS_SEL: range in degrees per second
@@ -1428,14 +1746,15 @@ A register map gives the value of a **field**, a group of bits inside the regist
 1. In \`setup_mpu()\`, write the four registers with the given \`mpu_write(reg, value)\`.
 2. Set \`gyro_range\` and \`accel_range\` at the top to the ranges you chose. The given \`measure()\` uses them to turn raw counts into \`gyroz\` (degrees per second) and \`accelz\` (g).
 
-\`main()\` reads the four registers back, then measures again and again. The test turns the robot at 600 and then at -900 degrees per second, and bumps it with 10 g.
+\`main()\` reads the four registers back, then measures again and again. The test turns the robot at 600 and then at -900 degrees per second, and bumps it with 10 g. It waits a tenth of a second before each look: a 20 Hz filter needs about 50 ms to settle on a new value.
 `,
       kit: "robot",
-      durationMs: 4,
+      // The 20 Hz filter needs about 50 ms to settle on a new value: the test leaves it 100.
+      durationMs: 200,
       stimuli: [
         { at: 0, set: "IMU_GZ_DPS", value: 600 },
-        { at: 2, set: "IMU_GZ_DPS", value: -900 },
-        { at: 2, set: "IMU_AZ_G", value: 10 },
+        { at: 100, set: "IMU_GZ_DPS", value: -900 },
+        { at: 100, set: "IMU_AZ_G", value: 10 },
       ],
       starter: imuSetup({
         gyro: "250.0;     // TODO: the gyro range you chose, in degrees per second",
@@ -1455,9 +1774,9 @@ A register map gives the value of a **field**, a group of bits inside the regist
         { kind: "var", name: "cfg1a", equals: 4, label: "Register 0x1A holds 0x04: the filter is at 20 Hz", hint: "DLPF_CFG starts at bit 0, so the field value is the byte. The value is the code in front of 20 Hz, not 20." },
         { kind: "var", name: "cfg1b", equals: 0x10, label: "Register 0x1B holds 0x10: +-1000 degrees per second", hint: "+-500 is too small for 800 degrees per second, +-2000 wastes resolution. The field starts at bit 3: write the field value shifted up by 3, not the field value itself." },
         { kind: "var", name: "cfg1c", equals: 0x18, label: "Register 0x1C holds 0x18: +-16 g", hint: "+-8 g is too small for 12 g. The field value is 3, at bits 4..3: 3 << 3." },
-        { kind: "var", name: "gyroz", at: 1.9, min: 598, max: 602, label: "Turning at 600 degrees per second: gyroz is 600", hint: "About 250 or 500: the chip's range is too small and the reading is stuck at full scale. Another wrong number: gyro_range does not match the range in register 0x1B." },
+        { kind: "var", name: "gyroz", at: 95, min: 598, max: 602, label: "Turning at 600 degrees per second: gyroz is 600", hint: "About 250 or 500: the chip's range is too small and the reading is stuck at full scale. Another wrong number: gyro_range does not match the range in register 0x1B." },
         { kind: "var", name: "gyroz", min: -902, max: -898, label: "Turning at -900 degrees per second: gyroz is -900" },
-        { kind: "var", name: "accelz", at: 1.9, min: 0.98, max: 1.02, label: "Lying still: accelz is 1 g", hint: "accel_range must be the range you selected in register 0x1C, in g." },
+        { kind: "var", name: "accelz", at: 95, min: 0.98, max: 1.02, label: "Lying still: accelz is 1 g", hint: "accel_range must be the range you selected in register 0x1C, in g." },
         { kind: "var", name: "accelz", min: 9.9, max: 10.1, label: "A bump of 10 g: accelz is 10" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
@@ -1730,6 +2049,83 @@ ${MPU_WRITE}`,
         "After calibration: `gyroz = rate - bias; heading = heading + (gyroz + gyroz_old) * 0.0005; gyroz_old = gyroz;`",
       ],
       takeaway: "Integration adds up every error, so a bias must be removed before integrating. Even then the heading drifts slowly, which is why the robot later corrects it with other sensors.",
+    },
+    {
+      id: "imu-noise",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Nothing reads zero",
+      goal: "Measure the offset of a real gyro at rest by averaging many readings, and take it out of every later reading.",
+      refs: [
+        { course: "L12", slide: [29, 21], note: "why the IMU is read fast; what a gyro measures" },
+        { course: "MPU-9250 specification", note: "Table 1: initial ZRO tolerance, rate noise spectral density, total RMS noise" },
+        { course: "HW3" },
+      ],
+      brief: `
+So far the chip in this game was ideal: at rest its gyro read exactly 0. A real one does not. Its product specification (Table 1) names two faults:
+
+- **Offset** (the data sheet calls it zero-rate output): at rest the gyro reads a constant that is not 0, anywhere within +-5 degrees per second, different for every chip. The expert level "From turn rate to heading" calls it the bias.
+- **Noise**: every reading jumps a little around the true value, here by about 0.16 degrees per second. No two readings are alike.
+
+In this level the chip is a real part. Its offset is somewhere within +-5 degrees per second.
+
+## Why one reading is not enough
+You find the offset by reading the gyro while the robot stands still. But one reading is the offset **plus** a jump of noise. Take four readings at rest:
+
+\`\`\`c
+0.8   1.1   0.9   1.2
+average = 4.0 / 4 = 1.0
+\`\`\`
+
+The jumps go up as often as down, so in an **average** they cancel. The more readings, the better: 100 readings make the jumps 10 times smaller, 400 make them 20 times smaller (the square root of the count).
+
+## Your part
+\`read_gz()\` is given: one reading of gyro Z in degrees per second. Write \`calibrate()\`:
+
+1. Add up at least **100** readings, with \`DELAY_US(1000);\` between them so that each is a new sample.
+2. Store the average in \`offset\`.
+
+A loop that runs 400 times, with a counter \`i\`:
+
+\`\`\`c
+for (i = 0; i < 400; i++) {
+    // one reading
+}
+\`\`\`
+
+\`main()\` calls \`calibrate()\` first, then subtracts \`offset\` from every reading. The robot stands still for 700 ms, then turns at 20 degrees per second.
+`,
+      kit: "robot",
+      durationMs: 1000,
+      stimuli: [
+        { at: 0, set: "IMU_REAL", value: 1 },
+        { at: 0, set: "IMU_BIAS_GZ_DPS", value: -3.4 },
+        { at: 700, set: "IMU_GZ_DPS", value: 20 },
+      ],
+      starter: imuNoise("    // TODO: average at least 100 readings into offset"),
+      solution: imuNoise(`    float sum = 0;
+    int16_t i;
+
+    for (i = 0; i < 400; i++) {
+        sum = sum + read_gz();
+        DELAY_US(1000);
+    }
+    offset = sum / 400;`),
+      checks: [
+        { kind: "var", name: "offset", min: -3.46, max: -3.34, label: "offset is this gyro's offset, to within 0.06 degrees per second", hint: "0: calibrate() stored nothing. Off by a tenth or more: too few readings, so the noise is still in it. Far off: the sum was divided by the wrong count." },
+        { kind: "var", name: "gyroz", at: 650, min: -0.7, max: 0.7, label: "At rest gyroz is 0, give or take the noise", hint: "About -3.4: the offset is not subtracted, because offset is still 0." },
+        { kind: "var", name: "gyroz", at: 950, min: 19.3, max: 20.7, label: "Turning at 20 degrees per second: gyroz is 20, give or take the noise" },
+        { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
+      ],
+      bonus: [{ kind: "var", name: "offset", min: -3.415, max: -3.385, label: "offset is right to within 0.015 degrees per second", hint: "Average more readings: 400 are enough." }],
+      watch: ["offset", "gyroz"],
+      hints: [
+        "You need a float for the sum and an integer for the counter, both declared at the top of calibrate().",
+        "Inside the loop: add `read_gz()` to the sum, then `DELAY_US(1000);`. After the loop: divide the sum by the number of readings.",
+        "`float sum = 0; int16_t i; for (i = 0; i < 400; i++) { sum = sum + read_gz(); DELAY_US(1000); } offset = sum / 400;`",
+      ],
+      takeaway: "A real sensor has an offset and noise. Measure the offset at rest as an average of many readings, and never trust a single reading to be exact. The robot must stand still while it calibrates.",
     },
     {
       id: "imu-tilt",

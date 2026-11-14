@@ -263,7 +263,7 @@ End each line with \`\\r\\n\`: carriage return (back to the first column) and li
             '`serial_printf(&SerialA, "%c\\r\\n", numRXA);`',
           ],
           answer: 1,
-          why: "numRXA is 32 bits wide, so it needs %ld. With %d only 16 of its bits are printed: 4464.",
+          why: "numRXA is 32 bits wide, so it needs %ld. %d takes only 16 of its bits, the upper 16, and prints 1.",
         },
         {
           prompt: '`serial_printf(&SerialA, "%c%c", 0x32, 69);` What appears on the terminal?',
@@ -542,7 +542,7 @@ CPU Timer 2 interrupts every 250 ms. Each time, the program should print how man
 Run it and read the terminal and the messages under the editor. Two things are wrong:
 
 - **The print is inside the interrupt function.** While it runs, no other interrupt can. Move it to the \`while (1)\` loop with the \`UARTPrint\` flag.
-- **The format codes do not match the values.** Both are \`uint32_t\`. A 32-bit value is passed as two 16-bit halves, and each \`%d\` takes only one half. So the first \`%d\` prints the lower half of the count, and the second \`%d\` prints the *upper half of the count*, not the time.
+- **The format codes do not match the values.** Both are \`uint32_t\`. A 32-bit value is passed as two 16-bit halves, and each \`%d\` takes only one half. So the first \`%d\` prints the upper half of the count, which is 0, and the second \`%d\` prints the *lower half of the count*, not the time.
 
 Keep the counting and the time calculation in the interrupt function. They are fast.
 `,
@@ -804,6 +804,848 @@ ${rxIsr(`        newChar = RXAdata;
         '`serial_printf(&SerialA, "%c %ld\\r\\n", newChar, numRXA);` then clear the flag.',
       ],
       takeaway: "One saved character is enough when keys arrive slowly. If characters come faster than you can print, some are lost: later labs store them in an array instead.",
+    },
+    {
+      id: "serial-fmt-brief",
+      kind: "brief",
+      title: "printf in full: one conversion per value",
+      goal: "Learn how a format string is read and which conversion fits which type on this chip, then answer four questions.",
+      refs: [
+        { course: "L4", slide: [13, 14, 12], note: "the format prototype and the table of specifiers; type sizes: TI compiler guide SPRU514X, Table 6-1" },
+        { course: "HW1" },
+        { course: "Lab 1" },
+      ],
+      brief: `
+\`serial_printf\` and \`printf\` both take a **format string**: the text to print, with a **conversion** wherever a value goes. The values follow in the same order, one per conversion.
+
+\`\`\`c
+serial_printf(&SerialA, "%d laps, %.1f V\\r\\n", laps, volts);   // 3 laps, 7.4 V
+\`\`\`
+
+A conversion starts with \`%\` and ends with a letter, the **conversion specifier**. The letter says how to read the value and how to print it:
+
+- \`%d\`: a signed whole number. \`%u\`: an unsigned one.
+- \`%x\`: a whole number in hex (\`%X\` with capital letters).
+- \`%f\`: a \`float\`. \`%c\`: one character. \`%s\`: a string.
+- \`%%\`: a percent sign. It takes no value.
+
+## The size rule of this chip
+printf cannot see the types of its values. It sees 16-bit words in memory (the boxes of primer C) and trusts each conversion to say how many it may take. On this chip an \`int\` is 16 bits, so:
+
+- \`%d\`, \`%u\`, \`%x\` and \`%c\` take **one** word: \`int16_t\`, \`uint16_t\`, \`char\`.
+- With the **length modifier** \`l\` (a small L, for long) in front of the letter they take **two**: \`%ld\`, \`%lu\`, \`%lx\`, for \`int32_t\` and \`uint32_t\`.
+- \`%f\` takes the two words of a \`float\`.
+
+On a PC an \`int\` is 32 bits and \`%d\` prints an \`int32_t\`. Here it does not:
+
+\`\`\`c
+int32_t count = 70000;                      // 0x0001 1170: two words
+serial_printf(&SerialA, "%d\\r\\n", count);   // prints 1
+\`\`\`
+
+\`%d\` took one word, the upper one, 0x0001. Nothing warns you. The sign works the same way: \`%d\` prints a \`uint16_t\` above 32767 as a negative number. That is what \`%u\` is for.
+
+{{figure:printf-format}}
+
+Try it in the figure. It opens with an \`int32_t\` and \`%ld\`. Set the length to none and read what the board prints. Then try \`uint16_t\` with \`d\` and with \`u\`, and \`float\` with \`d\`.
+`,
+      questions: [
+        {
+          prompt: "`int32_t position = -70000;` Which conversion prints it correctly?",
+          options: ["`%d`", "`%ld`", "`%u`", "`%f`"],
+          answer: 1,
+          why: "An int32_t is two 16-bit words, so the conversion needs the l: %ld. It is signed, so d and not u.",
+        },
+        {
+          prompt: "`uint16_t adc = 40000;` is printed with `%d`. What appears?",
+          options: ["40000", "-25536", "An error message", "4"],
+          answer: 1,
+          why: "The size fits, the sign does not. %d reads the 16 bits as a signed number: 40000 - 65536 = -25536. %u prints 40000.",
+        },
+        {
+          prompt: '`serial_printf(&SerialA, "%d %d\\r\\n", a, b);` with `int16_t a = 5, b = 9;` and then, by mistake, with only `a` in the list. What does the second `%d` do?',
+          options: [
+            "It prints nothing",
+            "The compiler refuses the line",
+            "It prints whatever lies in memory after a",
+            "It prints a again",
+          ],
+          answer: 2,
+          why: "printf trusts the format string. A conversion without a value reads the next word in memory, whatever it holds.",
+        },
+        {
+          prompt: "`uint16_t duty = 50;` Which line prints `Duty 50%`?",
+          options: [
+            '`serial_printf(&SerialA, "Duty %d%\\r\\n", duty);`',
+            '`serial_printf(&SerialA, "Duty %d%%\\r\\n", duty);`',
+            '`serial_printf(&SerialA, "Duty %%d\\r\\n", duty);`',
+            '`serial_printf(&SerialA, "Duty %ld%%\\r\\n", duty);`',
+          ],
+          answer: 1,
+          why: "%d prints the 16-bit value and %% prints one percent sign. A single % would start a new conversion.",
+        },
+      ],
+      takeaway: "Choose the letter by the kind of value and add l when the value is 32 bits: %d, %u, %x for 16 bits, %ld, %lu, %lx for 32 bits, %f for a float.",
+    },
+    {
+      id: "serial-fmt-calc",
+      tier: "practice",
+      kind: "calc",
+      title: "Read the bits the way printf does",
+      goal: "Work out what the terminal shows when the conversion reads the bits another way than the type does.",
+      refs: [
+        { course: "L4", slide: [14, 7], note: "specifiers and lengths; two's complement. Type sizes: TI compiler guide SPRU514X, Table 6-1" },
+        { course: "HW1" },
+      ],
+      brief: `
+A conversion never changes the bits it is given. It only decides how to read them.
+
+Sixteen bits can be read in two ways: as an unsigned number, 0 to 65535, or as a signed one, -32768 to 32767 (two's complement, chapter 0). When the top bit is 1 the two readings differ by 65536.
+
+## Worked example
+\`\`\`c
+int16_t t = -3;      // the bits are 0xFFFD
+\`\`\`
+
+- \`%d\` reads them as signed: \`-3\`.
+- \`%u\` reads them as unsigned: -3 + 65536 = \`65533\`.
+- \`%x\` prints the bits themselves in hex: \`fffd\`.
+
+In the other direction, \`uint16_t big = 65000;\` printed with \`%d\` shows 65000 - 65536 = \`-536\`.
+
+## A 32-bit value and %d
+A 32-bit value is two 16-bit words. \`%d\` takes one of them: the upper one.
+
+\`\`\`c
+int32_t n = 150000;  // 0x0002 49F0
+\`\`\`
+
+\`%d\` prints \`2\`. To find the upper word, divide by 65536 and drop the fraction: 150000 / 65536 = 2.29.
+
+Now work out what the terminal shows for each line below.
+`,
+      fields: [
+        {
+          id: "u",
+          label: "int16_t a = -1; printed with %u",
+          answer: 65535,
+          why: "The bits of -1 are 0xFFFF. Read as unsigned: -1 + 65536 = 65535.",
+        },
+        {
+          id: "d",
+          label: "uint16_t b = 50000; printed with %d",
+          answer: -15536,
+          why: "50000 is above 32767, so its top bit is 1. Read as signed: 50000 - 65536 = -15536.",
+        },
+        {
+          id: "x",
+          label: "int16_t c = -256; printed with %x (enter it as 0x...)",
+          answer: 0xff00,
+          format: "hex",
+          why: "-256 + 65536 = 65280 = 0xFF00. %x prints 16 bits, so ff00 and not ffffff00 as on a PC.",
+        },
+        {
+          id: "half",
+          label: "int32_t e = 200000; printed with %d",
+          answer: 3,
+          why: "200000 = 3 x 65536 + 3392, which is 0x0003 0D40. %d takes the upper word: 3. %ld prints 200000.",
+        },
+      ],
+      hints: [
+        "For the 16-bit lines, add or subtract 65536 once.",
+        "A negative int16_t read as unsigned is the value plus 65536. A uint16_t above 32767 read as signed is the value minus 65536.",
+        "For the int32_t, the upper word is the whole part of 200000 / 65536.",
+      ],
+      takeaway: "%d, %u and %x are three ways to read the same 16 bits. Use the one that matches the type, and %x when you want to see the bits.",
+    },
+    {
+      id: "serial-fmt-types",
+      kind: "code",
+      mode: "complete",
+      title: "Five types, five conversions",
+      goal: "Print five variables of five different types, each with the conversion that fits it.",
+      refs: [
+        { course: "L4", slide: [14, 13], note: "specifiers and lengths. Type sizes: TI compiler guide SPRU514X, Table 6-1" },
+        { course: "HW1" },
+        { course: "Lab 1" },
+      ],
+      brief: `
+A robot's status line mixes types: a temperature that can be negative, a raw converter reading, a position that needs 32 bits, a millisecond clock, a voltage. Each needs its own conversion, or the line shows nonsense that looks like a sensor fault.
+
+The table for this chip:
+
+- \`int16_t\`: \`%d\`
+- \`uint16_t\`: \`%u\`
+- \`int32_t\`: \`%ld\`
+- \`uint32_t\`: \`%lu\`
+- \`float\`: \`%f\`, and \`%.2f\` for two digits after the point
+
+Worked example: \`uint32_t big = 4000000000;\` is printed with \`serial_printf(&SerialA, "big %lu\\r\\n", big);\`. With \`%ld\` it would show a negative number, and with \`%u\` only one of its two words.
+
+## What to do
+\`print_all()\` must print the five global variables, one per line, each line ending in \`\\r\\n\`. The first line is written. Add the other four in this order:
+
+\`\`\`c
+temp -12
+adc 51234
+pos -100000
+ms 3000000000
+volts 2.75
+\`\`\`
+
+The names and types are at the top of the program. \`main()\` calls \`print_all()\`, changes all five values and calls it again, so the numbers must come from the variables.
+`,
+      kit: "launchpad",
+      durationMs: 60,
+      starter: `int16_t temp = -12;           // degrees
+uint16_t adc = 51234;         // raw reading
+int32_t pos = -100000;        // encoder counts
+uint32_t ms = 3000000000;     // milliseconds
+float volts = 2.75;
+
+void print_all(void)
+{
+    serial_printf(&SerialA, "temp %d\\r\\n", temp);
+    // TODO: print adc, pos, ms and volts the same way, one line each
+
+}
+
+void main(void)
+{
+${RX_MAIN}
+
+    print_all();
+
+    // new values: the same lines must still be right
+    temp = 25;
+    adc = 807;
+    pos = 65536;
+    ms = 12;
+    volts = -0.5;
+    print_all();
+
+    while (1) {
+    }
+}
+`,
+      solution: `int16_t temp = -12;           // degrees
+uint16_t adc = 51234;         // raw reading
+int32_t pos = -100000;        // encoder counts
+uint32_t ms = 3000000000;     // milliseconds
+float volts = 2.75;
+
+void print_all(void)
+{
+    serial_printf(&SerialA, "temp %d\\r\\n", temp);
+    serial_printf(&SerialA, "adc %u\\r\\n", adc);
+    serial_printf(&SerialA, "pos %ld\\r\\n", pos);
+    serial_printf(&SerialA, "ms %lu\\r\\n", ms);
+    serial_printf(&SerialA, "volts %.2f\\r\\n", volts);
+}
+
+void main(void)
+{
+${RX_MAIN}
+
+    print_all();
+
+    // new values: the same lines must still be right
+    temp = 25;
+    adc = 807;
+    pos = 65536;
+    ms = 12;
+    volts = -0.5;
+    print_all();
+
+    while (1) {
+    }
+}
+`,
+      checks: [
+        {
+          kind: "serial",
+          matches: "^temp -12\\r\\nadc 51234\\r\\n",
+          label: "The first two lines are: temp -12, then adc 51234",
+          hint: "adc is a uint16_t above 32767. %d reads it as a negative number: use %u. Each line is the name, one space, the value and \\r\\n.",
+        },
+        {
+          kind: "serial",
+          includes: "\r\npos -100000\r\nms 3000000000\r\n",
+          label: "Then: pos -100000 and ms 3000000000",
+          hint: "Both are 32 bits wide and need the l. pos is signed: %ld. ms is unsigned and above 2147483647: %lu.",
+        },
+        {
+          kind: "serial",
+          includes: "\r\nvolts 2.75\r\n",
+          label: "Then: volts 2.75",
+          hint: "A float takes %f. Plain %f prints six digits after the point (2.750000): write %.2f.",
+        },
+        {
+          kind: "serial",
+          equals: "temp -12\r\nadc 51234\r\npos -100000\r\nms 3000000000\r\nvolts 2.75\r\ntemp 25\r\nadc 807\r\npos 65536\r\nms 12\r\nvolts -0.50\r\n",
+          label: "The second set reads: temp 25, adc 807, pos 65536, ms 12, volts -0.50, and nothing else is printed",
+          hint: "Print the variables, not numbers typed into the text. Five lines per call, in the order temp, adc, pos, ms, volts.",
+        },
+        {
+          kind: "no-diagnostic",
+          code: "printf-type",
+          label: "Every conversion takes as many words as its value has",
+          hint: "16-bit values (temp, adc): no l. 32-bit values (pos, ms): with l. The float: %.2f.",
+        },
+        {
+          kind: "no-diagnostic",
+          code: "printf-sign",
+          label: "Signed values are printed with d, unsigned ones with u",
+          hint: "adc and ms are unsigned: %u and %lu.",
+        },
+      ],
+      watch: ["temp", "adc", "pos", "ms", "volts"],
+      hints: [
+        "Go through the variables one at a time: is it 16 or 32 bits, signed or unsigned, or a float?",
+        "16 bits: %d or %u. 32 bits: %ld or %lu. The messages under the editor name the line and the conversion to write.",
+        '`"adc %u\\r\\n"`, `"pos %ld\\r\\n"`, `"ms %lu\\r\\n"`, `"volts %.2f\\r\\n"`, each with its variable after the comma.',
+      ],
+      takeaway: "The conversion repeats the type: d or u for the sign, l for 32 bits, f for a float. When a printed number looks impossible, compare the two before you suspect the sensor.",
+    },
+    {
+      id: "serial-fmt-shift",
+      tier: "practice",
+      kind: "code",
+      mode: "debug",
+      title: "One wrong letter, three wrong numbers",
+      goal: "A status line prints nonsense in every column. Find the conversions that do not fit and fix them.",
+      refs: [
+        { course: "HW1", note: "asks you to try %d on a 32-bit value and watch" },
+        { course: "L4", slide: [14, 13], note: "specifiers and lengths. Where the values lie in memory: TI compiler guide SPRU514X, 7.3.1" },
+        { course: "Lab 1" },
+      ],
+      brief: `
+Every 250 ms this program should print the time, two wheel commands, the battery voltage and a counter:
+
+\`\`\`c
+t=250 ms, left=-40, right=35
+batt=7.40 V, count=12
+\`\`\`
+
+Run it. The first line comes out as:
+
+\`\`\`c
+t=0 ms, left=250, right=-40
+\`\`\`
+
+No number is where it belongs, and yet only one conversion in that line is wrong.
+
+## Why the values move
+printf does not match conversions to values. It walks through the 16-bit words of the list and gives each conversion as many as it asks for. \`timeMs\` is a \`uint32_t\`: two words, 0x0000 and 0x00FA (250).
+
+- The first \`%d\` asks for one word and gets the upper half of \`timeMs\`: 0.
+- The second \`%d\` gets what comes next, the lower half of \`timeMs\`: 250. That belongs in the first column.
+- The third \`%d\` gets \`left\`. \`right\` is never printed.
+
+One conversion of the wrong size shifts every 16-bit value after it.
+
+## What to do
+Fix the conversions in both \`serial_printf\` lines. Change nothing else. The types are at the top of the program, and the battery voltage must show two digits after the point.
+
+The messages under the editor name the line, the conversion and what to write.
+`,
+      kit: "launchpad",
+      durationMs: 800,
+      starter: `__interrupt void cpu_timer2_isr(void);
+
+uint32_t timeMs = 0;
+int16_t left = -33;       // wheel commands
+int16_t right = 32;
+float battery = 7.45;     // volts
+uint16_t count = 11;
+uint16_t UARTPrint = 0;
+
+void main(void)
+{
+${timerMain(250000, "every 250 ms")}
+
+    while (1) {
+        if (UARTPrint == 1) {
+            serial_printf(&SerialA, "t=%d ms, left=%d, right=%d\\r\\n", timeMs, left, right);
+            serial_printf(&SerialA, "batt=%d V, count=%ld\\r\\n", battery, count);
+            UARTPrint = 0;
+        }
+    }
+}
+
+__interrupt void cpu_timer2_isr(void)
+{
+    timeMs = timeMs + 250;
+    left = left - 7;
+    right = right + 3;
+    battery = battery - 0.05;
+    count++;
+    UARTPrint = 1;
+}
+`,
+      solution: `__interrupt void cpu_timer2_isr(void);
+
+uint32_t timeMs = 0;
+int16_t left = -33;       // wheel commands
+int16_t right = 32;
+float battery = 7.45;     // volts
+uint16_t count = 11;
+uint16_t UARTPrint = 0;
+
+void main(void)
+{
+${timerMain(250000, "every 250 ms")}
+
+    while (1) {
+        if (UARTPrint == 1) {
+            serial_printf(&SerialA, "t=%ld ms, left=%d, right=%d\\r\\n", timeMs, left, right);
+            serial_printf(&SerialA, "batt=%.2f V, count=%u\\r\\n", battery, count);
+            UARTPrint = 0;
+        }
+    }
+}
+
+__interrupt void cpu_timer2_isr(void)
+{
+    timeMs = timeMs + 250;
+    left = left - 7;
+    right = right + 3;
+    battery = battery - 0.05;
+    count++;
+    UARTPrint = 1;
+}
+`,
+      checks: [
+        {
+          kind: "serial",
+          matches: "^t=250 ms, left=-40, right=35\\r\\n",
+          label: "The first line is: t=250 ms, left=-40, right=35",
+          hint: "timeMs is 32 bits wide: its conversion needs the l. left and right are int16_t: theirs must not have it.",
+        },
+        {
+          kind: "serial",
+          includes: "\r\nbatt=7.40 V, count=12\r\n",
+          label: "The second line is: batt=7.40 V, count=12",
+          hint: "battery is a float: %.2f. count is a uint16_t, one word: %u or %d, without l.",
+        },
+        {
+          kind: "serial",
+          matches: "t=500 ms, left=-47, right=38\\r\\nbatt=7.35 V, count=13\\r\\nt=750 ms, left=-54, right=41\\r\\nbatt=7.30 V, count=14\\r\\n",
+          label: "The next lines follow the variables: t=500 ms, left=-47, right=38, then batt=7.35 V, count=13, and so on",
+          hint: "Keep the variables in the list. Only the conversions in the two format strings need to change.",
+        },
+        {
+          kind: "no-diagnostic",
+          code: "printf-type",
+          label: "Every conversion takes as many words as its value has",
+          hint: "Read the message under the editor: it names the line, what was printed and what to write.",
+        },
+      ],
+      watch: ["timeMs", "left", "right", "battery", "count"],
+      hints: [
+        "Write the type of each variable under its conversion. Which conversions ask for a different size or kind?",
+        "First line: only the conversion of timeMs is wrong. Second line: both are. A float never takes %d, and a 16-bit value never takes l.",
+        '`"t=%ld ms, left=%d, right=%d\\r\\n"` and `"batt=%.2f V, count=%u\\r\\n"`.',
+      ],
+      takeaway: "When several numbers in one line are wrong, look for one conversion of the wrong size near the start: the values after it are only shifted.",
+    },
+    {
+      id: "serial-fmt-width",
+      tier: "practice",
+      kind: "code",
+      mode: "complete",
+      title: "Columns that line up",
+      goal: "Give each conversion a field width so that three rows of different numbers line up in columns.",
+      refs: [
+        { course: "L4", slide: [15, 13], note: "flags and width, with the example program" },
+        { course: "Lab 1" },
+      ],
+      brief: `
+Numbers of different lengths make ragged lines, and on a terminal that scrolls four times a second a ragged line cannot be read. A **field width** fixes that: a number between the \`%\` and the letter gives the least number of characters the value takes. Shorter values are filled with spaces on the left.
+
+\`\`\`c
+serial_printf(&SerialA, "[%5d]\\r\\n", 42);     // [   42]
+serial_printf(&SerialA, "[%5d]\\r\\n", -1234);  // [-1234]
+\`\`\`
+
+A width never cuts: \`%2d\` still prints all of \`12345\`.
+
+Two **flags** change how the field is filled. A flag goes right after the \`%\`:
+
+- \`-\` puts the value on the left and the spaces on the right: \`[%-5d]\` prints \`[42   ]\`. Text is usually set this way: \`[%-6s]\`.
+- \`0\` fills with zeros instead of spaces: \`[%05d]\` prints \`[00042]\`.
+
+The figure of the briefing shows every combination: open **More controls** there.
+
+## What to do
+\`print_row()\` prints one row of a table: a name, a part number and an encoder count. Now it prints
+
+\`\`\`c
+|left|7|-52|
+|right|12|1840|
+|arm|105|-12000|
+\`\`\`
+
+Change its format string so that the rows read exactly:
+
+\`\`\`c
+|left  |007|   -52|
+|right |012|  1840|
+|arm   |105|-12000|
+\`\`\`
+
+- the name: 6 characters wide, on the left
+- the part number: 3 digits, with leading zeros
+- the count: 6 characters wide, on the right
+`,
+      kit: "launchpad",
+      durationMs: 40,
+      starter: `void print_row(char *name, uint16_t part, int16_t counts)
+{
+    // TODO: add a width, and a flag where needed, to each conversion
+    serial_printf(&SerialA, "|%s|%d|%d|\\r\\n", name, part, counts);
+}
+
+void main(void)
+{
+${RX_MAIN}
+
+    print_row("left", 7, -52);
+    print_row("right", 12, 1840);
+    print_row("arm", 105, -12000);
+
+    while (1) {
+    }
+}
+`,
+      solution: `void print_row(char *name, uint16_t part, int16_t counts)
+{
+    serial_printf(&SerialA, "|%-6s|%03u|%6d|\\r\\n", name, part, counts);
+}
+
+void main(void)
+{
+${RX_MAIN}
+
+    print_row("left", 7, -52);
+    print_row("right", 12, 1840);
+    print_row("arm", 105, -12000);
+
+    while (1) {
+    }
+}
+`,
+      checks: [
+        {
+          kind: "serial",
+          matches: "^\\|left  \\|[^\\r]*\\r\\n\\|right \\|[^\\r]*\\r\\n\\|arm   \\|",
+          label: "The names fill 6 characters, with the spaces on the right, before the | sign",
+          hint: "A width alone puts the spaces on the left. For the name write %-6s.",
+        },
+        {
+          kind: "serial",
+          matches: "^[^\\r]*\\|007\\|[^\\r]*\\r\\n[^\\r]*\\|012\\|[^\\r]*\\r\\n[^\\r]*\\|105\\|",
+          label: "The part numbers have 3 digits: 007, 012, 105",
+          hint: "%3d fills with spaces. The 0 flag fills with zeros: %03d (or %03u).",
+        },
+        {
+          kind: "serial",
+          matches: "\\|   -52\\|\\r\\n[^\\r]*\\|  1840\\|\\r\\n[^\\r]*\\|-12000\\|\\r\\n$",
+          label: "The counts fill 6 characters, with the spaces on the left",
+          hint: "The count takes %6d: no flag, so the digits end at the right edge. The minus sign counts as a character.",
+        },
+        {
+          kind: "serial",
+          equals: "|left  |007|   -52|\r\n|right |012|  1840|\r\n|arm   |105|-12000|\r\n",
+          label: "The three rows are exactly as shown, and nothing else is printed",
+          hint: "Compare character by character, the | signs and the \\r\\n included. One serial_printf in print_row must make all three rows.",
+        },
+        { kind: "no-diagnostic", code: "printf-type", label: "Every conversion still fits its value" },
+      ],
+      hints: [
+        "Each conversion gets a number between the % and its letter: 6, 3 and 6.",
+        "The name needs the - flag, the part number the 0 flag, the count no flag.",
+        '`"|%-6s|%03d|%6d|\\r\\n"`',
+      ],
+      takeaway: "A width is the least number of characters. Spaces go on the left unless - puts them on the right or 0 replaces them with zeros.",
+    },
+    {
+      id: "serial-fmt-table",
+      tier: "practice",
+      kind: "code",
+      mode: "write",
+      title: "A table with signs, decimals and hex",
+      goal: "Write one serial_printf that prints a name, a voltage with its sign and two decimals, and a register value as four hex digits.",
+      refs: [
+        { course: "L4", slide: [15, 14, 13], note: "flags, width and precision; the specifier table" },
+        { course: "HW1", note: "asks for floats with 2 and 3 digits of precision" },
+      ],
+      brief: `
+A width and a **precision** can stand in the same conversion: the width first, then a point and the precision. For \`%f\` the precision is the number of digits after the point, and the width counts **everything**: sign, digits and the point.
+
+\`\`\`c
+serial_printf(&SerialA, "[%7.2f]\\r\\n", 3.14159);   // [   3.14]
+serial_printf(&SerialA, "[%7.2f]\\r\\n", -12.5);     // [ -12.50]
+\`\`\`
+
+One more flag: \`+\` prints a plus sign in front of numbers that are not negative, so the sign column is never empty.
+
+\`\`\`c
+serial_printf(&SerialA, "[%+7.2f]\\r\\n", 3.14159);  // [  +3.14]
+\`\`\`
+
+Hex with a fixed number of digits is the \`0\` flag and a width: \`%04X\` prints \`00FF\` for 255. The capital \`X\` gives capital letters. To show \`0x\` in front, write it in the text: \`0x%04X\`.
+
+## What to do
+Write the body of \`print_reading()\`. It gets a name, a voltage and a raw 16-bit register value and must print one row:
+
+\`\`\`c
+batt   +7.40 V 0x0B90
+motor -12.25 V 0xF00D
+ref    +0.50 V 0x00FF
+\`\`\`
+
+- the name, 5 characters wide, on the left, then one space
+- the voltage, 6 characters wide, always with its sign, two decimals
+- a space, \`V\`, a space, \`0x\` and the raw value as 4 hex digits in capitals
+- \`\\r\\n\`
+
+\`main()\` prints the three rows, changes the readings and prints them again.
+`,
+      kit: "launchpad",
+      durationMs: 60,
+      starter: `float volts[3] = { 7.4, -12.25, 0.5 };
+uint16_t raw[3] = { 0x0B90, 0xF00D, 0x00FF };
+
+void print_reading(char *name, float v, uint16_t reg)
+{
+    // TODO: one serial_printf that prints the row
+
+}
+
+void print_table(void)
+{
+    print_reading("batt", volts[0], raw[0]);
+    print_reading("motor", volts[1], raw[1]);
+    print_reading("ref", volts[2], raw[2]);
+}
+
+void main(void)
+{
+${RX_MAIN}
+
+    print_table();
+
+    // new readings: the columns must stay in place
+    volts[0] = -0.75;
+    raw[0] = 0x7;
+    volts[1] = 11.5;
+    raw[1] = 0xABC;
+    volts[2] = 2.25;
+    raw[2] = 0xC0DE;
+    print_table();
+
+    while (1) {
+    }
+}
+`,
+      solution: `float volts[3] = { 7.4, -12.25, 0.5 };
+uint16_t raw[3] = { 0x0B90, 0xF00D, 0x00FF };
+
+void print_reading(char *name, float v, uint16_t reg)
+{
+    serial_printf(&SerialA, "%-5s %+6.2f V 0x%04X\\r\\n", name, v, reg);
+}
+
+void print_table(void)
+{
+    print_reading("batt", volts[0], raw[0]);
+    print_reading("motor", volts[1], raw[1]);
+    print_reading("ref", volts[2], raw[2]);
+}
+
+void main(void)
+{
+${RX_MAIN}
+
+    print_table();
+
+    // new readings: the columns must stay in place
+    volts[0] = -0.75;
+    raw[0] = 0x7;
+    volts[1] = 11.5;
+    raw[1] = 0xABC;
+    volts[2] = 2.25;
+    raw[2] = 0xC0DE;
+    print_table();
+
+    while (1) {
+    }
+}
+`,
+      checks: [
+        {
+          kind: "serial",
+          matches: "^batt  [^\\r]*\\r\\nmotor [^\\r]*\\r\\nref   ",
+          label: "The names are 5 characters wide, on the left, followed by a space",
+          hint: "%-5s and then a space in the format string.",
+        },
+        {
+          kind: "serial",
+          matches: "^batt   \\+7\\.40 V [^\\r]*\\r\\nmotor -12\\.25 V [^\\r]*\\r\\nref    \\+0\\.50 V ",
+          label: "The voltages are 6 characters wide with a sign and two decimals: +7.40 and +0.50 after a space, -12.25 filling the field",
+          hint: "%+6.2f: the + flag, the width 6, the precision 2. The width counts the sign and the point, so -12.25 fills it exactly.",
+        },
+        {
+          kind: "serial",
+          matches: "^[^\\r]* 0x0B90\\r\\n[^\\r]* 0xF00D\\r\\n[^\\r]* 0x00FF\\r\\n",
+          label: "The raw values are 0x and 4 hex digits in capitals: 0x0B90, 0xF00D, 0x00FF",
+          hint: "0x%04X: the 0x is plain text, 04 fills to 4 digits with zeros, the capital X gives capital letters.",
+        },
+        {
+          kind: "serial",
+          equals:
+            "batt   +7.40 V 0x0B90\r\nmotor -12.25 V 0xF00D\r\nref    +0.50 V 0x00FF\r\n" +
+            "batt   -0.75 V 0x0007\r\nmotor +11.50 V 0x0ABC\r\nref    +2.25 V 0xC0DE\r\n",
+          label: "The second table reads: batt -0.75 V 0x0007, motor +11.50 V 0x0ABC, ref +2.25 V 0xC0DE, in the same columns",
+          hint: "Print the three values the function is given, with one format string for every row.",
+        },
+        { kind: "no-diagnostic", code: "printf-type", label: "Every conversion fits its value", hint: "name is a string (%s), v a float (%f), reg a uint16_t (%X without l)." },
+      ],
+      hints: [
+        "Build the format string one column at a time and run the tests after each: name, voltage, raw value.",
+        "Name: %-5s. Voltage: the + flag, width 6, precision 2. Raw value: 0x in the text, then the 0 flag, width 4 and X.",
+        '`serial_printf(&SerialA, "%-5s %+6.2f V 0x%04X\\r\\n", name, v, reg);`',
+      ],
+      takeaway: "Flags, width, precision, length, letter: always in this order. With them one format string keeps every row of a log in the same columns.",
+    },
+    {
+      id: "serial-fmt-lcd",
+      tier: "practice",
+      kind: "code",
+      mode: "complete",
+      title: "Twenty characters on the LCD",
+      goal: "Keep an angle and a distance in fixed places on one 20-character line of the robot's LCD while they change sign and size.",
+      refs: [
+        { course: "Lab 1", note: "UART_printfLine in the starter's while loop" },
+        { course: "L4", slide: [15, 13], note: "flags, width and precision" },
+      ],
+      brief: `
+The robot board has a small text screen, an **LCD** (liquid crystal display), with 2 lines of 20 characters. The course library prints on it with
+
+\`\`\`c
+UART_printfLine(1, "Timer2 Calls %ld", CpuTimer2.InterruptCount);
+\`\`\`
+
+The first value is the line, 1 or 2. The rest is a format string and its values, exactly as in \`serial_printf\`. There is no \`\\r\\n\`: each call replaces the whole line, and whatever does not fit in 20 characters is cut off.
+
+On a screen this small every number must stay in its place. If the text gets longer when a value goes from 9 to 10 or turns negative, the label after it jumps, and the end of the line falls off the screen. Width and precision prevent both.
+
+Worked example: \`"X%+5.1f"\` always makes 6 characters for values from -99.9 to +99.9: \`X +2.5\`, \`X-37.0\`.
+
+## What to do
+Every 100 ms the program shows the robot's heading \`ang\` (a \`float\`, in degrees) and its distance from a wall \`dist\` (an \`int16_t\`, in millimetres) on line 1. Run it: the line jumps and loses its end.
+
+Change the format string so that line 1 always has this layout, 18 characters:
+
+\`\`\`c
+A: -88.2 D:  534mm
+A:  +3.1 D: -166mm
+\`\`\`
+
+- \`A:\`, then the angle: 6 characters wide, always with its sign, one decimal
+- a space, \`D:\`, then the distance: 5 characters wide
+- \`mm\`
+`,
+      kit: "robot",
+      durationMs: 480,
+      starter: `__interrupt void cpu_timer2_isr(void);
+
+float ang = -179.5;       // heading, degrees
+int16_t dist = 1234;      // distance to the wall, mm
+uint16_t UARTPrint = 0;
+
+void main(void)
+{
+${timerMain(100000, "every 100 ms")}
+
+    while (1) {
+        if (UARTPrint == 1) {
+            // TODO: give both conversions a fixed width
+            UART_printfLine(1, "A:%f D:%dmm", ang, dist);
+            UARTPrint = 0;
+        }
+    }
+}
+
+__interrupt void cpu_timer2_isr(void)
+{
+    // stands for new measurements
+    ang = ang + 91.3;
+    dist = dist - 700;
+    UARTPrint = 1;
+}
+`,
+      solution: `__interrupt void cpu_timer2_isr(void);
+
+float ang = -179.5;       // heading, degrees
+int16_t dist = 1234;      // distance to the wall, mm
+uint16_t UARTPrint = 0;
+
+void main(void)
+{
+${timerMain(100000, "every 100 ms")}
+
+    while (1) {
+        if (UARTPrint == 1) {
+            UART_printfLine(1, "A:%+6.1f D:%5dmm", ang, dist);
+            UARTPrint = 0;
+        }
+    }
+}
+
+__interrupt void cpu_timer2_isr(void)
+{
+    // stands for new measurements
+    ang = ang + 91.3;
+    dist = dist - 700;
+    UARTPrint = 1;
+}
+`,
+      checks: [
+        {
+          kind: "lcd",
+          line: 1,
+          at: 150,
+          matches: "^A: -88\\.2 D:  534mm$",
+          label: "After the first measurement line 1 shows A: -88.2 D:  534mm (one space before -88.2, two before 534)",
+          hint: "The angle takes %+6.1f: the + flag, 6 characters, one decimal. The distance takes %5d. Plain %f prints six decimals and pushes the rest off the screen.",
+        },
+        {
+          kind: "lcd",
+          line: 1,
+          at: 250,
+          matches: "^A:  \\+3\\.1 D: -166mm$",
+          label: "After the second: A:  +3.1 D: -166mm (two spaces before +3.1, one before -166), every label in the same place",
+          hint: "Without the + flag a positive angle has no sign. Without a width the text gets shorter and D: moves to the left.",
+        },
+        {
+          kind: "lcd",
+          line: 1,
+          at: 450,
+          matches: "^A:\\+185\\.7 D:-1566mm$",
+          label: "After the fourth: A:+185.7 D:-1566mm, both fields full and still 18 characters",
+          hint: "Width 6 for the angle counts the sign, three digits, the point and one decimal. Width 5 for the distance counts the minus sign and four digits.",
+        },
+        { kind: "no-diagnostic", code: "printf-type", label: "Every conversion fits its value", hint: "ang is a float: f. dist is an int16_t: d without l." },
+      ],
+      watch: ["ang", "dist"],
+      hints: [
+        "Count the characters of the widest value each field must hold: +185.7 and -1566.",
+        "The angle needs a flag, a width and a precision. The distance needs only a width.",
+        '`UART_printfLine(1, "A:%+6.1f D:%5dmm", ang, dist);`',
+      ],
+      takeaway: "On the LCD, give every number a width that fits its widest value. Then the line has the same length whatever the numbers do.",
     },
     {
       id: "serial-double",

@@ -65,9 +65,14 @@
 //   bytes 0-3 ambient light * 65536, bytes 4-7 standard deviation * 65536.
 // - 0x1F0B01FF heartbeat, once a second.
 // - 0x060B04ss "ranging configuration" (received by the sensor): bytes 1-2
-//   set the sample period in ms (25 to 1000).
+//   set the sample period in ms (25 to 1000); byte 0 sets the ranging mode
+//   (0 short, 1 medium, 2 long), published as CAN_SENSOR<n>_MODE.
 // Distances come from the signal-bus inputs "CAN_DIST1_MM" and
-// "CAN_DIST2_MM"; a negative value unplugs that sensor.
+// "CAN_DIST2_MM"; a negative value unplugs that sensor. These frames always
+// carry ranging status 0. While the robot world is on (ROBOT_WORLD = 1) and
+// nothing has set the input, the sensor reports what it sees in the room
+// instead, with its range limit by mode and ranging status 2 when nothing is
+// in range: see robot_sensors.ts for the geometry and its sources.
 //
 // A disturbed bus: setting the signal-bus input "CAN_ERROR_FRAMES" to N puts
 // N damaged frames on the CAN-B bus from that moment, back to back, one
@@ -84,6 +89,7 @@
 import type { Board } from "../board";
 import { SYSCLK_NS } from "../consts";
 import type { SimPlugin } from "../plugin";
+import type { RobotSensors } from "./robot_sensors";
 
 export const CAN_CLOCK_HZ = 1e9 / SYSCLK_NS;
 export const SENSOR_BITRATE = 1_000_000;
@@ -463,6 +469,8 @@ export class CanModule {
       if (mctl & MC_RXIE) mctl |= MC_INTPND;
       o.mctl = mctl;
       b.publish("CAN_RX_FRAMES", ++this.stored);
+      // A distance frame of sensor 1 or 2 that the program receives: the arena draws that sensor's beam.
+      if (f.extended && (rxId === 0x060b0101 || rxId === 0x060b0102)) b.inputsUsed.add(`CAN_DIST${rxId & 3}_MM`);
       this.received.push({ t: b.now, id: f.extended ? f.id & ARB_ID : f.id & 0x7ff, extended: f.extended, data: f.data.slice(0, 8).map((x) => x & 0xff), obj: i });
       if (this.received.length > RECEIVED_MAX) this.received.shift();
       break;
@@ -543,6 +551,8 @@ export class CanModule {
 /** One SEN-36005 time-of-flight sensor on the bus. */
 class Sensor {
   periodMs = 100;
+  /** Ranging mode: 0 short (the default), 1 medium, 2 long. It sets how far the sensor sees in the robot world. */
+  mode = 0;
   private ev: ReturnType<Board["at"]> | null = null;
 
   constructor(
@@ -566,11 +576,19 @@ class Sensor {
     const b = this.b;
     this.phase = t;
     this.ev = b.at(t + this.periodMs * 1e6, (at) => this.measure(at));
-    const mm = b.input(`CAN_DIST${this.id}_MM`, this.id === 1 ? 500 : 1200);
-    if (mm < 0) return; // unplugged
-    const d = Math.max(0, Math.min(4000, Math.round(mm)));
+    // In the robot world the sensor sees the room (robot_sensors.ts), unless a knob or a stimulus set the distance.
+    const seen = (b.plugins.get("robot-sensors") as RobotSensors | undefined)?.tofMeasure(this.id, this.mode);
+    let d: number;
+    if (seen) d = seen.mm;
+    else {
+      const mm = b.input(`CAN_DIST${this.id}_MM`, this.id === 1 ? 500 : 1200);
+      if (mm < 0) return; // unplugged
+      d = Math.max(0, Math.min(4000, Math.round(mm)));
+    }
+    const status = seen ? seen.status : 0;
     const le32 = (v: number) => [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
-    const distance: CanFrame = { id: 0x060b0100 | this.id, extended: true, data: [d & 0xff, d >> 8, 0, 0, ...le32(Math.round(2.5 * 65536))] };
+    // No return signal: the signal rate is 0 too.
+    const distance: CanFrame = { id: 0x060b0100 | this.id, extended: true, data: [d & 0xff, d >> 8, status, 0, ...le32(status ? 0 : Math.round(2.5 * 65536))] };
     const quality: CanFrame = { id: 0x060b0200 | this.id, extended: true, data: [...le32(Math.round(0.25 * 65536)), ...le32(Math.round(1.5 * 65536))] };
     const bit = 1e9 / SENSOR_BITRATE;
     const end1 = t + frameBits(distance) * bit;
@@ -580,8 +598,14 @@ class Sensor {
 
   /** A frame sent by the microcontroller. */
   hear(f: CanFrame, t: number): void {
-    if (!f.extended || f.id !== (0x060b0400 | this.id) || f.data.length < 3) return;
-    // Ranging configuration: bytes 1-2 are the sample period in ms.
+    if (!f.extended || f.id !== (0x060b0400 | this.id) || f.data.length < 1) return;
+    // Ranging configuration: byte 0 is the ranging mode (0 short, 1 medium, 2 long; 0xFF: leave it).
+    if (f.data[0] <= 2 && f.data[0] !== this.mode) {
+      this.mode = f.data[0];
+      this.b.publish(`CAN_SENSOR${this.id}_MODE`, this.mode, t);
+    }
+    if (f.data.length < 3) return;
+    // Bytes 1-2 are the sample period in ms.
     const period = f.data[1] | (f.data[2] << 8);
     if (period === 0xffff || period < 25 || period > 1000) return;
     this.periodMs = period;

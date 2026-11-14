@@ -87,7 +87,7 @@ interface Plant {
 }
 
 /** mulberry32: small seeded generator, uniform in [0, 1). */
-function rng(seed: number): () => number {
+export function rng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -99,7 +99,7 @@ function rng(seed: number): () => number {
 }
 
 /** Standard normal numbers (Box-Muller) from a seeded uniform generator. */
-function gauss(seed: number): () => number {
+export function gauss(seed: number): () => number {
   const u = rng(seed);
   return () => Math.sqrt(-2 * Math.log(1 - u())) * Math.cos(2 * Math.PI * u());
 }

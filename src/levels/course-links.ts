@@ -33,6 +33,13 @@ const IN_GAME: Record<string, string> = {
   "Primer C": "Primer C: C for hardware, in this game",
 };
 
+/** The MPU-9250's three documents on the course site, by the name used in `course`. Give the section in `note`. */
+const DOCUMENTS: Record<string, { file: string; title: string }> = {
+  "MPU-9250 addendum": { file: "MPU-9250-Addendum.pdf", title: "MPU-9250 addendum: SPI timing diagrams and programming tips (PDF)" },
+  "MPU-9250 register map": { file: "MPU-9250-Register-Map.pdf", title: "MPU-9250 register map and descriptions (PDF)" },
+  "MPU-9250 specification": { file: "PS-MPU-9250A-01-v1.1.pdf", title: "MPU-9250 product specification (PDF)" },
+};
+
 export type CourseKind = "lecture" | "lab" | "homework" | "other";
 
 export interface CourseLink {
@@ -112,6 +119,7 @@ export function courseLinks(ref: Ref): CourseLink[] {
   }
   if (course === "Project") return [{ href: `${LAB_SITE}/SE423_Final_Project_Instructions_SP26.pdf`, label: "Final project", title: withNote("Final project instructions (PDF)", ref), kind: "lab" }];
   if (course === "Syllabus") return [{ href: `${CLASS_SITE}/syllabus.pdf`, label: "Syllabus", title: withNote("Course syllabus (PDF)", ref), kind: "other" }];
+  if (course in DOCUMENTS) return [{ href: `${LAB_SITE}/${DOCUMENTS[course].file}`, label: course, title: withNote(DOCUMENTS[course].title, ref), kind: "other" }];
   if (course in IN_GAME) return [{ label: course, title: withNote(IN_GAME[course], ref), kind: "other" }];
   return [];
 }

@@ -44,13 +44,21 @@ export function clean(s: unknown, now = Date.now()): Save | null {
   if (!isMap(s) || s.version !== 1 || !isMap(s.passed)) return null;
   const out = empty();
   const keep = <T>(from: unknown, to: Record<string, T>, ok: (v: unknown) => v is T) => {
-    if (isMap(from)) for (const [k, v] of Object.entries(from)) if (ok(v)) to[k] = v;
+    // "__proto__" is never a level id, and assigning it would swap the map's prototype.
+    if (isMap(from)) for (const [k, v] of Object.entries(from)) if (k !== "__proto__" && ok(v)) to[k] = v;
   };
   const isTrue = (v: unknown): v is true => v === true;
   const isCount = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
   keep(s.passed, out.passed, isTrue);
   keep(s.assisted, out.assisted, isTrue);
-  keep(s.stars, out.stars, (v): v is number[] => Array.isArray(v) && v.every(isCount));
+  // Star lists hold each index once, in order: anything else in a list (a fraction, a text, a repeat) is dropped.
+  const isIndex = (v: unknown): v is number => isCount(v) && Number.isInteger(v) && v < 1000;
+  if (isMap(s.stars))
+    for (const [k, v] of Object.entries(s.stars)) {
+      if (k === "__proto__" || !Array.isArray(v)) continue;
+      const list = [...new Set(v.filter(isIndex))].sort((a, b) => a - b);
+      if (list.length) out.stars[k] = list;
+    }
   keep(s.hints, out.hints, isCount);
   keep(s.peeked, out.peeked, isTrue);
   keep(s.fails, out.fails, isCount);
@@ -89,6 +97,11 @@ function commit(next: Save): void {
     /* ignore */
   }
   listeners.forEach((l) => l());
+}
+
+/** Stars a level counts: the earned ones among the `total` it has now (a star dropped in an update is not counted). */
+export function starsEarned(save: Pick<Save, "stars">, id: string, total: number): number {
+  return (save.stars[id] ?? []).filter((i) => i < total).length;
 }
 
 // Another window of the game saved: take its progress, so that this window's next save does not undo it.
@@ -185,15 +198,33 @@ export const store = {
     commit({ ...state, unlockAll: v });
   },
   export: () => JSON.stringify(state, null, 2),
-  import(text: string): boolean {
+  /**
+   * Replaces the progress with an exported one. "invalid": the text is not a
+   * progress file. "too-large": it is one, but this browser cannot store it,
+   * so the progress from before is kept (otherwise a reload would bring the
+   * old one back and nothing played in between would be saved).
+   */
+  import(text: string): "ok" | "invalid" | "too-large" {
+    let s: Save | null = null;
     try {
-      const s = clean(JSON.parse(text));
-      if (!s) return false;
-      commit(s);
-      return true;
+      s = clean(JSON.parse(text));
     } catch {
-      return false;
+      /* not JSON */
     }
+    if (!s) return "invalid";
+    try {
+      localStorage.setItem(KEY, JSON.stringify(s));
+    } catch {
+      // Not stored. If the progress from before still fits, storage works and the new one is too large.
+      try {
+        localStorage.setItem(KEY, JSON.stringify(state));
+        return "too-large";
+      } catch {
+        /* no storage at all: play without saving, as always */
+      }
+    }
+    commit(s);
+    return "ok";
   },
   reset() {
     commit(empty());

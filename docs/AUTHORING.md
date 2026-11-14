@@ -51,7 +51,10 @@ refs: [
 - `course` is a lecture deck (`L1` to `L5`, `L6-7`, `L8-9`, `L10` to `L19`,
   `L20-21`, `L22-23`, `L24-25`; `L6` or `L21` resolve to their deck),
   `Lab 1` to `Lab 7`, `HW1` to `HW6`, `LabVIEW1` to `LabVIEW4`, `Project`,
-  `Syllabus`, or `Primer A`/`B`/`C` (this game's own primers, no link).
+  `Syllabus`, `Primer A`/`B`/`C` (this game's own primers, no link), or one
+  of the MPU-9250's documents on the course site: `MPU-9250 addendum`,
+  `MPU-9250 register map`, `MPU-9250 specification` (put the page or
+  section in `note`).
   `src/levels/course-links.ts` turns each into a URL and a label.
 - `slide` is the slide number inside that deck, counted from 1. It is the
   section `#s<N>` of the published page
@@ -106,6 +109,9 @@ Write the text to match the figure and point at it, not to replace it.
     It sees a 1 written to the bit of a pin that is an input, which no LED
     or pin check can.
   - `var` reads one element of a global array with `name: "found[0]"`.
+  - `lcd` (`line`, `matches`) reads a line of the robot board's LCD at the
+    end of the run, or at `at` ms: give two or three times with different
+    values so a constant text cannot pass.
   - A window (`from`, `to`) must lie inside the run and have a length. A
     check with an empty window fails and says so.
 - `stimuli`: `{ at, press | release: "PB1" }`, `{ at, type: "text" }`
@@ -121,7 +127,23 @@ Write the text to match the figure and point at it, not to replace it.
     turns without moving the robot, so the encoders and the gyro disagree
     (`plugins/plant.ts`).
   - `WORLD_KIND` = 6: one slanted wall, for line fits (`world/terrain.ts`).
+  - `IMU_REAL` = 1: the MPU-9250 is a real part, with an offset on each
+    axis and noise on every sample (`IMU_BIAS_GZ_DPS` and its five sisters
+    choose the offset). `IMU_PU_SLEEP` = 1: a part that powers up asleep.
+    While `ROBOT_WORLD` is 1 the IMU feels the robot's motion
+    (`plugins/spi_devices.ts`).
+  - `ROBOT_WORLD` = 1 also makes the robot's sensors follow the room and
+    the robot's motion: the CAN distance sensors (sensor 1 ahead, sensor 2
+    to the right, ranging status 2 beyond 1.3 m in short mode), the Sharp
+    sensors on the DAN28027's analog inputs (1 left, 2 rear) and the
+    LPR510 gyro on ADCINC2 to 5. A stimulus on `CAN_DIST1_MM`,
+    `CAN_DIST2_MM`, `DAN_ADC1`, `DAN_ADC2` or an `ADCINC` input still wins
+    (`plugins/robot_sensors.ts`). The gyro's real scale is what Lab 4 has
+    students work into code: no level prints that conversion line.
 - Measurements taken on the pins, to use with a `signal` check:
+  `MPU_WRITE_FRAMES` (transfers that wrote a register of the MPU-9250),
+  `IMU_RATE_HZ`, `IMU_GYRO_BW_HZ`, `IMU_ACCEL_BW_HZ` (what the chip's
+  configuration registers select);
   `I2C_SCL_MIN_LOW_US` and `I2C_SCL_MIN_HIGH_US`, the shortest SCL low and
   high time of any I2C master, the module or a bit-banged one
   (`plugins/i2c.ts`).
@@ -180,6 +202,13 @@ earlier level taught. So:
   marked clearly as "given, explained in chapter N".
 - `printf` output goes to a console; check it with the `console` check
   kind (`includes`, `equals` or `matches`).
+- All printing functions share one formatter (`src/sim/lib/printf.ts`,
+  tested row by row in `tests/printf.test.ts`). Its diagnostics, for a
+  `no-diagnostic` check: `printf-type` (the conversion takes another size or
+  kind of value than it was given), `printf-sign` (d for an unsigned value or
+  u for a signed one, and the printed number is wrong), `printf-args` (too
+  few or too many values), `printf-format` (a % that starts no conversion),
+  `printf-width` (a conversion longer than the library's 510 characters).
 
 ## Accuracy
 - Facts must agree with the Technical Reference Manual. Where a slide or

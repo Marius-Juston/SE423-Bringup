@@ -596,3 +596,25 @@ describe("drawing a wall longer than the picture", () => {
     expect(clipSegment([5, -50, 5, 50], -2, -2, 12, 12)).toEqual([5, -2, 5, 12]);
   });
 });
+
+describe("the arena view gliding to a new size", () => {
+  it("covers a share of what is left per step, never overshoots, and arrives", async () => {
+    const { easeView } = await import("../src/ui/views/robot-arena-model");
+    const from = { x0: 0, y0: 0, x1: 3, y1: 2 };
+    const to = { x0: -1, y0: 0, x1: 6, y1: 2 };
+    let v = from;
+    let last = v.x1;
+    for (let i = 0; i < 200; i++) {
+      v = easeView(v, to, 16);
+      expect(v.x1).toBeGreaterThanOrEqual(last);
+      expect(v.x1).toBeLessThanOrEqual(to.x1);
+      last = v.x1;
+    }
+    expect(v).toEqual(to);
+    // One frame moves it a little, not all the way; no time, no move.
+    const one = easeView(from, to, 16);
+    expect(one.x1).toBeGreaterThan(3.1);
+    expect(one.x1).toBeLessThan(3.5);
+    expect(easeView(from, to, 0)).toEqual(from);
+  });
+});

@@ -211,7 +211,7 @@ input:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn.big .icon { grid-row: 1 / 3; align-self: center; }
 .icon-btn { display: inline-grid; place-items: center; width: 2.1rem; height: 2.1rem; padding: 0; background: transparent; border: 1px solid var(--control); border-radius: var(--radius); color: var(--text); }
 .icon-btn:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--surface-2); }
-.linkish { background: none; border: none; padding: 0; color: var(--info); text-decoration: underline; font: inherit; }
+.linkish { background: none; border: none; padding: 0; color: var(--info); text-decoration: underline; font: inherit; text-align: left; }
 .actions { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; align-items: center; }
 
 /* ---- shell ---- */
@@ -228,6 +228,10 @@ input:disabled { opacity: 0.6; cursor: not-allowed; }
 .topnav button:focus-visible { outline-offset: -3px; }
 .progress-pill { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--dim); font-size: var(--fs-2); font-family: var(--mono); white-space: nowrap; }
 main { overflow: auto; min-height: 0; }
+/* Every box that scrolls is positioned, so the hidden screen-reader text inside it (.sr-only is absolutely positioned)
+   scrolls with it. Without this the hidden text stays where the unscrolled content put it and makes the window itself
+   scrollable: a jump to something far down (a chapter's levels on a phone) then pushes the top bar out for good. */
+main, .pane, .level-body, .hb-nav, .hb-content, .hb-col, .table-scroll, .timing, .bits-scroll, .problems, .panel-body { position: relative; }
 main:focus { outline: none; }
 .skip { position: absolute; left: -9999px; }
 .skip:focus { left: 0.5rem; top: 0.5rem; z-index: 50; background: var(--accent); color: var(--accent-ink); padding: 0.4rem 0.8rem; border-radius: var(--radius); }
@@ -350,6 +354,7 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .warm-dots i.done { background: var(--info); border-color: var(--info); }
 .warm-dots i.now { border-color: var(--info); box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3px var(--info); }
 .stepper { display: flex; gap: 2px; flex-wrap: wrap; max-width: 46%; }
+.level-arrows { display: inline-flex; gap: 0.5rem; flex: none; margin-left: auto; }
 .step { width: 1.5rem; height: 1.5rem; min-width: 24px; min-height: 24px; display: grid; place-items: center; background: none; border: none; padding: 0; border-radius: 4px; }
 .step span { width: 0.7rem; height: 0.7rem; border-radius: 50%; border: 2px solid var(--control); display: block; }
 .step.tier-practice span { border-radius: 2px; }
@@ -628,6 +633,8 @@ tr.target td:first-child { color: var(--bad); }
 .meter { grid-template-columns: minmax(5rem, 1fr) auto; }
 .knob input { width: 100%; padding: 0; }
 .knob output, .meter output { font-family: var(--mono); text-align: right; color: var(--value); }
+.lcd-wrap { margin: 0.5rem 0 0; }
+.lcd-wrap figcaption { margin-top: 0.25rem; font-size: var(--fs-1); color: var(--dim); }
 .lcd { font-family: var(--mono); background: #1b3d12; color: #c9ff8f; border: 3px solid #0c1c08; border-radius: var(--radius); padding: 0.3rem 0.5rem; white-space: pre; min-height: 3.4em; font-size: 0.95rem; overflow-x: auto; }
 .term { font-family: var(--mono); background: var(--inset); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.4rem 0.6rem; height: 9rem; overflow: auto; white-space: pre-wrap; word-break: break-all; font-size: 0.85rem; }
 .term-input { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
@@ -702,6 +709,8 @@ tr.target td:first-child { color: var(--bad); }
 .hb-content:focus-visible { outline-offset: -3px; }
 .hb-content.fixed { overflow: hidden; padding-bottom: 0; }
 .hb-content h1 { margin-bottom: 0.4rem; }
+/* A long search text wraps instead of widening the page. */
+.hb-content h1, .hb-content > div > .hint-text, .hb-col > .hint-text, .hb-back { overflow-wrap: anywhere; }
 .hb-content section { margin-top: 1.3rem; }
 .count { font-family: var(--mono); font-size: var(--fs-1); font-weight: 400; color: var(--dim); }
 .glossary { max-width: 46rem; }

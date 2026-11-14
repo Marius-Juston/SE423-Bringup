@@ -162,7 +162,11 @@ export function inputAt(sets: SetStimulus[], name: string, tMs: number): number 
 }
 
 /** Inputs that describe the world and where things stand in it: what a live run takes over from the level. */
-export const isWorldInput = (name: string): boolean => /^(ROBOT_|LIDAR_|WORLD_|TB_SET_)/.test(name) || name === "MOTOR_RIGHT_GAIN";
+export const isWorldInput = (name: string): boolean =>
+  /^(ROBOT_|LIDAR_|WORLD_|TB_SET_)/.test(name) ||
+  name === "MOTOR_RIGHT_GAIN" ||
+  // What kind of part the MPU-9250 is (a real one with offset and noise, one that powers up asleep): not a knob position.
+  /^IMU_(REAL$|PU_SLEEP$|BIAS_)/.test(name);
 
 /** The world inputs a level sets before its program has done anything (at 0 ms). */
 export function worldSetup(stimuli: readonly unknown[] | undefined): SetStimulus[] {
@@ -560,4 +564,16 @@ export function clipSegment(w: readonly [number, number, number, number] | reado
   }
   if (t0 > t1) return null;
   return [ax + t0 * dx, ay + t0 * dy, ax + t1 * dx, ay + t1 * dy];
+}
+
+/**
+ * The view on its way from `from` to `to` after `dtMs`: each edge covers a
+ * fixed share of what is left per time constant, so a view that must grow
+ * glides there instead of jumping to the next grid line. Within a hundredth
+ * of a foot it is there.
+ */
+export function easeView(from: ViewBox, to: ViewBox, dtMs: number, tauMs = 220): ViewBox {
+  const a = 1 - Math.exp(-Math.max(0, dtMs) / tauMs);
+  const step = (f: number, t: number) => (Math.abs(t - f) < 0.01 ? t : f + (t - f) * a);
+  return { x0: step(from.x0, to.x0), y0: step(from.y0, to.y0), x1: step(from.x1, to.x1), y1: step(from.y1, to.y1) };
 }
