@@ -71,6 +71,9 @@ fields (`src/sim/device/registers.json`, from the TI headers).
 - Inputs by name: `b.input("ADCINA4")` (set by a knob, a test stimulus
   `{ at, set: "ADCINA4", value: 1.5 }`, or another plugin via
   `b.setInput(name, v)`); `b.onInput(name, fn)` to react.
+- An input that changes all the time (a tone on an ADC pin):
+  `b.sources.set("ADCINB4", (t) => volts)`. The function is asked only when
+  the input is read and nothing has set it, so it costs no events.
 - Outputs by name: `b.publish("DACA", volts)` (history kept; the `signal`
   check in `src/sim/runner.ts` reads it, meters display it).
 - Kit parts (`src/sim/world/kits.ts`): `knob` (slider feeding an input),
@@ -154,6 +157,39 @@ channel that is such a blank is also registered with
 the bit. `tests/actuators.test.ts`, `tests/spi_library.test.ts` and
 `tests/lab_library.test.ts` hold these functions to their behaviour and
 check that no level prints what they hide.
+
+### What the course starter projects need
+The starter projects' main files must compile and run unchanged
+(`tests/labstarter.test.ts`, `tests/starters_basic.test.ts`). Their other
+files are not copied: a plugin provides what the main file names.
+
+- `course_leds.ts`: `displayLEDletter(n)` and `setLEDLetter(array)` for the
+  red board's 3 x 5 LED display (HWstarter, XINTstarter).
+- `course_ladar.ts`: the types and variables of the LADAR starter
+  (`datapts`, `pose`, `ladar_data`, `LADARpingpong`, `G_command` ...), the
+  priority masks `MINTn` and `MG12_n`, and the filling of `ladar_data` from
+  the LIDAR's replies while the library's own `RXCINT_recv_ready` is in use.
+  The Raspberry Pi link is inert: its variables exist and never change.
+- `course_fft.ts`: `RFFT_F32_STRUCT`, `RFFT_f32`, `RFFT_f32_mag`,
+  `RFFT_f32_phase` and `RFFT_f32_sincostable` of TI's FPU DSP library
+  (fftDMAstarter), and the robot board's microphone on ADCINB4: a tone of
+  `MIC_TONE_HZ` (a knob, 1000 at the start; 0 is silence) and `MIC_AMPL_V`
+  volts around 1.5 V.
+- `course_final.ts`: what the final project starter adds: SE423Lib.h
+  (`InitSE423DefaultGPIO`, `init_eQEPs`, `readEncLeft` ..., `init_EPWM1and2`,
+  the RC servo functions, `init_ADCsAndDACs`, `readbuttons`, `PostSWI1` to
+  `3`, `PIcontrol`), `xy_control`, MatrixMath.h and `UpdateOptitrackStates`.
+  Formulas and algorithms are native, register set-up is C; all of them are
+  replaceable. OptiTrack, the camera, LabVIEW and the Linux commands are
+  inert. While `ROBOT_WORLD` is 1 the IMU's `IMU_GZ_DPS` follows the robot's
+  turning rate unless something else set it.
+  `tests/starters_project.test.ts` runs both starters.
+- A library function may take and return a small struct by value
+  (`UpdateOptitrackStates` does); a student's file is still told to use
+  pointers.
+- A library variable that levels define themselves is marked weak in
+  `install`: `b.compiler.globals.get(name)!.weak = true`. A student's
+  definition then takes the name; the library keeps its own copy.
 
 ### Diagnostics
 `b.warn(b.line, "code", "message", "warning" | "error")` shows a message on

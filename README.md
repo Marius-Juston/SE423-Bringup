@@ -137,8 +137,15 @@ Things worth knowing about the simulator:
 - **Behaviour, not cycle accuracy.** Time advances by a nominal amount per
   statement and jumps between events when the program is idle. Each
   peripheral model cites the TRM section it implements.
-- The unmodified course `LABstarter_main.c` runs and is a test fixture
-  (`tests/labstarter.test.ts`, skipped when the course repo is not present).
+- The course's starter projects run unmodified when pasted into the Sandbox:
+  `LABstarter`, `LADAR_PICOM_starter`, `fftDMAstarter` and
+  `FinalProjectwithCANAprilStarter` on the robot board, `HWstarter` and
+  `XINTstarter` on the homework red board. They are test fixtures
+  (`tests/labstarter.test.ts`, `tests/starters_basic.test.ts`,
+  `tests/starters_project.test.ts`, skipped when the course repo is not
+  present at `./SE423Spring26`). The Sandbox's "Starting program" menu offers
+  a short version of each, written for the game, on the board it belongs to
+  (`src/ui/sandbox-starters/`).
 
 ## Adding content
 

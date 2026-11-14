@@ -61,6 +61,8 @@ export interface Fn {
   waits?: boolean;
   defined: boolean;
   file: string;
+  /** Where a function that returns a struct leaves it (library functions only). */
+  retAddr?: number;
   /** A library function the student's file is allowed to redefine. */
   replaceable?: boolean;
 }
@@ -71,6 +73,8 @@ export interface GlobalVar {
   t: CType;
   file: string;
   isConst?: boolean;
+  /** A library variable the student's file may define again: the student's own then takes the name. */
+  weak?: boolean;
 }
 
 type Sig = 0 | 1 | 2 | 3; // normal, break, continue, return
@@ -286,7 +290,7 @@ export class Compiler {
       if (v.init) this.inits.push(this.initCode(existing.t, v.init, () => existing.addr));
       return;
     }
-    if (existing && existing.file !== this.file)
+    if (existing && existing.file !== this.file && !existing.weak)
       throw this.err(v.line, `'${v.name}' already exists in the course library; choose another name.`);
     if (this.fns.has(v.name)) throw this.err(v.line, `'${v.name}' is already the name of a function.`);
     const t = this.completeArray(v.t, v.init, v.line);
@@ -330,17 +334,33 @@ export class Compiler {
     this.scopes = [new Map()];
     this.uninitReads = [];
     this.loopIds = [];
-    if (def.t.ret.k === "struct")
+    // The course library may pass and return small structs (OptiTrack.h does); a student's file is told to use pointers.
+    const lib = this.file === "library";
+    if (def.t.ret.k === "struct" && !lib)
       throw this.err(def.line, `'${def.name}' returns a whole struct. That is not available in this game (and is slow on a microcontroller): fill a struct through a pointer parameter instead.`);
     f.paramStore = def.params.map((p) => {
       if (!p.name) throw this.err(def.line, `A parameter of '${def.name}' has a type but no name.`);
-      if (p.t.k === "struct")
+      if (p.t.k === "struct" && !lib)
         throw this.err(def.line, `Parameter '${p.name}' of '${def.name}' is a whole struct, which would be copied on every call. That is not available in this game: pass a pointer (struct ... *${p.name}) and use ->.`);
       const off = this.allocLocal(p.name, p.t, def.line);
-      const st = this.storer(p.t);
       const rt = this.rt;
+      if (p.t.k === "struct") {
+        // The argument is the address of the caller's struct: the function gets its own copy.
+        const n = p.t.size;
+        return (v: number) => {
+          for (let i = 0; i < n; i++) rt.mem.poke(rt.fp + off + i, 1, rt.mem.peek(v + i, 1));
+        };
+      }
+      const st = this.storer(p.t);
       return (v: number) => st(rt.fp + off, v);
     });
+    if (def.t.ret.k === "struct") {
+      // A returned struct is copied to a place of the function's own, and the call's value is that place.
+      const size = sizeOf(def.t.ret);
+      this.nextGlobal += this.nextGlobal % 2;
+      f.retAddr = this.nextGlobal;
+      this.nextGlobal += size;
+    }
     if (this.file === "user" && def.t.ret.k !== "void" && def.name !== "main" && !alwaysReturns(def.body)) {
       if (!JSON.stringify(def.body).includes('"k":"return"'))
         this.rt.warn(
@@ -765,6 +785,19 @@ export class Compiler {
           if (f.t.ret.k === "void") throw this.err(line, `'${f.name}' is a void function, so it cannot return a value.`);
           const v = this.convert(this.rvalue(this.expr(s.e)), f.t.ret, line, "return");
           const get = v.get;
+          if (f.t.ret.k === "struct") {
+            const n = f.t.ret.size;
+            const to = f.retAddr!;
+            return {
+              sync: () => {
+                rt.tick(tl);
+                const from = get();
+                for (let i = 0; i < n; i++) rt.mem.poke(to + i, 1, rt.mem.peek(from + i, 1));
+                rt.ret = to;
+                return 3;
+              },
+            };
+          }
           return {
             sync: () => {
               rt.tick(tl);
@@ -1256,14 +1289,14 @@ export class Compiler {
       const args = this.callArgs(f, f.t, e.args, line);
       const n = args.length;
       const types = this.argTypes(f.t, e.args);
-      return {
-        t: f.t.ret,
-        get: () => {
-          const vals = new Array<number>(n);
-          for (let i = 0; i < n; i++) vals[i] = args[i]();
-          return f.native ? f.native(vals, types, rt.line) : self.invoke(f, vals, line);
-        },
+      const get = () => {
+        const vals = new Array<number>(n);
+        for (let i = 0; i < n; i++) vals[i] = args[i]();
+        return f.native ? f.native(vals, types, rt.line) : self.invoke(f, vals, line);
       };
+      // A returned struct is a value with an address (the function's own copy), so it can be assigned.
+      if (f.t.ret.k === "struct") return { t: f.t.ret, get, lv: { addr: get } };
+      return { t: f.t.ret, get };
     }
     let callee = this.rvalue(this.expr(e.f));
     if (isPtr(callee.t) && callee.t.to.k !== "func") callee = this.rvalue(this.deref(callee, line));

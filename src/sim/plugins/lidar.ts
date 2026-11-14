@@ -46,9 +46,20 @@
 //   LIDAR_X_FT, LIDAR_Y_FT, LIDAR_THETA_RAD   pose of the robot
 //   LIDAR_OFFSET_FT   how far ahead of the robot's centre the sensor sits
 //                     (default 0; the course robot has 3.5 inches)
-//   LIDAR_BAUD        baud rate of the sensor at power-up (default 115200,
-//                     as after the course's S command; a real one starts
-//                     at 19200)
+//   LIDAR_BAUD        baud rate of the sensor at power-up. A real one
+//                     starts at 19200 and keeps the rate an S command gave
+//                     it until its power is switched off. When this input
+//                     is not set the model takes either history: it listens
+//                     at 115200 (as after the course's S command) until the
+//                     chip sends an S command at 19200, as a program written
+//                     for a sensor fresh from power-up does. It then obeys,
+//                     and what it said about the baud rate of commands sent
+//                     before that is withdrawn. For 2 s after an S command changed the
+//                     rate, characters still sent at the old rate are lost
+//                     without a message (the course starter keeps asking
+//                     for scans while it waits to change SCIC's rate), and
+//                     so is a command it cannot read (the rest of a request
+//                     that was on its way when SCIC's rate changed).
 //   LIDAR_DROP_CHAR   n > 0: the n-th character of the next reply is lost
 //                     on the wire (once), to test a parser
 // Outputs: LIDAR_SCANS (replies sent), LIDAR_FRONT_FT (straight ahead).
@@ -219,6 +230,11 @@ export function gReply(command: string, mm: number[]): string {
 export interface LidarState {
   /** Current baud rate of the sensor (undefined: still at its power-up rate). */
   baud?: number;
+  /** Characters of a command arriving at 19200 baud while the sensor is taken to listen at 115200. */
+  slow: string;
+  /** The rate before the last S command and when that command came, ns. */
+  oldBaud?: number;
+  changedAt?: number;
   /** Characters of the command being received. */
   cmd: string;
   /** The sensor's transmitter is busy until this time, ns. */
@@ -311,7 +327,7 @@ float tb_pose_y(void);
 float tb_pose_theta(void);
 `,
   install(b) {
-    const st: State = { cmd: "", busyUntil: 0, scans: 0, reads: 0, objects: [] };
+    const st: State = { cmd: "", slow: "", busyUntil: 0, scans: 0, reads: 0, objects: [] };
     b.plugins.set("lidar", st);
     const sensorBaud = () => st.baud ?? b.input("LIDAR_BAUD", 115200);
 
@@ -354,20 +370,45 @@ float tb_pose_theta(void);
         const baud = +s[1];
         const ok = [19200, 57600, 115200].includes(baud);
         reply(`${line}${ok ? "0" : "1"}\n\n`, t);
-        if (ok) st.baud = baud;
+        if (ok) {
+          st.oldBaud = sensorBaud();
+          st.changedAt = t;
+          st.baud = baud;
+        }
         return;
       }
       if (/^L[01]$/.test(cmd)) {
         reply(`${line}0\n\n`, t);
         return;
       }
+      // The tail of a command that the program's change of SCIC's rate cut in two: the sensor drops it.
+      if (st.changedAt !== undefined && t - st.changedAt < 2e9) return;
       b.warn(b.line, "lidar-command", `The LIDAR does not know the command "${cmd.slice(0, 20)}". A distance request looks like "G04472503" followed by a line feed.`);
     };
 
     b.sci.onTx.push((port, ch, t) => {
       if (port !== SCIC) return;
       const chip = b.sci.baud(SCIC);
-      if (Math.abs(chip - sensorBaud()) > 0.03 * sensorBaud()) {
+      const near = (baud: number) => Math.abs(chip - baud) <= 0.03 * baud;
+      if (!near(sensorBaud())) {
+        // A program written for a sensor fresh from power-up (see LIDAR_BAUD above) starts at 19200.
+        if (st.baud === undefined && b.inputs.get("LIDAR_BAUD") === undefined && near(19200)) {
+          if (ch !== 10 && ch !== 13) {
+            if (ch !== 0) st.slow = (st.slow + String.fromCharCode(ch)).slice(-32);
+            return;
+          }
+          const cmd = st.slow;
+          st.slow = "";
+          if (/^S\d{6}/.test(cmd)) {
+            st.baud = 19200;
+            for (const key of [...b.diagnostics.keys()]) if (key.startsWith("lidar-baud:")) b.diagnostics.delete(key);
+            b.mem.writes++;
+            execute(cmd, t);
+            return;
+          }
+        }
+        // Just after an S command the program may still be sending at the old rate.
+        if (st.oldBaud !== undefined && near(st.oldBaud) && t - st.changedAt! < 2e9) return;
         b.warn(b.line, "lidar-baud", `SCIC sends at ${Math.round(chip)} baud but the LIDAR listens at ${sensorBaud()} baud, so it cannot read the command. Use init_serialSCIC(&SerialC, ${sensorBaud()});`);
         return;
       }

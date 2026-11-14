@@ -213,8 +213,17 @@ export class Board implements Rt {
 
   input(name: string, fallback = 0): number {
     this.inputsUsed.add(name);
-    return this.inputs.get(name) ?? fallback;
+    const v = this.inputs.get(name);
+    if (v !== undefined) return v;
+    const src = this.sources.get(name);
+    return src ? src(this.now) : fallback;
   }
+  /**
+   * A world model that knows an input's value at any instant (a tone on an
+   * ADC pin) registers a function here instead of setting the input over and
+   * over. It is asked only when the input is read and nothing has set it.
+   */
+  sources = new Map<string, (t: number) => number>();
   /** Inputs something has actually read (the bench shows only these knobs). */
   inputsUsed = new Set<string>();
 

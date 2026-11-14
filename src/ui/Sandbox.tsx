@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { BENCH_MIN, benchWidth, useWinWidth } from "./LevelView";
 import { Splitter } from "./Splitter";
 import { Panel } from "./Panel";
@@ -7,6 +7,7 @@ import type { CodeLevel } from "../levels/types";
 import { CodeLevelView } from "./code/CodeLevelView";
 import { Markdown } from "./Markdown";
 import { findLevel } from "../levels/index";
+import { SANDBOX_STARTERS } from "./sandbox-starters";
 
 const STARTER = `// Free play: nothing is checked here.
 __interrupt void cpu_timer0_isr(void);
@@ -55,7 +56,8 @@ __interrupt void cpu_timer0_isr(void)
 }
 `;
 
-type Program = "blink" | "arena";
+/** "blink" and "arena" are the Sandbox's own; any other value is the id of a program in sandbox-starters. */
+type Program = string;
 
 // The "Robot arena" program: the reference solution of the capstone level
 // "cap-wall" (PI speed control on both motors, dead reckoning to a goal, and
@@ -70,6 +72,8 @@ const arenaLevel = (): CodeLevel | undefined => {
 const mk = (kit: CodeLevel["kit"], program: Program): CodeLevel => {
   const arena = program === "arena" && kit === "robot" ? arenaLevel() : undefined;
   if (arena) return { ...BASE, id: "sandbox-robot-arena", kit, starter: arena.solution, solution: arena.solution, stimuli: arena.stimuli, watch: arena.watch };
+  const own = SANDBOX_STARTERS.find((x) => x.id === program && x.kit === kit);
+  if (own) return { ...BASE, id: `sandbox-${kit}-${own.id}`, kit, starter: own.source, solution: own.source, watch: own.watch, stimuli: own.stimuli };
   return { ...BASE, id: `sandbox-${kit}`, kit };
 };
 
@@ -100,8 +104,18 @@ Write any program and press **Run**. Hold the on-screen push buttons, type into 
 `;
 
 export function Sandbox() {
-  const [kit, setKit] = useState<CodeLevel["kit"]>("robot");
-  const [program, setProgram] = useState<Program>("blink");
+  // The board and the starting program are remembered, so coming back to the Sandbox finds them as they were left.
+  const [kitPref, setKit] = usePref<CodeLevel["kit"]>("sandbox-kit", "robot");
+  const kit: CodeLevel["kit"] = kitPref === "redboard" || kitPref === "launchpad" ? kitPref : "robot";
+  const [programPref, setProgram] = usePref<Program>("sandbox-program", "blink");
+  // The programs this board has: the blinking LED on every board, the others on the board they are written for.
+  const programs: { id: Program; label: string; about?: string }[] = [
+    { id: "blink", label: "Blink an LED" },
+    ...(kit === "robot" ? [{ id: "arena", label: "Robot arena" }] : []),
+    ...SANDBOX_STARTERS.filter((x) => x.kit === kit).map((x) => ({ id: x.id, label: x.label, about: x.about })),
+  ];
+  const program = programs.some((x) => x.id === programPref) ? programPref : "blink";
+  const about = programs.find((x) => x.id === program)?.about;
   const level = useMemo(() => mk(kit, program), [kit, program]);
   const winW = useWinWidth();
   const [scale] = usePref<number>("text-scale", 1);
@@ -125,12 +139,13 @@ export function Sandbox() {
             <option value="launchpad">LaunchPad only</option>
           </select>
         </label>
-        {kit === "robot" && (
+        {programs.length > 1 && (
           <label className="speed">
             Starting program{" "}
-            <select value={program} onChange={(e) => setProgram(e.target.value as Program)}>
-              <option value="blink">Blink an LED</option>
-              <option value="arena">Robot arena</option>
+            <select value={program} onChange={(e) => setProgram(e.target.value)}>
+              {programs.map((x) => (
+                <option key={x.id} value={x.id}>{x.label}</option>
+              ))}
             </select>
           </label>
         )}
@@ -143,6 +158,7 @@ export function Sandbox() {
           splitter={<Splitter value={bench} onChange={setBenchW} min={BENCH_MIN} max={max} side="right" label="Resize the board pane" reset={440} />}
           benchTop={
             <Panel id="sandbox-about" title="About the sandbox">
+              {about && <p><strong>This program.</strong> {about}</p>}
               <Markdown text={ABOUT} />
             </Panel>
           }
