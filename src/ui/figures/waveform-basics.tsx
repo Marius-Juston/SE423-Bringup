@@ -50,7 +50,7 @@ function WaveformBasics() {
   const flat = duty === 0 || duty === 1;
   const why = flat
     ? `At ${pct} % the signal never changes: it stays ${duty ? "high at 3.3 V" : "low at 0 V"}. There is no period to measure.`
-    : `One full cycle (high, then low) takes T = ${tMs} ms. That fits ${periods} times in this 10 ms picture, and ${f} times in one second: f = 1 / T = ${FREQS[fi][1]}. The signal is high for ${highMs} ms of every ${tMs} ms, a duty cycle of ${pct} %.`;
+    : `One full cycle (high, then low) takes T = ${tMs} ms. That fits ${periods === 1 ? "once" : `${periods} times`} in this 10 ms picture, and ${f} times in one second: f = 1 / T = ${FREQS[fi][1]}. The signal is high for ${highMs} ms of every ${tMs} ms, a duty cycle of ${pct} %.`;
   const bracket = (xa: number, xb: number, y: number) => `M${xa},${y - 4} V${y + 4} M${xa},${y} H${xb} M${xb},${y - 4} V${y + 4}`;
   return (
     <figure className="figure wb" aria-label="Interactive waveform: a square wave with adjustable frequency and duty cycle">

@@ -17,14 +17,14 @@ function GpioPin() {
   const [gpio, setGpio] = useState(true);
   const [output, setOutput] = useState(false);
   const [latch, setLatch] = useState<0 | 1>(0);
-  const [op, setOp] = useState<LatchOp>("SET");
+  const [op, setOp] = useState<LatchOp | null>(null);
   const [pullup, setPullup] = useState(false);
   const [outside, setOutside] = useState<Outside>("nothing");
 
   const driving = gpio && output;
   const ext: 0 | 1 | null = outside === "pressed" ? 0 : outside === "high" ? 1 : null;
   const short = driving && ext !== null && ext !== latch;
-  const level: 0 | 1 | null = driving ? latch : ext !== null ? ext : pullup ? 1 : null;
+  const level: 0 | 1 | null = !gpio ? null : driving ? latch : ext !== null ? ext : pullup ? 1 : null;
   const color = level === null ? "var(--dim)" : level ? "var(--orange)" : "var(--arches)";
   const dash = level === null ? "3 2" : undefined;
   const why = !gpio
@@ -40,7 +40,10 @@ function GpioPin() {
           : pullup
             ? "Input: nothing outside drives the pin, so the pull-up resistor gently holds it at 3.3 V."
             : "Input: nothing drives the pin and the pull-up is off. The pin floats: its voltage drifts with electrical noise, and reads come back as random 0s and 1s.";
-  const reads = level === null ? "random 0 or 1" : String(level);
+  // In peripheral mode the figure cannot know the level: the peripheral may
+  // drive the pin or only listen to it.
+  const reads = !gpio ? "the pin's level" : level === null ? "random 0 or 1" : String(level);
+  const pinWords = short ? "SHORT CIRCUIT" : !gpio ? "peripheral's pin" : level === null ? "pin floats: ? V" : level ? "pin = 3.3 V (1)" : "pin = 0 V (0)";
 
   const write = (o: LatchOp) => {
     setOp(o);
@@ -49,7 +52,7 @@ function GpioPin() {
 
   return (
     <figure className="figure" aria-label="Interactive diagram of one GPIO pin">
-      <svg viewBox="0 0 400 170" role="img" aria-label={`Mux: ${gpio ? "GPIO" : "peripheral"}. Direction: ${output ? "output" : "input"}. Output latch holds ${latch}. Pull-up ${pullup ? "on" : "off"}. ${short ? "Short circuit: the chip and the outside circuit drive the pin to different levels." : `Pin is ${level === null ? "floating" : level ? "high, 3.3 volts" : "low, 0 volts"}.`} GPxDAT reads ${short ? "an unreliable value" : reads}.`}>
+      <svg viewBox="0 0 400 170" role="img" aria-label={`Mux: ${gpio ? "GPIO" : "peripheral"}. Direction: ${output ? "output" : "input"}. Output latch holds ${latch}. Pull-up ${pullup ? "on" : "off"}. ${short ? "Short circuit: the chip and the outside circuit drive the pin to different levels." : `Pin ${!gpio ? "belongs to the peripheral, which decides its level" : level === null ? "is floating" : level ? "is high, 3.3 volts" : "is low, 0 volts"}.` + `${level === null ? "" : level ? "high, 3.3 volts" : "low, 0 volts"}.`} GPxDAT reads ${short ? "an unreliable value" : reads}.`}>
         {/* chip */}
         <rect x="6" y="14" width="236" height="148" rx="8" className="fig-chip" />
         <text x="14" y="28" className="fig-label dim">inside the chip</text>
@@ -60,7 +63,7 @@ function GpioPin() {
         {/* driver */}
         <line x1="84" y1="69" x2="104" y2="69" className="fig-wire" style={{ stroke: driving ? (latch ? "var(--orange)" : "var(--arches)") : undefined }} />
         <polygon points="104,56 104,82 128,69" className={`fig-box ${driving ? "active" : "off"}`} />
-        <text x="116" y="97" textAnchor="middle" className="fig-label dim">{output ? "output: driver on" : "input: driver off"}</text>
+        <text x="116" y="97" textAnchor="middle" className="fig-label dim">{!gpio ? "mux ignores the latch" : output ? "output: driver on" : "input: driver off"}</text>
         {/* mux */}
         <rect x="140" y="50" width="46" height="38" rx="4" className="fig-box" />
         <text x="163" y="64" textAnchor="middle" className="fig-label">mux</text>
@@ -106,14 +109,14 @@ function GpioPin() {
           </>
         )}
         <text x="262" y="150" className="fig-value" style={{ fill: short ? "var(--bad)" : color }}>
-          {short ? "SHORT CIRCUIT" : level === null ? "pin floats: ? V" : level ? "pin = 3.3 V (1)" : "pin = 0 V (0)"}
+          {pinWords}
         </text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div><span>Mux</span><Btn on={gpio} set={() => setGpio(true)}>GPIO</Btn><Btn on={!gpio} set={() => setGpio(false)}>peripheral</Btn><code>GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, {gpio ? 0 : "n"});</code></div>
         <div><span>Direction</span><Btn on={!output} set={() => setOutput(false)}>input</Btn><Btn on={output} set={() => setOutput(true)}>output</Btn><code>GPIO_SetupPinOptions(pin, {output ? "GPIO_OUTPUT, GPIO_PUSHPULL" : pullup ? "GPIO_INPUT, GPIO_PULLUP" : "GPIO_INPUT, 0"});</code></div>
-        <div><span>Latch</span><Btn set={() => write("SET")}>SET</Btn><Btn set={() => write("CLEAR")}>CLEAR</Btn><Btn set={() => write("TOGGLE")}>TOGGLE</Btn><code>GpioDataRegs.GPx{op}.bit.GPIOn = 1;</code></div>
+        <div><span>Latch</span><Btn set={() => write("SET")}>SET</Btn><Btn set={() => write("CLEAR")}>CLEAR</Btn><Btn set={() => write("TOGGLE")}>TOGGLE</Btn><code>{op ? `GpioDataRegs.GPx${op}.bit.GPIOn = 1;` : "no write yet: the latch holds 0"}</code></div>
         <div><span>Pull-up</span><Btn on={!pullup} set={() => setPullup(false)}>off</Btn><Btn on={pullup} set={() => setPullup(true)}>on</Btn><code>GPxPUD bit = {pullup ? "0 (enabled)" : "1 (disabled, the reset state)"}</code></div>
         <div><span>Outside</span><Btn on={outside === "nothing"} set={() => setOutside("nothing")}>nothing</Btn><Btn on={outside === "released"} set={() => setOutside("released")}>button, released</Btn><Btn on={outside === "pressed"} set={() => setOutside("pressed")}>button, pressed</Btn><Btn on={outside === "high"} set={() => setOutside("high")}>3.3 V source</Btn></div>
       </div>

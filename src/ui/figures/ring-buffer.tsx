@@ -43,7 +43,12 @@ function get(r: Ring): Ring {
   return { ...r, got: r.buf[r.tail], tail: next(r.tail), count: r.count - 1, last: "get", was };
 }
 
+// The text and the code keep the room of their longest state (four lines of text, six or seven in a narrow window, eleven lines of code), so pressing a button never moves what is below.
 const CSS = `
+.rb-step p { min-height: 4lh; }
+@media (max-width: 520px) { .rb-step p { min-height: 6lh; } }
+@media (max-width: 380px) { .rb-step p { min-height: 7lh; } }
+.rb-step pre { min-height: 12.2lh; }
 .rb-slot { fill: var(--surface); stroke: var(--dim); stroke-width: 1; stroke-dasharray: 3 3; }
 .rb-slot.used { fill: var(--accent-soft, var(--surface)); stroke: var(--orange); stroke-width: 2; stroke-dasharray: none; }
 .rb-head { fill: var(--orange); }
@@ -131,7 +136,7 @@ count--;                       // ${r.count}
 EINT;
 return 1;`;
   } else if (r.last === "empty") {
-    status = "Empty: buf_get returned 0 and main got nothing. The numbers still in the slots are old samples that were already taken. Main simply tries again later.";
+    status = `Empty: buf_get returned 0 and main got nothing.${r.v > 1 ? " The numbers still in the slots are old samples that were already taken." : ""} Main simply tries again later.`;
     code = lockFree
       ? `// buf_get(&x), called by main
 if (tail == head) return 0;    // ${w.tail} == ${w.head}: empty`
@@ -163,7 +168,7 @@ if (count == 0) {   // 0 == 0: empty
   return (
     <figure className="figure" aria-label="Interactive ring buffer with a producer and a consumer">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 232" role="img" aria-label={`Ring buffer of 8 slots, ${lockFree ? "lock-free variant" : "variant with a count"}. head is ${r.head}, tail is ${r.tail}, ${r.count} samples inside${empty ? ", empty" : full ? ", full" : ""}. Slots in use: ${Array.from({ length: BUF_SIZE }, (_, k) => k).filter(used).map((k) => `slot ${k} holds ${r.buf[k]}`).join(", ") || "none"}. ${r.dropped} samples dropped.`}>
+      <svg viewBox="0 0 420 250" role="img" aria-label={`Ring buffer of 8 slots, ${lockFree ? "lock-free variant" : "variant with a count"}. head is ${r.head}, tail is ${r.tail}, ${r.count} sample${r.count === 1 ? "" : "s"} inside${empty ? ", empty" : full ? ", full" : ""}. Slots in use: ${Array.from({ length: BUF_SIZE }, (_, k) => k).filter(used).map((k) => `slot ${k} holds ${r.buf[k]}`).join(", ") || "none"}. ${r.dropped} sample${r.dropped === 1 ? "" : "s"} dropped.`}>
         {Array.from({ length: BUF_SIZE }, (_, k) => {
           const [vx, vy] = pt(66, mid(k));
           const [ix, iy] = pt(83, mid(k));
@@ -190,7 +195,7 @@ if (count == 0) {   // 0 == 0: empty
         <rect x={266} y={196} width={148} height={24} rx={4} className={`fig-box ${empty || full ? "hot" : ""}`} />
         <text x={340} y={212} textAnchor="middle" className="rb-badge">{badge}</text>
       </svg>
-      <div className="fig-step" role="status">
+      <div className="fig-step rb-step" role="status">
         <p>{status}</p>
         <CodePre><code>{code}</code></CodePre>
       </div>

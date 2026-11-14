@@ -5,7 +5,7 @@
 // Every move obeys the robot's kinematics: turn on the spot, drive straight.
 
 import { ROOMS } from "./plugins/lidar";
-import { clearance } from "./world/terrain";
+import { KIND_MAZE, clearance, terrain } from "./world/terrain";
 
 export interface PathSet {
   at: number;
@@ -24,12 +24,35 @@ export interface Waypoint {
   values: Map<string, number>;
 }
 
+/** The inputs a path is made of: the pose, and the world the robot stands in. Not the one-shot LIDAR_DROP_CHAR. */
+const isPathInput = (name: string): boolean => isPoseInput(name) || name === "LIDAR_ROOM" || name === "LIDAR_OFFSET_FT" || /^WORLD_/.test(name);
+
+/**
+ * What the simulator uses for the inputs of a path that the test has not
+ * set at power-up: the start pose of the world, room 0, a 4 x 4 maze. With
+ * these in the first pose a tour that comes round again really is back at
+ * the beginning, and a move never begins at a pose that was made up.
+ */
+function defaults(mine: readonly PathSet[]): Map<string, number> {
+  const first = new Map<string, number>();
+  for (const s of mine) if (s.at <= 0.02) first.set(s.set, s.value);
+  const kind = Math.round(first.get("WORLD_KIND") ?? 0);
+  const room = Math.round(first.get("LIDAR_ROOM") ?? 0);
+  const spec = { kind, room, seed: first.get("WORLD_SEED"), size: first.get("WORLD_SIZE"), loops: (first.get("WORLD_LOOPS") ?? 0) > 0 };
+  const start = (terrain(spec) ?? ROOMS[room] ?? ROOMS[0]).start;
+  const out = new Map<string, number>();
+  POSE.forEach((k, i) => out.set(k, start[i]));
+  for (const s of mine) if (!out.has(s.set)) out.set(s.set, s.set === "WORLD_SIZE" ? 4 : s.set === "WORLD_SEED" && kind === KIND_MAZE ? 1 : 0);
+  return out;
+}
+
 /** The poses of a test, in order. Fewer than two: the test never moves the robot. */
 export function waypoints(sets: readonly PathSet[]): Waypoint[] {
-  const mine = sets.filter((s) => /^(LIDAR_|WORLD_)/.test(s.set) && Number.isFinite(s.value)).sort((a, b) => a.at - b.at);
+  const mine = sets.filter((s) => isPathInput(s.set) && Number.isFinite(s.value)).sort((a, b) => a.at - b.at);
   if (!mine.some((s) => s.at > 0.02 && isPoseInput(s.set))) return [];
-  const out: Waypoint[] = [];
-  const now = new Map<string, number>();
+  const now = defaults(mine);
+  // The first pose is the one at power-up, also when the test sets nothing then.
+  const out: Waypoint[] = [{ at: 0, values: new Map(now) }];
   for (const s of mine) {
     now.set(s.set, s.value);
     const at = s.at <= 0.02 ? 0 : s.at;

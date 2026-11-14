@@ -77,18 +77,12 @@ const motorPwm = (n: number) => `    EPwm${n}Regs.TBCTL.bit.CTRMODE = 0;     // 
     EPwm${n}Regs.AQCTLA.bit.ZRO = 2;        // set at zero
     EPwm${n}Regs.TBPHS.bit.TBPHS = 0;`;
 
-const setEpwm = (n: number) => `void setEPWM${n}A(float controleffort)
-{
-    if (controleffort < -10) {
-        controleffort = -10;
-    }
-    if (controleffort > 10) {
-        controleffort = 10;
-    }
-    uint16_t period = EPwm${n}Regs.TBPRD;
-    float value = (controleffort + 10) * period / 20.0;
-    EPwm${n}Regs.CMPA.bit.CMPA = value;
-}`;
+// setEPWM1A() and setEPWM2A() are the course's motor functions. Students write them in
+// Lab 3, so no program here contains their bodies: the simulator's library provides them
+// (src/sim/plugins/actuators.ts), as the course's SE423Lib does on the real robot.
+const LIB_NOTE = `// setEPWM1A(u) and setEPWM2A(u) are not in this file. They are the motor functions
+// you write in Lab 3. Here the board's library provides them. u is a control
+// effort: -10 is full power backward, 0 is stop, 10 is full power forward.`;
 
 const INIT_PWM = `// Motor PWM (chapter 10, Lab 3): EPWM1A on GPIO0 is the left motor,
 // EPWM2A on GPIO2 the right motor. 20 kHz, 50 % duty is stopped.
@@ -388,8 +382,6 @@ function program(n: number, o: Opts): string {
 __interrupt void cpu_timer0_isr(void);`);
   add(n >= 7, `__interrupt void cpu_timer1_isr(void);`);
   add(true, `void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
 void init_eQEPs(void);`);
   add(n >= 2, `float readEncLeft(void);
 float readEncRight(void);`);
@@ -533,9 +525,7 @@ ${o.mission.replace(/^\n+|\s+$/g, "")}
 `);
   add(true, `${INIT_PWM}
 
-${setEpwm(1)}
-
-${setEpwm(2)}
+${LIB_NOTE}
 
 ${INIT_QEP}`);
   add(n >= 2, `
@@ -1029,14 +1019,7 @@ function blank(source: string, pieces: [string, string][]): string {
 const OPEN_STARTER = blank(S_OPEN, [
   [motorPwm(2), `    // TODO 1: set up EPWM2 for the right motor, exactly like EPWM1 above`],
   [`    GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);  // EPWM2A`, `    // TODO 2: give GPIO2 to EPWM2A`],
-  [
-    setEpwm(2),
-    `void setEPWM2A(float controleffort)
-{
-    // TODO 3: saturate to -10 ... 10, scale to 0 ... TBPRD, write CMPA of EPWM2
-
-}`,
-  ],
+  [`    init_EPWM1and2();`, `    // TODO 3: call the motor set-up function`],
   [M_OPEN.replace(/^\n+|\s+$/g, ""), `    // TODO 4: set uLeft and uRight: effort 5 for the first part of the run, then 0`],
   [`    setEPWM2A(-uRight);`, `    // TODO 5: send uRight to the right motor. It is mounted mirrored`],
 ]);
@@ -1223,7 +1206,7 @@ Nothing here is new hardware. Every part is something you wrote in an earlier ch
 2. **Estimate**: work out which way the robot points and where it is, from what the wheels did. This is called dead reckoning, and this chapter teaches it from the start. The part of it that needs slow maths (\`cos\`, \`sin\`) is handed to the main loop with a flag (chapter 5), so that this function stays short.
 3. **Decide**: a **state machine** (chapter 17: a variable that remembers what the robot is doing, and rules for when to change it) sets two numbers: the speed command \`vref\` and the turn command \`turn\`.
 4. **Control**: a PI controller per wheel (chapter 16) compares the commanded speed with the measured speed and produces a **control effort** for each motor: a number from -10 (full power backwards) through 0 (stopped) to 10 (full power forwards). They are called \`uLeft\` and \`uRight\`.
-5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` (chapter 10) turn the efforts into PWM duty cycles, the motors turn, and the wheels move.
+5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` (the course's motor functions, which the board's library provides here) turn the efforts into PWM duty cycles, the motors turn, and the wheels move.
 
 The wheels turn the encoders, and the next pass measures the result. That circle is the **feedback loop**.
 
@@ -1252,7 +1235,7 @@ ${ROOM_NOTE}${MOTOR_NOTE}`,
           prompt: "The motors are driven by one PWM signal each (chapter 10). Which duty cycle stops a motor?",
           options: ["0 %", "50 %", "100 %", "Any, as long as CMPA is 0"],
           answer: 1,
-          why: "The PWM pin switches the motor between full voltage one way and full voltage the other way. At 50 % the two cancel and the average is zero. That is why setEPWM1A turns an effort of 0 into half of TBPRD.",
+          why: "The PWM pin switches the motor between full voltage one way and full voltage the other way. At 50 % the two cancel and the average is zero. That is why an effort of 0 becomes half of TBPRD.",
         },
         {
           prompt: "The course code calls setEPWM1A(uLeft); setEPWM2A(-uRight);. Why the minus sign?",
@@ -1353,17 +1336,17 @@ The file you see is the skeleton of the whole chapter. Read it once from top to 
 
 - \`main\` sets up the pins and a timer interrupt every 1 ms. This is the timer 0 set-up you have written since chapter 5.
 - \`cpu_timer0_isr\` is the 1 ms loop. It has two sections so far: **Decide** (the mission) and **Act** (the motors).
-- At the bottom are the hardware functions. \`init_EPWM1and2()\` and \`setEPWM1A()\` are yours from the chapter 10 level "setEPWM1A and setEPWM2A". \`init_eQEPs()\` is Lab 3's encoder set-up from the chapter 11 level "The second encoder". It is not used yet: it waits for the next level.
+- At the bottom are the hardware functions. \`init_EPWM1and2()\` is the motor set-up of chapter 10. \`setEPWM1A()\` and \`setEPWM2A()\` are not in the file: they are the functions you write in Lab 3, and here the board's library provides them. \`init_eQEPs()\` is Lab 3's encoder set-up from the chapter 11 level "The second encoder". It is not used yet: it waits for the next level.
 
 ## The motors, again
 - The left motor is on **EPWM1A** (pin GPIO0), the right motor on **EPWM2A** (pin GPIO2).
-- The mission speaks in **control efforts**: a number from -10 to 10. \`setEPWM1A(u)\` turns it into a duty cycle: -10 is 0 %, 0 is 50 %, 10 is 100 %. **50 % is stopped.**
+- The mission speaks in **control efforts**: a number from -10 to 10. It is the percent of chapter 10 divided by 10: -10 is full power backward, 0 is stop and 10 is full power forward. \`setEPWM1A(u)\` turns it into a duty cycle, and **50 % is stopped.**
 - The right motor is mounted **mirrored**. The same duty cycle that drives the left wheel forwards drives the right wheel backwards.
 
 ## What to add (five gaps, marked TODO 1 to 5)
 1. In \`init_EPWM1and2()\`: the set-up of **EPWM2**. It is the same ten lines as the EPWM1 block above it, with \`EPwm2Regs\`.
 2. In the same function: \`GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);\` gives pin GPIO2 to EPWM2A, as the line above it does for GPIO0.
-3. The body of \`setEPWM2A()\`. It is \`setEPWM1A()\`, which is written just above, with \`EPwm2Regs\`.
+3. In \`main\`: the call \`init_EPWM1and2();\`. A set-up function that is never called sets up nothing, and both motors stay dead.
 4. In \`cpu_timer0_isr\`, under "Decide": **the mission**. Set \`uLeft\` and \`uRight\` to 5 for the first part of the run and to 0 after that. \`numTimer0calls\` counts the passes, so it is the time in milliseconds.
 5. Under "Act": send \`uRight\` to the right motor, with the sign that a mirrored motor needs.
 
@@ -1396,7 +1379,7 @@ ${ROOM_NOTE}${MOTOR_NOTE}`,
       inspect: ["EPwm1Regs.CMPA", "EPwm2Regs.CMPA"],
       hints: [
         "Do the hardware first (gaps 1, 2, 3 and 5). For gap 4 write `uLeft = 5.0; uRight = 5.0;` for now and watch the two wheel speed meters: both must show a positive speed. Then add the timing.",
-        "Gap 3 is the eight lines inside setEPWM1A with EPwm2Regs instead of EPwm1Regs. Gap 5 is `setEPWM2A(-uRight);`. Gap 2 is `GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);`.",
+        "Gap 2 is `GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);`. Gap 3 is `init_EPWM1and2();` on a line of its own in main. Gap 5 is `setEPWM2A(-uRight);`.",
         "Gap 4: 2 ft at 1.4 ft/s is 1.43 s, so `if (numTimer0calls <= 1430) { uLeft = 5.0; uRight = 5.0; } else { uLeft = 0.0; uRight = 0.0; }`",
       ],
       takeaway: "Open loop gets you roughly there, pointing roughly the right way, on a good day. Note the two lines under \"Act\": from now on everything above them only has to produce uLeft and uRight.",
@@ -1448,6 +1431,7 @@ The robot still veers right. That is for the next two levels. The tests read you
       checks: [
         { kind: "var", name: "vLeft", at: 150, min: 0.2, max: 3.2, label: "Just after the start (0.15 s) your vLeft shows a forward speed in ft/s (between 0.2 and 3.2)", hint: "Always 0: the old angle was saved before the speed was computed, or init_eQEPs() is not called. Negative: the factor in readEncLeft must be negative. In the hundreds or thousands: check (1.235/12.0) and the division by 0.001." },
         { kind: "signal", name: "ROBOT_ODOMETER_FT", equals: 3, tol: 0.05, label: "The robot drove 3 ft, within 0.05 ft", hint: "Stopped after 0.3 ft: travel is still in radians, multiply by (1.235/12.0). Stopped after 1.5 ft: travel is the sum of the two wheels, it must be the average (0.5 x the sum). Drove into the wall: travel never reached 3, see the check on travel. A little too far: slow down before 3 ft." },
+        { kind: "var", name: "travel", at: 500, min: 0.1, max: 2, label: "On the way (0.5 s) your variable travel is counting up: between 0.1 and 2 ft", hint: "travel must be measured, not set: 0.5 * (LeftWheel + RightWheel) * (1.235/12.0), computed on every pass from the two encoder angles. Still 0: are readEncLeft() and readEncRight() called in the interrupt, and init_eQEPs() in main?" },
         { kind: "var", name: "travel", min: 2.95, max: 3.05, label: "Your variable travel says 3 ft too", hint: "travel = 0.5 * (LeftWheel + RightWheel) * (1.235/12.0). If it stays near 0 while the robot drives, the two wheel angles cancel: readEncLeft needs its negative factor." },
         veered("Read this number: the robot still veers right. Measuring the distance does not fix the heading"),
         ...stopped(),
@@ -1691,6 +1675,8 @@ The simulated wheels never slip, so dead reckoning is almost perfect here. On th
       solution: S_GOTO,
       checks: [
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.15, label: "The robot ends within 0.15 ft of (4, 5)", hint: "Compare the meters Robot x and Robot y with your x and y. If they agree, the estimate is fine and the mission is wrong: a robot that spins without end has the sign of turn wrong (turn = -2.0 * eTheta), one that drives off sideways has atan2(dx, dy) instead of atan2(dy, dx). If your x and y say (4, 5) but the meters do not: about 2.2 ft off means x and y did not start at 1.0 and 2.0; otherwise check that cos and sin get theta as it is, in radians." },
+        { kind: "var", name: "x", at: 100, min: 0.9, max: 1.3, label: "At the start (0.1 s) your x says 1: the estimate begins where the robot stands", hint: "x is the robot's estimate of where it is now. It starts at 1.0 and changes only as the wheels move." },
+        { kind: "var", name: "y", at: 100, min: 1.9, max: 2.3, label: "At the start your y says 2", hint: "y starts at 2.0 and changes only as the wheels move." },
         { kind: "var", name: "x", min: 3.85, max: 4.15, label: "Your x says 4", hint: "About 3: x must start at 1.0, where the robot starts. Otherwise: x adds 0.5 * (vLeft + vRight) * cos(theta) * 0.001 on every pass, after theta was updated." },
         { kind: "var", name: "y", min: 4.85, max: 5.15, label: "Your y says 5", hint: "About 3: y must start at 2.0. Otherwise: y uses sin(theta), with theta in radians." },
         ...stopped(),
@@ -1758,6 +1744,7 @@ The robot still reaches (4, 5), and no pass of \`cpu_timer0_isr\` takes more tha
         { ...ISR_BUDGET, hint: "About 6 us: nothing has moved yet, or navigate() is called from cpu_timer0_isr. A function call does not make the maths faster: only main may call navigate(). About 4 us: the lines for dist and eTheta (sqrt, atan2) are still in the mission. They move too." },
         { kind: "var", name: "state", at: 100, equals: 0, label: "After 0.1 s the mission is still in FACE (state 0), turning towards the goal", hint: "Already 1: the first interrupt ran before navigate() ever did. eTheta was still 0, so FACE believed the robot was pointing at the goal and skipped the turn. Call navigate() once in main, just before EINT." },
         { kind: "signal", name: "ROBOT_GOAL_DIST_FT", max: 0.15, label: "The robot still ends within 0.15 ft of (4, 5)", hint: "Spinning on the spot or driving into a wall: dist and eTheta are not being updated. See the check on x." },
+        { kind: "var", name: "x", at: 100, min: 0.9, max: 1.3, label: "At the start (0.1 s) your x says 1", hint: "x still starts at 1.0 and y at 2.0. navigate() only moves the lines that update them." },
         { kind: "var", name: "x", min: 3.85, max: 4.15, label: "Your x says 4", hint: "Stays at 1: navigate() never runs. The interrupt must set navFlag = 1 and while (1) must test it. Far too large although the robot hardly moved: navigate() runs over and over. Set navFlag back to 0 inside the if, before the call." },
         { kind: "var", name: "y", min: 4.85, max: 5.15, label: "Your y says 5" },
         { kind: "var", name: "navFlag", equals: 0, label: "The flag is back at 0 after main used it", hint: "`navFlag = 0;` inside the if in main, before navigate()." },
@@ -1823,6 +1810,7 @@ The tests read your global \`front_ft\`.
       solution: S_WALL,
       checks: [
         { kind: "isr", fn: "cpu_timer1_isr", min: 70, max: 90, label: "cpu_timer1_isr runs every 100 ms (about 80 times in 8 s)", hint: "0 times: one of the four lines in main is missing: the vector, ConfigCpuTimer, the start (TCR = 0x4000) or IER |= M_INT13. Thousands of times: ConfigCpuTimer takes the period in microseconds, 100000." },
+        { kind: "var", name: "front_ft", at: 500, min: 3, max: 9.5, label: "At 0.5 s your front_ft shows open floor ahead: more than 3 ft, and no longer the starting value 19", hint: "Still 19: cpu_timer1_isr does not run, see the check above. Small already: front_ft must come from the LIDAR, front_ft = min_ft(94, 132). Points 94 to 132 look ahead; low numbers such as 28 look to the right." },
         { kind: "var", name: "front_ft", min: 0.6, max: 1.4, label: "Your front_ft ends between 0.6 and 1.4 ft", hint: "Still 19: cpu_timer1_isr does not run, see the check above. Some other large value: points 94 to 132 are the ones that look ahead; low numbers such as 28 look to the right." },
         NO_CRASH,
         { kind: "signal", name: "ROBOT_X_FT", min: 8.4, label: "The robot drove up to the wall (x above 8.4)", hint: "Ended near (4, 5): the goal is still the old one, set xGoal = 12.0 and yGoal = 2.0. Never left the start: is state 3 entered at once? front_ft must start at 19.0." },

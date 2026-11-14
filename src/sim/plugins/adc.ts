@@ -24,6 +24,13 @@
 // with DACOUTA, DACOUTB and DACOUTC: while that DAC's output is enabled the
 // channel reads the DAC voltage (a loopback with no wire).
 //
+// Course library. `enableAdccInterrupt()` sets the PIE and IER enables of
+// ADCC1. Finding that PIE channel in Table 3-2 is a blank of Lab 4
+// (exercise 3), so the game provides the call instead of printing the line; a
+// program may define its own enableAdccInterrupt(), which replaces the
+// library's. The PIE's "enable is missing" message for ADCC1 points to this
+// function instead of naming the bit (`Pie.libraryEnable`).
+//
 // Not modelled: 16-bit and differential conversions (a warning is shown and
 // the conversion is done as 12-bit single-ended), burst mode, the
 // post-processing blocks, ADCEXTSOC (TRIGSEL 4) and the CPU2 timers.
@@ -135,7 +142,11 @@ function installAdc(b: Board, letter: string): void {
       if (flags & bit) {
         // Flag still set from the last time: overflow. A new pulse only in continuous mode.
         dev.set(r("ADCINTOVF"), dev.get(r("ADCINTOVF")) | bit);
-        if (!dev.get(sel, `INT${n}CONT`)) continue;
+        if (!dev.get(sel, `INT${n}CONT`)) {
+          const [g, c] = PIE[letter][n - 1];
+          b.pie.uncleared(g, c, `${pre}.ADCINTFLG.bit.ADCINT${n}`, `${pre}.ADCINTFLGCLR.bit.ADCINT${n} = 1;`);
+          continue;
+        }
       } else dev.set(r("ADCINTFLG"), flags | bit);
       const [group, channel] = PIE[letter][n - 1];
       b.pie.raise(group, channel);
@@ -342,8 +353,17 @@ void AdcSetMode(Uint16 adc, Uint16 resolution, Uint16 signalmode)
         break;
     }
 }
+
+// ---- course library: the enables of the ADCC1 interrupt (see the header of plugins/adc.ts)
+void enableAdccInterrupt(void)
+{
+    IER |= M_INT1;
+    PieCtrlRegs.PIEIER1.bit.INTx3 = 1;
+}
 `,
   install(b) {
+    b.compiler.fns.get("enableAdccInterrupt")!.replaceable = true;
+    b.pie.libraryEnable.set("1.3", "enableAdccInterrupt();");
     for (const letter of ["a", "b", "c", "d"]) installAdc(b, letter);
   },
   parts: { robot: hw2Knobs, redboard: hw2Knobs },

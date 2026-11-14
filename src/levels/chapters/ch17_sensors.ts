@@ -1,6 +1,7 @@
 import type { Chapter } from "../types";
 import type { Stimulus } from "../../sim/runner";
 import { FT_PER_MM, LADAR_MAX_READING, dataLines, pointDeg, scan, type Pose } from "../../sim/plugins/lidar";
+import { KIND_SLANT, SLANT_C, SLANT_M, slantedWall } from "../../sim/world/terrain";
 
 // ---------- expected values, from the same model the simulated sensor uses ----------
 
@@ -216,6 +217,7 @@ char tail[] = "${DEC_TAIL}\\n\\n";
 int dist[32];
 int rest[32];
 int single_mm = 0;
+int other_mm = 0;
 int count = 0;
 int first_mm = 0;
 int last_mm = 0;
@@ -242,6 +244,7 @@ void main(void)
     int i;
 
     single_mm = decode('M', 'c');
+    other_mm = decode('1', 'o');
     count = decode_line(line, dist);
     first_mm = dist[0];
     last_mm = dist[31];
@@ -525,7 +528,9 @@ const FOLLOW_SCRIPT: { pose: Partial<Pose>; state: number; why: string }[] = [
 const LED_OF: Record<number, string> = { 1: "LED1", 2: "LED2", 3: "LED3" };
 
 // Script for the chattering level: the front distance hovers around 1.5 ft.
-const CHATTER_FRONT = [4, 1.47, 1.53, 1.46, 1.52, 1.48, 3.5, 1.58];
+// The last two readings are a second turn seen part way through (2.6 ft): an
+// exit threshold only just above the noise ends that turn too early.
+const CHATTER_FRONT = [4, 1.47, 1.53, 1.46, 1.52, 1.48, 3.5, 1.58, 1.4, 2.6];
 
 // ---------- designing a state machine: the patrol robot (table) ----------
 
@@ -810,18 +815,24 @@ const DELIVER_HINT: Record<number, string> = {
 
 // ---------- the course's two-state wall follower ----------
 
-// Names (with their spelling) and starting values of the final project starter.
-const STEER_VARS = `// The wall-following variables of the course's final project starter,
-// with their names and starting values
+// The names (with their spelling) are those of the final project starter. The values are
+// not: finding the wanted distance, the gains, the thresholds and the limit on the robot is
+// graded work in Lab 6 (exercise 5), so the game follows its wall with numbers of its own.
+// The two speeds are the starting values the lab handout itself names.
+const WF = { kpFront: -1.0, frontV: 0.4, stop: 4.0, kpRight: -3.0, ref: 1.5, fwd: 1.0, start: 1.6, sat: 2.0 };
+const f1 = (v: number) => v.toFixed(1);
+
+const STEER_VARS = `// The wall follower's variables, with the names of the course's final project
+// starter. The values are this game's own: you tune yours on the robot in Lab 6
 uint16_t right_wall_follow_state = 2;   // 1: left turn, 2: right wall follow
-float Kp_front_wall = -2.0;
-float front_turn_velocity = 0.2;        // ft/s while turning left
-float left_turn_Stop_threshold = 3.5;   // ft: the turn ends when the front is this open
-float Kp_right_wal = -4.0;
-float ref_right_wall = 1.1;             // ft: wanted reading of LADARrightfront
-float foward_velocity = 1.0;            // ft/s along the wall
-float left_turn_Start_threshold = 1.3;  // ft: closer than this in front starts a turn
-float turn_saturation = 2.5;
+float Kp_front_wall = ${f1(WF.kpFront)};
+float front_turn_velocity = ${f1(WF.frontV)};        // ft/s while turning left
+float left_turn_Stop_threshold = ${f1(WF.stop)};   // ft: the turn ends when the front is this open
+float Kp_right_wal = ${f1(WF.kpRight)};
+float ref_right_wall = ${f1(WF.ref)};             // ft: wanted reading of LADARrightfront
+float foward_velocity = ${f1(WF.fwd)};            // ft/s along the wall
+float left_turn_Start_threshold = ${f1(WF.start)};  // ft: closer than this in front starts a turn
+float turn_saturation = ${f1(WF.sat)};
 
 float LADARfront = 0;        // smallest of points 111 to 115, feet
 float LADARrightfront = 0;   // smallest of points 52 to 56, feet
@@ -852,10 +863,10 @@ const STEER_BODY = `    if (right_wall_follow_state == 1) {
 
 /** One call of the course's wall follower: the commands of this scan and the state for the next. */
 const steerStep = (state: number, front: number, rightFront: number) => {
-  const raw = state === 1 ? -2.0 * (14.5 - front) : -4.0 * (1.1 - rightFront);
-  const turn = Math.max(-2.5, Math.min(2.5, raw));
-  const vref = state === 1 ? 0.2 : 1.0;
-  const next = state === 1 ? (front > 3.5 ? 2 : 1) : front < 1.3 ? 1 : 2;
+  const raw = state === 1 ? WF.kpFront * (14.5 - front) : WF.kpRight * (WF.ref - rightFront);
+  const turn = Math.max(-WF.sat, Math.min(WF.sat, raw));
+  const vref = state === 1 ? WF.frontV : WF.fwd;
+  const next = state === 1 ? (front > WF.stop ? 2 : 1) : front < WF.start ? 1 : 2;
   return { turn, vref, next };
 };
 
@@ -889,14 +900,14 @@ __interrupt void cpu_timer1_isr(void)
 
 // One pose per scan, in the 10 ft box, starting in state 2 (right wall follow).
 const STEER_SCRIPT: { pose: Partial<Pose>; why: string }[] = [
-  { pose: { room: 0, x: 5, y: 1, theta: 0 }, why: "wall 1 ft to the right: almost no correction" },
-  { pose: { x: 5, y: 1.4, theta: 0 }, why: "too far from the wall: turn right, towards it" },
-  { pose: { x: 5, y: 0.7, theta: 0 }, why: "too close: turn left, away from it" },
-  { pose: { x: 5, y: 2.5, theta: 0 }, why: "far too far: the turn command is limited" },
-  { pose: { x: 8.9, y: 1, theta: 0 }, why: "a wall 1.1 ft ahead: still following on this scan, left turn from the next" },
-  { pose: { x: 8.9, y: 1, theta: 0.8 }, why: "turning left, front 1.5 ft: not open enough, keep turning" },
-  { pose: { x: 8.9, y: 1, theta: Math.PI / 2 }, why: "front open: this scan still turns, the next one follows" },
-  { pose: { x: 8.9, y: 1.2, theta: Math.PI / 2 }, why: "following the new wall" },
+  { pose: { room: 0, x: 5, y: 1.3, theta: 0 }, why: "wall 1.3 ft to the right: almost no correction" },
+  { pose: { x: 5, y: 1.7, theta: 0 }, why: "too far from the wall: turn right, towards it" },
+  { pose: { x: 5, y: 1.0, theta: 0 }, why: "too close: turn left, away from it" },
+  { pose: { x: 5, y: 2.8, theta: 0 }, why: "far too far: the turn command is limited" },
+  { pose: { x: 8.6, y: 1.3, theta: 0 }, why: "a wall 1.4 ft ahead: still following on this scan, left turn from the next" },
+  { pose: { x: 8.6, y: 1.3, theta: 0.8 }, why: "turning left, front 1.9 ft: not open enough, keep turning" },
+  { pose: { x: 8.6, y: 1.3, theta: Math.PI / 2 }, why: "front open: this scan still turns, the next one follows" },
+  { pose: { x: 8.6, y: 1.5, theta: Math.PI / 2 }, why: "following the new wall" },
 ];
 const STEER_RUN = (() => {
   let pose: Pose = { room: 0, x: 5, y: 5, theta: 0 };
@@ -1006,6 +1017,12 @@ const WORLD_POSES: Pose[] = [
   { room: 2, x: -3, y: 1, theta: -0.4, offset: SENSOR_OFFSET },
 ];
 const WORLD_N = WORLD_POSES.map((p) => scan(p).filter((v) => v >= 20).length);
+// A third pose, in front of a wall that is not parallel to an axis (y = 0.5x - 2). With the wall
+// along the x axis the slope is 0, and atan(0) = 0 hides a missing atan() in wall_angle.
+const SLANT_POSE: Pose = { room: 0, world: slantedWall(), x: 2, y: 1.5, theta: 0.2, offset: SENSOR_OFFSET };
+const SLANT_N = scan(SLANT_POSE).filter((v) => v >= 20).length;
+const SLANT_DIST = Math.abs(SLANT_M * SLANT_POSE.x - SLANT_POSE.y + SLANT_C) / Math.sqrt(SLANT_M * SLANT_M + 1);
+const SLANT_ANGLE = Math.atan(SLANT_M) - SLANT_POSE.theta;
 /** World coordinates of point i of the scan taken at pose p, with the formulas of the level. */
 const worldPoint = (p: Pose, i: number): [number, number] => {
   const d = ft(scan(p)[i]);
@@ -1133,6 +1150,31 @@ const doorOf = (p: Pose) => {
   return best;
 };
 const DOORS = DOOR_POSES.map(doorOf);
+// Scans that must NOT give a doorway: the gap touches an edge of the scan, or
+// it is a few points of a far corner that is out of range.
+const DOOR_EDGE_RIGHT: Pose = { room: 4, x: 5, y: 7.25, theta: -2.0 };
+const DOOR_EDGE_LEFT: Pose = { room: 4, x: 5, y: 7.25, theta: 2.0 };
+const DOOR_CORNER: Pose = { room: 0, x: 0.25, y: 0.25, theta: 0.6 };
+/** Runs of points without an echo, as [first, last]. */
+const gapsOf = (p: Pose) => {
+  const s = scan(p).map(ft);
+  const out: [number, number][] = [];
+  for (let i = 0; i < 228; i++) {
+    if (s[i] <= 18) continue;
+    let j = i;
+    while (j < 227 && s[j + 1] > 18) j++;
+    out.push([i, j]);
+    i = j;
+  }
+  return out;
+};
+const one = (g: [number, number][]) => {
+  if (g.length !== 1) throw new Error("the doorway test scans need exactly one gap each");
+  return g[0];
+};
+if (one(gapsOf(DOOR_EDGE_RIGHT))[1] !== 227 || one(gapsOf(DOOR_EDGE_LEFT))[0] !== 0) throw new Error("the edge poses must cut the doorway at the edge of the scan");
+const DOOR_CORNER_RUN = one(gapsOf(DOOR_CORNER))[1] - one(gapsOf(DOOR_CORNER))[0] + 1;
+if (DOOR_CORNER_RUN < 2 || DOOR_CORNER_RUN > 4 || one(gapsOf(DOOR_CORNER))[0] === 0) throw new Error("the corner pose needs a short gap inside the scan");
 
 const doorProgram = (body: string) => `${FREQ}
 
@@ -1696,10 +1738,10 @@ Notice the two different numbers for the front: the robot starts turning below 1
       id: "sens-pturn",
       kind: "calc",
       title: "Steer in proportion",
-      goal: "Compute the turn command of a robot that should stay 1.1 ft from a wall: the error, the gain and the limit.",
+      goal: "Compute the turn command of a robot that should stay 1.5 ft from a wall: the error, the gain and the limit.",
       refs: [{ course: "L14", slide: 37, note: "the turn law of state 1" }, { course: "Lab 6" }],
       brief: `
-The robot should drive along a wall on its right, 1.1 ft away from it. How hard should it steer when it is off? Full lock every time makes it zigzag. The usual answer is to steer **in proportion**: a little when it is a little off, more when it is far off. That takes three steps.
+The robot should drive along a wall on its right, 1.5 ft away from it. How hard should it steer when it is off? Full lock every time makes it zigzag. The usual answer is to steer **in proportion**: a little when it is a little off, more when it is far off. That takes three steps.
 
 1. The **error**: what you want minus what you measure. Zero means nothing to correct.
 2. The command: the error times a fixed number, the **gain**. A larger gain reacts harder to the same error.
@@ -1717,9 +1759,9 @@ if (turn < -turn_saturation) {
 }
 \`\`\`
 
-with \`ref_right_wall = 1.1\` (wanted, ft), \`Kp_right_wal = -4.0\` (the gain) and \`turn_saturation = 2.5\`. \`LADARrightfront\` is the measured distance to the wall.
+Here \`ref_right_wall = 1.5\` (wanted, ft), \`Kp_right_wal = -3.0\` (the gain) and \`turn_saturation = 2.0\`. \`LADARrightfront\` is the measured distance to the wall. These three numbers are this game's own. On the real robot you find yours by trying, which is part of Lab 6.
 
-**Worked example.** The robot measures 1.5 ft. Error: 1.1 - 1.5 = **-0.4** ft, so it is too far away. Turn: -4.0 * -0.4 = **+1.6**: positive, to the right, back towards the wall. Inside the limit, so it stays 1.6.
+**Worked example.** The robot measures 1.9 ft. Error: 1.5 - 1.9 = **-0.4** ft, so it is too far away. Turn: -3.0 * -0.4 = **+1.2**: positive, to the right, back towards the wall. Inside the limit, so it stays 1.2.
 
 The gain is negative because the wall is on the right: "too far" is a negative error and must give a positive turn.
 
@@ -1728,16 +1770,16 @@ Try it in the figure: move the robot away from the wall until the command hits t
 {{figure:math-proportional}}
 `,
       fields: [
-        { id: "err", label: "The robot measures 0.8 ft. Error (wanted - measured)", unit: "ft", answer: 0.3, tolPct: 1, why: "1.1 - 0.8 = +0.3 ft: positive, the robot is too close to the wall." },
-        { id: "turn", label: "turn for that reading", answer: -1.2, tolPct: 1, why: "-4.0 * 0.3 = -1.2: negative, a left turn, away from the wall." },
-        { id: "far", label: "The robot measures 2.0 ft. turn before the limit", answer: 3.6, tolPct: 1, why: "Error 1.1 - 2.0 = -0.9. -4.0 * -0.9 = +3.6." },
-        { id: "sat", label: "turn after the limit, for that reading", answer: 2.5, why: "3.6 is more than turn_saturation, so turn is cut to 2.5: turn right as hard as allowed." },
-        { id: "zero", label: "Measured distance at which turn is exactly 0", unit: "ft", answer: 1.1, tolPct: 1, why: "turn is 0 when the error is 0: when the robot measures what it wants, 1.1 ft." },
+        { id: "err", label: "The robot measures 1.2 ft. Error (wanted - measured)", unit: "ft", answer: 0.3, tolPct: 1, why: "1.5 - 1.2 = +0.3 ft: positive, the robot is too close to the wall." },
+        { id: "turn", label: "turn for that reading", answer: -0.9, tolPct: 1, why: "-3.0 * 0.3 = -0.9: negative, a left turn, away from the wall." },
+        { id: "far", label: "The robot measures 2.4 ft. turn before the limit", answer: 2.7, tolPct: 1, why: "Error 1.5 - 2.4 = -0.9. -3.0 * -0.9 = +2.7." },
+        { id: "sat", label: "turn after the limit, for that reading", answer: 2.0, why: "2.7 is more than turn_saturation, so turn is cut to 2.0: turn right as hard as allowed." },
+        { id: "zero", label: "Measured distance at which turn is exactly 0", unit: "ft", answer: 1.5, tolPct: 1, why: "turn is 0 when the error is 0: when the robot measures what it wants, 1.5 ft." },
       ],
       hints: [
-        "Always wanted minus measured, in that order. Then multiply by -4.0. Keep track of the signs: minus times minus is plus.",
-        "For 0.8 ft: 1.1 - 0.8, then times -4.0. For 2.0 ft: 1.1 - 2.0, then times -4.0, then compare with 2.5.",
-        "0.3, then -4.0 * 0.3 = -1.2. For 2.0 ft: -4.0 * -0.9 = 3.6, which the limit cuts to 2.5. The turn is 0 at the wanted distance.",
+        "Always wanted minus measured, in that order. Then multiply by -3.0. Keep track of the signs: minus times minus is plus.",
+        "For 1.2 ft: 1.5 - 1.2, then times -3.0. For 2.4 ft: 1.5 - 2.4, then times -3.0, then compare with 2.0.",
+        "0.3, then -3.0 * 0.3 = -0.9. For 2.4 ft: -3.0 * -0.9 = 2.7, which the limit cuts to 2.0. The turn is 0 at the wanted distance.",
       ],
       takeaway: "Error = wanted - measured, command = gain * error, then limit. This is a proportional (P) controller. Chapter 16 uses the same three steps for the wheel speeds.",
     },
@@ -1783,12 +1825,12 @@ turn = Kp_front_wall*(14.5 - LADARfront);
 vref = front_turn_velocity;
 \`\`\`
 
-With a wall 1.2 ft ahead that is -2.0 * 13.3 = -26.6, which the limit cuts to -2.5: a hard left. Then, if \`LADARfront > left_turn_Stop_threshold\`, the way is open: go to state 2.
+With a wall 1.5 ft ahead that is -1.0 * 13.0 = -13.0, which the limit cuts to -2.0: a hard left. Then, if \`LADARfront > left_turn_Stop_threshold\`, the way is open: go to state 2.
 
 **In both states**, last of all, limit \`turn\` to the range \`-turn_saturation\` to \`turn_saturation\`.
 
 ## Your task
-Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (right_wall_follow_state == 2) { ... }\`. Keep the order above: first the commands of the state you are in, then the test that may change the state for the **next** scan. All the variables exist, with the starter's names (and spelling: \`foward_velocity\`, \`Kp_right_wal\`) and values. The tests place the robot along a wall of a 10 ft room, at a wall ahead, and through the left turn.
+Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (right_wall_follow_state == 2) { ... }\`. Keep the order above: first the commands of the state you are in, then the test that may change the state for the **next** scan. All the variables exist, with the starter's names (and spelling: \`foward_velocity\`, \`Kp_right_wal\`). Their values are this game's own: tuning them on the real robot is part of Lab 6. The tests place the robot along a wall of a 10 ft room, at a wall ahead, and through the left turn.
 `,
       kit: "robot",
       durationMs: 60 + 100 * STEER_SCRIPT.length,
@@ -1804,16 +1846,16 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
             160 + 100 * i,
             `Scan ${i + 1}, ${STEER_SCRIPT[i].why}: turn is ${r.turn.toFixed(2)}`,
             i === 6
-              ? "A small positive number: these commands came from state 2. On the scan that ends the turn, turn and vref are still those of state 1 and only the state changes, so use else if: one state's code per call. About -11: the limit is missing on the negative side."
-              : Math.abs(r.turn) === 2.5 && r.before === 1
-                ? "The left-turn law gives about -26 here. Limit turn to -turn_saturation .. turn_saturation after the if chain, for both signs and in both states."
-                : Math.abs(r.turn) === 2.5
-                  ? "More than 2.5: limit turn to -turn_saturation .. turn_saturation after the if chain. -2.5: the sign of the law is wrong, see the hint of scan 2."
+              ? "A small positive number: these commands came from state 2. On the scan that ends the turn, turn and vref are still those of state 1 and only the state changes, so use else if: one state's code per call. About -6: the limit is missing on the negative side."
+              : Math.abs(r.turn) === WF.sat && r.before === 1
+                ? "The left-turn law gives about -13 here. Limit turn to -turn_saturation .. turn_saturation after the if chain, for both signs and in both states."
+                : Math.abs(r.turn) === WF.sat
+                  ? "More than 2.0: limit turn to -turn_saturation .. turn_saturation after the if chain. -2.0: the sign of the law is wrong, see the hint of scan 2."
                   : i === 1
                     ? "The sign is wrong if this is negative: turn = Kp_right_wal*(ref_right_wall - LADARrightfront), wanted minus measured, and Kp_right_wal is already negative."
                     : i === 4
                       ? "On the scan that sees the wall ahead, the commands still come from state 2. Only the state changes."
-                      : "0: wall_follow() did not set turn in this state. The opposite sign: the bracket is (ref_right_wall - LADARrightfront), wanted minus measured. -2.5: the code of state 1 ran; compare with == and not with =.",
+                      : "0: wall_follow() did not set turn in this state. The opposite sign: the bracket is (ref_right_wall - LADARrightfront), wanted minus measured. -2.0: the code of state 1 ran; compare with == and not with =.",
           ),
           {
             kind: "var" as const,
@@ -1821,11 +1863,11 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
             at: 160 + 100 * i,
             equals: r.next,
             label: `Scan ${i + 1}: front ${r.front.toFixed(2)} ft, so the state for the next scan is ${r.next}`,
-            hint: i === 5 ? "A left turn ends above left_turn_Stop_threshold (3.5 ft), not above the 1.3 ft that started it." : undefined,
+            hint: i === 5 ? "A left turn ends above left_turn_Stop_threshold (4.0 ft), not above the 1.6 ft that started it." : undefined,
           },
         ]),
         near("vref", 1.0, 0.001, 160, "Following the wall: vref is foward_velocity, 1.0 ft/s", "Set vref in each state, next to turn."),
-        near("vref", 0.2, 0.001, 660, "Turning left: vref is front_turn_velocity, 0.2 ft/s", "State 1 drives slowly: vref = front_turn_velocity; there."),
+        near("vref", WF.frontV, 0.001, 660, "Turning left: vref is front_turn_velocity, 0.4 ft/s", "State 1 drives slowly: vref = front_turn_velocity; there."),
       ],
       watch: ["right_wall_follow_state", "LADARfront", "LADARrightfront", "vref", "turn"],
       hints: [
@@ -1833,7 +1875,7 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
         "The limit comes after both branches: `if (turn > turn_saturation) { turn = turn_saturation; }` and the same for the negative side.",
         "State 2: `turn = Kp_right_wal*(ref_right_wall - LADARrightfront); vref = foward_velocity; if (LADARfront < left_turn_Start_threshold) { right_wall_follow_state = 1; }`. State 1 has the same shape with the other two lines of the brief and `>` `left_turn_Stop_threshold`.",
       ],
-      takeaway: "Wall following is a proportional controller on a distance, wrapped in a state machine. With the starter's numbers the left turn is always at the limit (-2.5), because LADARfront is far below 14.5 ft for any wall the sensor can see: the gains and thresholds are a starting point that you tune on the robot.",
+      takeaway: "Wall following is a proportional controller on a distance, wrapped in a state machine. With these numbers the left turn is always at the limit (-2.0), because LADARfront is far below 14.5 ft for any wall the sensor can see. The gains, distances and thresholds here are only a starting point: you tune your own on the robot in Lab 6.",
     },
     {
       id: "sens-chatter",
@@ -1862,11 +1904,11 @@ case FOLLOW:        // runs when state == FOLLOW
 It does the same as \`if (state == TURN_LEFT) { ... } else if (state == FOLLOW) { ... }\`. \`default:\` catches every other value. The state names are numbers, given by the \`#define\` lines at the top. The LED lines after the switch are given: they show the state.
 
 ## The run
-The tests hold the robot about 1.5 ft from a wall. The reading is never exactly the same twice: 1.47, 1.53, 1.46, 1.52, 1.48 ft. Then the turn is completed and the front opens up to 3.5 ft. Last, the robot follows the new wall with 1.58 ft in front, which is not blocked.
+The tests hold the robot about 1.5 ft from a wall. The reading is never exactly the same twice: 1.47, 1.53, 1.46, 1.52, 1.48 ft. Then the turn is completed and the front opens up to 3.5 ft. The robot follows the new wall with 1.58 ft in front, which is not blocked. Last, the next wall comes close (1.40 ft) and the run ends part way through that turn, with 2.60 ft in front: not open yet.
 
-\`transitions\` counts how often the state changed. It should be **2**: into TURN_LEFT when the wall comes close, and to FOLLOW when the turn is finished. Run the code and see what it does instead.
+\`transitions\` counts how often the state changed. It should be **3**: into TURN_LEFT when the wall comes close, to FOLLOW when the turn is finished, and into TURN_LEFT again at the next wall. Run the code and see what it does instead.
 
-The figure replays the first seven readings: choose "one threshold", press Next seven times and count the state changes. Then do the same with two thresholds.
+The figure replays the first seven readings, which hold the first two of those changes: choose "one threshold", press Next seven times and count the state changes. Then do the same with two thresholds.
 
 {{figure:state-machine}}
 
@@ -1874,7 +1916,7 @@ The figure replays the first seven readings: choose "one threshold", press Next 
 Fix the state machine with **hysteresis** (lecture 14 also says deadband): leave a state at a different threshold than the one that got you into it. A turn is finished when the front is more than **3.0 ft** away.
 `,
       kit: "robot",
-      durationMs: 860,
+      durationMs: 60 + 100 * CHATTER_FRONT.length,
       stimuli: CHATTER_FRONT.flatMap((d, i) => poseStimuli(50 + 100 * i, { x: 10 - d, y: 2, theta: 0 })),
       starter: followProgram(
         `${SWITCH.replace("front_ft > FRONT_CLEAR", "front_ft > FRONT_BLOCKED")}
@@ -1894,8 +1936,10 @@ ${SHOW}`,
         { kind: "var", name: "state", at: 560, equals: 2, label: "At 1.52 ft it is still turning", hint: "The threshold that ends the turn must be well above the noise: 3.0 ft." },
         { kind: "steady", led: "LED2", from: 210, to: 690, on: true, label: "LED2 (turning left) stays on without flicker while the front hovers around 1.5 ft", hint: "Each flicker is one trip from TURN_LEFT to FOLLOW and back. Look at the condition in case TURN_LEFT." },
         { kind: "var", name: "state", at: 760, equals: 3, label: "With 3.5 ft in front the turn is finished: FOLLOW", hint: "The turn must still end: in case TURN_LEFT, go to FOLLOW when front_ft is above the new, higher threshold." },
-        { kind: "var", name: "state", equals: 3, label: "Following with 1.58 ft in front: not blocked, still FOLLOW", hint: "Do not raise FRONT_BLOCKED to hide the noise: the robot would then turn away from walls it should follow. Keep 1.5 for starting a turn and add a second threshold for ending it." },
-        { kind: "var", name: "transitions", equals: 2, label: "The state changed exactly twice", hint: "More than 2: the robot still flips between TURN_LEFT and FOLLOW." },
+        { kind: "var", name: "state", at: 860, equals: 3, label: "Following with 1.58 ft in front: not blocked, still FOLLOW", hint: "Do not raise FRONT_BLOCKED to hide the noise: the robot would then turn away from walls it should follow. Keep 1.5 for starting a turn and add a second threshold for ending it." },
+        { kind: "var", name: "state", at: 960, equals: 2, label: "The next wall is 1.40 ft ahead: turning again" },
+        { kind: "var", name: "state", equals: 2, label: "Part way through that turn, with 2.60 ft in front: still turning", hint: "The turn ended too early. A threshold only just above the noise is not enough: the turn is finished when the front is more than 3.0 ft away." },
+        { kind: "var", name: "transitions", equals: 3, label: "The state changed exactly three times", hint: "More than 3: the robot still flips between TURN_LEFT and FOLLOW, or the second turn ended before the front was 3.0 ft open." },
       ],
       watch: ["state", "front_ft", "transitions", "numScans"],
       hints: [
@@ -2292,6 +2336,7 @@ The program calls your functions on two pieces of a real reply: a full line of 6
       ),
       checks: [
         { kind: "var", name: "single_mm", equals: 1907, label: "decode('M', 'c') is 1907", hint: "(0x4D - 0x30) * 64 + (0x63 - 0x30). The first character is the upper half." },
+        { kind: "var", name: "other_mm", equals: 127, label: "decode('1', 'o') is 127", hint: "'1' is 0x31 and 'o' is 0x6F: (0x31 - 0x30) * 64 + (0x6F - 0x30) = 64 + 63." },
         { kind: "var", name: "count", equals: 32, label: "The full line holds 32 readings", hint: "Two characters per reading: advance by 2 each time, and stop at the 0 that ends the string." },
         { kind: "var", name: "first_mm", equals: DEC_MM[0], label: `The first reading of the line is ${DEC_MM[0]} mm` },
         { kind: "var", name: "last_mm", equals: DEC_MM[31], label: `The last reading of the line is ${DEC_MM[31]} mm` },
@@ -2299,7 +2344,7 @@ The program calls your functions on two pieces of a real reply: a full line of 6
         { kind: "var", name: "tail_count", equals: 4, label: "The short line holds 4 readings", hint: "Do not assume 32 readings, and do not decode a line feed: stop at '\\n' as well as at 0." },
         { kind: "var", name: "tail_mm", equals: DEC_SCAN[227], label: `The last reading of the scan is ${DEC_SCAN[227]} mm` },
       ],
-      watch: ["single_mm", "count", "first_mm", "last_mm", "tail_count"],
+      watch: ["single_mm", "other_mm", "count", "first_mm", "last_mm", "tail_count"],
       hints: [
         "A char is a small number. `hi - 0x30` is a value from 0 to 63.",
         "Reading n uses text[2*n] and text[2*n + 1]. Loop while text[2*n] is neither 0 nor '\\n'.",
@@ -2536,6 +2581,7 @@ ${SHOW}`),
         ...FOLLOW_SCRIPT.slice(0, 5).map((s, i) => ({ kind: "led" as const, led: LED_OF[s.state], at: 160 + 100 * i, on: true, label: `Scan ${i + 1}: ${LED_OF[s.state]} is on` })),
         { kind: "led", led: "LED1", at: 360, on: false, label: "LED1 is off while turning left" },
         { kind: "led", led: "LED3", at: 360, on: false, label: "LED3 is off while turning left", hint: "Switch the other two LEDs off when the state changes." },
+        { kind: "led", led: "LED2", at: 560, on: false, label: "LED2 is off again once the turn is finished", hint: "Each LED needs a CLEAR for the states it does not show, not only a SET for its own." },
         { kind: "source", mustMatch: "switch\\s*\\(\\s*state\\s*\\)", label: "The state machine is a switch on state" },
         { kind: "no-dat-write", label: "The LEDs are changed through SET and CLEAR" },
       ],
@@ -2790,17 +2836,20 @@ c = (Sy - m*Sx) / n;
 - \`wall_angle\`: \`atan(m) - robot_theta\`. \`atan\` turns a slope into the angle of the line, in radians. A wall parallel to the robot's path gives 0
 
 ## The test
-The robot is looked at in two different poses. If your transform is right, \`wall_m\` and \`wall_c\` come out the same both times, because the wall did not move. The tests also read where one point of the wall lands (\`mark_x\`, \`mark_y\`, copied for you).
+The robot is looked at in two different poses. If your transform is right, \`wall_m\` and \`wall_c\` come out the same both times, because the wall did not move. The tests also read where one point of the wall lands (\`mark_x\`, \`mark_y\`, copied for you). A third scan is taken in front of a slanted wall, the line y = 0.5x - 2, where the slope is not 0.
 
 ## Where the work runs (the star)
 The given \`process_scan()\` calls your two functions. Together they call \`sin\` and \`cos\` over 900 times, and each call takes about 1 us: 1.5 ms in all. The starter calls \`process_scan()\` from the timer interrupt. The answers are right, but for 1.5 ms no other interrupt runs, and on the robot the wheel controller must run every 1 ms. An interrupt should only do what cannot wait. So, as with printing in chapters 5 and 6: in the interrupt only set \`newScan = 1;\`, and in \`while (1)\` call \`process_scan()\` when the flag is set, after setting it back to 0.
 `,
       kit: "robot",
-      durationMs: 260,
+      durationMs: 360,
       stimuli: [
         { at: 0, set: "LIDAR_OFFSET_FT", value: SENSOR_OFFSET },
         ...poseStimuli(0, WORLD_POSES[0]),
         ...poseStimuli(150, WORLD_POSES[1]),
+        // The third scan looks at another world: one slanted wall.
+        { at: 250, set: "WORLD_KIND", value: KIND_SLANT },
+        ...poseStimuli(250, { x: SLANT_POSE.x, y: SLANT_POSE.y, theta: SLANT_POSE.theta }),
       ],
       starter: worldProgram(`    // TODO`, `    // TODO`),
       solution: worldProgram(
@@ -2847,14 +2896,19 @@ The given \`process_scan()\` calls your two functions. Together they call \`sin\
         near("wall_c", -2, 0.02, 160, "First pose: the wall is the line y = -2", "Off by a few hundredths: the sensor is not at the robot's centre. Add LADAR_OFFSET along the robot's heading."),
         near("wall_dist", 2.5, 0.02, 160, "First pose: the robot's centre is 2.5 ft from the wall", "fabs(wall_m*robot_x - robot_y + wall_c) / sqrt(wall_m*wall_m + 1.0), computed after wall_m and wall_c."),
         near("wall_angle", -0.3, 0.005, 160, "First pose: the wall is at -0.3 rad relative to the heading", "atan(wall_m) - robot_theta. The wall lies along the x axis and the robot's heading is 0.3 rad."),
-        near("mark_x", WORLD_MARKS[1][0], 0.03, undefined, `Second pose: point ${WORLD_MARK} is at x = ${WORLD_MARKS[1][0].toFixed(2)} ft in the world`, "Right in the first pose and wrong here: the heading has the other sign now. Check the signs of the two sin(robot_theta) terms."),
-        near("mark_y", WORLD_MARKS[1][1], 0.03, undefined, `Second pose: point ${WORLD_MARK} is on the wall, at y = ${WORLD_MARKS[1][1].toFixed(2)} ft`),
-        { kind: "var", name: "npts", equals: WORLD_N[1], label: `Second pose: ${WORLD_N[1]} points have an echo` },
-        near("wall_m", 0, 0.004, undefined, "Second pose: still slope 0"),
-        near("wall_c", -2, 0.02, undefined, "Second pose: still y = -2"),
-        near("wall_dist", 3, 0.02, undefined, "Second pose: 3 ft from the wall"),
-        near("wall_angle", 0.4, 0.005, undefined, "Second pose: the wall is at +0.4 rad relative to the heading"),
-        { kind: "var", name: "numScans", equals: 2, label: "Each of the two scans was worked on once", hint: "A huge number: newScan is never set back to 0, so main works on the same scan again and again. 0 or 1: process_scan() is not called for every scan." },
+        near("mark_x", WORLD_MARKS[1][0], 0.03, 260, `Second pose: point ${WORLD_MARK} is at x = ${WORLD_MARKS[1][0].toFixed(2)} ft in the world`, "Right in the first pose and wrong here: the heading has the other sign now. Check the signs of the two sin(robot_theta) terms."),
+        near("mark_y", WORLD_MARKS[1][1], 0.03, 260, `Second pose: point ${WORLD_MARK} is on the wall, at y = ${WORLD_MARKS[1][1].toFixed(2)} ft`),
+        { kind: "var", name: "npts", at: 260, equals: WORLD_N[1], label: `Second pose: ${WORLD_N[1]} points have an echo` },
+        near("wall_m", 0, 0.004, 260, "Second pose: still slope 0"),
+        near("wall_c", -2, 0.02, 260, "Second pose: still y = -2"),
+        near("wall_dist", 3, 0.02, 260, "Second pose: 3 ft from the wall"),
+        near("wall_angle", 0.4, 0.005, 260, "Second pose: the wall is at +0.4 rad relative to the heading"),
+        { kind: "var", name: "npts", equals: SLANT_N, label: `Slanted wall: ${SLANT_N} points have an echo` },
+        near("wall_m", SLANT_M, 0.004, undefined, "Slanted wall: the slope is 0.5", "Right for the first wall and wrong here: a slope of 0 hides mistakes. Check the least squares lines: m = (n*Sxy - Sx*Sy) / (n*Sxx - Sx*Sx)."),
+        near("wall_c", SLANT_C, 0.02, undefined, "Slanted wall: the line is y = 0.5x - 2", "c = (Sy - m*Sx) / n, computed after m."),
+        near("wall_dist", SLANT_DIST, 0.02, undefined, `Slanted wall: the robot's centre is ${SLANT_DIST.toFixed(2)} ft from the wall`, "The shortest distance to a slanted line needs the whole formula: fabs(wall_m*robot_x - robot_y + wall_c) / sqrt(wall_m*wall_m + 1.0)."),
+        near("wall_angle", SLANT_ANGLE, 0.005, undefined, `Slanted wall: the wall is at ${SLANT_ANGLE.toFixed(3)} rad relative to the heading`, "A slope is not an angle. A slope of 0.5 is an angle of atan(0.5) = 0.4636 rad: wall_angle = atan(wall_m) - robot_theta."),
+        { kind: "var", name: "numScans", equals: 3, label: "Each of the three scans was worked on once", hint: "A huge number: newScan is never set back to 0, so main works on the same scan again and again. 0 or 1: process_scan() is not called for every scan." },
       ],
       bonus: [
         {
@@ -2894,11 +2948,19 @@ Write \`find_door()\`. It is called once per scan and sets:
 
 A run that touches the edge of the scan (point 0 or point 227) has only one post and does not count. When no doorway is found, leave \`door_deg\` and \`door_width_ft\` at 0.
 
-The tests look from two poses in the room with the doorway, then put the robot in a room without one. \`cos\` takes radians (see "From a beam to a point"): multiply degrees by 0.01745329.
+Why at least 5 points: seen from a corner of the room, the far corner is further away than the sensor reaches, so a few points in a row have no echo. That is not a doorway.
+
+The tests look from two poses in the room with the doorway. Then they turn the robot so that the doorway runs off the right edge of the scan, and then off the left edge. Last, they put the robot in a corner of a room without a doorway. \`cos\` takes radians (see "From a beam to a point"): multiply degrees by 0.01745329.
 `,
       kit: "robot",
-      durationMs: 360,
-      stimuli: [...poseStimuli(0, DOOR_POSES[0]), ...poseStimuli(150, DOOR_POSES[1]), ...poseStimuli(250, { room: 0 })],
+      durationMs: 560,
+      stimuli: [
+        ...poseStimuli(0, DOOR_POSES[0]),
+        ...poseStimuli(150, DOOR_POSES[1]),
+        ...poseStimuli(250, DOOR_EDGE_RIGHT),
+        ...poseStimuli(350, DOOR_EDGE_LEFT),
+        ...poseStimuli(450, DOOR_CORNER),
+      ],
       starter: doorProgram(`    // TODO`),
       solution: doorProgram(`    int i = 1;
     int j;
@@ -2935,7 +2997,9 @@ The tests look from two poses in the room with the doorway, then put the robot i
         { kind: "var", name: "door_found", at: 260, equals: 1, label: "Second pose: a doorway is found" },
         near("door_deg", DOORS[1].deg, 0.6, 260, `Second pose: it is at ${DOORS[1].deg.toFixed(1)} degrees`),
         near("door_width_ft", DOORS[1].width, 0.05, 260, `Second pose: about ${DOORS[1].width.toFixed(1)} ft wide`),
-        { kind: "var", name: "door_found", equals: 0, label: "In the room without a doorway nothing is found", hint: "Set door_found back to 0 at the start of every scan." },
+        { kind: "var", name: "door_found", at: 360, equals: 0, label: "The doorway runs off the right edge of the scan (it ends at point 227): one post only, not found", hint: "The run must end before point 227, so that the point after it exists and has an echo. Also set door_found back to 0 at the start of every scan." },
+        { kind: "var", name: "door_found", at: 460, equals: 0, label: "The doorway runs off the left edge of the scan (it starts at point 0): not found", hint: "The run must start after point 0, so that the point before it exists and has an echo." },
+        { kind: "var", name: "door_found", equals: 0, label: `From a corner of the room without a doorway: the ${DOOR_CORNER_RUN} points without an echo towards the far corner are not a doorway`, hint: "A doorway is a run of at least 5 points without an echo. Count the run before you accept it." },
         { kind: "var", name: "door_width_ft", equals: 0, label: "Without a doorway the width is 0" },
       ],
       watch: ["door_found", "door_deg", "door_width_ft", "numScans"],

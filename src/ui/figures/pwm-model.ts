@@ -707,7 +707,7 @@ export const PRESETS: Preset[] = [
     settings: { ...RESET, ctrmode: 0, tbprd: 2500, cmpa: 1250, aqa: aq({ ZRO: 2, CAU: 1 }) },
   },
   {
-    id: "servo", name: "RC servo", module: 8,
+    id: "servo", name: "RC servo", module: 5,
     about: "A servo wants one pulse every 20 ms. A million counts do not fit in TBPRD, so CLKDIV slows the counter down. The pulse is 8 % of the period for the middle position.",
     settings: { ...RESET, ctrmode: 0, clkdiv: 5, tbprd: 31250, cmpa: 2500, aqa: aq({ ZRO: 2, CAU: 1 }) },
   },

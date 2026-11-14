@@ -1067,7 +1067,7 @@ ${INIT}
         { kind: "var", name: "ms", at: 30, equals: 22, label: "Paused at 22.5 ms: ms stops at 22" },
         { kind: "var", name: "ms", at: 42, equals: 22, label: "Still paused at 42 ms: ms is still 22" },
         { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", at: 30, equals: 1, label: "While PB1 is held the timer is stopped (TSS = 1)", hint: "Pause by stopping the timer, so the fraction of a millisecond already counted is kept." },
-        { kind: "var", name: "ms", at: 60.8, min: 40, max: 42, label: "Running again from 42.5 ms: ms is 41 at the end (40 to 42 accepted)" },
+        { kind: "var", name: "ms", at: 60.8, min: 40, max: 42, label: "Running again from 42.5 ms: ms is 40 at the end (40 to 42 accepted)" },
         { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TSS", equals: 0, label: "After the release the timer runs again" },
         { kind: "reg", reg: "CpuTimer0Regs.PRD", equals: 199999, label: "Timer 0 still has its 1 ms period" },
         {

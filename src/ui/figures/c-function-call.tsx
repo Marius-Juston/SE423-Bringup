@@ -43,7 +43,7 @@ const PROGRAM: Program = {
     };
     call(14, 4, "a");
     call(15, 10, "b");
-    t.run(16, "main ends. The same five lines of twice did the job two times, with two different inputs.");
+    t.run(16, "main ends. The same lines of twice did the job two times, with two different inputs.");
   }),
 };
 

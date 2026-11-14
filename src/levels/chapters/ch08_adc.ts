@@ -136,7 +136,12 @@ ${volts}
 }
 `;
 
-// ---- adc-gyro: the robot's analog rate gyro on ADCC, as init_ADCsAndDACs() in SE423Lib.c sets it up ----
+// ---- adc-adcc, adc-gyro: an analog rate gyro on ADCC ----
+// Lab 4 (exercise 3) grades this chain on the robot's LPR510. What the handout states in
+// words is printed here (which SOC converts which pin, the interrupt after SOC3). What it
+// leaves blank is not: the PIE enable of ADCC1 comes from the library (enableAdccInterrupt(),
+// plugins/adc.ts), the trigger is this chapter's EPWM5, and the simulated gyro has another
+// range than the LPR510 (250 deg/s per volt), so the scaling line is not the lab's.
 const GYRO_MAIN = `void main(void)
 {
     InitSysCtrl();
@@ -167,8 +172,7 @@ ${adcPower("c")}
     AdccRegs.ADCINTFLGCLR.bit.ADCINT1 = 1;  // make sure INT1 flag is cleared
     EDIS;
 
-    IER |= M_INT1;
-    PieCtrlRegs.PIEIER1.bit.INTx3 = 1;   // ADCC1 is INT1.3
+    enableAdccInterrupt();   // board library: the PIE and IER enables of ADCC1
     EINT;
 
     while (1) {}
@@ -182,19 +186,27 @@ int32_t numADCCcalls = 0;`;
 const GYRO_GLOBALS = `__interrupt void ADCC_ISR(void);
 
 float adcC5Volt = 0;           // gyro voltage, V
-float gyroLPR510_offset = 0;   // gyro voltage at rest, V
+float gyro_offset = 0;         // gyro voltage at rest, V
 float gyrorate = 0;            // turn rate, deg/s
 float gyroangle = 0;           // angle turned since calibration, deg
 int32_t numADCCcalls = 0;`;
 
+/** The simulated gyro: 0.43 V at -200 deg/s, 1.23 V at rest, 2.03 V at +200 deg/s. */
+const GYRO_DPS_PER_V = 250;
+
 const gyroStimuli: Stimulus[] = [
   { at: 0, set: "ADCINC5", value: 1.33 }, // still settling after power-on
   { at: 1.75, set: "ADCINC5", value: 1.23 }, // at rest
-  { at: 150.25, set: "ADCINC5", value: 1.23 + 90 / 400 }, // +90 deg/s
+  { at: 150.25, set: "ADCINC5", value: 1.23 + 90 / GYRO_DPS_PER_V }, // +90 deg/s
   { at: 650.25, set: "ADCINC5", value: 1.23 },
-  { at: 800.25, set: "ADCINC5", value: 1.23 - 60 / 400 }, // -60 deg/s
+  { at: 800.25, set: "ADCINC5", value: 1.23 - 60 / GYRO_DPS_PER_V }, // -60 deg/s
   { at: 1050.25, set: "ADCINC5", value: 1.23 },
 ];
+
+// adc-gyro: samples 2 to 200 (taken at 2.0, 2.5 ... 101.0 ms) carry +/- 0.02 V of noise around the
+// rest voltage, so that one sample alone is not a usable offset. Only the average is.
+const gyroNoise: Stimulus[] = Array.from({ length: 199 }, (_, i) => ({ at: 1.75 + 0.5 * i, set: "ADCINC5", value: 1.23 + (i % 2 ? 0.02 : -0.02) }));
+const gyroCalStimuli: Stimulus[] = [gyroStimuli[0], ...gyroNoise, { at: 101.25, set: "ADCINC5", value: 1.23 }, ...gyroStimuli.slice(2)];
 
 // ---- adc-joystick ----
 const JOY_HEAD = `void setupLED(uint16_t pin)
@@ -1044,12 +1056,12 @@ ${ISR_END}`,
       goal: "Read the robot's turn-rate sensor on ADCC: find its result register and clear the right flag.",
       refs: [{ course: "Lab 4" }, { course: "L5", slide: [16, 26] }, { trm: "11.5.5" }, { trm: "11.9" }, { trm: "3.4.5" }],
       brief: `
-The robot carries a **rate gyro** (an LPR510). It is a sensor whose output voltage follows how fast the robot **turns**. At rest it gives about 1.2 V. Turning one way raises the voltage, turning the other way lowers it.
+The robot carries a **rate gyro**. It is a sensor whose output voltage follows how fast the robot **turns**. At rest it gives about 1.2 V. Turning one way raises the voltage, turning the other way lowers it.
 
 ## Where it is connected
-The gyro is on pin **ADCINC5**: a pin of **ADCC**, not ADCA. Everything you know carries over with a new letter: \`AdccRegs\`, \`AdccResultRegs\`, and the interrupt **ADCC1**, which is INT1.3.
+The gyro is on pin **ADCINC5**: a pin of **ADCC**, not ADCA. Everything you know carries over with a new letter: \`AdccRegs\`, \`AdccResultRegs\`, and the interrupt **ADCC1**, which is in PIE group 1 like ADCA1.
 
-The set-up in \`main()\` is given. It is the course library's: **four** SOCs of ADCC on one trigger, for the pins ADCINC2 to ADCINC5, with the interrupt after the last one. Each SOC has the three lines you know.
+The set-up in \`main()\` is given: **four** SOCs of ADCC on one trigger, for the pins ADCINC2 to ADCINC5, with the interrupt after the last one. Each SOC has the three lines you know. One line is new: \`enableAdccInterrupt()\` comes from the board's library and sets the PIE and IER enables of ADCC1. Finding that PIE channel in Table 3-2 is part of Lab 4.
 
 ## Your part, in ADCC_ISR
 1. Find in \`main()\` the SOC whose \`CHSEL\` is 5. The result register has **that SOC's number**, not the pin's. Convert it to volts in \`adcC5Volt\`:
@@ -1115,7 +1127,7 @@ __interrupt void ADCC_ISR(void)
           label: "adcC5Volt shows the gyro's 1.23 V at rest",
           hint: "ADCINC5 is measured by SOC3, so its number is in AdccResultRegs.ADCRESULT3. Nothing converts into ADCRESULT5, and AdcaResultRegs belongs to another ADC. Exactly 1: integer division, write 3.0 and 4096.0.",
         },
-        { kind: "var", name: "adcC5Volt", min: 1.453, max: 1.457, label: "and 1.455 V while the robot turns" },
+        { kind: "var", name: "adcC5Volt", min: 1.588, max: 1.592, label: "and 1.59 V while the robot turns" },
         {
           kind: "no-diagnostic",
           code: "adc",
@@ -1149,23 +1161,27 @@ At rest the gyro outputs a constant voltage, its **offset**, about 1.2 V. The ex
 One sample is not a safe offset. Right after power-on the gyro has not settled, and every sample carries **noise**: a small random error. The **average** of many samples is much steadier. To average 200 samples, add them up and divide the sum by 200.
 
 ## Rate and angle
-The course's scale is **400 degrees per second for each volt** away from the offset. Example: 1.43 V with an offset of 1.23 V is 0.2 V x 400 = 80 deg/s.
+A gyro's data sheet gives its range as two points. For the gyro of this simulated robot: **0.43 V at -200 deg/s** and **2.03 V at +200 deg/s**, with 1.23 V at rest. So 0.8 V away from rest is 200 deg/s, and one volt is 200 / 0.8 = **250 degrees per second**. Example: 1.43 V with an offset of 1.23 V is 0.2 V x 250 = 50 deg/s.
 
-A rate times a time is an angle. \`ADCC_ISR\` runs every 0.5 ms = 0.0005 s. At 80 deg/s the robot turns 80 x 0.0005 = 0.04 degrees in that time. Add up these small pieces on every call and you have the angle turned so far.
+The gyro on the lab robot (an LPR510) has another range. Lab 4 gives it in the same form, and you work out its scale the same way.
+
+A rate times a time is an angle. \`ADCC_ISR\` runs every 0.5 ms = 0.0005 s. At 50 deg/s the robot turns 50 x 0.0005 = 0.025 degrees in that time. Add up these small pieces on every call and you have the angle turned so far.
 
 ## Add to ADCC_ISR, after the adcC5Volt line
-1. **Calls 1 to 200:** add \`adcC5Volt\` to a sum. Make a new global \`float\` for it. On call 200, \`gyroLPR510_offset\` = the sum divided by \`200.0\`.
+1. **Calls 1 to 200:** add \`adcC5Volt\` to a sum. Make a new global \`float\` for it. On call 200, \`gyro_offset\` = the sum divided by \`200.0\`.
 2. **After call 200:**
 \`\`\`c
-gyrorate = (adcC5Volt - gyroLPR510_offset) * 400.0;   // deg/s
-gyroangle = gyroangle + gyrorate * 0.0005;            // deg
+gyrorate = (adcC5Volt - gyro_offset) * 250.0;   // deg/s
+gyroangle = gyroangle + gyrorate * 0.0005;      // deg
 \`\`\`
 
-\`numADCCcalls\` already counts the calls. The robot's real code waits 2 s, then averages for 2 s.
+\`numADCCcalls\` already counts the calls. On the real robot you wait longer and average more samples.
+
+In the test the robot stands still during the calibration, and its samples jump between 1.21 V and 1.25 V: that is the noise.
 `,
       kit: "robot",
       durationMs: 1200,
-      stimuli: gyroStimuli,
+      stimuli: gyroCalStimuli,
       starter: `${GYRO_GLOBALS}
 
 ${GYRO_MAIN}
@@ -1177,7 +1193,7 @@ __interrupt void ADCC_ISR(void)
 
     adcC5Volt = AdccResultRegs.ADCRESULT3 * 3.0 / 4096.0;   // SOC3 converts ADCINC5
 
-    // TODO 1: calls 1 to 200: add up, then set gyroLPR510_offset
+    // TODO 1: calls 1 to 200: add up, then set gyro_offset
 
     // TODO 2: after call 200: gyrorate and gyroangle
 
@@ -1200,10 +1216,10 @@ __interrupt void ADCC_ISR(void)
     if (numADCCcalls <= 200) {
         offsetsum = offsetsum + adcC5Volt;
         if (numADCCcalls == 200) {
-            gyroLPR510_offset = offsetsum / 200.0;
+            gyro_offset = offsetsum / 200.0;
         }
     } else {
-        gyrorate = (adcC5Volt - gyroLPR510_offset) * 400.0;
+        gyrorate = (adcC5Volt - gyro_offset) * 250.0;
         gyroangle = gyroangle + gyrorate * 0.0005;
     }
 
@@ -1223,7 +1239,7 @@ __interrupt void ADCC_ISR(void)
         {
           kind: "var",
           name: "adcC5Volt",
-          at: 50.75,
+          at: 110.75,
           min: 1.228,
           max: 1.232,
           label: "adcC5Volt shows the gyro's 1.23 V at rest",
@@ -1231,12 +1247,26 @@ __interrupt void ADCC_ISR(void)
         },
         {
           kind: "var",
-          name: "gyroLPR510_offset",
+          name: "gyro_offset",
+          at: 60.75,
+          equals: 0,
+          label: "During the first 200 samples the offset is not set yet",
+          hint: "The offset comes out of the calibration: set it once, on call 200, from the sum.",
+        },
+        {
+          kind: "source",
+          mustNotMatch: "gyro_offset\\s*=\\s*[-+]?(?!0(\\.0*)?f?\\s*;)[0-9.]+f?\\s*;",
+          label: "The offset is measured, not typed in as a number",
+          hint: "Another gyro, or the same one on a warmer day, rests at another voltage. Work the offset out from the samples.",
+        },
+        {
+          kind: "var",
+          name: "gyro_offset",
           at: 120.75,
           min: 1.2285,
           max: 1.2325,
           label: "The offset is the average of the first 200 samples",
-          hint: "Still 0: set it on call 200. Exactly 1: the sum is an integer, make it a float. 1.33: that is the first sample alone, taken while the gyro settles. Add up 200 and divide by 200.0.",
+          hint: "Still 0: set it on call 200. Exactly 1: the sum is an integer, make it a float. 1.33: that is the first sample alone, taken while the gyro settles. 1.21 or 1.25: that is one noisy sample, not the average. Add up 200 and divide by 200.0.",
         },
         {
           kind: "var",
@@ -1245,9 +1275,9 @@ __interrupt void ADCC_ISR(void)
           min: -1,
           max: 1,
           label: "At rest the turn rate is 0 deg/s (within 1)",
-          hint: "Subtract the offset before you multiply by 400. If the offset check above fails, fix that first.",
+          hint: "Subtract the offset before you multiply by 250. If the offset check above fails, fix that first.",
         },
-        { kind: "var", name: "gyrorate", at: 400.75, min: 89, max: 91, label: "Turning: 90 deg/s", hint: "(adcC5Volt - gyroLPR510_offset) * 400.0" },
+        { kind: "var", name: "gyrorate", at: 400.75, min: 89, max: 91, label: "Turning: 90 deg/s", hint: "(adcC5Volt - gyro_offset) * 250.0. About 144: that is the scale of another gyro, this one gives 250 deg/s per volt." },
         {
           kind: "var",
           name: "gyroangle",
@@ -1261,7 +1291,7 @@ __interrupt void ADCC_ISR(void)
         { kind: "var", name: "gyroangle", min: 29.3, max: 30.7, label: "A quarter second at -60 deg/s takes the angle back to 30 degrees" },
         { kind: "no-diagnostic", code: "adc", label: "The ADC reports no problem" },
       ],
-      watch: ["adcC5Volt", "gyroLPR510_offset", "gyrorate", "gyroangle", "numADCCcalls"],
+      watch: ["adcC5Volt", "gyro_offset", "gyrorate", "gyroangle", "numADCCcalls"],
       inspect: ["AdccRegs.ADCSOC3CTL", "AdccResultRegs.ADCRESULT3", "AdccRegs.ADCINTFLG"],
       hints: [
         "Add a global such as `float offsetsum = 0;`. The two cases are an `if (numADCCcalls <= 200) { ... } else { ... }`.",
@@ -1965,6 +1995,12 @@ void setupADCA(void)
         },
         { kind: "reg", reg: "AdcaRegs.ADCCTL2", field: "PRESCALE", equals: 6, label: "2. The converter's clock is SYSCLK / 4", hint: "PRESCALE is a code, not the divisor: 6 means divide by 4." },
         {
+          kind: "source",
+          mustMatch: "AdcSetMode\\s*\\(\\s*ADC_ADCA\\s*,\\s*ADC_RESOLUTION_12BIT\\s*,\\s*ADC_SIGNALMODE_SINGLE\\s*\\)",
+          label: "3. AdcSetMode chooses 12-bit results, single-ended, for ADCA",
+          hint: "AdcSetMode(ADC_ADCA, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE); It also loads the converter's factory calibration for that mode.",
+        },
+        {
           kind: "reg",
           reg: "AdcaRegs.ADCCTL1",
           field: "INTPULSEPOS",
@@ -2169,6 +2205,12 @@ Each check names one decision. The joystick is at 0.9 V, then at 2.1 V.
         { kind: "reg", reg: "EPwm2Regs.TBPRD", equals: 12499, label: "EPWM2: one round is exactly 0.25 ms", hint: "0.25 ms / 20 ns counts, and a round is TBPRD + 1 counts." },
         { kind: "reg", reg: "EPwm2Regs.TBCTL", field: "CTRMODE", equals: 0, label: "EPWM2: the counter counts up", hint: "CTRMODE resets to 3, frozen." },
         { kind: "reg", reg: "AdcaRegs.ADCCTL2", field: "PRESCALE", equals: 6, label: "ADCA: converter clock SYSCLK / 4", hint: "ADCCTL2.PRESCALE = 6 is the code for divide by 4." },
+        {
+          kind: "source",
+          mustMatch: "AdcSetMode\\s*\\(\\s*ADC_ADCA\\s*,\\s*ADC_RESOLUTION_12BIT\\s*,\\s*ADC_SIGNALMODE_SINGLE\\s*\\)",
+          label: "ADCA: 12 bit, single-ended",
+          hint: "AdcSetMode(ADC_ADCA, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE); before the power-up line.",
+        },
         { kind: "reg", reg: "AdcaRegs.ADCCTL1", field: "INTPULSEPOS", equals: 1, label: "ADCA: flag at the end of the conversion", hint: "ADCCTL1.INTPULSEPOS = 1. With 0 the flag comes before the result." },
         { kind: "reg", reg: "AdcaRegs.ADCCTL1", field: "ADCPWDNZ", equals: 1, label: "ADCA: powered up", hint: "ADCCTL1.ADCPWDNZ = 1, inside EALLOW." },
         {
@@ -2543,14 +2585,12 @@ ${ISR_END}
       goal: "Output 3.0 V minus the photoresistor voltage on DACA and measure that output again with a second SOC.",
       refs: [{ course: "L5", slide: [16, 11, 26] }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "11.6.3" }, { trm: "11.5.5" }],
       brief: `
-This level also needs the DAC chapter: you bring up DACA and write \`setDACA\` yourself.
+This level also needs the DAC chapter: you bring up DACA yourself. \`setDACA(volts)\` comes from the board's library: it limits the voltage to 0 V ... 3 V and scales it. Writing it is part of Lab 4.
 
-1. **Invert.** On every sample, set DACA to **3.0 V minus the photoresistor voltage**. Bright light gives a low output, darkness a high one. Saturate as always.
+1. **Invert.** On every sample, set DACA to **3.0 V minus the photoresistor voltage** with \`setDACA\`. Bright light gives a low output, darkness a high one.
 2. **Check your own output.** The DACA pin is the same pin as **ADCINA0**. So the ADC can measure what the DAC really puts out, with no wire. Add a second SOC for ADCINA0 on the same trigger and store its voltage in \`readback\`.
 
 Only EPWM5 and the ADC's power-up are given. Bring up the DAC, add the SOC, choose the interrupt select, write \`ADCA_ISR\`.
-
-\`DACVALS\` is not a protected register, so it needs no \`EALLOW\`.
 
 One thing to think about: when \`ADCA_ISR\` runs, the conversions of this millisecond are already finished. So which DAC value did the second SOC see, the one you are about to write or the one from the last interrupt?
 `,
@@ -2600,14 +2640,6 @@ __interrupt void ADCA_ISR(void)
 
 float adcina4volts = 0;
 float readback = 0;
-
-void setDACA(float dacouta0)
-{
-    if (dacouta0 > 3.0) dacouta0 = 3.0;
-    if (dacouta0 < 0.0) dacouta0 = 0.0;
-
-    DacaRegs.DACVALS.bit.DACVALS = dacouta0 * 4095.0 / 3.0;
-}
 
 void main(void)
 {
@@ -2659,6 +2691,15 @@ ${ISR_END}
           max: 2.01,
           label: "readback measures those 2.0 V",
           hint: "A SOC with CHSEL = 0 measures ADCINA0, the DACA pin. Its result is in the register with its SOC number.",
+        },
+        {
+          kind: "var",
+          name: "readback",
+          at: 8.75,
+          min: 1.99,
+          max: 2.01,
+          label: "On the first sample after the light changes, readback still shows the old 2.0 V",
+          hint: "readback must be the measured pin: the result of the SOC with CHSEL = 0, not a value computed from adcina4volts. That SOC sampled the pin before this interrupt changed the DAC.",
         },
         { kind: "signal", name: "DACA", at: 14.75, equals: 0.4, tol: 0.005, label: "2.6 V in: DACA at 0.4 V" },
         { kind: "var", name: "readback", at: 14.75, min: 0.39, max: 0.41, label: "readback follows to 0.4 V" },

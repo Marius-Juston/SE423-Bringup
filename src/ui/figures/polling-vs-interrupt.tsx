@@ -86,6 +86,8 @@ function PollingVsInterrupt() {
       ? "With nothing else in the loop, polling reacts at once. But the CPU does nothing except ask, millions of times a second. Give main some work with the slider."
       : lost.length
         ? `One pass of main now takes ${work} ms of work plus the ${HANDLE} ms reaction, longer than the 25 ms between events. The flag was set a second time before main looked, so ${lost.length} event${lost.length > 1 ? "s were" : " was"} lost: a flag is one bit and cannot count. The interrupt still reacts to all ${EVENTS.length}, each about 70 ns after the event.`
+        : delays.every((d) => d < 0.5)
+          ? `With ${work} ms of work every event happens to land just as main reaches the check, so polling is on time here. That is luck: move the slider and the delay can be as long as one whole pass of the loop. With an interrupt the function starts about 70 ns after the event, whatever main is doing.`
         : `Polling sees an event only when main reaches the check again: ${delays.map((d) => d.toFixed(0)).join(", ")} ms late here. The delay is different each time and can be as long as one whole pass of the loop. With an interrupt the function starts about 70 ns after the event, whatever main is doing, and main continues ${HANDLE} ms later.`;
 
   return (
@@ -136,7 +138,7 @@ function PollingVsInterrupt() {
           return (
             <g key={i}>
               <line x1={x(l.event)} x2={x(l.at)} y1={74} y2={74} className="pvi-late" />
-              <text x={x(l.event) + 3} y={86} className="pvi-latetext">{d.toFixed(0)} ms late</text>
+              <text x={x(l.event) > 330 ? x(l.at) : x(l.event) + 3} y={86} textAnchor={x(l.event) > 330 ? "end" : "start"} className="pvi-latetext">{d.toFixed(0)} ms{i === 0 ? " late" : ""}</text>
             </g>
           );
         })}
@@ -171,7 +173,7 @@ function PollingVsInterrupt() {
         <line x1={X0} x2={X1} y1={184} y2={184} className="fig-wire" style={{ strokeWidth: 0.8 }} />
       </svg>
       <div className="pvi-sum">
-        <div>Polling reacts<b>{work === 0 ? "at once" : `up to ${worst.toFixed(0)} ms late`}</b>{lost.length ? `${lost.length} of ${EVENTS.length} events lost` : `all ${EVENTS.length} events seen`}<code>while (1) {"{"} if (flag) react(); work(); {"}"}</code></div>
+        <div>Polling reacts<b>{work === 0 ? "at once" : worst < 0.5 ? "on time, by luck" : `up to ${worst.toFixed(0)} ms late`}</b>{lost.length ? `${lost.length} of ${EVENTS.length} events lost` : `all ${EVENTS.length} events seen`}<code>while (1) {"{"} if (flag) react(); work(); {"}"}</code></div>
         <div>Interrupt reacts<b>about 70 ns late</b>all {EVENTS.length} events seen<code>while (1) {"{"} work(); {"}"}</code></div>
       </div>
       <p className="fig-why" role="status">{why}</p>

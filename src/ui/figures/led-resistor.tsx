@@ -23,7 +23,7 @@ const CSS = `
 .lr-led { fill: var(--surface); stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; }
 .lr-flow { fill: none; stroke: var(--harvest); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .lr-big { fill: var(--harvest); font-size: 14px; font-family: var(--mono); font-weight: 700; }
-.lr-bad { fill: var(--bad); font-size: 9.5px; font-family: var(--sans); font-weight: 700; }
+.lr-bad { fill: var(--bad); font-size: max(9.5px, calc(9px / var(--fig-k, 1))); font-family: var(--sans); font-weight: 700; }
 `;
 
 function LedResistor() {
@@ -42,7 +42,7 @@ function LedResistor() {
     : tooMuch
       ? `${maText} is more than the 20 mA this LED can take. It would run hot and die early. Use a larger resistor.`
       : ma > PIN_MAX
-        ? `${maText}: fine for the LED (under 20 mA). It is more than one pin of the microcontroller can deliver (about 4 mA), so this resistor suits an LED fed from a power supply, not straight from a pin.`
+        ? `${maText}: fine for the LED (not over 20 mA). It is more than one pin of the microcontroller can deliver (about 4 mA), so this resistor suits an LED fed from a power supply, not straight from a pin.`
         : ma < 0.5
           ? `Only ${maText}: the LED is safe but barely glows. A smaller resistor lets more current through.`
           : `${maText}: safe for the LED, and little enough for one microcontroller pin (about 4 mA) to deliver.`;
@@ -83,7 +83,7 @@ function LedResistor() {
         <text x={cx + 16} y="54" className="fig-label dim">across the resistor</text>
         <text x={cx + 16} y="66" className="fig-value small">{vr.toFixed(1)} V</text>
         <text x={cx + 16} y="104" className="fig-label dim">across the LED</text>
-        <text x={cx + 16} y="116" className="fig-value small">{fwd ? `about ${VF.toFixed(1)} V` : `${vs} V (blocking)`}</text>
+        <text x={cx + 16} y="116" className="fig-value small">{fwd ? `about ${VF.toFixed(1)} V` : `${vs} V (blocks)`}</text>
         {/* result */}
         <text x="270" y="36" className="fig-label">current</text>
         <text x="270" y="54" className="lr-big" style={{ fill: tooMuch ? "var(--bad)" : undefined }}>{maText}</text>

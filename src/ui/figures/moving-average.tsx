@@ -59,6 +59,8 @@ function MovingAverage() {
   const wx1 = x(n) + dx / 2;
   const drag = (e: PointerEvent) => {
     if (e.type === "pointermove" && !(e.buttons & 1)) return;
+    // Keep the drag when the pointer leaves the drawing.
+    if (e.type === "pointerdown") (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     const box = svg.current!.getBoundingClientRect();
     const sx = ((e.clientX - box.left) / box.width) * 420;
     setPos(Math.max(0, Math.min(N - 1, Math.round((sx - X0) / dx - 0.5 + (points - 1) / 2))));
@@ -73,12 +75,12 @@ function MovingAverage() {
   const why =
     points === 1
       ? "With one point the output is the input: nothing is averaged and nothing comes late. Add points to smooth the noise."
-      : `y[${n}] = ${yn.toFixed(2)} is ${tapered ? "a weighted sum" : "the mean"} of the ${points} newest samples, x[${n - points + 1}] to x[${n}]: each one is multiplied by ${tapered ? "its weight, and the weights favour the middle of the window" : `the same weight, 1/${points}`}. More points give a smoother line, but the output answers later: it follows the signal ${delay} sample${delay === 1 ? "" : "s"} late (half the window; ${(delay * 0.1).toFixed(2)} ms when sampling every 0.1 ms), and each jump is spread over ${points} samples.`;
+      : `y[${n}] = ${yn.toFixed(2)} is ${tapered ? "a weighted sum" : "the mean"} of the ${points} newest samples, x[${n - points + 1}] to x[${n}]: each one is multiplied by ${tapered ? (points <= 2 ? "its weight; with only 2 points both weights are the same, 1/2" : "its weight, and the weights favour the middle of the window") : `the same weight, 1/${points}`}. More points give a smoother line, but the output answers later: it follows the signal ${delay} sample${delay === 1 ? "" : "s"} late (half the window; ${(delay * 0.1).toFixed(2)} ms when sampling every 0.1 ms), and each jump is spread over ${points} samples.`;
 
   return (
     <figure className="figure mavg" aria-label="Interactive moving average: a noisy signal and its average over a sliding window">
       <style>{CSS}</style>
-      <svg ref={svg} viewBox="0 0 420 146" role="img" className="mavg-drag" onPointerDown={drag} onPointerMove={drag} aria-label={`Noisy step signal and its ${points}-point ${tapered ? "weighted" : "moving"} average. Window ends at sample ${n}; output ${yn.toFixed(2)}. The output follows ${delay} samples late.`}>
+      <svg ref={svg} viewBox="0 0 420 146" role="img" className="mavg-drag" onPointerDown={drag} onPointerMove={drag} aria-label={`Noisy step signal and its ${points}-point ${tapered ? "weighted" : "moving"} average. Window ends at sample ${n}; output ${yn.toFixed(2)}. The output follows ${delay} sample${delay === 1 ? "" : "s"} late.`}>
         <text x={X0} y="12" className="fig-label" style={{ fill: "var(--arches)" }}>thin: noisy samples x[n]</text>
         <text x={X1} y="12" textAnchor="end" className="fig-label" style={{ fill: "var(--harvest)" }}>thick: filtered output y[n]</text>
         <line x1={X0} x2={X1} y1={Y0} y2={Y0} className="fig-wire" />
@@ -104,7 +106,7 @@ function MovingAverage() {
         {(wx0 + wx1) / 2 > X0 + 62 && <text x={X0} y={Y0 + 12} className="fig-label dim">n = 0</text>}
         {(wx0 + wx1) / 2 < X1 - 46 && <text x={X1} y={Y0 + 12} textAnchor="end" className="fig-label dim">n = {N - 1}</text>}
       </svg>
-      <svg viewBox="0 0 420 122" role="img" aria-label={`The ${points} samples in the window times the weights ${b.map((v) => v.toFixed(3)).join(", ")} add up to ${yn.toFixed(2)}.`}>
+      <svg viewBox="0 0 420 122" role="img" aria-label={`The ${points} sample${points === 1 ? "" : "s"} in the window times the weights ${b.map((v) => v.toFixed(3)).join(", ")} add up to ${yn.toFixed(2)}.`}>
         <text x="4" y="24" className="fig-label">samples</text>
         <text x="4" y="35" className="fig-value small" style={{ fill: "var(--orange)" }}>xk[i]</text>
         <text x="4" y="62" className="fig-label dim">times</text>

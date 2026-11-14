@@ -14,7 +14,9 @@ function CIntDivision() {
   const colW = Math.min(40, 304 / (q + (r ? 1 : 0) || 1));
   const dot = (cx: number, i: number, cls: string, key: string) => <circle key={key} cx={cx} cy={25 + i * 13} r="5" className={cls} />;
   const why =
-    q === 0
+    a === 0
+      ? `There is nothing to share out: 0 / ${b} is 0 and 0 % ${b} is 0. Raise a.`
+      : q === 0
       ? `${b} does not fit into ${a} even once, so ${a} / ${b} is 0. Everything is left over: ${a} % ${b} is ${r}. A calculator would say ${real.toFixed(2)}, but an int cannot hold a fraction.`
       : r === 0
         ? `${a} splits into ${q} full group${q === 1 ? "" : "s"} of ${b} with nothing left over. So ${a} / ${b} is ${q} and ${a} % ${b} is 0: ${a} is a multiple of ${b}.`
@@ -33,7 +35,7 @@ function CIntDivision() {
         .cdv-ctl input { flex: 1 1 4rem; min-width: 4rem; width: 4rem; }
         .cdv-ctl output { font-family: var(--mono); width: 2rem; text-align: right; }
       `}</style>
-      <svg viewBox={`0 0 320 ${b * 13 + 46}`} role="img" aria-label={`${a} dots in groups of ${b}: ${q} full group${q === 1 ? "" : "s"} and ${r} left over.`}>
+      <svg viewBox={`0 0 320 ${9 * 13 + 46}`} role="img" aria-label={`${a} dots in groups of ${b}: ${q} full group${q === 1 ? "" : "s"} and ${r} left over.`}>
         {Array.from({ length: q }, (_, g) => {
           const x = 8 + g * colW;
           return (

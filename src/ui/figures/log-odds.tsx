@@ -54,6 +54,11 @@ function LogOdds() {
   const off = Math.abs(l) > AXIS;
   const verdict = p > 0.65 ? "probably occupied" : p < 0.35 ? "probably free" : events.length ? "undecided" : "no idea yet";
 
+  // The number under the probability bar, and where it stands. A scale
+  // label (0, 0.5, 1) it would run into is left out.
+  const pShown = Math.abs(p - 0.5) >= 0.08;
+  const pX = Math.max(X0 + 40, Math.min(X1 - 40, xp(p)));
+
   const shown = events.slice(-3);
   const sum = `${events.length > shown.length ? "... " : "0 "}${shown.map((h) => signed(h ? L_HIT : L_PASS)).join(" ")}`;
   const status =
@@ -109,13 +114,11 @@ function LogOdds() {
         {[-6, -4, -2, 0, 2, 4, 6].map((v) => (
           <g key={v}>
             <line x1={xl(v)} x2={xl(v)} y1="102" y2="110" className="lodd-axis" />
-            <text x={xl(v)} y="121" textAnchor="middle" className="fig-label dim">{v > 0 ? `+${v}` : v}</text>
+            <text x={xl(v)} y="121" textAnchor="middle" className="fig-label dim">{v > 0 ? `+${v}` : v}{clamp && Math.abs(v) === L_LIMIT ? " limit" : ""}</text>
           </g>
         ))}
         <rect x={Math.min(xl(0), xl(l))} y="103" width={Math.abs(xl(l) - xl(0))} height="6" className={l >= 0 ? "lodd-bar" : "lodd-barneg"} />
         {clamp && [-L_LIMIT, L_LIMIT].map((v) => <line key={v} x1={xl(v)} x2={xl(v)} y1="97" y2="112" className="lodd-limit" />)}
-        {clamp && <text x={xl(L_LIMIT)} y="132" textAnchor="middle" className="fig-label dim">limit</text>}
-        {clamp && <text x={xl(-L_LIMIT)} y="132" textAnchor="middle" className="fig-label dim">limit</text>}
         <path d={`M${xl(l)},102 l-5,-8 h10 Z`} className="lodd-mark" />
         <text x={Math.max(X0 + 14, Math.min(X1 - 14, xl(l)))} y="90" textAnchor="middle" className="fig-value small">{off ? (l > 0 ? `${f3(l)} →` : `← ${f3(l)}`) : f3(l)}</text>
         <text x={X0} y="132" className="fig-label dim">free</text>
@@ -126,10 +129,10 @@ function LogOdds() {
         <rect x={X0} y="146" width={X1 - X0} height="12" rx="2" className="lodd-track" />
         <rect x={X0} y="146" width={Math.max(0.5, xp(p) - X0)} height="12" rx="2" className="lodd-bar" />
         <line x1={xp(0.5)} x2={xp(0.5)} y1="143" y2="161" className="lodd-limit" />
-        {[0, 0.5, 1].map((v) => (
+        {[0, 0.5, 1].filter((v) => !pShown || Math.abs(xp(v) - pX) > 50).map((v) => (
           <text key={v} x={xp(v)} y="172" textAnchor={v === 0 ? "start" : v === 1 ? "end" : "middle"} className="fig-label dim">{v}</text>
         ))}
-        <text x={Math.max(X0 + 40, Math.min(X1 - 40, xp(p)))} y="172" textAnchor="middle" className="fig-value small">{Math.abs(p - 0.5) < 0.08 ? "" : fp(p)}</text>
+        {pShown && <text x={pX} y="172" textAnchor="middle" className="fig-value small">{fp(p)}</text>}
       </svg>
       <div className="fig-step" role="status">
         <p>{status}</p>

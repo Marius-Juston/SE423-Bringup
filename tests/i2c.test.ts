@@ -4,6 +4,10 @@ import type { Stimulus } from "../src/sim/runner";
 import { TempSensor, type I2cState } from "../src/sim/plugins/i2c";
 import { codes } from "./helpers";
 
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 const PINS = `
     GPIO_SetupPinMux(40, GPIO_MUX_CPU1, 6);
     GPIO_SetupPinOptions(40, GPIO_INPUT, GPIO_PULLUP);

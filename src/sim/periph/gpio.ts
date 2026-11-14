@@ -64,6 +64,8 @@ export class Gpio {
   /** Floating pins whose own bit was read. */
   floatingRead = new Set<number>();
   private noiseBucket = -1;
+  /** Pins whose latch was written while the latch did not drive them, with the diagnostic's key. */
+  private notDriven = new Map<number, string>();
 
   constructor(private b: Board) {
     const dev = b.dev;
@@ -74,6 +76,13 @@ export class Gpio {
       const reconfigure = () => {
         this.sync(i);
         this.refreshPort(i, b.now);
+        // A latch written before the pin became an output was not a mistake after all.
+        for (const [pin, key] of this.notDriven) {
+          if (pin >> 5 === i && this.mux(pin) === 0 && this.isOutput(pin)) {
+            b.diagnostics.delete(key);
+            this.notDriven.delete(pin);
+          }
+        }
       };
       for (const r of ["PUD", "DIR", "MUX1", "MUX2", "GMUX1", "GMUX2", "ODR", "INV"]) {
         // Port F stops at GPIO168, so it has no MUX2 / GMUX2.
@@ -110,12 +119,66 @@ export class Gpio {
         const h = dev.reg(`GpioDataRegs.GP${p}${name}`).hook;
         h.quiet = true;
         h.write = () => 0;
-        h.after = (v) => this.setLatch(i, f(this.latch[i], v) >>> 0);
+        // A .bit write reads the register first, in the same statement.
+        let readAt = -1;
+        h.read = (stored) => {
+          readAt = b.steps;
+          return stored;
+        };
+        h.after = (v) => {
+          if (!b.libDepth) {
+            // .bit.GPIOn = 0 is the mistake. A computed mask that happens to be 0 is not.
+            if (v === 0 && readAt === b.steps)
+              b.warn(
+                b.line,
+                "gpio-write-zero",
+                `Writing 0 to GP${p}${name} changes nothing: this register only acts on the bits written as 1. To make a pin high write 1 to its bit in GP${p}SET, to make it low write 1 to its bit in GP${p}CLEAR.`,
+              );
+            else if (v) this.checkDriven(i, v >>> 0);
+          }
+          this.setLatch(i, f(this.latch[i], v) >>> 0);
+        };
       };
       op("SET", (l, v) => l | v);
       op("CLEAR", (l, v) => l & ~v);
       op("TOGGLE", (l, v) => l ^ v);
     });
+  }
+
+  /**
+   * The program wrote 1 to SET / CLEAR / TOGGLE bits, and none of them
+   * belongs to a pin the latch drives: they are inputs, or pins whose mux
+   * selects a peripheral. The lowest such pin is named. The
+   * message is taken back if the pin becomes a GPIO output later (setting
+   * the latch first avoids a glitch).
+   */
+  private checkDriven(port: number, bits: number): void {
+    const b = this.b;
+    const p = PORTS[port];
+    // A mask that reaches at least one output pin is a deliberate write to several pins.
+    for (let n = 0; n < 32; n++) {
+      const pin = port * 32 + n;
+      if ((bits >>> n) & 1 && pin < PIN_COUNT && this.mux(pin) === 0 && this.isOutput(pin)) return;
+    }
+    for (let n = 0; n < 32; n++) {
+      if (!((bits >>> n) & 1)) continue;
+      const pin = port * 32 + n;
+      if (pin >= PIN_COUNT || this.notDriven.has(pin)) return;
+      const mux = this.mux(pin);
+      const code = `gpio-not-output-${pin}`;
+      const key = `${code}:${b.line}`;
+      if (b.diagnostics.has(key)) return;
+      this.notDriven.set(pin, key);
+      b.warn(
+        b.line,
+        code,
+        mux !== 0
+          ? `GPIO${pin}'s output latch was written, but the pin's mux is at position ${mux} (a peripheral signal), so the latch does not reach the pin. For a plain GPIO use GPIO_SetupPinMux(${pin}, GPIO_MUX_CPU1, 0);`
+          : `GPIO${pin}'s output latch was written, but the pin is an input (its bit in GP${p}DIR is 0), so the pin does not change. Make it an output: GPIO_SetupPinOptions(${pin}, GPIO_OUTPUT, GPIO_PUSHPULL);`,
+      );
+      // One message for the lowest pin of the mask is enough.
+      return;
+    }
   }
 
   /** Re-reads a port's configuration registers into the cache. */
@@ -137,6 +200,15 @@ export class Gpio {
     this.b.mem.writes++;
     const t = this.b.now;
     for (let n = 0; n < 32; n++) if ((changed >>> n) & 1 && port * 32 + n < PIN_COUNT) this.refresh(port * 32 + n, t);
+  }
+
+  /**
+   * The output latch of a port (0 = A .. 5 = F), one bit per pin. It holds
+   * what was written through DAT / SET / CLEAR / TOGGLE for every pin, also
+   * for inputs and peripheral pins, where it does not reach the pin (TRM 8.3).
+   */
+  latchOf(port: number): number {
+    return this.latch[port] >>> 0;
   }
 
   /** Mux position 0..15 of a pin (GMUX in the upper two bits). */

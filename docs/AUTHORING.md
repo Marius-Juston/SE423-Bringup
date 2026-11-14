@@ -93,15 +93,38 @@ Write the text to match the figure and point at it, not to replace it.
 - `starter` must compile and must NOT pass. `solution` must pass every
   check and every `bonus` objective with zero diagnostics.
 - `checks` and `bonus` use the `Check` kinds in `src/sim/runner.ts`:
-  `led`, `pin`, `blink`, `steady`, `opposite`, `duty`, `latency`, `uart`,
-  `serial`, `serial-period`, `lcd`, `reg`, `var`, `signal`, `isr`,
-  `isr-time`, `max-steps`, `max-lines`, `no-dat-write`, `no-diagnostic`,
-  `source`. Give each a `label` a student understands, and a `hint` when a
-  failure has a typical cause.
+  `led`, `pin`, `blink`, `period`, `steady`, `opposite`, `duty`, `latency`,
+  `uart`, `serial`, `serial-period`, `console`, `lcd`, `reg`, `latch`,
+  `var`, `signal`, `isr`, `isr-time`, `max-steps`, `max-lines`,
+  `no-dat-write`, `no-diagnostic`, `source`. Give each a `label` a student
+  understands, and a `hint` when a failure has a typical cause.
+  - `blink` assumes equal on and off times. For a PWM-like waveform pair
+    `duty` (the share of the time it is on) with `period` (`periodMs`, from
+    one switch-on to the next; every period in the window must fit), or a
+    wrong period with the right duty passes.
+  - `latch` (`port: "A"`, `equals`) reads the output latch of a whole port.
+    It sees a 1 written to the bit of a pin that is an input, which no LED
+    or pin check can.
+  - `var` reads one element of a global array with `name: "found[0]"`.
+  - A window (`from`, `to`) must lie inside the run and have a length. A
+    check with an empty window fails and says so.
 - `stimuli`: `{ at, press | release: "PB1" }`, `{ at, type: "text" }`
   (typed into SCIA at 115200 baud), `{ at, set: "<input name>", value }`
   (signal bus). Times are in ms. Leave at least 1 ms between a stimulus
   and a check that samples its effect.
+- Inputs that disturb the world, for the case a correct program must
+  handle and a shortcut does not (each model's header has the details):
+  - `CAN_ERROR_FRAMES` = N: N damaged frames on the CAN-B bus. 100 take the
+    receive error counter past 96, which raises a status interrupt
+    (`plugins/can.ts`).
+  - `TB_SLIP_LEFT` / `TB_SLIP_RIGHT` = 0 to 1: that wheel of the test bench
+    turns without moving the robot, so the encoders and the gyro disagree
+    (`plugins/plant.ts`).
+  - `WORLD_KIND` = 6: one slanted wall, for line fits (`world/terrain.ts`).
+- Measurements taken on the pins, to use with a `signal` check:
+  `I2C_SCL_MIN_LOW_US` and `I2C_SCL_MIN_HIGH_US`, the shortest SCL low and
+  high time of any I2C master, the module or a bit-banged one
+  (`plugins/i2c.ts`).
 - Make results observable: LEDs, pins, serial text, global variables
   (`var` checks, `watch` list), registers, or signal-bus outputs.
 - The C dialect is the course's: TI bit-field register names
@@ -111,6 +134,21 @@ Write the text to match the figure and point at it, not to replace it.
   (`sin`, `cos`, `sqrt`, `atan2`, `fabs`...), `printf`, `serial_printf`
   (after `init_serialSCIA`), `DELAY_US`. Not supported: `goto`, 64-bit
   integers, `malloc`.
+- `setEPWM1A(u)` and `setEPWM2A(u)` (control effort -10 to 10) are in the
+  library: a program calls them without defining them. Students write them
+  in Lab 3, so never put their bodies, or the line from effort to counts,
+  in a starter, solution, brief or hint. Say in one sentence where they
+  come from. Chapter 10 teaches the skill with its own `setMotor1(percent)`
+  and, for servos, `setServo5A(position)` on EPWM5 (Homework 4 grades the
+  EPWM8 functions of an angle from the middle).
+- `setDACA(volts)` and `setDACB(volts)` are in the library too: Lab 4 has
+  students fill in their scaling line. Chapter 7 teaches the skill with its
+  own `setDacaMv(millivolts)`. `enableAdccInterrupt()` sets the PIE and IER
+  enables of ADCC1, a table look-up Lab 4 grades: never print that PIE
+  channel. The analog gyro of chapter 8 has its own range (250 deg/s per
+  volt), not the lab robot's, and the wall follower of chapter 17 has its
+  own distances, gains and limit: Lab 6 has students tune theirs. The list
+  of library functions that stand in for graded work is in `PLUGINS.md`.
 - Lines at most 100 characters. Plain ASCII in code (no curly quotes, long
   dashes or ellipsis characters). In TypeScript template strings write C
   escapes as `\\r\\n`.

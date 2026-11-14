@@ -115,12 +115,14 @@ function FeedbackLoop() {
 
   const why = closed
     ? off < 0.01
-      ? `Closed loop: the encoder reports ${fmt(s.v)} ft/s, the error is 0, and the integral holds the effort at ${fmt(s.u, 1)}${load ? `: ${fmt(LOAD, 0)} more than without the load. The controller found that by itself` : ""}.`
+      ? `Closed loop: the encoder reports ${fmt(s.v)} ft/s, the error is 0, and the integral holds the effort at ${fmt(s.u, 1)}${load && r > 0 ? `: ${fmt(LOAD, 0)} more than without the load. The controller found that by itself` : ""}.`
       : sat
         ? `Closed loop: the effort is at its limit of ${s.uRaw > 0 ? "" : "-"}${MAX_EFFORT}${Math.abs(s.uRaw) >= MAX_EFFORT + 0.05 ? ` (the controller asks for ${fmt(s.uRaw, 1)})` : ""}. The wheel cannot do more: it runs at ${fmt(s.v)} ft/s, not ${fmt(r, 1)}.`
         : `Closed loop: the wheel is at ${fmt(s.v)} ft/s, ${s.v < r ? "too slow" : "too fast"} by ${fmt(off)}. The error ${s.v < r ? "raises" : "lowers"} the effort until it is gone.`
     : off < 0.01
-      ? `Open loop: the effort ${fmt(s.u, 1)} comes from a table (4 x ${fmt(r, 1)} + 0.8). It is right only because nothing disturbs the wheel. Switch the load on.`
+      ? r === 0
+        ? "Open loop: the reference is 0, so the table sends no effort and the wheel stands still. Raise the reference."
+        : `Open loop: the effort ${fmt(s.u, 1)} comes from a table (4 x ${fmt(r, 1)} + 0.8). It is right only because nothing disturbs the wheel. Switch the load on.`
       : `Open loop: the effort stays at ${fmt(s.u, 1)} whatever the wheel does. ${load ? "With the load the wheel" : "The wheel"} ${Math.abs(s.v) < 0.005 ? "stands still" : `runs at ${fmt(s.v)} ft/s${s.v < -0.005 ? " (backwards)" : ""}`} instead of ${fmt(r, 1)}, and the controller does not react: the measurement is not used.`;
 
   return (
@@ -175,7 +177,7 @@ function FeedbackLoop() {
         <path d={closed ? "M190 102 H60 V62" : "M190 102 H60 V70"} className={fb} markerEnd={closed ? "url(#fb-arrow)" : undefined} />
         {!closed && <text x={66} y={114} className="fig-label dim">not connected</text>}
         {/* speed over time */}
-        <text x={40} y={146} className="fig-label">speed <tspan className="fig-label dim">and reference (dashed), last 1.2 s, slowed down 4 times</tspan></text>
+        <text x={40} y={146} className="fig-label">speed <tspan className="fig-label dim">and reference (dashed), last 1.2 s, slowed down</tspan></text>
         <line x1={40} x2={412} y1={py(0)} y2={py(0)} className="fb-grid" />
         <line x1={40} x2={412} y1={py(2)} y2={py(2)} className="fb-grid" />
         <line x1={40} x2={412} y1={py(1)} y2={py(1)} className="fb-grid" />

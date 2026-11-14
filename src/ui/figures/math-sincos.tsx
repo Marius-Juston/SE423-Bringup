@@ -30,9 +30,11 @@ function MathSinCos() {
         ? " At a quarter turn nothing goes across: cos = 0, and sin = 1 or -1."
         : Math.abs(deg) === 180
           ? " At a half turn the arrow points backwards: cos = -1, sin = 0."
-          : Math.abs(deg) === 45
+          : deg === 45
             ? " At 45 degrees across and up are equal: cos and sin are both 0.707."
-            : "";
+            : deg === -45
+              ? " At -45 degrees across and down are equal: cos is 0.707 and sin is -0.707."
+              : "";
   const why = `An arrow ${fmt(len, 1)} ft long at ${deg} degrees reaches ${fmt(Math.abs(dx))} ft ${side} and ${fmt(Math.abs(dy))} ft ${vert}. cos is the share of the length that goes across, sin the share that goes up.${special}`;
 
   return (
@@ -67,7 +69,7 @@ function MathSinCos() {
         <text x={292} y={158} className="fig-label">= length x sin</text>
         <text x={292} y={173} className="fig-value small">{fmt(len, 1)} x {fmt(s, 3)}</text>
         <text x={292} y={188} className="fig-value">= {fmt(dy)} ft</text>
-        <text x={292} y={214} className="fig-label dim">angle in radians: {fmt(rad, 3)}</text>
+        <text x={292} y={214} className="fig-label dim">in radians: {fmt(rad, 3)}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">

@@ -16,7 +16,7 @@ interface Lane {
 }
 interface Tally {
   log: Board["isrLog"];
-  /** Entries of the log already counted. */
+  /** Interrupts already counted, including ones a long live run has dropped from the start of the log. */
   done: number;
   lanes: Map<string, Lane>;
 }
@@ -27,10 +27,12 @@ const tallies = new WeakMap<Board, Tally>();
 function tally(board: Board): Tally {
   const log = board.isrLog;
   let s = tallies.get(board);
-  if (!s || s.log !== log || s.done > log.length) tallies.set(board, (s = { log, done: 0, lanes: new Map() }));
+  const dropped = board.isrDropped;
+  if (!s || s.log !== log || s.done > dropped + log.length) tallies.set(board, (s = { log, done: 0, lanes: new Map() }));
+  if (s.done < dropped) s.done = dropped;
   // An entry gets its duration when the function returns: wait for it.
-  while (s.done < log.length && log[s.done].dur >= 0) {
-    const e = log[s.done++];
+  while (s.done - dropped < log.length && log[s.done - dropped].dur >= 0) {
+    const e = log[s.done++ - dropped];
     let l = s.lanes.get(e.name);
     if (!l) s.lanes.set(e.name, (l = { vector: e.vector, n: 0, last: -1, prev: -1, dur: 0 }));
     l.n++;

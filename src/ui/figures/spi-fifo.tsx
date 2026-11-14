@@ -42,7 +42,7 @@ function SpiFifo() {
           note = "txfull";
           break;
         }
-        tx = [...tx, 0x1000 + next];
+        tx = [...tx, 0x00a0 + next];
         next = (next % 0xfff) + 1;
       }
       return { ...p, tx, next, note };
@@ -74,7 +74,7 @@ function SpiFifo() {
     Array.from({ length: 16 }, (_, i) => (
       <g key={i}>
         <rect x={X0 + i * W} y={y} width={W - 2} height={20} rx="2" className={`sf-slot ${i < q.length ? "full" : ""} ${i === 0 && q.length ? "next" : ""}`} />
-        {i < q.length && <text x={X0 + i * W + (W - 2) / 2} y={y + 13.5} textAnchor="middle" className="sf-word">{h4(q[i])}</text>}
+        {i < q.length && <text x={X0 + i * W + (W - 2) / 2} y={y + 13.5} textAnchor="middle" className="sf-word">{q[i].toString(16).toUpperCase()}</text>}
         {i === 0 && <title>{label}</title>}
       </g>
     ));
@@ -101,7 +101,7 @@ function SpiFifo() {
   return (
     <figure className="figure sf-fig" aria-label="Interactive diagram of the SPI transmit and receive FIFOs">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 172" role="img" aria-label={`Transmit FIFO holds ${s.tx.length} words, receive FIFO holds ${s.rx.length} words, RXFFIL is ${ffil}, receive interrupt ${irq ? "requested" : "not requested"}.`}>
+      <svg viewBox="0 0 420 172" role="img" aria-label={`Transmit FIFO holds ${s.tx.length} word${s.tx.length === 1 ? "" : "s"}, receive FIFO holds ${s.rx.length} word${s.rx.length === 1 ? "" : "s"}, RXFFIL is ${ffil}, receive interrupt ${irq ? "requested" : "not requested"}.`}>
         <text x={X0} y={12} className="fig-label">transmit FIFO: words written to SPITXBUF wait here</text>
         <text x={404} y={12} textAnchor="end" className="fig-value small">TXFFST = {s.tx.length}</text>
         <text x={X0} y={24} className="fig-label dim">next out</text>
@@ -109,10 +109,10 @@ function SpiFifo() {
         {/* shifter */}
         <path d={`M${X0 + 10},${TY + 20} V${TY + 33}`} className="fig-wire" />
         <polygon points={`${X0 + 10},${TY + 37} ${X0 + 6},${TY + 31} ${X0 + 14},${TY + 31}`} className="fig-arrowhead" />
-        <rect x={X0} y={TY + 37} width="150" height="22" rx="4" className="fig-box active" />
+        <rect x={X0} y={TY + 37} width="172" height="22" rx="4" className="fig-box active" />
         <text x={X0 + 6} y={TY + 51} className="fig-label">shift register: 16 clocks per word</text>
-        <text x={X0 + 158} y={TY + 46} className="fig-label dim">out on SIMO, and at the same time</text>
-        <text x={X0 + 158} y={TY + 57} className="fig-label dim">a word comes in on SOMI{s.lastSent !== null ? `: last 0x${h4(s.lastSent)}` : ""}</text>
+        <text x={X0 + 180} y={TY + 46} className="fig-label dim">out on SIMO, and at the same time</text>
+        <text x={X0 + 180} y={TY + 57} className="fig-label dim">a word comes in on SOMI{s.lastSent !== null ? `: last 0x${h4(s.lastSent)}` : ""}</text>
         <path d={`M${X0 + 140},${TY + 59} V${RY - 22} H${tailX} V${RY - 6}`} className="fig-wire" />
         <polygon points={`${tailX},${RY - 1} ${tailX - 4},${RY - 7} ${tailX + 4},${RY - 7}`} className="fig-arrowhead" />
         {/* receive */}
@@ -132,7 +132,7 @@ function SpiFifo() {
           <button className="fig-opt" onClick={() => write(1)}>write SPITXBUF</button>
           <button className="fig-opt" onClick={() => write(3)}>write 3 words</button>
           <button className="fig-opt" onClick={read}>read SPIRXBUF</button>
-          <code>{s.note === "read" || s.note === "empty" ? `x = SpibRegs.SPIRXBUF;  // 0x${s.last !== null ? h4(s.last) : "0000"}${s.note === "empty" ? ", stale" : ""}` : `SpibRegs.SPITXBUF = 0x${h4(0x1000 + s.next)};`}</code>
+          <code>{s.note === "read" || s.note === "empty" ? `x = SpibRegs.SPIRXBUF;  // 0x${s.last !== null ? h4(s.last) : "0000"}${s.note === "empty" ? ", stale" : ""}` : `SpibRegs.SPITXBUF = 0x${h4(0x00a0 + s.next)};`}</code>
         </div>
         <div>
           <span>Bus</span>

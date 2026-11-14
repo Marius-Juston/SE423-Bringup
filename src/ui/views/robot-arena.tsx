@@ -36,6 +36,7 @@ import {
   type Scene,
   type SceneKind,
   type SceneSource,
+  clipSegment,
 } from "./robot-arena-model";
 import { ArenaPlayground } from "./robot-arena-play";
 import type { BenchView, ViewProps } from "./types";
@@ -530,7 +531,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
         </div>
       )}
       {play && scene && <ArenaPlayground large={size === "large"} session={play} board={board!} kind={kind} scene={s} objects={objects} tool={tool} setTool={setTool} selected={selected} setSelected={setSelected} placeRobot={placeRobot} moveGoal={moveGoal} setObjects={setObjects} onReset={() => { play.resetWorld(kind); setTrailFrom(play.timeMs); estTrail.current = []; setSelected(null); changed(); }} onWorld={() => { setTrailFrom(play.timeMs); setSelected(null); changed(); }} />}
-      {play?.worldChangeMs !== undefined && <p className="arena-hint" data-arena-change>At {+(play.worldChangeMs / 1000).toFixed(1)} s the walls or the goal change, as in the tests (the level text says how). Change the world yourself in the playground and it stays as you made it.</p>}
+      {play?.worldChangeMs !== undefined && <p className="arena-hint" data-arena-change>At {+(play.worldChangeMs / 1000).toFixed(1)} s the walls or the goal change, as in the tests (the level text says how). Move the robot or change the world yourself and it stays as you made it.</p>}
       {play?.touring && <p className="arena-hint" data-arena-tour>The robot is driving round the poses the tests put it at, so you can watch your program react. Drag the robot to place it yourself.</p>}
       {!play && !board && <p className="arena-hint">The level's world before the program runs. Press <strong>Run</strong> to watch it live and to move the robot, the goal and the walls yourself; <strong>Run tests</strong> to check your program and replay the run.</p>}
       {!play && board && live && <p className="arena-hint">The program has stopped. Press <strong>Run</strong> again to use the playground.</p>}
@@ -579,7 +580,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
                       <line key={i} x1={px(o.x1)} y1={py(o.y1)} x2={px(o.x2)} y2={py(o.y2)} className="arena-wall" />
                     ),
                   )}
-                  <path d={world.boundary.map((w) => `M${P(Math.max(view.x0 - 2, Math.min(view.x1 + 2, w[0])), w[1])}L${P(Math.max(view.x0 - 2, Math.min(view.x1 + 2, w[2])), w[3])}`).join("")} className="arena-wall" />
+                  <path d={world.boundary.map((w) => clipSegment(w, view.x0 - 2, view.y0 - 2, view.x1 + 2, view.y1 + 2)).map((w) => (w ? `M${P(w[0], w[1])}L${P(w[2], w[3])}` : "")).join("")} className="arena-wall" />
                 </>
               )}
               {s.trail.map((t, i) => t.length > 1 && <path key={i} d={line(t)} className="arena-trail" />)}

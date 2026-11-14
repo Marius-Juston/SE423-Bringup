@@ -78,7 +78,20 @@ function PiTuner() {
   const backText = cameBack ? `${back} ms` : "not within 2 s";
   const satMs = sim.raw.filter((x) => Math.abs(x) > MAX_EFFORT).length;
   const iAtDrop = scenario === "windup" ? sim.integ[1998] / (ki || 1) : 0;
-  const ringing = tail.slice(-200).some((x) => Math.abs(x - sim.final) > 0.02);
+  // Swinging means the speed still reverses direction late on, not that it is still creeping up.
+  const turns = (() => {
+    const w = tail.slice(-500);
+    let count = 0;
+    let prev = 0;
+    for (let k = 1; k < w.length; k++) {
+      const d = w[k] - w[k - 1];
+      if (Math.abs(d) < 1e-7) continue;
+      if (prev && Math.sign(d) !== prev) count++;
+      prev = Math.sign(d);
+    }
+    return count;
+  })();
+  const ringing = turns >= 2 && tail.slice(-200).some((x) => Math.abs(x - sim.final) > 0.02);
 
   const vTop = scenario === "step" ? Math.max(1.3, Math.min(2.4, peak * 1.08)) : 3.3;
   const x = (k: number) => X0 + (k / n) * (X1 - X0);

@@ -130,7 +130,7 @@ function CountsToDistance() {
         </div>
       </div>
       <div className="fig-step">
-        <CodePre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`.padEnd(34) + `// ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`.padEnd(34) + `// ${fmt(angle, 4)} rad`, "dist  = angle*(1.235/12.0);".padEnd(34) + `// ${fmt(feet, 4)} ft`].join("\n")}</code></CodePre>
+        <CodePre><code>{[`int32_t raw = EQep${left ? 1 : 2}Regs.QPOSCNT;`, `// raw is ${raw}`, `angle = raw*(${sign}2*PI/(2000.0*20.0));`, `// angle is ${fmt(angle, 4)} rad`, "dist = angle*(1.235/12.0);", `// dist is ${fmt(feet, 4)} ft`].join("\n")}</code></CodePre>
       </div>
       <figcaption>Every box is the one before it times one factor. Two lines of C do the whole chain: counts to radians of the wheel, radians to feet.</figcaption>
     </figure>

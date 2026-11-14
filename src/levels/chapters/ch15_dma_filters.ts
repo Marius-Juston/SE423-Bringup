@@ -30,6 +30,8 @@ const near = (v: number, tol: number) => ({ min: +(v - tol).toPrecision(6), max:
 
 // Level signals
 const SIG_SWING: Sig = { fs: 10000, f1: 200, a1: 0.5, dc: 2.0 };
+/** The same after the test lowers the offset by 1 V. */
+const SIG_SWING_LOW: Sig = { ...SIG_SWING, dc: 1.0 };
 const SIG_AVG: Sig = { fs: 10000, f1: 2000, a1: 0.5, dc: 2.0 };
 const SIG_FIR: Sig = { fs: 10000, f1: 300, a1: 1.0, f2: 4000, a2: 0.5, dc: 0.5 };
 const SIG_BUGS: Sig = { fs: 10000, f1: 2000, a1: 0.8, dc: 1.2 };
@@ -774,11 +776,11 @@ Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms: that is the sampling rate. \`tb_s
 - TODO 1: store the sample in \`buf[count]\`, then add 1 to \`count\`.
 - TODO 2: when \`count\` reaches \`N\` the buffer is full: set \`count\` back to 0 and set \`bufferFull = 1\`.
 
-\`main()\` is given. When the flag is set it looks through the 50 numbers for the largest and the smallest. The test signal swings smoothly between 1.5 V and 2.5 V, 200 times a second.
+\`main()\` is given. When the flag is set it looks through the 50 numbers for the largest and the smallest. The test signal swings smoothly between 1.5 V and 2.5 V, 200 times a second. After 10 ms the test lowers it by 1 V, and the numbers main finds must follow.
 `,
       kit: "robot",
       durationMs: 22,
-      stimuli: signal(SIG_SWING),
+      stimuli: [...signal(SIG_SWING), { at: 10.05, set: "TB_DC", value: 1.0 }],
       starter: collect(`    // TODO 1: store tb_sample() in the next free place of buf, then count it
 
     // TODO 2: when buf holds N samples, start again at place 0 and set bufferFull`),
@@ -797,11 +799,19 @@ Timer 0 calls \`cpu_timer0_isr\` every 0.1 ms: that is the sampling rate. \`tb_s
         { kind: "var", name: "numBuffers", at: 20.2, equals: 4, label: "The fourth buffer is full after exactly 200 samples (20 ms)", hint: "A buffer of N samples is full when count == N: by then the places 0 to N - 1 are written. Testing count > N writes one place past the end of the array." },
         { kind: "var", name: "count", max: 49, label: "count stays inside the buffer (0 to 49)", hint: "buf has the places 0 to N - 1. Set count back to 0 when it reaches N." },
         {
-          kind: "var", name: "biggest", ...near(Math.max(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING, i))), 0.005), label: "The largest sample in a buffer is about 2.5 V",
+          kind: "var", name: "biggest", at: 6, ...near(Math.max(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING, i))), 0.005), label: "After 6 ms: the largest sample in the first buffer is about 2.5 V",
           hint: "The buffer must hold 50 different samples, one per call: buf[count] = tb_sample();",
         },
         {
-          kind: "var", name: "smallest", ...near(Math.min(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING, i))), 0.005), label: "The smallest sample in a buffer is about 1.5 V",
+          kind: "var", name: "smallest", at: 6, ...near(Math.min(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING, i))), 0.005), label: "After 6 ms: the smallest sample in the first buffer is about 1.5 V",
+          hint: "0 means some places of buf were never written. Store each sample in buf[count], not always in buf[0], and add 1 to count after storing, not before.",
+        },
+        {
+          kind: "var", name: "biggest", ...near(Math.max(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING_LOW, 150 + i))), 0.005), label: "At the end: the largest sample has followed the signal down to about 1.5 V",
+          hint: "The numbers in buf must come from tb_sample(), one per call, not from constants.",
+        },
+        {
+          kind: "var", name: "smallest", ...near(Math.min(...Array.from({ length: 50 }, (_, i) => x(SIG_SWING_LOW, 150 + i))), 0.005), label: "At the end: the smallest sample is about 0.5 V",
           hint: "0 means some places of buf were never written. Store each sample in buf[count], not always in buf[0], and add 1 to count after storing, not before.",
         },
       ],
@@ -1228,7 +1238,7 @@ An offset of 2.0 with a 2 kHz tone of amplitude 0.5 on top. At 10 kHz sampling o
       goal: "This 5-point average has two bugs. Find and fix both.",
       refs: [{ course: "L8-9", slide: [29, 44] }, { course: "Lab 4" }, { course: "HW3" }],
       brief: `
-The signal is a constant 1.2 with a 2 kHz tone of amplitude 0.8 on top. A 5-point average at 10 kHz should remove the tone and output a steady **1.2**.
+The signal is a constant 1.2 with a 2 kHz tone of amplitude 0.8 on top. A 5-point average at 10 kHz should remove the tone and output a steady **1.2**. After 8 ms the test lowers the constant to 0.6, and the output should follow.
 
 Run the program and look at \`yk\`. Then fix one bug, run again, and look again: the second bug only shows once the first is gone.
 
@@ -1241,7 +1251,7 @@ The tests also read \`xk[4]\` after the 22nd sample to see whether it really is 
 `,
       kit: "robot",
       durationMs: 12,
-      stimuli: signal(SIG_BUGS),
+      stimuli: [...signal(SIG_BUGS), { at: 8, set: "TB_DC", value: 0.6 }],
       starter: avgBugs(
         `    for (i = 0; i < 4; i++) {
         xk[i+1] = xk[i];
@@ -1263,7 +1273,7 @@ The tests also read \`xk[4]\` after the 22nd sample to see whether it really is 
           kind: "signal", name: "TB_OUT", at: 6.33, ...near(1.2, 0.005), label: "The output is 1.2 after 6 ms",
           hint: "1/5 divides two integers, and the result is the integer 0. Write sum / 5.0, or 0.2 * sum.",
         },
-        { kind: "signal", name: "TB_OUT", at: 11.9, ...near(1.2, 0.005), label: "The output is still 1.2 at the end" },
+        { kind: "signal", name: "TB_OUT", at: 11.9, ...near(0.6, 0.005), label: "The output follows the signal down to 0.6", hint: "The output must be the mean of the five stored samples, not a constant." },
       ],
       watch: ["yk", "oldest", "numSamples"],
       hints: [
@@ -1482,7 +1492,7 @@ This program does ping-pong buffering by hand, without the DMA, so that you can 
 - After \`N\` = 50 samples the buffer is full. The function switches to the other buffer and sets the flag \`bufferFull\`.
 - main waits for the flag and computes the **mean** of the buffer that has just been completed.
 
-The signal is a slow 50 Hz sine. One buffer is 5 ms, a quarter of its period, so the buffer means should come out as about +0.63, +0.63, -0.63, -0.63, and so on.
+The signal is a slow 50 Hz sine. One buffer is 5 ms, a quarter of its period, so the buffer means should come out as about +0.63, +0.65, -0.63, -0.65, and so on.
 
 They do not. Run it and compare \`mean1\` and \`mean3\` with what you expect.
 
@@ -1522,6 +1532,14 @@ Think about the moment main sees the flag. The interrupt function has **already 
         {
           kind: "var", name: "mean3", ...near(mean(SIG_SLOW, 100, 50), 0.005), label: "The third mean is that of samples 100 to 149 (about -0.63)",
           hint: "A positive value here is the mean of an older buffer: main read the buffer that is about to be overwritten instead of the one just completed.",
+        },
+        {
+          kind: "var", name: "mean", at: 12, ...near(mean(SIG_SLOW, 50, 50), 0.005), label: "The second mean is that of samples 50 to 99 (about +0.65)",
+          hint: "About +0.63 is the first buffer's mean again: main read ping both times. The second buffer to be completed is pong.",
+        },
+        {
+          kind: "var", name: "mean", ...near(mean(SIG_SLOW, 150, 50), 0.005), label: "The fourth mean is that of samples 150 to 199 (about -0.65)",
+          hint: "About -0.63 is the third buffer's mean again. Which buffer main reads must depend on fillPing.",
         },
         { kind: "var", name: "numMeans", min: 4, max: 4, label: "Four buffers were processed in 22 ms" },
       ],
@@ -1960,6 +1978,10 @@ The tests check that the output never exceeds the real signal's maximum, and com
       checks: [
         { kind: "var", name: "maxOut", max: 1.501, min: 1.4, label: "The output never exceeds 1.5: every spike is gone", hint: "About 9.5 means spikes pass unchanged. About 3 means you are averaging: the spike is smaller but five samples wide." },
         { kind: "var", name: "y60", ...near(median5(59), 0.0005), label: "The 60th output is the median of samples 55 to 59", hint: "If the first outputs are right and later ones are not, you sorted xk itself and lost the time order. Sort a copy." },
+        {
+          kind: "signal", name: "TB_OUT", at: 5.95, ...near(median5(58), 0.0005), label: "The 59th output is right too, with a spike in the middle of the history",
+          hint: "The spike is one of the five values here. The median is the third of the sorted five, whatever the position of the spike in time.",
+        },
         { kind: "var", name: "numSamples", min: 100, label: "A sample is processed every 0.1 ms" },
       ],
       bonus: [{ kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 8, label: "The interrupt function never takes more than 8 us" }],

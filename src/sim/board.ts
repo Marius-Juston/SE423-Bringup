@@ -6,7 +6,7 @@ import { Device } from "./device/device";
 import { Compiler, RuntimeError, STACK_BASE, type Fn, type Rt } from "./cc/compile";
 import { ParseContext, Parser } from "./cc/parser";
 import { CError, Preprocessor } from "./cc/lexer";
-import { UINT } from "./cc/types";
+import { UINT, sizeOf } from "./cc/types";
 import { Gpio } from "./periph/gpio";
 import { CpuTimers } from "./periph/cputimer";
 import { Pie } from "./periph/pie";
@@ -95,14 +95,26 @@ export class Board implements Rt {
   private irq = false;
   isrDepth = 0;
   isrLog: IsrLog[] = [];
+  /** Entries removed from the start of isrLog (live runs only): isrLog[i] is interrupt number i + isrDropped. */
+  isrDropped = 0;
   /** Function used by InitPieVectTable for every vector. */
   defaultIsr: Fn | null = null;
+  /** Vectors whose interrupt function has run at least once. */
+  served = new Set<string>();
+  /** EINT has run at least once. */
+  private everEnabled = false;
 
   /** Register writes in order (the most recent 4000). */
   writeLog: WriteEntry[] = [];
   private writeCount = 0;
   diagnostics = new Map<string, Diagnostic>();
   mainReturned = false;
+  /** How many times in a row an interrupt was already requested again when its function returned. */
+  private again = 0;
+  /** InitSysCtrl() has run (or its absence has been reported once). */
+  sysInit = false;
+  /** Report a program that writes registers without InitSysCtrl(). Tests of one peripheral run bare programs and switch this off. */
+  static expectInitSysCtrl = true;
   /** Text printed with printf (the CCS console). */
   console = "";
   /** The robot's two-line LCD (UART_printfLine). */
@@ -141,6 +153,15 @@ export class Board implements Rt {
       );
 
     this.mem.onWrite = (reg, written, before) => {
+      // The clocks are not modelled, so a program without InitSysCtrl() runs here. On the chip it would not.
+      if (Board.expectInitSysCtrl && !this.sysInit && !this.libDepth && this.line > 0) {
+        this.sysInit = true;
+        this.warn(
+          this.line,
+          "no-initsysctrl",
+          `${reg.name} is written before InitSysCtrl() has run. On the real chip the watchdog would reset the program after a few milliseconds and the peripheral clocks would be off. Make InitSysCtrl(); the first line of main().`,
+        );
+      }
       const after = this.mem.peek(reg.addr, reg.words);
       // Library code is only interesting when it actually changed something.
       if (this.libDepth && after === before) return;
@@ -192,8 +213,17 @@ export class Board implements Rt {
 
   input(name: string, fallback = 0): number {
     this.inputsUsed.add(name);
-    return this.inputs.get(name) ?? fallback;
+    const v = this.inputs.get(name);
+    if (v !== undefined) return v;
+    const src = this.sources.get(name);
+    return src ? src(this.now) : fallback;
   }
+  /**
+   * A world model that knows an input's value at any instant (a tone on an
+   * ADC pin) registers a function here instead of setting the input over and
+   * over. It is asked only when the input is read and nothing has set it.
+   */
+  sources = new Map<string, (t: number) => number>();
   /** Inputs something has actually read (the bench shows only these knobs). */
   inputsUsed = new Set<string>();
 
@@ -314,7 +344,10 @@ export class Board implements Rt {
   /** Line of the conditional loop the program is waiting in, and since when (ns). */
   waitLine = 0;
   waitSince = 0;
+  /** The idle pass that follows comes from the waiting loop itself. */
+  private waitIdle = false;
   waiting(line: number): void {
+    this.waitIdle = line !== 0;
     if (line !== this.waitLine) {
       this.waitLine = line;
       this.waitSince = this.now;
@@ -322,6 +355,9 @@ export class Board implements Rt {
   }
 
   idle(): void {
+    // Another loop is idling now: the waiting loop was left with break or return.
+    if (!this.waitIdle) this.waitLine = 0;
+    this.waitIdle = false;
     if (this.irq) {
       this.dispatch();
       return;
@@ -355,6 +391,14 @@ export class Board implements Rt {
     }
   }
   private pendingDelay = 0;
+  waitLeft(): boolean {
+    return this.pendingDelay > 0;
+  }
+  waitOn(): void {
+    const rest = this.pendingDelay;
+    this.pendingDelay = 0;
+    if (rest) this.delay(rest);
+  }
 
   /** Schedules fn at absolute time t (ns). */
   at(t: number, fn: (t: number) => void): Ev {
@@ -385,14 +429,48 @@ export class Board implements Rt {
   setIntm(v: boolean): void {
     this.mem.writes++;
     this.intm = v;
+    if (!v) this.everEnabled = true;
     this.updateIrq();
   }
 
   /** Sets a CPU interrupt flag (bit 0 = INT1 ... bit 13 = INT14). */
   raiseCpu(bit: number): void {
     this.mem.writes++;
+    // Timers 1 and 2 have no PIE channel: a second request with the first still waiting was lost.
+    if (bit >= 12 && this.ifr & (1 << bit)) this.blocked(bit === 12 ? "TIMER1_INT" : "TIMER2_INT", bit + 1, null);
     this.ifr |= 1 << bit;
     this.updateIrq();
+  }
+
+  /** The student's function a vector points to (null: not set, or still the default handler). */
+  isrFor(vector: string): Fn | null {
+    const reg = this.dev.regs.get(`PieVectTable.${vector}`);
+    if (!reg) return null;
+    const fn = this.compiler.fnAt(this.mem.peek(reg.addr, 2));
+    return fn && fn !== this.defaultIsr ? fn : null;
+  }
+
+  /**
+   * An interrupt was requested again while its last request was still
+   * waiting. When the cause is a missing enable, say so on the interrupt
+   * function. `pieReason` is what the PIE found (null: its side is fine).
+   * The message is taken back if the function runs after all (a slow set-up
+   * before EINT is not a mistake).
+   */
+  blocked(vector: string, cpuInt: number, pieReason: string | null): void {
+    // Inside an interrupt function INTM and IER are changed by the CPU itself.
+    if (this.isrDepth) return;
+    const fn = this.isrFor(vector);
+    if (!fn) return;
+    let reason = pieReason;
+    if (!reason && !(this.ier & (1 << (cpuInt - 1)))) reason = `IER does not have M_INT${cpuInt} set. Add IER |= M_INT${cpuInt};`;
+    if (!reason && this.intm && !this.everEnabled) reason = "interrupts are still disabled globally. Add EINT; after the set-up.";
+    if (!reason) return;
+    this.warn(
+      fn.line,
+      `irq-blocked-${vector}`,
+      `'${fn.name}' has not run: the ${vector} interrupt was requested more than once, but it cannot reach the CPU: ${reason}`,
+    );
   }
 
   updateIrq(): void {
@@ -400,7 +478,15 @@ export class Board implements Rt {
   }
 
   private dispatch(): void {
+    let backToBack = 0;
     while (!this.intm && (this.ifr & this.ier) !== 0) {
+      // The run slice is over: a request that is already waiting again is served when the program resumes.
+      // (Without this a function slower than its own period would run on far past the end of the test.)
+      if (backToBack > 0 && this.now >= this.pauseAt) {
+        this.pause = true;
+        break;
+      }
+      backToBack++;
       const pending = this.ifr & this.ier;
       let n = 0;
       while (!(pending & (1 << n))) n++;
@@ -422,6 +508,9 @@ export class Board implements Rt {
       }
       if (!fn.interrupt)
         this.warn(fn.line, "isr-keyword", `'${fn.name}' is used as an interrupt function, so it must be declared with __interrupt: __interrupt void ${fn.name}(void)`);
+      this.served.add(vector);
+      this.diagnostics.delete(`irq-blocked-${vector}:${fn.line}`);
+      if (n < 12) this.pie.acked &= ~(1 << n);
       const saved = { ier: this.ier, eallow: this.mem.eallow, line: this.line };
       this.ier &= ~(1 << n);
       this.intm = true;
@@ -431,6 +520,12 @@ export class Board implements Rt {
       this.mem.writes++;
       const entry: IsrLog = { t: this.now, name: fn.name, vector, dur: -1 };
       this.isrLog.push(entry);
+      // A live run keeps the recent ones only (a 10 kHz interrupt adds 36 million entries an hour).
+      if (this.historyLimit && this.isrLog.length > this.historyLimit) {
+        const cut = this.isrLog.length - (this.historyLimit >> 1);
+        this.isrLog.splice(0, cut);
+        this.isrDropped += cut;
+      }
       this.now += 14 * SYSCLK_NS;
       const began = this.now;
       try {
@@ -440,11 +535,41 @@ export class Board implements Rt {
         entry.dur = this.now - began;
       }
       this.now += 8 * SYSCLK_NS;
+      // TRM 3.4.5 step 9: the group stays blocked until the function writes its PIEACK bit.
+      if (n < 12 && !(this.pie.acked & (1 << n)))
+        this.warn(
+          fn.line,
+          "pie-no-ack",
+          `'${fn.name}' returned without acknowledging PIE group ${n + 1}, so no interrupt of group ${n + 1} can reach the CPU again, this one included. ` +
+            `End the function with PieCtrlRegs.PIEACK.all = PIEACK_GROUP${n + 1};`,
+        );
       this.ier = saved.ier;
       this.mem.eallow = saved.eallow;
       this.line = saved.line;
       this.intm = false;
       this.pie.evaluate();
+      const redo = this.isrDepth === 0 && (this.ifr & this.ier & (1 << n)) !== 0;
+      // A quick function that comes back a thousand times in a row has not removed the cause of its interrupt.
+      if (redo && this.again + 1 === 1000 && entry.dur < 20_000 && ![...this.diagnostics.values()].some((d) => d.severity === "error"))
+        this.warn(
+          fn.line,
+          `isr-repeats-${vector}`,
+          `'${fn.name}' has run 1000 times in a row without main() getting a turn: what requests the interrupt is still there when the function returns. ` +
+            `Clear the peripheral's interrupt flag in the function, or read the data that raised it (a receive FIFO interrupts for as long as it holds enough words).`,
+          "error",
+        );
+      // The same request is waiting again the moment the function returns, time after time: main() gets no turn.
+      // (A timer cannot queue requests, so a few in a row is proof; a FIFO interrupt may empty 16 characters in a row.)
+      this.again = this.isrDepth === 0 && (this.ifr & this.ier & (1 << n)) !== 0 ? this.again + 1 : 0;
+      // A quick function that comes straight back has not cleared its flag: the peripheral reports that itself.
+      if (this.again >= (vector.startsWith("TIMER") ? 4 : 20) && entry.dur >= 20_000)
+        this.warn(
+          fn.line,
+          `isr-starves-main-${vector}`,
+          `'${fn.name}' takes ${fmtDur(entry.dur)} but its interrupt comes more often than that, so it runs again the moment it returns and main() never gets a turn. ` +
+            `Keep the function short: set a flag in it and do the slow work (printing, DELAY_US, long loops) in the while(1) loop of main().`,
+          "error",
+        );
     }
     this.updateIrq();
   }
@@ -488,10 +613,19 @@ export class Board implements Rt {
   }
 
   /** Value of a global variable by name (for checks and the watch view). */
+  /** The value of a global variable, or of an array element named as in C: "reply[3]", "map[2][5]". */
   readVar(name: string): number | undefined {
-    const g = this.compiler.globals.get(name);
-    if (!g) return undefined;
-    const t = g.t;
+    const m = /^(\w+)((?:\[\d+\])*)$/.exec(name.trim());
+    const g0 = m ? this.compiler.globals.get(m[1]) : undefined;
+    if (!g0 || !m) return undefined;
+    let t = g0.t;
+    let at = g0.addr;
+    for (const ix of m[2].match(/\d+/g) ?? []) {
+      if (t.k !== "array" || +ix >= t.n) return undefined;
+      t = t.of;
+      at += +ix * sizeOf(t);
+    }
+    const g = { addr: at };
     if (t.k === "int") {
       const v = this.mem.peek(g.addr, t.w);
       if (!t.s) return v;
@@ -505,4 +639,9 @@ export class Board implements Rt {
     if (t.k === "ptr") return this.mem.peek(g.addr, 2);
     return undefined;
   }
+}
+
+/** A duration in ns as a student reads it: "3.0 ms", "42 us". */
+function fmtDur(ns: number): string {
+  return ns >= 1e6 ? `${(ns / 1e6).toFixed(1)} ms` : `${Math.max(1, Math.round(ns / 1000))} us`;
 }

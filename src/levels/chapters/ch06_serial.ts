@@ -432,9 +432,12 @@ Num Timer2:5 Num SerialRX: 0
 3. Clear the flag after printing.
 
 The format string for that line is \`"Num Timer2:%ld Num SerialRX: %ld\\r\\n"\`. The values, in this order, are \`CpuTimer2.InterruptCount\` and \`numRXA\`.
+
+The tests type one character after 600 ms, so the later lines must show \`Num SerialRX: 1\`.
 `,
       kit: "launchpad",
       durationMs: 1100,
+      stimuli: [{ at: 600, type: "k" }],
       starter: `__interrupt void cpu_timer2_isr(void);
 
 extern uint32_t numRXA;
@@ -503,6 +506,12 @@ __interrupt void cpu_timer2_isr(void)
           periodMs: 250,
           label: "A line is printed every 250 ms",
           hint: "The timer interrupt comes every 50 ms, so the flag must be set on every 5th call: `% 5`. If lines pour out without a pause, the flag is never cleared: `UARTPrint = 0;` after the print.",
+        },
+        {
+          kind: "serial",
+          includes: "Num Timer2:15 Num SerialRX: 1\r\n",
+          label: "After a character is typed, the line reads Num Timer2:15 Num SerialRX: 1",
+          hint: "The second value must be the variable numRXA, not a 0 written into the text.",
         },
         { kind: "no-diagnostic", code: "printf-type", label: "The format codes match the 32-bit values", hint: "Both values are uint32_t: use %ld." },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function", hint: "The serial_printf line belongs in the `if (UARTPrint == 1)` block of main, not in cpu_timer2_isr." },
@@ -640,15 +649,17 @@ Where the TODO is, compare \`RXAdata\` with character constants:
 - \`'b'\` turns it **off**
 - any other character changes nothing
 
-The red LED is on GPIO34 (port B) and lights when the pin is **low**. The tests type \`a\`, \`x\`, \`b\` and \`a\`, a few milliseconds apart.
+The red LED is on GPIO34 (port B) and lights when the pin is **low**. The tests type \`a\`, \`x\`, \`a\`, \`b\`, \`c\` and \`a\`, a few milliseconds apart.
 `,
       kit: "launchpad",
       durationMs: 30,
       stimuli: [
         { at: 5, type: "a" },
         { at: 10, type: "x" },
-        { at: 15, type: "b" },
-        { at: 20, type: "a" },
+        { at: 14, type: "a" },
+        { at: 17, type: "b" },
+        { at: 20, type: "c" },
+        { at: 24, type: "a" },
       ],
       starter: `void main(void)
 {
@@ -674,13 +685,15 @@ ${rxIsr(`        if (RXAdata == 'a') {
         { kind: "led", led: "RED", at: 3, on: false, label: "The red LED is off before anything is typed" },
         { kind: "led", led: "RED", at: 8, on: true, label: "Typing a turns the red LED on", hint: "Compare with single quotes: `if (RXAdata == 'a')`. Double quotes make a string, and a bare a is a variable name. This LED lights when GPIO34 is low: write 1 to GPBCLEAR." },
         { kind: "led", led: "RED", at: 13, on: true, label: "Typing x changes nothing", hint: "Only 'a' and 'b' may change the LED. Do not toggle it." },
-        { kind: "led", led: "RED", at: 18, on: false, label: "Typing b turns the red LED off", hint: "`else if (RXAdata == 'b')` with single quotes, then write 1 to GPBSET: off is high for this LED." },
-        { kind: "led", led: "RED", at: 23, on: true, label: "Typing a again turns it back on" },
+        { kind: "led", led: "RED", at: 16, on: true, label: "Typing a while the LED is on leaves it on", hint: "'a' means on, not \"change\". Use GPBCLEAR, not GPBTOGGLE." },
+        { kind: "led", led: "RED", at: 19, on: false, label: "Typing b turns the red LED off", hint: "`else if (RXAdata == 'b')` with single quotes, then write 1 to GPBSET: off is high for this LED." },
+        { kind: "led", led: "RED", at: 22, on: false, label: "Typing c changes nothing: the LED stays off", hint: "Only 'a' may turn the LED on. A plain `else` also catches every other character." },
+        { kind: "led", led: "RED", at: 27, on: true, label: "Typing a again turns it back on" },
         {
           kind: "var",
           name: "numRXA",
-          equals: 4,
-          label: "numRXA counted the four characters",
+          equals: 6,
+          label: "numRXA counted the six characters",
           hint: "Keep the lines that were already in RXAINT_recv_ready. Without the last two, only the first character causes an interrupt.",
         },
         { kind: "no-dat-write", label: "The LED is changed through SET and CLEAR" },
@@ -707,12 +720,13 @@ Put the chapter together. For every character typed in the terminal, print one l
 - a space
 - \`numRXA\`, the number of characters received so far
 
-The tests type \`s\`, \`e\` and \`4\`, a few milliseconds apart. The terminal must show exactly:
+The tests type \`s\`, \`e\`, \`4\` and \`Q\`, a few milliseconds apart. The terminal must show exactly:
 
 \`\`\`c
 S 1
 E 2
 4 3
+Q 4
 \`\`\`
 
 Each line ends with \`\\r\\n\`.
@@ -724,11 +738,12 @@ Each line ends with \`\\r\\n\`.
 - \`%c\` prints a character. \`numRXA\` is a \`uint32_t\`, so it takes \`%ld\`.
 `,
       kit: "launchpad",
-      durationMs: 30,
+      durationMs: 36,
       stimuli: [
         { at: 5, type: "s" },
         { at: 12, type: "e" },
         { at: 19, type: "4" },
+        { at: 26, type: "Q" },
       ],
       starter: `extern uint32_t numRXA;
 
@@ -769,11 +784,11 @@ ${rxIsr(`        newChar = RXAdata;
       checks: [
         {
           kind: "serial",
-          equals: "S 1\r\nE 2\r\n4 3\r\n",
-          label: "The terminal shows S 1, E 2 and 4 3, each on its own line",
-          hint: "Compare your terminal output with the three lines. Nothing printed: is the flag set in RXAINT_recv_ready and tested in main? A number such as 83 where a letter should be: print the character with %c. A wrong character on the last line: only 'a' to 'z' are changed, by subtracting 32. Lines running together: end the format with \\r\\n.",
+          equals: "S 1\r\nE 2\r\n4 3\r\nQ 4\r\n",
+          label: "The terminal shows S 1, E 2, 4 3 and Q 4, each on its own line",
+          hint: "Compare your terminal output with the four lines. Nothing printed: is the flag set in RXAINT_recv_ready and tested in main? A number such as 83 where a letter should be: print the character with %c. A wrong character on the last two lines: only 'a' to 'z' are changed, by subtracting 32. Lines running together: end the format with \\r\\n.",
         },
-        { kind: "var", name: "numRXA", equals: 3, label: "numRXA counted the three characters" },
+        { kind: "var", name: "numRXA", equals: 4, label: "numRXA counted the four characters" },
         {
           kind: "no-diagnostic",
           code: "print-in-isr",
@@ -815,22 +830,24 @@ For \`305\`: 0, then 3, then 30, then 305.
 - On \`'\\r'\` the number is complete: hand it to \`main()\` and start the next one from 0.
 - \`main()\` prints **twice the number** on its own line, ending in \`\\r\\n\`.
 
-The tests type \`21\`, \`305\` and \`40000\`, each followed by Enter. The terminal must show:
+The tests type \`21\`, \`305\`, \`40000\` and \`1,000\` (with the comma), each followed by Enter. The terminal must show:
 
 \`\`\`c
 42
 610
 80000
+2000
 \`\`\`
 
-Look at the last one before you choose your variable types and your format code.
+Look at the third one before you choose your variable types and your format code.
 `,
       kit: "launchpad",
-      durationMs: 25,
+      durationMs: 30,
       stimuli: [
         { at: 5, type: "21\r" },
         { at: 10, type: "305\r" },
         { at: 15, type: "40000\r" },
+        { at: 20, type: "1,000\r" },
       ],
       starter: `extern uint32_t numRXA;
 
@@ -874,8 +891,9 @@ ${rxIsr(`        if (RXAdata >= '0' && RXAdata <= '9') {
       checks: [
         { kind: "serial", matches: "^42\\r\\n", label: "Typing 21 and Enter prints 42", hint: "Subtract '0' from each digit character. Without that, '2' counts as 50." },
         { kind: "serial", matches: "^42\\r\\n610\\r\\n", label: "Typing 305 and Enter prints 610", hint: "Set the number back to 0 after Enter, or the next one starts from the old value." },
-        { kind: "serial", equals: "42\r\n610\r\n80000\r\n", label: "Typing 40000 and Enter prints 80000", hint: "80000 does not fit in 16 bits. Use uint32_t and %ld." },
-        { kind: "var", name: "numRXA", equals: 13, label: "numRXA counted all 13 characters" },
+        { kind: "serial", matches: "^42\\r\\n610\\r\\n80000\\r\\n", label: "Typing 40000 and Enter prints 80000", hint: "80000 does not fit in 16 bits. Use uint32_t and %ld." },
+        { kind: "serial", equals: "42\r\n610\r\n80000\r\n2000\r\n", label: "Typing 1,000 and Enter prints 2000: the comma is ignored", hint: "Only '0' to '9' are digits. Test for that range before you use the character." },
+        { kind: "var", name: "numRXA", equals: 19, label: "numRXA counted all 19 characters" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
         { kind: "no-diagnostic", code: "printf-type", label: "The format code matches the 32-bit value" },
       ],
@@ -1116,6 +1134,7 @@ void sci_putlong(int32_t v)
         { kind: "reg", reg: "SciaRegs.SCIFFTX", field: "TXFIFORESET", equals: 1, label: "The transmit FIFO is out of reset" },
         { kind: "reg", reg: "SciaRegs.SCICTL1", field: "SWRESET", equals: 1, label: "The SCI is released from reset" },
         { kind: "source", mustNotMatch: "init_serial|serial_|printf", label: "No course serial library and no printf family" },
+        { kind: "source", mustNotMatch: "2147483648", label: "No special case: the digits of -2147483648 are computed like any others", hint: "Do not write the number out as text. Take the magnitude as a uint32_t and let the digit loop do the work." },
       ],
       bonus: [
         { kind: "source", mustMatch: "GPBGMUX1", mustNotMatch: "GPIO_SetupPinMux", label: "The pin mux is written by hand: no GPIO_SetupPinMux", hint: "Position 15 is binary 1111: GPBGMUX1.bit.GPIO42 = 3 and GPBMUX1.bit.GPIO42 = 3, between EALLOW and EDIS. Write GMUX first." },
@@ -1134,7 +1153,7 @@ void sci_putlong(int32_t v)
       kind: "code",
       mode: "write",
       title: "Faster than you can read",
-      goal: "Characters arrive ten times faster than main() can handle them. Lose none, until the buffer is truly full.",
+      goal: "Characters arrive about five times faster than main() can handle them. Lose none, until the buffer is truly full.",
       refs: [{ course: "Lab 1" }, { trm: "19.11" }, { trm: "19.13.1" }],
       brief: `
 The echo program of this chapter kept **one** character for \`main()\`. That works for a person typing. A program on the other end sends a whole line at once: at 115200 baud a character arrives every 87 microseconds.

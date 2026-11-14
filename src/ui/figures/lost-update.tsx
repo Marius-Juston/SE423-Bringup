@@ -135,7 +135,7 @@ function fire(m: Model): Model {
   return {
     ...r,
     msg: between
-      ? `The interrupt runs all three of its steps between two steps of main(): counter is ${r.counter}. main() still has the old ${m.reg[0]} in its register.`
+      ? `The interrupt runs all three of its steps between two steps of main(): counter is ${r.counter}. main() read ${m.counter} before that and still works from it.`
       : `The interrupt runs its three steps while main() is not in the middle of its own: counter is ${r.counter}. Nothing was lost this time, because the interrupt did not come between main()'s read and write.`,
   };
 }
@@ -241,7 +241,7 @@ function LostUpdate() {
               </>
             ) : m.guard ? (
               <>
-                <strong>counter is {m.counter}, in every order you can try.</strong> {m.mode === "threads" ? "With the mutex, the three steps of one thread always run as a block: the other thread waits at its lock." : "With interrupts off between DINT and EINT, nothing can run between main()'s read and write. The request waited and ran afterwards."}
+                <strong>counter is {m.counter}, in every order you can try.</strong> {m.mode === "threads" ? "With the mutex, the three steps of one thread always run as a block: the other thread waits at its lock." : `With interrupts off between DINT and EINT, nothing can run between main()'s read and write.${m.log.includes("request waits") ? " The request waited and ran afterwards." : ""}`}
               </>
             ) : (
               <>

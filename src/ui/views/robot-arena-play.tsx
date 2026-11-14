@@ -118,7 +118,7 @@ export function ArenaPlayground({
       <style>{STYLE}</style>
       <summary>Playground: move the robot, the goal and the walls (the tests are not affected)</summary>
       <p className="arena-play-note">
-        Drag the robot, its orange handle (to turn it), the goal or an object in the picture, or use the fields below. <strong>This does not change the tests</strong>: Run tests always uses the level's own world, and everything here is gone when the program stops. Your program is not told when you move the robot: watch what its own estimate does.
+        Drag the robot, its orange handle (to turn it), the goal or an object in the picture, or use the fields below. <strong>This does not change the tests</strong>: Run tests always uses the level's own world. What you change here stays for your next Run of this level, until you press Reset world. Your program is not told when you move the robot: watch what its own estimate does.
       </p>
       <div className="arena-row" role="group" aria-label="Robot pose">
         <b>Robot</b>

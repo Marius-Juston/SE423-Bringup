@@ -14,6 +14,20 @@ export interface PrintfArg {
 const f32 = new Float32Array(1);
 const u32 = new Uint32Array(f32.buffer);
 
+/**
+ * a (not negative) with prec digits after the point. A value exactly half
+ * way between two results goes to the even one, as the C library does
+ * (2.5 prints as 2 with %.0f); JavaScript's toFixed always rounds it up.
+ */
+function fixed(a: number, prec: number): string {
+  const up = a.toFixed(prec);
+  if (prec > 40) return up;
+  const exact = a.toFixed(prec + 50);
+  if (!/^50*$/.test(exact.slice(exact.length - 50))) return up;
+  const down = exact.slice(0, exact.length - 50).replace(/\.$/, "");
+  return "02468".includes(down[down.length - 1]) ? down : up;
+}
+
 export function formatPrintf(
   fmt: string,
   args: PrintfArg[],
@@ -60,7 +74,14 @@ export function formatPrintf(
       out += "%";
       continue;
     }
-    const width = widthS && widthS !== "*" ? parseInt(widthS, 10) : 0;
+    let width = widthS && widthS !== "*" ? parseInt(widthS, 10) : 0;
+    let left = flags.includes("-");
+    if (widthS === "*") {
+      // The width is the next int argument; a negative one means left-justify.
+      const w16 = (take(1, spec).bits << 16) >> 16;
+      width = Math.abs(w16);
+      if (w16 < 0) left = true;
+    }
     const prec = precS !== undefined ? parseInt(precS, 10) : undefined;
     let body: string;
     let sign = "";
@@ -109,22 +130,23 @@ export function formatPrintf(
       sign = v < 0 || Object.is(v, -0) ? "-" : flags.includes("+") ? "+" : flags.includes(" ") ? " " : "";
       const a = Math.abs(v);
       if (!Number.isFinite(a)) body = Number.isNaN(a) ? "nan" : "inf";
-      else if (conv === "f") body = a.toFixed(prec ?? 6);
+      else if (conv === "f") body = fixed(a, prec ?? 6);
       else if (conv === "e" || conv === "E") {
         body = a.toExponential(prec ?? 6).replace(/e([+-])(\d)$/, "e$10$2");
         if (conv === "E") body = body.toUpperCase();
       } else {
         const p = prec === undefined ? 6 : prec === 0 ? 1 : prec;
-        const exp = a === 0 ? 0 : Math.floor(Math.log10(a));
+        // The exponent of the value once rounded to p significant digits, as C defines %g.
+        const exp = a === 0 ? 0 : Number(a.toExponential(p - 1).split("e")[1]);
         if (exp < -4 || exp >= p) body = a.toExponential(p - 1).replace(/\.?0+e/, "e").replace(/e([+-])(\d)$/, "e$10$2");
-        else body = a.toFixed(Math.max(0, p - 1 - exp)).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+        else body = fixed(a, Math.max(0, p - 1 - exp)).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
         if (conv === "G") body = body.toUpperCase();
       }
     }
     const len2 = sign.length + body.length;
     if (len2 >= width) out += sign + body;
-    else if (flags.includes("-")) out += (sign + body).padEnd(width, " ");
-    else if (flags.includes("0") && conv !== "s" && conv !== "c" && prec === undefined) out += sign + body.padStart(width - sign.length, "0");
+    else if (left) out += (sign + body).padEnd(width, " ");
+    else if (flags.includes("0") && conv !== "s" && conv !== "c" && (prec === undefined || "feEgG".includes(conv)) && body !== "inf" && body !== "nan") out += sign + body.padStart(width - sign.length, "0");
     else out += (sign + body).padStart(width, " ");
   }
   out += fmt.slice(last);

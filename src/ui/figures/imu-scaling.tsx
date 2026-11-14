@@ -38,17 +38,19 @@ function ImuScaling() {
   const x = (v: number) => X0 + ((v + 32768) / 65535) * (X1 - X0);
   const AY = 92;
   const neg = raw < 0;
+  // A value too small for the usual digits keeps one digit that counts, so it never reads "-0.0".
+  const num = (v: number) => (v !== 0 && Math.abs(v) < 0.5 * 10 ** -digits ? v.toPrecision(1) : v.toFixed(digits));
   const why = !signed && neg
-    ? `Stored in a uint16_t the same 16 bits read as ${u16}, and the formula gives ${value.toFixed(digits)} ${r.unit}: beyond full scale and with the wrong sign. The sensor's count is signed. Put it in an int16_t and the top bit counts as -32768.`
+    ? `Stored in a uint16_t the same 16 bits read as ${u16}, and the formula gives ${num(value)} ${r.unit}: beyond full scale and with the wrong sign. The sensor's count is signed. Put it in an int16_t and the top bit counts as -32768.`
     : raw === 32767 || raw === -32768
       ? `Full scale: the count cannot go further. A ${raw > 0 ? "larger" : "more negative"} ${r.unit === "g" ? "acceleration" : "turn rate"} than ${raw > 0 ? "+" : "-"}${r.fs} ${r.unit} still reads ${raw}: the sensor saturates. Choose a wider range if that happens.`
       : raw === 0
         ? `Zero count, zero ${r.unit}. One count is ${r.fs} / 32767 = ${(r.fs / 32767).toPrecision(3)} ${r.unit}: a smaller range gives a smaller step.`
-        : `${raw} counts out of 32767 is ${((Math.abs(raw) / 32767) * 100).toFixed(1)} % of full scale, ${neg ? "in the negative direction (top bit 1)" : "in the positive direction (top bit 0)"}: ${truth.toFixed(digits)} ${r.unit}.${r.id !== "gyro" && Math.abs(truth - 1) < 0.02 ? " This is 1 g, gravity on an axis that points up." : ""}`;
+        : `${raw} count${Math.abs(raw) === 1 ? "" : "s"} out of 32767 is ${((Math.abs(raw) / 32767) * 100).toFixed(1)} % of full scale, ${neg ? "in the negative direction (top bit 1)" : "in the positive direction (top bit 0)"}: ${num(truth)} ${r.unit}.${r.id !== "gyro" && Math.abs(truth - 1) < 0.02 ? " This is 1 g, gravity on an axis that points up." : ""}`;
   return (
     <figure className="figure is-fig" aria-label="Interactive conversion from a raw MPU-9250 count to a physical value">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 160" role="img" aria-label={`Raw count ${raw}, hexadecimal ${h(u16, 4)}, is ${value.toFixed(digits)} ${r.unit} on the ${r.label} range.`}>
+      <svg viewBox="0 0 420 160" role="img" aria-label={`Raw count ${raw}, hexadecimal ${h(u16, 4)}, is ${num(value)} ${r.unit} on the ${r.label} range.`}>
         {/* the two bytes as they arrive */}
         <text x={X0} y={10} className="fig-label dim">high byte (first), 0x{h(u16 >> 8, 2)}</text>
         <text x={X1} y={10} textAnchor="end" className="fig-label dim">low byte, 0x{h(u16 & 0xff, 2)}</text>
@@ -76,10 +78,10 @@ function ImuScaling() {
         <line x1={x(0)} x2={x(raw)} y1={AY} y2={AY} className="is-bar" style={{ stroke: neg ? "var(--lo)" : "var(--hi)" }} />
         <path d={`M${x(raw)},${AY - 4} l-5,-9 h10 z`} style={{ fill: "var(--value)" }} />
         <text x={Math.max(X0 + 52, Math.min(X1 - 40, x(raw)))} y={AY - 18} textAnchor="middle" className="fig-value">
-          {signed || !neg ? "" : "really "}{raw === 0 ? "0" : `${truth > 0 ? "+" : ""}${truth.toFixed(digits)}`} {r.unit}
+          {signed || !neg ? "" : "really "}{raw === 0 ? "0" : `${truth > 0 ? "+" : ""}${num(truth)}`} {r.unit}
         </text>
         <text x={X0} y={141} className="fig-value small">{r.v} = {r.v}_raw * {r.code} / 32767.0;</text>
-        <text x={X0} y={154} className="fig-value small">// {seen} * {r.code} / 32767.0 = {value.toFixed(digits)}</text>
+        <text x={X0} y={154} className="fig-value small">// {seen} * {r.code} / 32767.0 = {num(value)}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">

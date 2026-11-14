@@ -535,3 +535,29 @@ export function goalTolerance(checks: readonly unknown[]): number | undefined {
 
 /** Watched variables that name a state of a state machine. */
 export const isStateName = (name: string): boolean => /state|corner|phase|mode/i.test(name);
+
+/**
+ * The part of a wall inside a rectangle, or null when none of it is. A wall
+ * much longer than the picture (an open room's wall runs on for a hundred
+ * feet) is cut where it leaves the picture, along its own line: moving only
+ * one coordinate of an end point would turn a slanted wall.
+ */
+export function clipSegment(w: readonly [number, number, number, number] | readonly number[], x0: number, y0: number, x1: number, y1: number): [number, number, number, number] | null {
+  const [ax, ay, bx, by] = w;
+  const dx = bx - ax;
+  const dy = by - ay;
+  let t0 = 0;
+  let t1 = 1;
+  // Liang-Barsky: the stretch of the wall that is inside all four edges.
+  for (const [p, q] of [[-dx, ax - x0], [dx, x1 - ax], [-dy, ay - y0], [dy, y1 - ay]]) {
+    if (p === 0) {
+      if (q < 0) return null;
+    } else {
+      const t = q / p;
+      if (p < 0) t0 = Math.max(t0, t);
+      else t1 = Math.min(t1, t);
+    }
+  }
+  if (t0 > t1) return null;
+  return [ax + t0 * dx, ay + t0 * dy, ax + t1 * dx, ay + t1 * dy];
+}

@@ -43,7 +43,7 @@ function TimeOfFlight() {
         .tof-drop { stroke: var(--harvest); stroke-width: 1; stroke-dasharray: 2 3; }
         .tof-axis { stroke: var(--dim); stroke-width: 1; }
       `}</style>
-      <svg viewBox="0 0 420 170" role="img" aria-label={`Wall ${d.toFixed(2)} metres away. The echo returns after ${tNs.toFixed(1)} nanoseconds, during which the 5 nanosecond CPU clock ticks ${count} times.`}>
+      <svg viewBox="0 0 420 170" role="img" aria-label={`Wall ${d.toFixed(2)} metres away. The echo returns after ${tNs.toFixed(1)} nanoseconds, during which the 5 nanosecond CPU clock ticks ${count} time${count === 1 ? "" : "s"}.`}>
         <defs>
           <marker id="tof-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="tof-head" />
@@ -95,7 +95,7 @@ function TimeOfFlight() {
             : `A counter of clock periods reads ${count}.`}{" "}
           A count of {count} fits every wall from {lo} m to {hi} m, because one clock period is 0.75 m of distance.
         </p>
-        <CodePre><code>{`d = c * t / 2;   // 3.0e8 * ${tNs.toFixed(tNs < 10 ? 2 : 1)}e-9 / 2 = ${d.toFixed(2)} m`}</code></CodePre>
+        <CodePre><code>{`d = c * t / 2;   // 3.0e8 * ${tNs.toFixed(2)}e-9 / 2 = ${d.toFixed(2)} m`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

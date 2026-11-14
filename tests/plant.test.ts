@@ -137,6 +137,14 @@ describe("test bench robot (plant plugin)", () => {
     expect(r.board.output("TB_X_FT")!).toBeCloseTo(3, 9);
   });
 
+  it("ignores a load or a pose that is not a number", () => {
+    const stimuli: Stimulus[] = [{ at: 10, set: "TB_SET_X_FT", value: NaN }, { at: 20, set: "TB_LOAD_LEFT", value: NaN }, { at: 30, set: "TB_SET_THETA_RAD", value: Infinity }];
+    const plain = run(`void main(void) { tb_set_effort(5.0, 5.0); while (1) {} }`, 300);
+    const r = run(`void main(void) { tb_set_effort(5.0, 5.0); while (1) {} }`, 300, [], stimuli);
+    for (const name of ["TB_X_FT", "TB_Y_FT", "TB_THETA_RAD", "TB_VLEFT"]) expect(r.board.output(name)).toBe(plain.board.output(name));
+    expect(r.board.output("TB_X_FT")!).toBeGreaterThan(0.2);
+  });
+
   it("gyro = true rate + bias + repeatable noise", () => {
     const src = timer(
       `    g = tb_gyro_z();\n    sum += g;\n    n++;`,

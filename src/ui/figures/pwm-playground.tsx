@@ -6,7 +6,7 @@
 // event trigger 15.10, registers 15.15.2) and is tested against those cases
 // and against the simulator in tests/pwm_model.test.ts. The words are in
 // pwm-playground-words.ts.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as RPointerEvent, ReactNode } from "react";
 import {
   ACTIONS, ET_SEL_NAMES, EVENTS, HSPCLKDIV, PRESETS, clean, code, counterAt, cycleTicks, levelAt, propose, pwmPin, simulate,
@@ -100,6 +100,8 @@ function PwmPlayground() {
   const [target, setTarget] = useState("20000");
   const [proposal, setProposal] = useState("");
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
   const root = useRef<HTMLElement>(null);
   const svg = useRef<SVGSVGElement>(null);
 
@@ -226,15 +228,33 @@ function PwmPlayground() {
     setSel({ row: allEdges[k].row, t: allEdges[k].e.t });
   };
 
+  const lineLabel = (v: number) => (y(v) - 4 < Y1 - 12 ? y(v) + 11 : y(v) - 4);
+  const over = (v: number) => (v > ymax ? " ↑" : "");
+
   // Event marks, and one label per event name.
   const marks = r.marks.filter((m) => inView(m.t)).slice(0, 150);
   const named = new Set<string>();
-  const placed: [number, number][] = [];
+  // Labels already placed, as boxes [left, right, baseline]. A character is
+  // at most 6 units wide (labels grow in a narrow figure).
+  const placed: [number, number, number][] = [];
+  const CH = 6;
+  const boxOf = (ax: number, ly: number, text: string, end: boolean): [number, number, number] => (end ? [ax - 5 - text.length * CH, ax - 5, ly] : [ax + 6, ax + 6 + text.length * CH, ly]);
+  const hits = (b: [number, number, number]) => b[0] < X0 - 2 || b[1] > X1 + 2 || placed.some((p) => b[0] < p[1] + 4 && p[0] < b[1] + 4 && Math.abs(p[2] - b[2]) < 11);
   const markLabels: { x: number; y: number; text: string; end: boolean }[] = [];
   // Compare events are named only when something uses them.
   const etUse = [s.socaen ? s.socasel : 0, s.socben ? s.socbsel : 0, s.inten ? s.intsel : 0];
   const usedEv = (e: Ev) => e === "ZRO" || e === "PRD" || s.aqa[e] !== 0 || s.aqb[e] !== 0 || etUse.includes(EVENTS.indexOf(e) + 2);
   const cmpbUsed = (["CBU", "CBD"] as Ev[]).some(usedEv);
+  // The labels of the three lines come first: nothing may be put on them.
+  const prdY = y(s.cmpa) < y(s.tbprd) && Math.abs(lineLabel(s.cmpa) - lineLabel(s.tbprd)) < 11 ? Math.max(lineLabel(s.cmpa), y(s.tbprd)) + 11 : lineLabel(s.tbprd);
+  const cmpaY = y(s.cmpa) - y(s.tbprd) < 12 && y(s.cmpa) >= y(s.tbprd) ? y(s.cmpa) + 11 : lineLabel(s.cmpa);
+  const cmpbShown = cmpbUsed || (Math.abs(y(s.cmpb) - y(s.cmpa)) >= 12 && Math.abs(y(s.cmpb) - y(s.tbprd)) >= 12);
+  const cmpbY = !cmpbUsed || y(s.cmpa) >= y(s.cmpb) || y(s.cmpb) - y(s.cmpa) >= 12 ? lineLabel(s.cmpb) : y(s.cmpb) + 11;
+  const prdText = `TBPRD = ${s.tbprd}`;
+  const cmpaText = `CMPA = ${s.cmpa}${over(s.cmpa)}`;
+  const cmpbText = `CMPB = ${s.cmpb}${over(s.cmpb)}`;
+  placed.push([X1 - 2 - prdText.length * CH, X1 - 2, prdY], [X1 - 2 - cmpaText.length * CH, X1 - 2, cmpaY]);
+  if (cmpbShown) placed.push([X1 - 96 - cmpbText.length * CH, X1 - 96, cmpbY]);
   for (const m of marks) {
     const text = m.evs.filter(usedEv).join("+");
     if (!text) continue;
@@ -247,10 +267,42 @@ function PwmPlayground() {
     const corner = !cmp && text.startsWith("PRD") && mx > X1 - 110;
     const left = corner || (cmp && text[2] === "D");
     const ly = cmp || corner ? my + 11 : my - 5 < Y1 + 4 ? my + 12 : my - 5;
-    if (placed.some(([px, py]) => Math.abs(px - mx) < 9 + text.length * 5 && Math.abs(py - ly) < 10)) continue;
+    const tries = [{ y: ly, end: left || mx > X1 - 12 - text.length * CH }];
+    if (text[0] === "C") {
+      // Near a peak or a valley of an up-down count the two compare events
+      // of one register sit close together. Then each label goes beside its
+      // dot, on the side away from the other dot.
+      const up = text[2] === "U";
+      const other = (text.slice(0, 2) + (up ? "D" : "U")) as Ev;
+      const inward = up === cmp ? 1 : -1;
+      const crowded = usedEv(other) && marks.some((o) => o.evs.includes(other) && (x(o.t) - mx) * inward > 0 && (x(o.t) - mx) * inward < 2 * text.length * CH + 16);
+      const beside = { y: my + 3, end: inward > 0 };
+      if (crowded) tries.unshift(beside);
+      else tries.push(beside);
+    }
+    const spot = tries.find((c) => !hits(boxOf(mx, c.y, text, c.end)));
+    if (!spot) continue;
     named.add(text);
-    placed.push([mx, ly]);
-    markLabels.push({ x: mx, y: ly, text, end: left || mx > X1 - 12 - text.length * 5 });
+    placed.push(boxOf(mx, spot.y, text, spot.end));
+    markLabels.push({ x: mx, y: spot.y, text, end: spot.end });
+  }
+
+  // The word "sync" stands beside the first sync line, at the lowest height
+  // where it runs into no event label.
+  const sync0 = r.syncs.find(inView);
+  let syncLabel: { x: number; y: number; end: boolean } | null = null;
+  if (sync0 !== undefined) {
+    const sx = x(sync0);
+    const pref = sx > X1 - 30;
+    const box = (ly: number, end: boolean): [number, number, number] => (end ? [sx - 3 - 4 * CH, sx - 3, ly] : [sx + 3, sx + 3 + 4 * CH, ly]);
+    syncLabel = { x: sx, y: Y0 - 3, end: pref };
+    search: for (let ly = Y0 - 3; ly > Y1 + 14; ly -= 11) {
+      for (const end of [pref, !pref]) {
+        if (hits(box(ly, end))) continue;
+        syncLabel = { x: sx, y: ly, end };
+        break search;
+      }
+    }
   }
 
   const cycles: number[] = [];
@@ -277,15 +329,14 @@ function PwmPlayground() {
   const cmpaLine = s.cmpaNext !== null && loadT < tEnd
     ? `M${X0},${y(s.cmpa)} H${x(loadT)} V${y(s.cmpaNext)} H${X1}`
     : `M${X0},${y(s.cmpa)} H${X1}`;
-  const lineLabel = (v: number) => (y(v) - 4 < Y1 - 12 ? y(v) + 11 : y(v) - 4);
-  const over = (v: number) => (v > ymax ? " ↑" : "");
 
   const axis = (narrow ? [0, 0.5, 1] : [0, 0.25, 0.5, 0.75, 1]).map((f) => ({ f, t: tStart + f * span }));
   const copy = () => {
     const text = lines.join("\n");
     const done = () => {
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      window.clearTimeout(copiedTimer.current);
+      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
     };
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(done, () => undefined);
   };
@@ -342,7 +393,7 @@ function PwmPlayground() {
       <button className="fig-opt" aria-pressed={s[en]} aria-label={`${name} enabled`} onClick={() => patch({ [en]: !s[en] })}>{s[en] ? "on" : "off"}</button>
       {pick(`${name}: which event`, s[selKey], ET_SEL_NAMES.map((n, i) => `${i}: ${i ? n : name === "INT" ? "reserved" : n}`), (v) => patch({ [selKey]: v }))}
       {pick(`${name}: how often`, s[prdKey], ["0: never", "1: every event", "2: every 2nd", "3: every 3rd"], (v) => patch({ [prdKey]: v }))}
-      <code>ETSEL.{name}EN = {s[en] ? 1 : 0}; ETSEL.{name}SEL = {s[selKey]}; ETPS.{name}PRD = {s[prdKey]};</code>
+      <code>ETSEL.bit.{name}EN = {s[en] ? 1 : 0}; ETSEL.bit.{name}SEL = {s[selKey]}; ETPS.bit.{name}PRD = {s[prdKey]};</code>
     </div>
   );
   const when = (label: string, value: number, set: (v: number) => void) => (
@@ -368,13 +419,11 @@ function PwmPlayground() {
         <path d={ctr} className="fig-trace dim" style={{ stroke: "var(--text)" }} />
         {/* TBPRD, CMPB, CMPA */}
         <line x1={X0} x2={X1} y1={y(s.tbprd)} y2={y(s.tbprd)} stroke="var(--info)" strokeWidth="1.3" strokeDasharray="6 3" />
-        <text x={X1 - 2} y={lineLabel(s.tbprd)} textAnchor="end" className="fig-value small pwmp-halo" style={{ fill: "var(--info)" }}>TBPRD = {s.tbprd}</text>
+        <text x={X1 - 2} y={prdY} textAnchor="end" className="fig-value small pwmp-halo" style={{ fill: "var(--info)" }}>{prdText}</text>
         <line x1={X0} x2={X1} y1={y(s.cmpb)} y2={y(s.cmpb)} stroke="var(--value)" strokeWidth="1.3" strokeDasharray="2 3" opacity={cmpbUsed ? 1 : 0.5} />
-        {(cmpbUsed || (Math.abs(y(s.cmpb) - y(s.cmpa)) >= 12 && Math.abs(y(s.cmpb) - y(s.tbprd)) >= 12)) && (
-          <text x={X1 - 96} y={!cmpbUsed || y(s.cmpa) >= y(s.cmpb) || y(s.cmpb) - y(s.cmpa) >= 12 ? lineLabel(s.cmpb) : y(s.cmpb) + 11} textAnchor="end" className="fig-value small pwmp-halo">CMPB = {s.cmpb}{over(s.cmpb)}</text>
-        )}
+        {cmpbShown && <text x={X1 - 96} y={cmpbY} textAnchor="end" className="fig-value small pwmp-halo">{cmpbText}</text>}
         <path d={cmpaLine} fill="none" stroke="var(--value)" strokeWidth="1.3" strokeDasharray="6 3" />
-        <text x={X1 - 2} y={y(s.cmpa) - y(s.tbprd) < 12 && y(s.cmpa) >= y(s.tbprd) ? y(s.cmpa) + 11 : lineLabel(s.cmpa)} textAnchor="end" className="fig-value small pwmp-halo">CMPA = {s.cmpa}{over(s.cmpa)}</text>
+        <text x={X1 - 2} y={cmpaY} textAnchor="end" className="fig-value small pwmp-halo">{cmpaText}</text>
         {s.cmpaNext !== null && inView(writeT) && (
           <g>
             <line x1={x(writeT)} x2={x(writeT)} y1={Y1 - 2} y2={Y0} className="fig-sample" />
@@ -382,12 +431,10 @@ function PwmPlayground() {
             <text x={x(writeT) + (x(writeT) > X1 - 70 ? -3 : 3)} y={Y1 + 4} textAnchor={x(writeT) > X1 - 70 ? "end" : "start"} className="fig-label pwmp-halo">write {s.cmpaNext}</text>
           </g>
         )}
-        {r.syncs.filter(inView).slice(0, 20).map((t, i) => (
-          <g key={t}>
-            <line x1={x(t)} x2={x(t)} y1={Y1 - 4} y2={Y0} stroke="var(--info)" strokeWidth="1" strokeDasharray="3 2" />
-            {i === 0 && <text x={x(t) + (x(t) > X1 - 30 ? -3 : 3)} y={Y0 - 3} textAnchor={x(t) > X1 - 30 ? "end" : "start"} className="fig-label pwmp-halo" style={{ fill: "var(--info)" }}>sync</text>}
-          </g>
+        {r.syncs.filter(inView).slice(0, 20).map((t) => (
+          <line key={t} x1={x(t)} x2={x(t)} y1={Y1 - 4} y2={Y0} stroke="var(--info)" strokeWidth="1" strokeDasharray="3 2" />
         ))}
+        {syncLabel && <text x={syncLabel.x + (syncLabel.end ? -3 : 3)} y={syncLabel.y} textAnchor={syncLabel.end ? "end" : "start"} className="fig-label pwmp-halo" style={{ fill: "var(--info)" }}>sync</text>}
         {marks.map((m, i) => {
           const hot = m.moved[0] || m.moved[1];
           return <circle key={i} cx={x(m.t)} cy={y(m.ctr)} r={hot ? 2.7 : 1.6} fill={hot ? "var(--accent)" : "var(--inset)"} stroke={hot ? "none" : "var(--dim)"} strokeWidth="1" />;
@@ -523,7 +570,7 @@ function PwmPlayground() {
                 const mode = s.ctrmode === 3 ? 0 : s.ctrmode;
                 const p = propose(+target, mode);
                 patch({ ctrmode: mode, hspclkdiv: p.hspclkdiv, clkdiv: p.clkdiv, tbprd: p.tbprd });
-                setProposal(`CLKDIV = ${p.clkdiv}, TBPRD = ${p.tbprd}: ${fmtHz(p.actualHz)}`);
+                setProposal(`${p.hspclkdiv !== s.hspclkdiv ? `HSPCLKDIV = ${p.hspclkdiv}, ` : ""}CLKDIV = ${p.clkdiv}, TBPRD = ${p.tbprd}: ${fmtHz(p.actualHz)}`);
               }}
             >
               Propose TBPRD and CLKDIV

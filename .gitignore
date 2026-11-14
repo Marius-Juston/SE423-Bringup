@@ -4,3 +4,6 @@ src-tauri/target
 src-tauri/gen
 *.log
 .vite
+
+# A checkout of the course starter repository, used by tests of the course starters. Never commit it.
+SE423Spring26/

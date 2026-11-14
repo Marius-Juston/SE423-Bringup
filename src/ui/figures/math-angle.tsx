@@ -25,7 +25,7 @@ function MathAngle() {
   const mid = { x: CX + R * Math.cos(rad / 2), y: CY - R * Math.sin(rad / 2) };
   const arc = deg === 0 ? "" : `M${CX + R},${CY} A${R},${R} 0 0 ${sweep} ${mid.x.toFixed(1)},${mid.y.toFixed(1)} A${R},${R} 0 0 ${sweep} ${tip.x.toFixed(1)},${tip.y.toFixed(1)}`;
   const dir = deg === 0 ? "not turned at all" : `turned ${Math.abs(deg)} degrees ${deg > 0 ? "counter-clockwise (to the left): a positive angle" : "clockwise (to the right): a negative angle"}`;
-  const near1 = Math.abs(Math.abs(rad) - 1) < 0.03;
+  const near1 = Math.abs(Math.abs(rad) - 1) < 0.02;
   const why =
     deg === 0
       ? "The arrow lies on the starting line: the angle is 0 in both units. Move the slider."
@@ -47,16 +47,16 @@ function MathAngle() {
         <text x={CX} y={CY + 14} textAnchor="middle" className="fig-label dim">radius {radius} ft</text>
         <text x={8} y={14} className="fig-label dim">counter-clockwise is positive</text>
 
-        <text x={254} y={36} className="fig-label">angle in degrees</text>
-        <text x={254} y={52} className="fig-value">{deg}</text>
-        <text x={254} y={78} className="fig-label">angle in radians</text>
-        <text x={254} y={94} className="fig-value">{fmt(rad, 3)}</text>
-        <text x={254} y={108} className="fig-label dim">= degrees x 3.14159 / 180</text>
-        <text x={254} y={134} className="fig-label">arc (orange) = radius x radians</text>
-        <text x={254} y={149} className="fig-value small">{radius} x {fmt(rad, 3)} = {fmt(arcLen)} ft</text>
-        <text x={254} y={176} className="fig-label dim">full turn: 360 deg = 6.283 rad</text>
-        <text x={254} y={190} className="fig-label dim">half turn: 180 deg = 3.142 rad</text>
-        <text x={254} y={204} className="fig-label dim">1 rad = 57.3 deg</text>
+        <text x={244} y={36} className="fig-label">angle in degrees</text>
+        <text x={244} y={52} className="fig-value">{deg}</text>
+        <text x={244} y={78} className="fig-label">angle in radians</text>
+        <text x={244} y={94} className="fig-value">{fmt(rad, 3)}</text>
+        <text x={244} y={108} className="fig-label dim">= degrees x 3.14159 / 180</text>
+        <text x={244} y={134} className="fig-label">arc (orange) = radius x radians</text>
+        <text x={244} y={149} className="fig-value small">{radius} x {fmt(rad, 3)} = {fmt(arcLen)} ft</text>
+        <text x={244} y={176} className="fig-label dim">full turn: 360 deg = 6.283 rad</text>
+        <text x={244} y={190} className="fig-label dim">half turn: 180 deg = 3.142 rad</text>
+        <text x={244} y={204} className="fig-label dim">1 rad = 57.3 deg</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">

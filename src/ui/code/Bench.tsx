@@ -24,11 +24,24 @@ export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: K
     // A knob whose signal the simulated hardware itself drives (the wheels, once the motors turn) would fight it: hide it.
     (p) => (p.kind === "knob" && !moved(p.input) && (focus?.has(p.input) || !!board?.inputsUsed.has(p.input))) || (p.kind === "meter" && (focus?.has(p.output) || moved(p.output))),
   );
+  const display = kit.parts.filter((p): p is Extract<typeof p, { kind: "led" }> => p.kind === "led" && !!p.at);
   return (
     <>
     <div className="parts" role="group" aria-label={`${kit.name}: LEDs and push buttons`}>
+      {/* LEDs that form a display on the board are drawn as that display: same columns, same rows. */}
+      {display.length > 0 && (
+        <div className="led-grid" role="group" aria-label={`LED display, ${Math.max(...display.map((p) => p.at![0]))} columns of ${Math.max(...display.map((p) => p.at![1]))}`}>
+          {display.map((p) => (
+            <div key={p.id} className={`led ${p.color} ${lit(p.pin, p.activeLow) ? "on" : ""}`} style={{ gridColumn: p.at![0], gridRow: p.at![1] }} role="img" aria-label={`${p.label} on GPIO${p.pin}, column ${p.at![0]}, row ${p.at![1]}: ${lit(p.pin, p.activeLow) ? "on" : "off"}`}>
+              <i />
+              <span>{p.id}</span>
+              <span className="pinno">GPIO{p.pin}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {kit.parts.map((p) =>
-        p.kind === "knob" || p.kind === "meter" ? null : p.kind === "led" ? (
+        p.kind === "knob" || p.kind === "meter" || (p.kind === "led" && p.at) ? null : p.kind === "led" ? (
           <div key={p.id} className={`led ${p.color} ${lit(p.pin, p.activeLow) ? "on" : ""}`} role="img" aria-label={`${p.label} on GPIO${p.pin}: ${lit(p.pin, p.activeLow) ? "on" : "off"}`}>
             <i />
             <span>{p.id}</span>
@@ -43,6 +56,9 @@ export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: K
               onPointerDown={() => onButton?.(p.id, true)}
               onPointerUp={() => onButton?.(p.id, false)}
               onPointerLeave={() => pressed?.(p.id) && onButton?.(p.id, false)}
+              onPointerCancel={() => pressed?.(p.id) && onButton?.(p.id, false)}
+              // Tabbing away with the key still down would leave the button held for good.
+              onBlur={() => pressed?.(p.id) && onButton?.(p.id, false)}
               onKeyDown={(e) => (e.key === " " || e.key === "Enter") && !e.repeat && onButton?.(p.id, true)}
               onKeyUp={(e) => (e.key === " " || e.key === "Enter") && onButton?.(p.id, false)}
             />

@@ -1,6 +1,7 @@
 import { Component, type CSSProperties, type ReactNode } from "react";
 import { CopyButton } from "./CopyButton";
 import { Figure } from "./figures";
+import { highlightLines } from "./code/highlight";
 
 /**
  * Keeps a failure in one part (a figure, a bench view) from taking the whole
@@ -33,12 +34,15 @@ export function CodeBlock({ code }: { code: string }) {
     <div className="code-wrap">
     <pre className="code-block">
       <code>
-        {code.split("\n").map((line, i, all) => (
-          <span key={i} className="ln" style={{ "--ind": line.length - line.trimStart().length } as CSSProperties}>
-            {line}
-            {i < all.length - 1 ? "\n" : ""}
-          </span>
-        ))}
+        {highlightLines(code).map((pieces, i, all) => {
+          const line = pieces.map((p) => p.text).join("");
+          return (
+            <span key={i} className="ln" style={{ "--ind": line.length - line.trimStart().length } as CSSProperties}>
+              {pieces.map((p, j) => (p.cls ? <span key={j} className={p.cls}>{p.text}</span> : p.text))}
+              {i < all.length - 1 ? "\n" : ""}
+            </span>
+          );
+        })}
       </code>
     </pre>
     <CopyButton text={code} />

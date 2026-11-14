@@ -39,6 +39,10 @@ export interface Rt {
   /** A loop with a real condition is waiting at this line (0: it ended). */
   waiting?(line: number): void;
   warn(line: number, code: string, msg: string): void;
+  /** True while part of a wait (DELAY_US) is still to be served, because the run slice ended inside it. */
+  waitLeft?(): boolean;
+  /** Serves more of that wait, after the program was resumed. */
+  waitOn?(): void;
 }
 
 export type Native = (args: number[], types: CType[], line: number) => number;
@@ -53,8 +57,12 @@ export interface Fn {
   paramStore: ((v: number) => void)[];
   body?: () => Generator<void, Sig>;
   native?: Native;
+  /** A native that lets simulated time pass (DELAY_US): the program can be paused inside it. */
+  waits?: boolean;
   defined: boolean;
   file: string;
+  /** Where a function that returns a struct leaves it (library functions only). */
+  retAddr?: number;
   /** A library function the student's file is allowed to redefine. */
   replaceable?: boolean;
 }
@@ -64,6 +72,9 @@ export interface GlobalVar {
   addr: number;
   t: CType;
   file: string;
+  isConst?: boolean;
+  /** A library variable the student's file may define again: the student's own then takes the name. */
+  weak?: boolean;
 }
 
 type Sig = 0 | 1 | 2 | 3; // normal, break, continue, return
@@ -86,6 +97,8 @@ interface Ex {
   c?: number;
   /** Name of the function when the expression is a function designator. */
   fn?: Fn;
+  /** Name of the const variable this expression is (part of). */
+  ro?: string;
 }
 
 interface Local {
@@ -93,6 +106,17 @@ interface Local {
   /** Frame offset, or absolute address for static locals. */
   off: number;
   isStatic: boolean;
+  isConst?: boolean;
+  /** A scalar declared without a value that nothing has written yet. */
+  uninit?: boolean;
+}
+
+/** A read of a local that had no value yet, kept until the function ends. */
+interface UninitRead {
+  l: Local;
+  name: string;
+  line: number;
+  loops: number[];
 }
 
 export const GLOBAL_BASE = 0xc000;
@@ -100,6 +124,8 @@ export const STACK_BASE = 0x18000;
 export const STACK_SIZE = 0x2000;
 export const STRING_BASE = 0x90000;
 export const FN_BASE = 0x82000;
+/** No variable or register lives below this address: a pointer into it is NULL (plus a small offset). */
+const NULL_PAGE = 0x40;
 
 const f32 = new Float32Array(1);
 const u32 = new Uint32Array(f32.buffer);
@@ -139,6 +165,10 @@ export class Compiler {
   private file = "user";
   private loopDepth = 0;
   private switchDepth = 0;
+  private uninitReads: UninitRead[] = [];
+  /** Ids of the loops being compiled, outermost first. */
+  private loopIds: number[] = [];
+  private loopSeq = 0;
 
   constructor(
     private rt: Rt,
@@ -219,8 +249,11 @@ export class Compiler {
   compileUnit(unit: Unit, file: string): void {
     this.file = file;
     for (const p of unit.protos) this.declareFn(p.name, p.t, p.line, p.interrupt);
+    const seen = new Set<string>();
     for (const f of unit.funcs) {
       const existing = this.fns.get(f.name);
+      if (seen.has(f.name)) throw this.err(f.line, `The function '${f.name}' is defined twice.`);
+      seen.add(f.name);
       if (existing?.defined && !(existing.replaceable && existing.file !== file)) {
         throw this.err(
           f.line,
@@ -229,6 +262,8 @@ export class Compiler {
             : `The function '${f.name}' is defined twice.`,
         );
       }
+      // The student's definition takes the place of a replaceable native of the library.
+      if (existing?.replaceable && existing.native) existing.native = undefined;
       this.declareFn(f.name, f.t, f.line, f.interrupt).t = f.t;
     }
     for (const g of unit.globals) this.globalDecl(g);
@@ -251,15 +286,17 @@ export class Compiler {
     if (existing && existing.file === this.file && !v.isExtern) {
       // "extern int x;" followed by "int x;" is fine; two definitions with initialisers are not.
       if (v.init && !wasExtern) throw this.err(v.line, `The variable '${v.name}' is defined more than once.`);
+      if (v.isConst) existing.isConst = true;
       if (v.init) this.inits.push(this.initCode(existing.t, v.init, () => existing.addr));
       return;
     }
-    if (existing && existing.file !== this.file)
+    if (existing && existing.file !== this.file && !existing.weak)
       throw this.err(v.line, `'${v.name}' already exists in the course library; choose another name.`);
     if (this.fns.has(v.name)) throw this.err(v.line, `'${v.name}' is already the name of a function.`);
     const t = this.completeArray(v.t, v.init, v.line);
     this.checkComplete(t, v.line, v.name);
     const g = this.defineGlobal(v.name, t);
+    g.isConst = v.isConst;
     if (v.init) {
       const run = this.initCode(t, v.init, () => g.addr);
       this.inits.push(run);
@@ -276,7 +313,13 @@ export class Compiler {
   private completeArray(t: CType, init: Init | undefined, line: number): CType {
     if (t.k !== "array" || t.n !== -1) return t;
     if (!init) throw this.err(line, "This array needs a size, for example: float samples[10];");
-    if (init.k === "list") return { k: "array", of: t.of, n: init.items.length };
+    if (init.k === "list") {
+      // A flat list for an array of arrays or structs: {1,2,3,4,5,6} fills int g[][3] row by row.
+      const per = scalarCount(t.of);
+      const of = t.of;
+      const flat = per > 1 && init.items.every((it) => it.k === "expr" && it.e.k !== "str" && !(of.k === "struct" && this.isStructValue(it.e, of)));
+      return { k: "array", of: t.of, n: flat ? Math.ceil(init.items.length / per) : init.items.length };
+    }
     if (init.e.k === "str") return { k: "array", of: t.of, n: init.e.value.length + 1 };
     throw this.err(line, "This array needs a size or a { ... } list.");
   }
@@ -289,24 +332,59 @@ export class Compiler {
     this.curFn = f;
     this.frame = 0;
     this.scopes = [new Map()];
-    if (def.t.ret.k === "struct")
+    this.uninitReads = [];
+    this.loopIds = [];
+    // The course library may pass and return small structs (OptiTrack.h does); a student's file is told to use pointers.
+    const lib = this.file === "library";
+    if (def.t.ret.k === "struct" && !lib)
       throw this.err(def.line, `'${def.name}' returns a whole struct. That is not available in this game (and is slow on a microcontroller): fill a struct through a pointer parameter instead.`);
     f.paramStore = def.params.map((p) => {
       if (!p.name) throw this.err(def.line, `A parameter of '${def.name}' has a type but no name.`);
-      if (p.t.k === "struct")
+      if (p.t.k === "struct" && !lib)
         throw this.err(def.line, `Parameter '${p.name}' of '${def.name}' is a whole struct, which would be copied on every call. That is not available in this game: pass a pointer (struct ... *${p.name}) and use ->.`);
       const off = this.allocLocal(p.name, p.t, def.line);
-      const st = this.storer(p.t);
       const rt = this.rt;
+      if (p.t.k === "struct") {
+        // The argument is the address of the caller's struct: the function gets its own copy.
+        const n = p.t.size;
+        return (v: number) => {
+          for (let i = 0; i < n; i++) rt.mem.poke(rt.fp + off + i, 1, rt.mem.peek(v + i, 1));
+        };
+      }
+      const st = this.storer(p.t);
       return (v: number) => st(rt.fp + off, v);
     });
-    if (this.file === "user" && def.t.ret.k !== "void" && def.name !== "main" && !JSON.stringify(def.body).includes('"k":"return"'))
-      this.rt.warn(
-        def.line,
-        "missing-return",
-        `'${def.name}' promises to give back a value, but it has no return statement, so the caller gets a meaningless value. End it with return <value>; or declare it void.`,
-      );
+    if (def.t.ret.k === "struct") {
+      // A returned struct is copied to a place of the function's own, and the call's value is that place.
+      const size = sizeOf(def.t.ret);
+      this.nextGlobal += this.nextGlobal % 2;
+      f.retAddr = this.nextGlobal;
+      this.nextGlobal += size;
+    }
+    if (this.file === "user" && def.t.ret.k !== "void" && def.name !== "main" && !alwaysReturns(def.body)) {
+      if (!JSON.stringify(def.body).includes('"k":"return"'))
+        this.rt.warn(
+          def.line,
+          "missing-return",
+          `'${def.name}' promises to give back a value, but it has no return statement, so the caller gets a meaningless value. End it with return <value>; or declare it void.`,
+        );
+      else
+        this.rt.warn(
+          def.line,
+          "missing-return",
+          `'${def.name}' promises to give back a value, but it can reach its closing } without a return (for example when an if is false), and then the caller gets a meaningless value. End it with return <value>;`,
+        );
+    }
     const body = this.stmt(def.body);
+    if (this.file === "user") {
+      for (const u of this.uninitReads)
+        this.rt.warn(
+          u.line,
+          "uninitialised",
+          `'${u.name}' is read here before it has been given a value, so it holds whatever was left in memory. Give it a value first, for example ${u.name} = 0;`,
+        );
+    }
+    this.uninitReads = [];
     f.frame = this.frame + (this.frame % 2);
     f.defined = true;
     f.body = body.gen ?? syncToGen(body.sync!);
@@ -322,10 +400,50 @@ export class Compiler {
     return off;
   }
 
-  private bindLocal(name: string, t: CType, off: number, line: number): void {
+  private bindLocal(name: string, t: CType, off: number, line: number, isConst = false, uninit = false): void {
     const scope = this.scopes[this.scopes.length - 1];
     if (scope.has(name)) throw this.err(line, `'${name}' is declared twice in the same block.`);
-    scope.set(name, { t, off, isStatic: false });
+    scope.set(name, { t, off, isStatic: false, isConst, uninit: uninit && isScalar(t) });
+  }
+
+  /** The local now has a value: reads compiled earlier in a loop that also holds this write are fine. */
+  private wrote(l: Local, keepFrom = Infinity): void {
+    if (!l.uninit) return;
+    l.uninit = false;
+    const ids = this.loopIds;
+    // Reads from keepFrom on belong to the assignment itself (x = x + 1) and stay reported.
+    this.uninitReads = this.uninitReads.filter((u, i) => u.l !== l || i >= keepFrom || !u.loops.some((id) => ids.includes(id)));
+  }
+
+  /** Compiles the operand of '=' or '&' without counting it as a read. */
+  private target(e: Expr): { x: Ex; l?: Local } {
+    const n = this.uninitReads.length;
+    const x = this.expr(e);
+    const l = e.k === "id" ? this.lookupLocal(e.name) : undefined;
+    if (l) this.uninitReads.length = n;
+    return { x, l };
+  }
+
+  /** A constant too big for a 16-bit variable loses its upper bits without a sound on the real chip. */
+  private constOverflow(raw: Ex, to: CType, line: number): Ex {
+    if (raw.c === undefined || to.k !== "int" || to.w !== 1 || !Number.isInteger(raw.c)) return raw;
+    const c = raw.c;
+    if (!(c > 65535 || c < -32768 || (to.s && c > 32767 && raw.t.k === "int" && raw.t.s))) return raw;
+    const rt = this.rt;
+    const g = raw.get;
+    return {
+      ...raw,
+      get: () => {
+        rt.warn(
+          line,
+          "const-overflow",
+          c > 65535 || c < -32768
+            ? `${c} does not fit in 16 bits (0 to 65535), so only the low 16 bits were stored: ${c & 0xffff}. Use a smaller value, or a 32-bit variable (int32_t, uint32_t).`
+            : `${c} does not fit in a signed 16-bit int (-32768 to 32767): it is stored as ${(c << 16) >> 16}. On this chip int is 16 bits; use int32_t for larger numbers.`,
+        );
+        return g();
+      },
+    };
   }
 
   private allocLocal(name: string, t: CType, line: number): number {
@@ -351,7 +469,7 @@ export class Compiler {
           for (let i = 0; i < n; i++) mem.write(a + i, 1, mem.read(s + i, 1));
         };
       }
-      const val = this.convert(this.rvalue(this.expr(init.e)), t, init.line, "initialise");
+      const val = this.convert(this.constOverflow(this.rvalue(this.expr(init.e)), t, init.line), t, init.line, "initialise");
       const st = this.storer(t);
       return () => st(addr(), val.get());
     }
@@ -369,15 +487,19 @@ export class Compiler {
         for (let i = 0; i < s.length; i++) mem.write(a + i, 1, s.charCodeAt(i));
       });
     } else if (init.k === "list") {
-      if (t.k === "array") {
-        if (init.items.length > t.n)
-          throw this.err(init.line, `Too many values: the array has ${t.n} elements but ${init.items.length} values are listed.`);
-        const es = sizeOf(t.of);
-        init.items.forEach((it, i) => parts.push(this.initCode(t.of, it, () => addr() + i * es)));
-      } else if (t.k === "struct") {
-        const fields = t.fields.filter((f) => f.bitW === undefined);
-        if (init.items.length > fields.length) throw this.err(init.line, "Too many values for this struct.");
-        init.items.forEach((it, i) => parts.push(this.initCode(fields[i].type, it, () => addr() + fields[i].off)));
+      if (t.k === "array" || t.k === "struct") {
+        const pos = { i: 0 };
+        this.initAggregate(t, init.items, pos, addr, parts);
+        if (pos.i < init.items.length) {
+          throw this.err(
+            init.line,
+            t.k === "struct"
+              ? "Too many values for this struct."
+              : scalarCount(t.of) === 1
+                ? `Too many values: the array has ${t.n} elements but ${init.items.length} values are listed.`
+                : `Too many values: the array holds ${scalarCount(t)} numbers but ${init.items.length} values are listed.`,
+          );
+        }
       } else {
         if (init.items.length !== 1) throw this.err(init.line, "A single value is expected here, not a list.");
         return this.initCode(t, init.items[0], addr);
@@ -388,6 +510,46 @@ export class Compiler {
       for (let i = 0; i < size; i++) mem.write(a + i, 1, 0);
       for (const p of parts) p();
     };
+  }
+
+  /**
+   * Fills an array or struct from a list, taking as many items as it needs.
+   * A member that is itself an array or struct and has no { } of its own
+   * takes its values from the same list (C's brace elision).
+   */
+  private initAggregate(t: CType, items: Init[], pos: { i: number }, addr: () => number, parts: (() => void)[]): void {
+    const one = (mt: CType, ma: () => number) => {
+      const it = items[pos.i];
+      const nested = (mt.k === "array" || mt.k === "struct") && it.k === "expr" && !(mt.k === "array" && it.e.k === "str");
+      if (nested && !(mt.k === "struct" && this.isStructValue(it.e, mt))) this.initAggregate(mt, items, pos, ma, parts);
+      else {
+        parts.push(this.initCode(mt, it, ma));
+        pos.i++;
+      }
+    };
+    if (t.k === "array") {
+      const es = sizeOf(t.of);
+      for (let i = 0; i < t.n && pos.i < items.length; i++) one(t.of, () => addr() + i * es);
+    } else if (t.k === "struct") {
+      const fields = t.fields.filter((f) => f.bitW === undefined);
+      // Only the first member of a union can be initialised.
+      for (const f of t.union ? fields.slice(0, 1) : fields) {
+        if (pos.i >= items.length) break;
+        one(f.type, () => addr() + f.off);
+      }
+    }
+  }
+
+  /** True when the expression is a whole struct of type t (so it initialises a struct member by copy). */
+  private isStructValue(e: Expr, t: CType): boolean {
+    const n = this.uninitReads.length;
+    try {
+      return this.expr(e).t === t;
+    } catch {
+      return false;
+    } finally {
+      this.uninitReads.length = n;
+    }
   }
 
   // ---------- statements ----------
@@ -411,7 +573,7 @@ export class Compiler {
         // simulation can pause inside it.
         if (s.e.k === "call" && s.e.f.k === "id" && !this.lookupLocal(s.e.f.name)) {
           const f = this.fns.get(s.e.f.name);
-          if (f && !f.native) {
+          if (f && (!f.native || f.waits)) {
             const args = this.callArgs(f, f.t, s.e.args, line);
             const types = this.argTypes(f.t, s.e.args);
             const self = this;
@@ -420,8 +582,14 @@ export class Compiler {
                 rt.tick(tl);
                 const vals = args.map((a) => a());
                 // Library natives are installed after the library is compiled.
-                if (f.native) f.native(vals, types, rt.line);
-                else yield* self.invokeGen(f, vals, line);
+                if (f.native) {
+                  f.native(vals, types, rt.line);
+                  // The run slice ended inside the wait: nothing after it may run until the rest is served.
+                  while (rt.waitLeft?.()) {
+                    yield;
+                    rt.waitOn!();
+                  }
+                } else yield* self.invokeGen(f, vals, line);
                 return 0 as Sig;
               },
             };
@@ -451,14 +619,14 @@ export class Compiler {
             if (size >= 2 && this.nextGlobal % 2) this.nextGlobal++;
             const addr = this.nextGlobal;
             this.nextGlobal += size;
-            scope.set(v.name, { t, off: addr, isStatic: true });
+            scope.set(v.name, { t, off: addr, isStatic: true, isConst: v.isConst });
             if (v.init) this.inits.push(this.initCode(t, v.init, () => addr));
             continue;
           }
           // The initialiser is compiled before the name exists (int x = x; is an error).
           const off = this.reserveLocal(t);
           if (v.init) runs.push(this.initCode(t, v.init, () => rt.fp + off));
-          this.bindLocal(v.name, t, off, v.line);
+          this.bindLocal(v.name, t, off, v.line, v.isConst, !v.init);
         }
         if (!runs.length) return { sync: () => 0 };
         return {
@@ -507,13 +675,21 @@ export class Compiler {
       case "while":
       case "do":
       case "for": {
+        if (this.file === "user" && s.k !== "do" && s.semiBlock)
+          this.rt.warn(
+            line,
+            "empty-loop",
+            `There is a semicolon right after the ${s.k} (...), so the loop repeats nothing and the { } block below it runs once, after the loop. Remove that semicolon.`,
+          );
         this.scopes.push(new Map());
         const init = s.k === "for" && s.init ? this.stmt(s.init) : undefined;
+        this.loopIds.push(++this.loopSeq);
         const c = s.k === "for" ? (s.c ? this.cond(s.c) : undefined) : this.cond(s.c);
         const step = s.k === "for" && s.step ? this.expr(s.step).get : undefined;
         this.loopDepth++;
         const body = this.stmt(s.body);
         this.loopDepth--;
+        this.loopIds.pop();
         this.scopes.pop();
         const mem = rt.mem;
         const testFirst = s.k !== "do";
@@ -609,6 +785,19 @@ export class Compiler {
           if (f.t.ret.k === "void") throw this.err(line, `'${f.name}' is a void function, so it cannot return a value.`);
           const v = this.convert(this.rvalue(this.expr(s.e)), f.t.ret, line, "return");
           const get = v.get;
+          if (f.t.ret.k === "struct") {
+            const n = f.t.ret.size;
+            const to = f.retAddr!;
+            return {
+              sync: () => {
+                rt.tick(tl);
+                const from = get();
+                for (let i = 0; i < n; i++) rt.mem.poke(to + i, 1, rt.mem.peek(from + i, 1));
+                rt.ret = to;
+                return 3;
+              },
+            };
+          }
           return {
             sync: () => {
               rt.tick(tl);
@@ -647,6 +836,13 @@ export class Compiler {
     return args.map((a, i) => {
       const x = this.rvalue(this.expr(a));
       const pt = ft.params[i];
+      if (!pt && x.t.k === "struct")
+        throw this.err(
+          a.line,
+          regView(x.t)
+            ? `This is a whole register (${typeName(x.t)}). Add .all for its full value or .bit.NAME for one field.`
+            : `Argument ${i + 1} is a whole struct, which ${name} cannot take. Pass one of its members.`,
+        );
       if (!pt) return this.promoteVar(x).get;
       return this.convert(x, pt, a.line, `pass as argument ${i + 1} of ${name}`).get;
     });
@@ -710,8 +906,11 @@ export class Compiler {
   private enter(f: Fn, _args: number[], line: number): () => Generator<void, Sig> {
     if (!f.body)
       throw new RuntimeError(line, `'${f.name}' is declared but has no body. Write the function, or check the spelling of its name.`);
-    if (this.rt.sp + f.frame > STACK_BASE + STACK_SIZE)
+    if (this.rt.sp + f.frame > STACK_BASE + STACK_SIZE) {
+      if (f.frame > STACK_SIZE / 2)
+        throw new RuntimeError(line, `The local variables of '${f.name}' need ${f.frame} words, but the whole stack has ${STACK_SIZE}. Declare the big array outside the function (a global variable) instead.`);
       throw new RuntimeError(line, `Stack overflow while calling '${f.name}'. A function is probably calling itself forever.`);
+    }
     return f.body;
   }
 
@@ -753,7 +952,18 @@ export class Compiler {
       return isFloat(from) ? { ...x, t: to, lv: undefined } : fold(() => Math.fround(g()));
     }
     if (isPtr(to)) {
-      if (isPtr(from)) return { t: to, get: g, c: x.c, fn: x.fn };
+      if (isPtr(from)) {
+        // A float seen through an int pointer (or 16 bits through a 32-bit pointer) reads and writes the wrong memory.
+        const ft = from.to;
+        const tt = to.to;
+        if (what !== "cast" && this.file === "user" && isArith(ft) && isArith(tt) && (ft.k !== tt.k || sizeOf(ft) !== sizeOf(tt)))
+          this.rt.warn(
+            line,
+            "pointer-type",
+            `This pointer is for ${typeName(tt)} values, but it is given the address of a ${typeName(ft)}. Reading or writing through it uses the wrong ${ft.k !== tt.k ? "number format" : "number of words"}. Make the two types the same.`,
+          );
+        return { t: to, get: g, c: x.c, fn: x.fn };
+      }
       if (isInt(from)) {
         if (x.c === 0 || what === "cast") return fold(() => g() >>> 0);
         throw this.err(line, `Cannot ${what}: a ${typeName(from)} value is not a pointer. Did you forget & ?`);
@@ -817,13 +1027,14 @@ export class Compiler {
           const off = l.off;
           const addr = l.isStatic ? () => off : () => rt.fp + off;
           const ld = this.loader(l.t);
-          return { t: l.t, get: l.isStatic ? () => ld(off) : () => ld(rt.fp + off), lv: { addr } };
+          if (l.uninit) this.uninitReads.push({ l, name: e.name, line, loops: [...this.loopIds] });
+          return { t: l.t, get: l.isStatic ? () => ld(off) : () => ld(rt.fp + off), lv: { addr }, ro: l.isConst ? e.name : undefined };
         }
         const g = this.globals.get(e.name);
         if (g) {
           const a = g.addr;
           const ld = this.loader(g.t);
-          return { t: g.t, get: () => ld(a), lv: { addr: () => a } };
+          return { t: g.t, get: () => ld(a), lv: { addr: () => a }, ro: g.isConst ? e.name : undefined };
         }
         const f = this.fns.get(e.name);
         if (f) {
@@ -849,7 +1060,10 @@ export class Compiler {
         return this.convert(x, e.t, line, "cast");
       }
       case "sizeof": {
+        // The operand is not evaluated, so it does not count as a read.
+        const reads = this.uninitReads.length;
         const t = e.t ?? this.expr(e.e!).t;
+        this.uninitReads.length = reads;
         const n = sizeOf(t);
         return { t: ULONG, get: () => n, c: n };
       }
@@ -875,7 +1089,9 @@ export class Compiler {
         }
         const ag = a.get;
         const bg = b.get;
-        return { t, get: () => (c() ? ag() : bg()) };
+        const r: Ex = { t, get: () => (c() ? ag() : bg()) };
+        if (isConstExpr(e.c) && a.c !== undefined && b.c !== undefined) r.c = r.get();
+        return r;
       }
       case "member":
         return this.member(e);
@@ -902,7 +1118,10 @@ export class Compiler {
             },
           };
         }
-        return this.deref(this.binary("+", arr, idx, line), line, true);
+        // An element of a real array has an address; only a pointer can be NULL.
+        const el = this.deref(this.binary("+", arr, idx, line), line, true, arr.t.k !== "array");
+        if (arr.t.k === "array") el.ro = arr.ro;
+        return el;
       }
       case "call":
         return this.call(e);
@@ -916,8 +1135,16 @@ export class Compiler {
         if (e.op === "&&" || e.op === "||") {
           const a = this.cond(e.a);
           const b = this.cond(e.b);
-          return e.op === "&&" ? { t: INT, get: () => (a() && b() ? 1 : 0) } : { t: INT, get: () => (a() || b() ? 1 : 0) };
+          const r: Ex = e.op === "&&" ? { t: INT, get: () => (a() && b() ? 1 : 0) } : { t: INT, get: () => (a() || b() ? 1 : 0) };
+          if (isConstExpr(e.a) && isConstExpr(e.b)) r.c = r.get();
+          return r;
         }
+        if (this.file === "user" && (e.op === "==" || e.op === "!=") && (e.a.k === "str" || e.b.k === "str"))
+          this.rt.warn(
+            line,
+            "string-compare",
+            `${e.op} compares where two strings are stored, not their text, so this test does not do what it looks like. Compare text with strcmp(a, b) == 0.`,
+          );
         const REL = ["<", ">", "<=", ">="];
         if (this.file === "user" && REL.includes(e.op) && e.a.k === "bin" && REL.includes(e.a.op))
           this.rt.warn(
@@ -948,7 +1175,7 @@ export class Compiler {
         );
       }
       st = p.t.to;
-      addr = p.get;
+      addr = this.notNull(p.get, line);
     } else {
       if (base.t.k !== "struct" || !base.lv) {
         throw this.err(
@@ -1001,19 +1228,36 @@ export class Compiler {
         mem.readMask = 0;
         return v;
       };
+      // C promotes a bit-field narrower than int to (signed) int, whatever its declared type.
       return {
-        t: this.promote(f.type),
+        t: unit === 1 && w < 16 ? INT : this.promote(f.type),
         get: signed
           ? () => (((readBits(a()) >>> sh) & mask) << (32 - w)) >> (32 - w)
           : () => ((readBits(a()) >>> sh) & mask) >>> 0,
         lv: { addr: a, bit: f },
+        ro: e.arrow ? undefined : base.ro,
       };
     }
     const ld = this.loader(f.type);
-    return { t: f.type, get: () => ld(a()), lv: { addr: a } };
+    return { t: f.type, get: () => ld(a()), lv: { addr: a }, ro: e.arrow ? undefined : base.ro };
   }
 
-  private deref(p: Ex, line: number, index = false): Ex {
+  /** In the student's code, using a pointer that holds NULL stops the program with a message. */
+  private notNull(g: () => number, line: number): () => number {
+    if (this.file !== "user") return g;
+    const rt = this.rt;
+    return () => {
+      const a = g();
+      if (a < NULL_PAGE)
+        throw new RuntimeError(
+          rt.line || line,
+          "This pointer is NULL (address 0): it does not point at a variable yet. Give it an address before using it, for example p = &x;",
+        );
+      return a;
+    };
+  }
+
+  private deref(p: Ex, line: number, index = false, checkNull = true): Ex {
     const x = this.rvalue(p);
     if (!isPtr(x.t)) {
       throw this.err(line, index ? "Only arrays and pointers can be indexed with [ ]." : `'*' needs a pointer, but this is ${describe(x.t)}.`);
@@ -1022,7 +1266,7 @@ export class Compiler {
     if (to.k === "void") throw this.err(line, "A void pointer must be cast to a real type before it is used.");
     if (to.k === "func") return { t: to, get: x.get };
     const ld = this.loader(to);
-    const g = x.get;
+    const g = checkNull ? this.notNull(x.get, line) : x.get;
     return { t: to, get: () => ld(g()), lv: { addr: g } };
   }
 
@@ -1045,14 +1289,14 @@ export class Compiler {
       const args = this.callArgs(f, f.t, e.args, line);
       const n = args.length;
       const types = this.argTypes(f.t, e.args);
-      return {
-        t: f.t.ret,
-        get: () => {
-          const vals = new Array<number>(n);
-          for (let i = 0; i < n; i++) vals[i] = args[i]();
-          return f.native ? f.native(vals, types, rt.line) : self.invoke(f, vals, line);
-        },
+      const get = () => {
+        const vals = new Array<number>(n);
+        for (let i = 0; i < n; i++) vals[i] = args[i]();
+        return f.native ? f.native(vals, types, rt.line) : self.invoke(f, vals, line);
       };
+      // A returned struct is a value with an address (the function's own copy), so it can be assigned.
+      if (f.t.ret.k === "struct") return { t: f.t.ret, get, lv: { addr: get } };
+      return { t: f.t.ret, get };
     }
     let callee = this.rvalue(this.expr(e.f));
     if (isPtr(callee.t) && callee.t.to.k !== "func") callee = this.rvalue(this.deref(callee, line));
@@ -1076,7 +1320,9 @@ export class Compiler {
   private unary(e: Extract<Expr, { k: "un" }>): Ex {
     const line = e.line;
     if (e.op === "&") {
-      const x = this.expr(e.e);
+      const { x, l } = this.target(e.e);
+      // Its address is handed out: whoever gets it may fill it in.
+      if (l) this.wrote(l);
       if (x.fn) return { t: ptrTo(x.t), get: x.get, fn: x.fn };
       if (!x.lv) throw this.err(line, "'&' needs a variable (something with an address), not a value.");
       if (x.lv.bit) throw this.err(line, "A bit field has no address of its own; '&' cannot be used on it.");
@@ -1101,20 +1347,22 @@ export class Compiler {
 
   private incdec(x: Ex, d: number, pre: boolean, line: number): Ex {
     if (!x.lv) throw this.err(line, `'${d > 0 ? "++" : "--"}' needs a variable.`);
+    if (x.ro) throw this.err(line, constMsg(x.ro));
     if (!isScalar(x.t)) throw this.err(line, `'${d > 0 ? "++" : "--"}' needs a number or pointer variable.`);
     const step = isPtr(x.t) ? d * sizeOf(x.t.to) : d;
-    const n = normalizer(x.t);
+    const n = normalizer(x.lv.bit ? x.lv.bit.type : x.t);
     const w = this.writer(x, line);
     const g = x.get;
     // Evaluate the address once.
     if (x.lv.bit) {
+      const fit = fieldValue(x.lv.bit);
       return {
         t: x.t,
         get: () => {
           const old = g();
           const nv = n(old + step);
           w(nv);
-          return pre ? nv : old;
+          return pre ? fit(nv) : old;
         },
       };
     }
@@ -1149,12 +1397,17 @@ export class Compiler {
       const addr = lv.addr;
       const w = f.bitW!;
       const name = f.name;
+      // A signed field of w bits holds -2^(w-1) to 2^(w-1) - 1.
+      const signed = isInt(f.type) && f.type.s;
+      const hi = signed ? (max - 1) / 2 : max;
+      const lo = signed ? -(max + 1) / 2 : -(max + 1) / 2 - (w === 1 ? 1 : 0);
+      const fit = fieldValue(f);
       return (v: number) => {
-        if (v > max || v < -(max + 1) / 2 - (w === 1 ? 1 : 0)) {
+        if (v > hi || v < lo) {
           rt.warn(
             rt.line,
             "field-overflow",
-            `${v} does not fit in ${name}, which is ${w} bit${w === 1 ? "" : "s"} wide (0 to ${max}). Only the low ${w === 1 ? "bit" : `${w} bits`} were stored: ${(v & max) >>> 0}.`,
+            `${v} does not fit in ${name}, which is ${w} bit${w === 1 ? "" : "s"} wide (${signed ? lo : 0} to ${hi}). Only the low ${w === 1 ? "bit" : `${w} bits`} were stored: ${fit(v)}.`,
           );
         }
         const a = addr();
@@ -1169,7 +1422,8 @@ export class Compiler {
 
   private assign(e: Extract<Expr, { k: "assign" }>): Ex {
     const line = e.line;
-    const a = this.expr(e.a);
+    const tgt = e.op === "=" ? this.target(e.a) : { x: this.expr(e.a), l: e.a.k === "id" ? this.lookupLocal(e.a.name) : undefined };
+    const a = tgt.x;
     if (!a.lv) {
       throw this.err(
         line,
@@ -1178,6 +1432,17 @@ export class Compiler {
           : "The left side of = must be a variable or a register field, not a value.",
       );
     }
+    if (a.ro) throw this.err(line, constMsg(a.ro));
+    const reads = this.uninitReads.length;
+    const r = this.assignTo(e, a);
+    // After x = ... the local has a value. After x += ... it was read first, which is reported once.
+    if (tgt.l) e.op === "=" ? this.wrote(tgt.l, reads) : (tgt.l.uninit = false);
+    return r;
+  }
+
+  private assignTo(e: Extract<Expr, { k: "assign" }>, a: Ex): Ex {
+    const line = e.line;
+    if (!a.lv) throw this.err(line, "The left side of = must be a variable or a register field, not a value.");
     if (a.t.k === "struct") {
       if (e.op !== "=") throw this.err(line, `'${e.op}' does not work on a whole struct.`);
       const b = this.expr(e.b);
@@ -1189,10 +1454,11 @@ export class Compiler {
             : `Cannot assign ${describe(b.t)} to ${describe(a.t)}.`,
         );
       }
+      if (!b.lv) throw this.err(line, "The right side must be a struct variable (not the result of ?: or a function call).");
       const mem = this.rt.mem;
       const n = a.t.size;
       const da = a.lv.addr;
-      const sa = b.lv!.addr;
+      const sa = b.lv.addr;
       return {
         t: a.t,
         get: () => {
@@ -1205,24 +1471,10 @@ export class Compiler {
       };
     }
     if (e.op === "=") {
-      const raw = this.rvalue(this.expr(e.b));
-      // A constant too big for a 16-bit variable or register loses its upper bits without a sound on the real chip.
-      if (raw.c !== undefined && a.t.k === "int" && a.t.w === 1 && !a.lv.bit && Number.isInteger(raw.c) && (raw.c > 65535 || raw.c < -32768 || (a.t.s && raw.c > 32767 && raw.t.k === "int" && raw.t.s))) {
-        const c = raw.c;
-        const rt = this.rt;
-        const g = raw.get;
-        raw.get = () => {
-          rt.warn(
-            line,
-            "const-overflow",
-            c > 65535 || c < -32768
-              ? `${c} does not fit in 16 bits (0 to 65535), so only the low 16 bits were stored: ${c & 0xffff}. Use a smaller value, or a 32-bit variable (int32_t, uint32_t).`
-              : `${c} does not fit in a signed 16-bit int (-32768 to 32767): it is stored as ${(c << 16) >> 16}. On this chip int is 16 bits; use int32_t for larger numbers.`,
-          );
-          return g();
-        };
-      }
-      const b = this.convert(raw, a.t, line, "assign");
+      let raw = this.rvalue(this.expr(e.b));
+      if (!a.lv.bit) raw = this.constOverflow(raw, a.t, line);
+      // A bit-field takes the value as its declared type (it reads back as a promoted int).
+      const b = this.convert(raw, a.lv.bit ? a.lv.bit.type : a.t, line, "assign");
       const bg = b.get;
       if (!a.lv.bit) {
         const st = this.storer(a.t);
@@ -1238,12 +1490,13 @@ export class Compiler {
         };
       }
       const w = this.writer(a, line);
+      const fit = fieldValue(a.lv.bit);
       return {
         t: a.t,
         get: () => {
           const v = bg();
           w(v);
-          return v;
+          return fit(v);
         },
       };
     }
@@ -1252,15 +1505,16 @@ export class Compiler {
     const b = this.expr(e.b);
     if (a.lv.bit) {
       const cur: Ex = { t: a.t, get: a.get };
-      const res = this.convert(this.binary(op, cur, b, line), a.t, line, "assign");
+      const res = this.convert(this.binary(op, cur, b, line), a.lv.bit.type, line, "assign");
       const w = this.writer(a, line);
+      const fit = fieldValue(a.lv.bit);
       const rg = res.get;
       return {
         t: a.t,
         get: () => {
           const v = rg();
           w(v);
-          return v;
+          return fit(v);
         },
       };
     }
@@ -1351,7 +1605,17 @@ export class Compiler {
     const ag = a.get;
     const bg = b.get;
     const cmp = compareOp(op);
-    if (cmp) return fold2({ t: INT, get: () => (cmp(ag(), bg()) ? 1 : 0) }, a, b);
+    if (cmp) {
+      if (this.file === "user" && (op === ">=" || op === "<") && isInt(t) && !t.s && b.c === 0 && a.c === undefined)
+        rt.warn(
+          line,
+          "unsigned-compare",
+          op === ">="
+            ? "An unsigned value is never below 0, so this >= 0 test is always true. Counting down past 0 wraps round to a huge number instead. Use a signed type (int16_t), or test != 0."
+            : "An unsigned value is never below 0, so this < 0 test is always false. Use a signed type (int16_t) if the value can go negative.",
+        );
+      return fold2({ t: INT, get: () => (cmp(ag(), bg()) ? 1 : 0) }, a, b);
+    }
 
     if (isFloat(t)) {
       const fr = Math.fround;
@@ -1430,7 +1694,7 @@ export class Compiler {
       case "/":
       case "%": {
         const div = op === "/";
-        return {
+        const r: Ex = {
           t,
           get: () => {
             const y = bg();
@@ -1439,6 +1703,8 @@ export class Compiler {
             return n(div ? Math.trunc(x / y) : x % y);
           },
         };
+        // A constant division (as in #define PERIOD (1000 / 4)) is a constant, except by zero.
+        return b.c ? fold2(r, a, b) : r;
       }
       case "&": return fold2({ t, get: () => n(ag() & bg()) }, a, b);
       case "|": return fold2({ t, get: () => n(ag() | bg()) }, a, b);
@@ -1511,6 +1777,70 @@ function fold2(x: Ex, a: Ex, b: Ex): Ex {
 function pointeeSize(t: Extract<CType, { k: "ptr" }>, line: number): number {
   if (t.to.k === "void") throw new CError(line, "Arithmetic on a void pointer is not possible; cast it to a real type first.");
   return sizeOf(t.to);
+}
+
+/** True for an expression made only of numbers and operators (no variables, calls or assignments). */
+function isConstExpr(e: Expr): boolean {
+  switch (e.k) {
+    case "num":
+      return true;
+    case "un":
+      return ["-", "+", "!", "~"].includes(e.op) && isConstExpr(e.e);
+    case "bin":
+      return isConstExpr(e.a) && isConstExpr(e.b) && !((e.op === "/" || e.op === "%") && e.b.k === "num" && e.b.value === 0);
+    case "cast":
+      return isConstExpr(e.e);
+    case "cond":
+      return isConstExpr(e.c) && isConstExpr(e.a) && isConstExpr(e.b);
+    case "sizeof":
+      return true;
+    default:
+      return false;
+  }
+}
+
+/** The value a bit-field holds after v is stored in it. */
+function fieldValue(f: Field): (v: number) => number {
+  const w = f.bitW!;
+  if (isInt(f.type) && f.type.s) return (v) => (v << (32 - w)) >> (32 - w);
+  const max = w === 32 ? 0xffffffff : 2 ** w - 1;
+  return (v) => (v & max) >>> 0;
+}
+
+const constMsg = (name: string) =>
+  `'${name}' is declared const, so it cannot be changed after it is created. Remove const if the program must change it.`;
+
+/** Number of plain values an object holds (for initialiser lists without inner braces). */
+function scalarCount(t: CType): number {
+  if (t.k === "array") return t.n * scalarCount(t.of);
+  if (t.k === "struct") {
+    const fields = t.fields.filter((f) => f.bitW === undefined);
+    return (t.union ? fields.slice(0, 1) : fields).reduce((n, f) => n + scalarCount(f.type), 0);
+  }
+  return 1;
+}
+
+/** True when control cannot fall out of the end of the statement. */
+function alwaysReturns(s: Stmt): boolean {
+  switch (s.k) {
+    case "return":
+      return true;
+    case "block":
+      return s.body.some(alwaysReturns);
+    case "if":
+      return !!s.b && alwaysReturns(s.a) && alwaysReturns(s.b);
+    case "while":
+      return s.c.k === "num" && s.c.value !== 0;
+    case "do":
+      return alwaysReturns(s.body) || (s.c.k === "num" && s.c.value !== 0);
+    case "for":
+      return !s.c;
+    case "switch":
+      // Not analysed: assume every case returns.
+      return true;
+    default:
+      return false;
+  }
 }
 
 /** True for the union types TI uses for registers (members "all" and "bit"). */

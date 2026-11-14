@@ -4,6 +4,9 @@ import { runProgram } from "../src/sim/runner";
 import { adcCode, triggerName } from "../src/sim/plugins/adc";
 import { codes } from "./helpers";
 
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 // The course's ADC set-up (HW2, SE423Lib.c init_ADCsAndDACs), for ADCA.
 const POWER = `
     EALLOW;

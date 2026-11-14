@@ -28,7 +28,7 @@ const RGB: Record<string, Rgb> = {
   O: [255, 128, 0], // orange golf ball in the light
   o: [102, 51, 0], // the same ball in the shadow
   B: [0, 90, 255], // blue golf ball
-  Y: [230, 200, 40], // yellow tape
+  Y: [215, 190, 30], // yellow tape: L inside the ball's range, only A keeps it out
   R: [230, 20, 40], // red cone
   W: [180, 150, 120], // wooden wall: a little orange, but pale
   P: [150, 60, 200], // purple marker in the light
@@ -38,6 +38,7 @@ const RGB: Record<string, Rgb> = {
   s: [0, 40, 128], // blue ball in deep shadow
   M: [150, 60, 200], // purple marker
   w: [150, 170, 200], // pale blue reflection on the floor
+  G: [255, 190, 120], // reflection of a lamp: the ball's A and B, but too bright
 };
 const LAB = Object.fromEntries(Object.entries(RGB).map(([k, v]) => [k, rgbToLabInt(v)])) as Record<string, [number, number, number]>;
 
@@ -48,7 +49,7 @@ const BALL_IMAGE = [
   ". . . . . . O O o o , ,",
   "W W . . . . O O o o , ,",
   "W W . Y . . . O o , , ,",
-  ". . . . . R . . , , , ,",
+  ". . G . . R . . , , , ,",
   ". . . . . . . . , , , ,",
 ];
 
@@ -89,7 +90,7 @@ int area1 = -1, maskCount = 0;
 float cx1 = 0, cy1 = 0, turn1 = 0;      // the image above
 int area2 = -1;
 float cx2 = 0, turn2 = 0;               // mirrored: the ball is on the left
-int area3 = -1;
+int area3 = -1, maskCount3 = 0;
 float turn3 = 9;                        // the ball is gone
 
 void find_target(void)
@@ -136,6 +137,11 @@ void main(void)
     }
     find_target();
     area3 = area; turn3 = turn;
+    for (i = 0; i < NPIX; i++) {
+        if (mask[i] == 1) {
+            maskCount3++;
+        }
+    }
     while (1) {}
 }
 `;
@@ -166,7 +172,7 @@ int areaO = -1, areaP = -1, areaG = -1;
 float cxO = 0, cyO = 0;       // centroid of the orange ball
 float cxP = 0, cyP = 0;       // centroid of the purple marker
 float cxG = -1, cyG = -1;     // nothing green: these must stay -1
-int testIn = -1, testOut = -1, testEdge = -1;
+int testIn = -1, testOut = -1, testEdge = -1, testDark = -1, testBright = -1;
 
 // Returns 1 when the pixel (l, a, b) is inside threshold t, else 0.
 int in_threshold(int l, int a, int b, int *t)
@@ -201,6 +207,8 @@ void main(void)
     testIn = in_threshold(40, 50, -50, purple);     // inside
     testOut = in_threshold(40, 50, -20, purple);    // B is too high
     testEdge = in_threshold(40, 35, -50, purple);   // A is equal to A_min: outside
+    testDark = in_threshold(5, 50, -50, purple);    // L is too low
+    testBright = in_threshold(80, 50, -50, purple); // L is too high
     areaO = measure(orange, &cxO, &cyO);
     areaP = measure(purple, &cxP, &cyP);
     areaG = measure(green, &cxG, &cyG);
@@ -393,11 +401,13 @@ uint16_t bestArea = 0;    // area of the largest blob
 float bestCx = 0;         // its centroid column
 float bestCy = 0;         // its centroid row
 
-// Results copied by main: the mask above, then with one more pixel set
+// Results copied by main: the mask above, with one more pixel set,
+// and with three pixels cleared
 int numRaw1 = -1, numBlobs1 = -1, bestArea1 = -1;
 float bestCx1 = 0, bestCy1 = 0;
 int numRaw2 = -1, bestArea2 = -1;
 float bestCx2 = 0, bestCy2 = 0;
+int bestArea3 = -1;
 
 void find_blobs(void)
 {
@@ -415,16 +425,23 @@ void main(void)
     find_blobs();
     numRaw2 = numRaw; bestArea2 = bestArea;
     bestCx2 = bestCx; bestCy2 = bestCy;
+
+    // The top row of the big blob is cleared: it shrinks
+    mask[1 * COLS + 1] = 0;
+    mask[1 * COLS + 2] = 0;
+    mask[1 * COLS + 3] = 0;
+    find_blobs();
+    bestArea3 = bestArea;
     while (1) {}
 }
 `;
 
 const TWO_PASS_MASK = [
   ". . . . . . . . . . . .",
-  ". 1 . . 1 . . 1 1 1 . .",
-  ". 1 . . 1 . . . . 1 . .",
-  ". 1 1 1 1 . . 1 . 1 . .",
-  ". . . . . . . 1 1 1 . .",
+  ". 1 . . 1 . . 1 . . . 1",
+  ". 1 . . 1 . . 1 . 1 1 1",
+  ". 1 1 1 1 . . 1 1 1 . .",
+  ". . . . . . . . . . . .",
   ". . 1 . . . . . . . . .",
   ". 1 1 1 . . 1 . 1 . . .",
   ". . 1 . . . 1 1 1 . . .",
@@ -746,12 +763,16 @@ const ASTAR_MAIN = `    hTest = heuristic(1, 5, 4, 1);
     astar(5, 0, 5, 6);
     expandedLine = expanded;
 
-    // 3. The dry gap is closed: the mud is now the only way
+    // 3. The goal is the mud cell itself
+    astar(5, 1, 2, 2);
+    gInMud = g[2 * COLS + 2];
+
+    // 4. The dry gap is closed: the mud is now the only way
     map[2 * COLS + 4] = 'x';
     retMud = astar(5, 1, 0, 1);
     costMud = check_path(5, 1, 0, 1);
 
-    // 4. Both gaps closed
+    // 5. Both gaps closed
     map[2 * COLS + 2] = 'x';
     retBlocked = astar(5, 1, 0, 1);`;
 
@@ -761,6 +782,7 @@ int retDry = -1;        // return value with both gaps open
 int gDry = -1;          // g of the goal cell after that search
 int costDry = -1;       // cost of the path that was written
 int expandedLine = -1;  // cells expanded on the straight run from (5, 0) to (5, 6)
+int gInMud = -1;        // g of the mud cell (2, 2) when it is the goal
 int retMud = -1;        // return value with only the muddy gap left
 int costMud = -1;
 int retBlocked = -1;    // return value once both gaps are closed`;
@@ -898,12 +920,14 @@ int countNew = -1;      // open list entries after tests 1 and 2
 int retWorse = -1;      // 3. an open cell, reached by a more expensive route
 int gWorse = -1;
 int parWorse = -1;
-int retBetter = -1;     // 4. the same open cell, reached by a cheaper route
+int retEqual = -1;      // 4. the same open cell, reached at the same cost
+int parEqual = -1;
+int retBetter = -1;     // 5. the same open cell, reached by a cheaper route
 int gBetter = -1;
 int fBetter = -1;
 int parBetter = -1;
-int countBetter = -1;   // open list entries after test 4
-int retClosed = -1;     // 5. a closed cell
+int countBetter = -1;   // open list entries after test 5
+int retClosed = -1;     // 6. a closed cell
 int gClosed = -1;
 
 ${STEP_COST}
@@ -947,7 +971,12 @@ void main(void)
     gWorse = g[3 * COLS + 3];
     parWorse = parent[3 * COLS + 3];
 
-    // 4. (3, 3) again, from (3, 4) which has g = 2: cheaper
+    // 4. (3, 3) again, from (3, 4) which has g = 4: the same cost
+    g[3 * COLS + 4] = 4;
+    retEqual = relax(3 * COLS + 4, 3 * COLS + 3);
+    parEqual = parent[3 * COLS + 3];
+
+    // 5. (3, 3) again, from (3, 4) which now has g = 2: cheaper
     g[3 * COLS + 4] = 2;
     retBetter = relax(3 * COLS + 4, 3 * COLS + 3);
     gBetter = g[3 * COLS + 3];
@@ -955,7 +984,7 @@ void main(void)
     parBetter = parent[3 * COLS + 3];
     countBetter = openCount;
 
-    // 5. (3, 3) is expanded and closed. A route that looks cheaper turns up.
+    // 6. (3, 3) is expanded and closed. A route that looks cheaper turns up.
     state[3 * COLS + 3] = 2;
     g[4 * COLS + 3] = 0;
     retClosed = relax(4 * COLS + 3, 3 * COLS + 3);
@@ -1154,6 +1183,8 @@ ${ASTAR_GLOBALS}
 int retOpen = -1;       // astar8 on the open map
 int costOpen = -1;      // cost of the path it wrote
 int expandedOpen = -1;
+int costSecond = -1;    // cost of a second path, from (5, 6) to (4, 0)
+int retSame = -1;       // astar8 from a cell to itself
 int retBlocked = -1;    // astar8 after the map is closed off
 
 ${CAN_TRAVEL}
@@ -1194,6 +1225,10 @@ void main(void)
     retOpen = astar8(5, 0, 0, 6);
     costOpen = check_path8(5, 0, 0, 6);
     expandedOpen = expanded;
+
+    astar8(5, 6, 4, 0);
+    costSecond = check_path8(5, 6, 4, 0);
+    retSame = astar8(2, 3, 2, 3);
 
     // wall the goal in
     map[0 * COLS + 5] = 'x';
@@ -1288,6 +1323,7 @@ int steps = -1;           // length of the shortest path to the target, -1 if no
 int row1 = -9, col1 = -9, obstacles1 = -9, steps1 = -9;
 int row2 = -9, col2 = -9, obstacles2 = -9, steps2 = -9;
 int obstacles3 = -9, steps3 = -9;
+int row4 = -9, col4 = -9, steps4 = -9;
 
 ${fns}
 
@@ -1314,19 +1350,24 @@ void main(void)
     row1 = targetRow; col1 = targetCol; obstacles1 = numObstacles; steps1 = steps;
     DELAY_US(10000);
 
-    // Scene 2: the target is moved to (1, 4) and the blue box at (0, 5) is taken away
+    // Scene 2: the blue box at (0, 5) is taken away and the target is put in its place
     paint(0, 6, 0, 0);
-    paint(1, 4, ${SCENE.O[0]}, ${SCENE.O[1]});
-    paint(0, 5, 0, 0);
+    paint(0, 5, ${SCENE.O[0]}, ${SCENE.O[1]});
     look_and_plan();
     row2 = targetRow; col2 = targetCol; obstacles2 = numObstacles; steps2 = steps;
     DELAY_US(10000);
 
     // Scene 3: two blue boxes close the target in
-    paint(0, 5, ${SCENE.B[0]}, ${SCENE.B[1]});
-    paint(2, 4, ${SCENE.b[0]}, ${SCENE.b[1]});
+    paint(1, 4, ${SCENE.B[0]}, ${SCENE.B[1]});
+    paint(0, 7, ${SCENE.b[0]}, ${SCENE.b[1]});
     look_and_plan();
     obstacles3 = numObstacles; steps3 = steps;
+    DELAY_US(10000);
+
+    // Scene 4: the target is taken away
+    paint(0, 5, 0, 0);
+    look_and_plan();
+    row4 = targetRow; col4 = targetCol; steps4 = steps;
     while (1) {}
 }
 `;
@@ -1344,6 +1385,7 @@ float turn = 0;            // positive: left wheel faster, the robot turns RIGHT
 // Results of the test frames, copied by main
 float turnRight = 9, turnLeft = 9, turnFar = 9, turnCentre = 9, vrefCentre = 9;
 float turnNone = 9, vrefNone = 9, turnGlare = 9, vrefGlare = 9;
+float turnFarRight = 9, turnSmall = 9;
 
 // Called for every camera frame with the area (pixels) and the centroid
 // column of the largest blob. The camera sends 0, 0 when it found nothing.
@@ -1360,6 +1402,8 @@ void main(void)
     turnLeft = turn;
     follow(350.0f, 5.0f);       // ball at the left edge
     turnFar = turn;
+    follow(320.0f, 155.0f);     // ball at the right edge
+    turnFarRight = turn;
     follow(400.0f, 80.0f);      // ball straight ahead
     turnCentre = turn;
     vrefCentre = vref;
@@ -1369,11 +1413,13 @@ void main(void)
     follow(12.0f, 150.0f);      // a speck of glare on the right
     turnGlare = turn;
     vrefGlare = vref;
+    follow(50.0f, 100.0f);      // a far ball of exactly MIN_AREA pixels
+    turnSmall = turn;
     while (1) {}
 }
 `;
 
-// Statement budgets of the stars (reference solutions: 3405 and 4069 statements).
+// Statement budgets of the stars (reference solutions: 3599 and 4069 statements).
 const STEPS_TARGET = 3700;
 const STEPS_BFS = 4800;
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
@@ -1569,7 +1615,7 @@ A mask has 1s at five pixels: (row 2, column 4), (row 2, column 5), (row 2, colu
       goal: "Threshold a small camera image into a mask, compute area and centroid from the moments, and turn towards the ball.",
       refs: [{ course: "L17", slide: [35, 40, 41] }, { course: "Lab 7" }],
       brief: `
-The image is 8 rows by 12 columns: a grey floor, an orange golf ball that is half in shadow, a blue ball, yellow tape, a red cone and a pale wooden wall.
+The image is 8 rows by 12 columns: a grey floor, an orange golf ball that is half in shadow, a blue ball, yellow tape, a red cone, a pale wooden wall and the bright reflection of a lamp.
 
 This is the job of the lab's first camera script. There, two loops visit every pixel, \`img.get_pixel()\` reads its R, G, B and \`image.rgb_to_lab()\` converts them to L, A, B. Here that part is done: the image arrives as three arrays \`img_l\`, \`img_a\` and \`img_b\`.
 
@@ -1584,7 +1630,7 @@ The pixel belongs to the target when **all three** numbers are inside the thresh
 
 C has no "between": each line is two comparisons, and all six are joined with \`&&\`. For L alone: \`l > L_MIN && l < L_MAX\`. Store 1 or 0 in \`mask[i]\`.
 
-Every limit is needed. The blue ball has the same A as the orange one and differs only in B. The red cone differs in A.
+Every limit is needed. The blue ball has the same A as the orange one and differs only in B. The red cone differs in A. The lamp's reflection has the ball's A and B and is only too bright.
 
 ## 2. Moments
 For every pixel that is in the mask, add 1 to \`m00\`, its **column** to \`m10\` and its **row** to \`m01\`. The sums are \`float\`, so that the divisions keep their fraction.
@@ -1651,7 +1697,7 @@ An image without the ball has M00 = 0, and 0 / 0 gives garbage. Divide only when
         turn = 0;
     }`),
       checks: [
-        { kind: "var", name: "area1", equals: 14, label: "Image 1: area is 14, the whole orange ball, lit and shadowed", hint: "0: nothing is stored in mask[] or added to m00 yet, or area is never set. 7: only half the ball, so a comparison on L is too tight or points the wrong way. More than 14: one of the six comparisons is missing (the blue ball differs only in B, the red cone in A, the yellow tape in A). C has no `12 < a < 55`: write two comparisons joined with &&. 96: every pixel counts, so look for a `;` directly after `if (...)`." },
+        { kind: "var", name: "area1", equals: 14, label: "Image 1: area is 14, the whole orange ball, lit and shadowed", hint: "0: nothing is stored in mask[] or added to m00 yet, or area is never set. 7: only half the ball, so a comparison on L is too tight or points the wrong way. More than 14: one of the six comparisons is missing (the blue ball differs only in B, the red cone and the yellow tape in A, the lamp's reflection in L). C has no `12 < a < 55`: write two comparisons joined with &&. 96: every pixel counts, so look for a `;` directly after `if (...)`." },
         { kind: "var", name: "maskCount", equals: 14, label: "Image 1: mask[] holds 14 ones", hint: "0 while the area is right: the starter's line `mask[i] = 0;` still runs after your if and wipes the 1. Store 1 for a target pixel and 0 only in the else branch. Otherwise fix the area first." },
         { kind: "var", name: "cx1", ...range(7.5), label: "Image 1: centroid column is 7.5", hint: "Fix the area first. Exactly 7: the sums are integers, so the division dropped the fraction. Keep m00, m10 and m01 as float. About 3.29: rows and columns are swapped, m10 adds col. 0: cx is never set." },
         { kind: "var", name: "cy1", ...range(3.2857), label: "Image 1: centroid row is about 3.29", hint: "Fix the area first. Exactly 3: integer sums, keep them float. 7.5: rows and columns are swapped, m01 adds row." },
@@ -1660,6 +1706,7 @@ An image without the ball has M00 = 0, and 0 / 0 gives garbage. Divide only when
         { kind: "var", name: "cx2", ...range(3.5), label: "Image 2: centroid column is 3.5", hint: "Fix image 1 first: the same code runs on both images." },
         { kind: "var", name: "turn2", ...range(-1.25), label: "Image 2: turn is -1.25, the ball is left of centre", hint: "0.5 x (3.5 - 6) = -1.25. Fix image 1 first: the same code runs on both images." },
         { kind: "var", name: "area3", equals: 0, label: "Image 3 (floor only): area is 0", hint: "Set area from m00 on every call, also when m00 is 0." },
+        { kind: "var", name: "maskCount3", equals: 0, label: "Image 3: mask[] holds no ones", hint: "mask[] still shows the ball of an earlier image. Store 0 for every pixel that is not the target: that is the else branch." },
         { kind: "var", name: "turn3", ...range(0, 0.001), label: "Image 3: turn is 0, and nothing was divided by zero", hint: "NaN means \"not a number\": the result of 0 / 0. Divide only when m00 is above 0, and set turn to 0 otherwise. A value left over from image 2 means the else branch is missing." },
       ],
       bonus: [
@@ -1721,12 +1768,14 @@ On the real robot the ball also leaves the picture just before the robot drives 
         { kind: "var", name: "turnRight", ...range(0.4), label: "Ball at column 120: turn is +0.4, to the right", hint: "-0.4: the sign is reversed. A ball on the right has a column above 80 and needs a positive turn: 0.01 x (120 - 80)." },
         { kind: "var", name: "turnLeft", ...range(-0.5), label: "Ball at column 30: turn is -0.5, to the left", hint: "+0.5: the sign is reversed. 0.01 x (30 - 80) = -0.5." },
         { kind: "var", name: "turnFar", ...range(-0.6), label: "Ball at column 5: turn is limited to -0.6", hint: "-0.75: the two lines that limit turn to TURN_MAX are gone. +0.6: the sign is reversed." },
+        { kind: "var", name: "turnFarRight", ...range(0.6), label: "Ball at column 155: turn is limited to +0.6", hint: "+0.75: the upper limit is gone. Both limits are needed, TURN_MAX and -TURN_MAX." },
         { kind: "var", name: "turnCentre", ...range(0, 0.001), label: "Ball at column 80: turn is 0" },
         { kind: "var", name: "vrefCentre", ...range(1), label: "Ball in view: vref is 1.0", hint: "Set vref to 1.0 in the branch where a ball is in view." },
         { kind: "var", name: "turnNone", ...range(0, 0.001), label: "Nothing found (area 0, column 0): turn is 0", hint: "Column 0 is not a ball at the left edge. Test the area before you use the column." },
         { kind: "var", name: "vrefNone", ...range(0, 0.001), label: "Nothing found: vref is 0", hint: "vref keeps its last value until you change it. Set it to 0 in the branch for \"no ball\"." },
         { kind: "var", name: "turnGlare", ...range(0, 0.001), label: "A blob of 12 pixels is ignored: turn is 0", hint: "Compare the area with MIN_AREA, not with 0." },
         { kind: "var", name: "vrefGlare", ...range(0, 0.001), label: "A blob of 12 pixels is ignored: vref is 0", hint: "12 is below MIN_AREA: this frame must take the \"no ball\" branch and stop." },
+        { kind: "var", name: "turnSmall", ...range(0.2), label: "A ball of exactly 50 pixels at column 100 counts: turn is +0.2", hint: "0: a ball is in view when the area is at least MIN_AREA. Compare with >=, not with >." },
       ],
       watch: ["turnRight", "turnLeft", "turnFar", "turnNone", "vrefNone", "turnGlare"],
       hints: [
@@ -2004,7 +2053,7 @@ The loop: take the open cell with the smallest f. If it is the goal, follow the 
 5. Remember where \`next\` was reached from.
 6. In \`reconstructPath\`: step from a cell to its parent.
 
-\`main\` plans from (5, 1) to (0, 1), then closes the dry gap and plans again, and finally closes the mud gap too.
+\`main\` plans from (5, 1) to (0, 1), along the bottom row and into the mud cell. Then it closes the dry gap and plans again, and finally closes the mud gap too.
 
 The robot's own planner runs this loop with every step costing 1. The A* mode of the figure in the last two levels runs it too.
 `,
@@ -2034,6 +2083,7 @@ The robot's own planner runs this loop with every step costing 1. The A* mode of
         { kind: "var", name: "gDry", equals: 11, label: "g of the goal is 11: g adds up the cost of every step from the start", hint: "Gap 4. 1: newG is only the cost of the last step. Add it to the cost so far, g[cur]. 0: newG is still 0. 7 or 12: every step was counted as 1, use stepCost(row, col)." },
         { kind: "var", name: "costDry", equals: 11, label: "The path goes round through the dry gap: cost 11", hint: "12: the path goes through the mud, so g does not add up the real cost (gaps 2 and 4). -1: the stored path is not a chain of neighbouring free cells from goal to start (gap 5: the parent of next is cur; gap 6: step to parent[cur])." },
         { kind: "var", name: "expandedLine", min: 1, max: 8, label: "On the straight run along the bottom row, A* expands at most 8 cells", hint: "Gap 2. f must be g[i] plus the heuristic. Without the heuristic the search spreads over the whole floor. If it is there, check its arguments: the row of cell i is i / COLS and its column is i % COLS, in that order." },
+        { kind: "var", name: "gInMud", equals: 9, label: "(5, 1) to the mud cell (2, 2): g is 9, three dry steps and one into the mud", hint: "Gap 4. 4: the mud was charged when the search left a cell, so the last step cost 1. stepCost(row, col) is the cost of entering the neighbour." },
         { kind: "var", name: "retMud", equals: 1, label: "With the dry gap closed there is still a path" },
         { kind: "var", name: "costMud", equals: 12, label: "It goes through the mud: cost 12", hint: "-1: the path is not stored correctly (gaps 5 and 6). Another number: g does not add up the step costs (gap 4)." },
         { kind: "var", name: "retBlocked", equals: 0, label: "With both gaps closed, A* returns 0: no path", hint: "Gap 3. The function's comment says what each return value means: 1 is \"found\"." },
@@ -2159,7 +2209,7 @@ You need: ln 9 = 2.197, ln 0.25 = -1.386, e^4.394 = 81, e^3.008 = 20.25.
       brief: `
 The camera looks down at a floor of 6 by 8 cells. For every cell you get its colour as two numbers: A in \`scene_a\` (negative green, positive red) and B in \`scene_b\` (negative blue, positive yellow). The robot stands in cell (\`START_ROW\`, \`START_COL\`), the bottom left corner.
 
-Write \`look_and_plan()\`. \`main\` calls it three times and changes the scene in between, so start every call from scratch.
+Write \`look_and_plan()\`. \`main\` calls it four times and changes the scene in between, so start every call from scratch.
 
 ## 1. Read the scene
 Two thresholds. L is left wide open, so lit and shaded cells count alike, and only A and B are tested. As on the camera, a value must be **above** the lower limit and **below** the upper one.
@@ -2274,13 +2324,17 @@ void look_and_plan(void)
         { kind: "var", name: "obstacles1", equals: 10, label: "Scene 1: the map has 10 obstacle cells", hint: "11: the pale blue reflection (B -18) is not an obstacle. Fewer: both shades of blue count (B -87 and B -69). 0: a number cannot be above -40 and below -100, so the lower limit is -100." },
         { kind: "var", name: "steps1", equals: 13, label: "Scene 1: the shortest path has 13 steps", hint: "11 is the distance without obstacles. The path has to go round the blue boxes." },
         { kind: "led", led: "LED1", at: 5, on: true, label: "Scene 1: LED1 is on, a path was found", hint: "Switch the LED on with GPASET when steps is 0 or more." },
-        { kind: "var", name: "row2", equals: 1, label: "Scene 2: the target is now in row 1", hint: "Start every call from scratch: the old target is gone." },
-        { kind: "var", name: "col2", equals: 4, label: "Scene 2: the target is in column 4", hint: "The column of cell i is i % COLS. Start every call from scratch." },
+        { kind: "var", name: "row2", equals: 0, label: "Scene 2: the target is still in row 0" },
+        { kind: "var", name: "col2", equals: 5, label: "Scene 2: the target is now in column 5", hint: "The column of cell i is i % COLS. Start every call from scratch: the old target is gone." },
         { kind: "var", name: "obstacles2", equals: 9, label: "Scene 2: 9 obstacle cells", hint: "Set numObstacles to 0 at the start of every call." },
-        { kind: "var", name: "steps2", equals: 8, label: "Scene 2: the shortest path has 8 steps", hint: "A blue box was taken away: write '0' into map[] for every cell that is not an obstacle, so that old 'x' marks do not stay." },
+        { kind: "var", name: "steps2", equals: 10, label: "Scene 2: the shortest path has 10 steps", hint: "-1: the blue box that stood at (0, 5) is still in your map. Write '0' into map[] for every cell that is not an obstacle, so that old 'x' marks do not stay." },
         { kind: "var", name: "obstacles3", equals: 11, label: "Scene 3: 11 obstacle cells", hint: "Fix scenes 1 and 2 first. A count that keeps growing means numObstacles is not set to 0 at the start of every call." },
         { kind: "var", name: "steps3", equals: -1, label: "Scene 3: the target is closed in, steps is -1", hint: "bfs() returns -1 when the queue runs empty. Store what it returns in steps." },
-        { kind: "led", led: "LED1", at: 35, on: false, label: "Scene 3: LED1 is off, there is no path", hint: "Switch the LED off with GPACLEAR when steps is -1." },
+        { kind: "led", led: "LED1", at: 25, on: false, label: "Scene 3: LED1 is off, there is no path", hint: "Switch the LED off with GPACLEAR when steps is -1." },
+        { kind: "var", name: "row4", equals: -1, label: "Scene 4: no target, targetRow is -1", hint: "0: the target of the scene before is still stored. Set targetRow and targetCol to -1 at the start of every call." },
+        { kind: "var", name: "col4", equals: -1, label: "Scene 4: targetCol is -1" },
+        { kind: "var", name: "steps4", equals: -1, label: "Scene 4: no target, steps is -1", hint: "Call bfs() only when a target was found, and set steps to -1 otherwise." },
+        { kind: "led", led: "LED1", at: 38, on: false, label: "Scene 4: LED1 is off" },
       ],
       watch: ["targetRow", "targetCol", "numObstacles", "steps", "steps1", "steps2", "steps3"],
       hints: [
@@ -2370,7 +2424,7 @@ The loops, the division and the test for an empty mask are given.
 
 **Worked example** with \`purple\` = (10, 70, 35, 75, -75, -30) and the pixel (40, 50, -20): L 40 is between 10 and 70, A 50 between 35 and 75, but B -20 is not below -30. Result: 0.
 
-\`main\` tests three single pixels, then measures the orange ball, the purple marker and, with a third threshold, something green that is not in the picture.
+\`main\` tests five single pixels, then measures the orange ball, the purple marker and, with a third threshold, something green that is not in the picture.
 `,
       kit: "robot",
       durationMs: 20,
@@ -2392,6 +2446,8 @@ The loops, the division and the test for an empty mask are given.
         { kind: "var", name: "testIn", equals: 1, label: "Pixel (40, 50, -50) is inside the purple threshold", hint: "0: the function still returns 0 for every pixel, or a comparison points the wrong way. With negative limits, -50 is above -75 and below -30." },
         { kind: "var", name: "testOut", equals: 0, label: "Pixel (40, 50, -20) is outside: B is too high", hint: "All six comparisons must hold, joined with &&. `||` lets a pixel through as soon as one of them holds." },
         { kind: "var", name: "testEdge", equals: 0, label: "Pixel (40, 35, -50) is outside: A is equal to A min", hint: "The lab script uses `<`, not `<=`: a value equal to a limit does not pass." },
+        { kind: "var", name: "testDark", equals: 0, label: "Pixel (5, 50, -50) is outside: L is below L min", hint: "L has two limits too: `l > t[0]` and `l < t[1]`." },
+        { kind: "var", name: "testBright", equals: 0, label: "Pixel (80, 50, -50) is outside: L is above L max", hint: "L has two limits too: `l > t[0]` and `l < t[1]`." },
         { kind: "var", name: "areaO", equals: 8, label: "Orange ball: area 8, lit and shaded pixels", hint: "0: TODO 2 adds nothing to m00 yet. 9 or more: the pink sticker, the red cone or the yellow tape got in, so check the index of each limit: t[2] and t[3] belong to A, t[4] and t[5] to B." },
         { kind: "var", name: "cxO", ...range(2.125), label: "Orange ball: centroid column 2.125", hint: "1.875: rows and columns are swapped. m10 adds col, m01 adds row." },
         { kind: "var", name: "cyO", ...range(1.875), label: "Orange ball: centroid row 1.875" },
@@ -2635,7 +2691,7 @@ A **stack** is the opposite of a queue: the element added last comes out first, 
 - \`numBlobs\`: the number of blobs with **at least** \`MIN_AREA\` pixels (6 here: the smaller object just passes).
 - \`bestArea\`, \`bestCx\`, \`bestCy\`: area and centroid (column, row) of the largest blob.
 
-The mask has two real objects and three specks of noise, one of which touches the big object at a corner. \`main\` calls your function twice, the second time with one more pixel set, so clear \`label[]\` and the counters at the start.
+The mask has two real objects and three specks of noise, one of which touches the big object at a corner. \`main\` calls your function three times: on the mask as shown, with one more pixel set, and with three pixels cleared. So clear \`label[]\`, the counters and \`bestArea\` at the start.
 `,
       kit: "robot",
       durationMs: 30,
@@ -2705,6 +2761,7 @@ The mask has two real objects and three specks of noise, one of which touches th
         { kind: "var", name: "bestArea2", equals: 12, label: "The largest blob now has 12 pixels" },
         { kind: "var", name: "bestCx2", ...range(2.5833), label: "Its centroid column is about 2.58" },
         { kind: "var", name: "bestCy2", ...range(2.4167), label: "Its centroid row is about 2.42" },
+        { kind: "var", name: "bestArea3", equals: 9, label: "With its top row cleared, the largest blob has 9 pixels", hint: "12: bestArea still holds the blob of the call before. Set bestArea to 0 at the start of find_blobs." },
       ],
       watch: ["numRaw", "numBlobs", "bestArea", "bestCx", "bestCy"],
       hints: [
@@ -3063,7 +3120,7 @@ int lenRound = -2;      // to (0, 4)`,
       ],
       watch: ["pushes", "lenFar", "lenRound"],
       hints: [
-        "pushes reaches 199: the queue is full of repeats long before the search gets 9 steps away.",
+        "pushes ends at 398: each of the two searches fills its queue with 199 repeats long before it gets 9 steps away.",
         "A neighbour that already has a distance has been reached before, along a path at least as short.",
         "Wrap the push in `if (dist[next] == -1)`, or add that test to the existing `if`.",
       ],
@@ -3167,7 +3224,7 @@ The row of a cell is \`next / COLS\`, its column \`next % COLS\`.
 **Worked example.** The goal is (0, 1). \`cur\` = (3, 2) has g = 4. Its neighbour (3, 3) is new and dry: newG = 4 + 1 = 5. It is 3 rows and 2 columns from the goal, so h = 5 and f = 10. Later (3, 4), which has g = 2, is expanded: newG = 3 is smaller than 5. Now g = 3, f = 3 + 5 = 8 and the parent is (3, 4). The h of a cell never changes, only its g.
 
 ## The map
-The mud map from before: entering \`'m'\` costs 6, every other step 1. \`stepCost\`, \`heuristic\` and \`openPush\` are given. \`main\` sets up five cases by hand and calls \`relax\` once for each.
+The mud map from before: entering \`'m'\` costs 6, every other step 1. \`stepCost\`, \`heuristic\` and \`openPush\` are given. \`main\` sets up six cases by hand and calls \`relax\` for each.
 
 \`\`\`
 0000000
@@ -3198,12 +3255,14 @@ xxmx0xx
         { kind: "var", name: "retWorse", equals: 0, label: "3. A more expensive way to an open cell changes nothing: returns 0" },
         { kind: "var", name: "gWorse", equals: 5, label: "g stays 5", hint: "8: the cell took the new cost although it is higher. Compare first: only a newG that is smaller than g[next] may replace it." },
         { kind: "var", name: "parWorse", equals: 23, label: "The parent stays (3, 2)", hint: "31: the parent was changed before the comparison. Write g, parent and f only after you know the new way is cheaper." },
-        { kind: "var", name: "retBetter", equals: 1, label: "4. A cheaper way to an open cell is taken: returns 1", hint: "0: an open cell is skipped like a closed one. Only state 2 is final. An open cell can still get a cheaper path." },
+        { kind: "var", name: "retEqual", equals: 0, label: "4. Another way at the same cost changes nothing: returns 0", hint: "1: an equal cost replaced the old way. Rule 3 says \"not smaller\": the test is `newG >= g[next]`." },
+        { kind: "var", name: "parEqual", equals: 23, label: "The parent stays (3, 2)" },
+        { kind: "var", name: "retBetter", equals: 1, label: "5. A cheaper way to an open cell is taken: returns 1", hint: "0: an open cell is skipped like a closed one. Only state 2 is final. An open cell can still get a cheaper path." },
         { kind: "var", name: "gBetter", equals: 3, label: "g drops to 3" },
         { kind: "var", name: "fBetter", equals: 8, label: "f follows: 3 + 5 = 8", hint: "10: g was lowered but f still holds the old value. The open list sorts by f, so the cheaper path would wait in the wrong place." },
         { kind: "var", name: "parBetter", equals: 25, label: "The parent is now (3, 4) = cell 25", hint: "23: the cost belongs to the new way but the parent still points along the old one. The path followed back would not have the cost g says." },
         { kind: "var", name: "countBetter", equals: 2, label: "The cell is not pushed a second time", hint: "3: openPush ran for a cell that was already in the list. Push only when the state was 0." },
-        { kind: "var", name: "retClosed", equals: 0, label: "5. A closed cell is left alone: returns 0" },
+        { kind: "var", name: "retClosed", equals: 0, label: "6. A closed cell is left alone: returns 0" },
         { kind: "var", name: "gClosed", equals: 3, label: "Its g stays 3", hint: "1: the closed cell was changed. Test state[next] == 2 first and return 0." },
       ],
       watch: ["gNew", "fNew", "parNew", "gMud", "gWorse", "gBetter", "fBetter", "parBetter", "openCount"],
@@ -3463,7 +3522,7 @@ The robot can drive diagonally. Write \`astar8()\` for the map below, from (5, 0
 The Manhattan distance overestimates when diagonals are allowed. You need a heuristic that never exceeds the true cost with **these** step costs, and that is as large as it can be within that limit, so that few cells are expanded. Think about the cheapest way to cover dr rows and dc columns on an empty grid: how many diagonal steps, how many straight ones?
 
 ## Tests
-The path must be legal and have the smallest possible cost. The search must not expand more than 20 cells on the open map. \`main\` then walls the goal in and expects 0.
+The path must be legal and have the smallest possible cost. The search must not expand more than 20 cells on the open map. A second path, from (5, 6) to (4, 0), is checked the same way, and a search from a cell to itself must return 2. \`main\` then walls the goal in and expects 0.
 
 Only the data, \`canTravel\` and the path checker are given.
 `,
@@ -3564,6 +3623,8 @@ int astar8(int rowStart, int colStart, int rowEnd, int colEnd)
         { kind: "var", name: "retOpen", equals: 1, label: "A path is found on the open map" },
         { kind: "var", name: "costOpen", equals: 92, label: "The path is legal (no corner cut) and has the smallest possible cost", hint: "-1: the stored path is not legal, often a cut corner. More than 92: the path is legal but not the cheapest, so check the step costs, and that the heuristic never overestimates (the Manhattan distance does)." },
         { kind: "var", name: "expandedOpen", min: 1, max: 20, label: "At most 20 cells are expanded", hint: "A heuristic of 0 is admissible and expands nearly the whole map. Use diagonal steps for the shorter side and straight steps for the rest." },
+        { kind: "var", name: "costSecond", equals: 70, label: "(5, 6) to (4, 0): the cheapest legal path costs 70, seven straight steps", hint: "78: the search took diagonal steps where straight ones were cheaper. Add COST_DIAGONAL to g for a diagonal step, not COST_STRAIGHT. -1: the path cuts the corner of the obstacle at (4, 1)." },
+        { kind: "var", name: "retSame", equals: 2, label: "Start and goal in the same cell: astar8 returns 2" },
         { kind: "var", name: "retBlocked", equals: 0, label: "With the goal walled in, astar8 returns 0" },
       ],
       bonus: [
@@ -3606,7 +3667,7 @@ Replace every label by its root. The number of blobs is the number of roots.
 ## Write label_blobs()
 Fill \`label[]\` (0 for background, the same non-zero value for all pixels of one blob, different values for different blobs) and set \`numBlobs\`. 4-connectivity. \`check_labels()\` verifies the result. Size your table for the worst case: at most every second pixel can start a new label.
 
-The mask has four shapes, chosen so that three of them need a merge. \`main\` labels it twice, the second time with one more pixel that joins two shapes.
+The mask has four shapes, and every one of them needs a merge. In the second shape a label that was already merged meets a third one. \`main\` labels it twice, the second time with one more pixel that joins two shapes.
 `,
       kit: "robot",
       durationMs: 30,
@@ -3680,8 +3741,8 @@ void label_blobs(void)
     }
 }`),
       checks: [
-        { kind: "var", name: "numBlobs1", equals: 4, label: "4 blobs are found", hint: "8: the provisional labels were counted. Count only the roots of the equivalence table." },
-        { kind: "var", name: "labelsOk1", equals: 1, label: "Touching pixels share a label, separate shapes have different labels", hint: "Run pass 2 over the whole image: both arms of the U must end with the same label." },
+        { kind: "var", name: "numBlobs1", equals: 4, label: "4 blobs are found", hint: "9: the provisional labels were counted. Count only the roots of the equivalence table." },
+        { kind: "var", name: "labelsOk1", equals: 1, label: "Touching pixels share a label, separate shapes have different labels", hint: "Run pass 2 over the whole image: both arms of the U must end with the same label. If only the second shape is split, a merge used the labels themselves: find the root of both neighbours first, because a label may already have a parent." },
         { kind: "var", name: "numBlobs2", equals: 3, label: "With a pixel added that joins two shapes: 3 blobs", hint: "Start every call with an empty table and label 1." },
         { kind: "var", name: "labelsOk2", equals: 1, label: "The two joined shapes now share one label" },
         { kind: "source", mustNotMatch: "\\b(stack|queue)\\b", label: "No stack and no queue" },

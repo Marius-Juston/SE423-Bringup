@@ -27,7 +27,8 @@ const titlesOf = (ids: string[]) => ids.map((r) => CHAPTERS.find((x) => x.id ===
 
 function LevelRow({ l, save, open, current }: { l: Level; save: Save; open: (id: string) => void; current: boolean }) {
   const total = starsOf(l);
-  const got = save.stars[l.id]?.length ?? 0;
+  // A star a level no longer has (it was dropped in an update) is not shown.
+  const got = Math.min(total, save.stars[l.id]?.length ?? 0);
   const tier = tierOf(l);
   const passed = !!save.passed[l.id];
   const helped = passed && !!save.assisted[l.id];
@@ -66,7 +67,7 @@ function ChapterDetail({ c, save, open, nextId }: { c: Chapter; save: Save; open
   const optional = [...practice, ...expert];
   const optionalDone = optional.filter((l) => save.passed[l.id]).length;
   const starTotal = c.levels.reduce((t, l) => t + starsOf(l), 0);
-  const starGot = c.levels.reduce((t, l) => t + (save.stars[l.id]?.length ?? 0), 0);
+  const starGot = c.levels.reduce((t, l) => t + Math.min(starsOf(l), save.stars[l.id]?.length ?? 0), 0);
   const group = (title: string, cls: string, levels: Level[], note: string) =>
     levels.length > 0 && (
       <section className={`tier-group ${cls}`}>
@@ -135,7 +136,8 @@ export function MapView({ open, warmup, note }: { open: (id: string) => void; /*
   const corePassed = all.filter((l) => tierOf(l) === "core" && save.passed[l.id]).length;
   const coreTotal = all.filter((l) => tierOf(l) === "core").length;
   const extraPassed = all.filter((l) => tierOf(l) !== "core" && save.passed[l.id]).length;
-  const starGot = Object.values(save.stars).reduce((s, a) => s + a.length, 0);
+  // Counted per level that still exists, and never more than the level has now.
+  const starGot = all.reduce((s, l) => s + Math.min(starsOf(l), save.stars[l.id]?.length ?? 0), 0);
   const starTotal = all.reduce((s, l) => s + starsOf(l), 0);
   const chaptersDone = CHAPTERS.filter((c) => chapterDone(c, save.passed)).length;
   const parts = useRef<HTMLDivElement>(null);

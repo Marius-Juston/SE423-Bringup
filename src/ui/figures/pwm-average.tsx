@@ -43,8 +43,9 @@ function PwmAverage() {
     // Two passes: the first one settles the filter.
     for (let pass = 0; pass < 2; pass++)
       for (let i = 0; i <= N; i++) {
-        const frac = (i * dt * f) % 1;
-        v += ((frac < duty ? 1 : 0) - v) * a;
+        // Whole numbers: the phase in samples, so an edge never lands a sample late.
+        const on = (i * f) % N < Math.round(duty * N);
+        v += ((on ? 1 : 0) - v) * a;
         if (pass) out[i] = v;
       }
     return out;
@@ -89,19 +90,20 @@ function PwmAverage() {
   // The eye (and a 60 frames per second screen) cannot follow more than about 20 Hz.
   const flickers = f <= 20 && duty > 0 && duty < 1;
   const at = playing ? phase : 0;
-  const seen = flickers && playing ? filtered[Math.round(at * N)] : duty;
+  const seen = flickers && playing ? (filtered[Math.min(N, Math.max(0, Math.round(at * N)))] ?? duty) : duty;
   const lo = Math.min(...filtered);
   const hi = Math.max(...filtered);
   const ripple = (hi - lo) * 3.3;
   const avg = duty * 3.3;
-  const cmpa = Math.round(duty * 2500);
+  // The chapter's EPWM12A set-up: TBPRD = 5000. A CMPA above TBPRD is never reached.
+  const cmpa = duty === 1 ? 5001 : Math.round(duty * 5000);
   const avgV = avg.toFixed(3).replace(/0$/, "");
 
   const why =
     duty === 0 || duty === 1
       ? `At ${pct} % the pin never switches: it is simply ${duty ? "high, 3.3 V" : "low, 0 V"}.`
       : f <= 5
-        ? `At ${FREQS[fi][1]} the LED has time to go fully on and fully off: you see it blink, not dim. The slow load follows the pin (it swings by ${ripple.toFixed(1)} V).${playing || still ? "" : " Press Play to watch."}`
+        ? `At ${FREQS[fi][1]} ${ripple > 3 ? "the LED has time to go fully on and fully off: you see it blink, not dim" : `you see the LED blink, not dim: each ${duty < 0.5 ? "pulse" : "gap"} is a separate ${duty < 0.5 ? "flash" : "wink"}`}. The slow load follows the pin (it swings by ${ripple.toFixed(1)} V).${playing || still ? "" : " Press Play to watch."}`
         : f <= 20
           ? `At 20 Hz the LED flickers: the slow load no longer reaches 0 V or 3.3 V, but it still swings by ${ripple.toFixed(1)} V around the average.`
           : f <= 1000
@@ -156,7 +158,7 @@ function PwmAverage() {
           <span>Duty cycle</span>
           <input type="range" min={0} max={100} step={5} value={pct} aria-label="Duty cycle in percent" onChange={(e) => setPct(+e.target.value)} />
           <span className="pwma-note" style={{ color: "var(--value)", fontFamily: "var(--mono)", minWidth: "2.8em", textAlign: "right" }}>{pct} %</span>
-          <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa}; // {pct} % of 2500</code>
+          <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa}; // {duty === 1 ? "above TBPRD = 5000: never low" : `${pct} % of 5000`}</code>
         </div>
         <div>
           <span>Switching</span>

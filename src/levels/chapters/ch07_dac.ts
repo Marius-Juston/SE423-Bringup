@@ -32,13 +32,34 @@ const VALS_NOTE =
 const SYNC = `    // Given: wait until 1 ms after reset, so the timer starts at a known time
     while (CpuTimer1Regs.TIM.all > 0xFFFFFFFF - 200000) {}`;
 
-const SETDACA = `void setDACA(float dacouta0)
+/**
+ * The chapter's own helper: millivolts in. The course's setDACA(volts) and
+ * setDACB(volts) are graded work in Lab 4 (the scaling line is a blank), so
+ * they come from the board's library (plugins/dac.ts) and are never printed.
+ */
+const SETDACA_MV = `void setDacaMv(float millivolts)
 {
-    if (dacouta0 > 3.0) dacouta0 = 3.0;
-    if (dacouta0 < 0.0) dacouta0 = 0.0;
+    if (millivolts > 3000.0) millivolts = 3000.0;
+    if (millivolts < 0.0) millivolts = 0.0;
 
-    DacaRegs.DACVALS.bit.DACVALS = dacouta0 * 4095.0 / 3.0;   // 0 V to 3 V becomes 0 to 4095
+    DacaRegs.DACVALS.bit.DACVALS = millivolts * 4095.0 / 3000.0;   // 0 to 3000 mV becomes 0 to 4095
 }`;
+
+/**
+ * For the levels where the student writes the scaling: a call of the library's
+ * setDACA or setDACB in a file that does not define that function itself
+ * (programs saved before the library had them define their own).
+ */
+const OWN_SCALING = {
+  kind: "source" as const,
+  mustNotMatch: "^(?![\\s\\S]*void\\s+setDAC[AB]\\s*\\()[\\s\\S]*setDAC[AB]\\s*\\(",
+  label: "The helper writes DACVALS itself and does not call the library's setDACA or setDACB",
+  hint: "The library's functions do the work this level asks you to write. Limit and scale in your own function.",
+};
+
+/** One sentence, used where a level first calls the library's function. */
+const LIB_NOTE =
+  "`setDACA(volts)` comes from the board's library: it limits the voltage to 0 V ... 3 V and scales it, as your `setDacaMv` does for millivolts. Writing it is part of Lab 4.";
 
 const TIMER0 = (us: number) => `    EALLOW;
     PieVectTable.TIMER0_INT = &cpu_timer0_isr;
@@ -94,7 +115,7 @@ The number goes to a network of resistors and switches, one switch per bit. Ever
 A resistor network cannot deliver current: connect anything that draws current and the voltage sags. So the chip puts a **buffer** behind it: a circuit that copies the voltage at its input to its output and supplies the current itself. The formula is the ideal value. The data sheet (the manufacturer's list of the chip's electrical limits) promises it only from 0.3 V up, because the buffer cannot pull its output all the way down to 0 V. The simulator shows the ideal value.
 
 ## On this chip
-There are three: **DACA**, **DACB** and **DACC**, with registers \`DacaRegs\`, \`DacbRegs\`, \`DaccRegs\`. The course library sets up DACA and DACB and gives you \`setDACA(volts)\` and \`setDACB(volts)\`. In this chapter you write them yourself.
+There are three: **DACA**, **DACB** and **DACC**, with registers \`DacaRegs\`, \`DacbRegs\`, \`DaccRegs\`. The course library sets up DACA and DACB and gives you \`setDACA(volts)\` and \`setDACB(volts)\`. Writing those two is part of Lab 4, so in this chapter you write a helper of your own that takes millivolts, and the board's library provides the two course functions.
 `,
       questions: [
         {
@@ -354,37 +375,37 @@ The two set-up registers are protected, so the lines sit between \`EALLOW;\` and
       id: "dac-setdaca",
       kind: "code",
       mode: "write",
-      title: "Write setDACA",
-      goal: "Write the course's setDACA(volts) helper, including the limits at 0 V and 3 V.",
+      title: "Write a DAC helper",
+      goal: "Write setDacaMv(millivolts), a helper that sets DACA, including the limits at 0 mV and 3000 mV.",
       refs: [{ course: "L5", slide: [11, 6], note: "DACVALS keeps only 12 bits: clamp first" }, { course: "Lab 4" }, { trm: "12.2" }, { trm: "12.4.2" }],
       brief: `
-Nobody wants to think in 12-bit numbers. The course library has a helper that takes **volts**:
+Nobody wants to think in 12-bit numbers. The course library has a helper that takes **volts**, \`setDACA(volts)\`. Writing it is part of Lab 4, so this game does not show its body. Here you write a helper of the same kind that takes **millivolts** (1000 mV = 1 V):
 
 \`\`\`c
-setDACA(2.25);   // DACA now outputs 2.25 V
+setDacaMv(750.0);   // DACA now outputs 750 mV, which is 0.75 V
 \`\`\`
 
-Write its body. The parameter \`dacouta0\` (the course's name for it) is the wanted voltage in volts. The function has two jobs.
+Write its body. The parameter \`millivolts\` is the wanted voltage. The function has two jobs.
 
 ## 1. Saturate
-The DAC can only do 0 V to 3 V. If the caller asks for more, give 3 V. If the caller asks for less than 0, give 0 V. Limiting a value to its allowed range is called **saturation**.
+The DAC can only do 0 mV to 3000 mV. If the caller asks for more, give 3000 mV. If the caller asks for less than 0, give 0 mV. Limiting a value to its allowed range is called **saturation**.
 
 This matters more than it looks. \`DACVALS\` keeps only 12 bits. Store 5000 in it and the top bit is cut off: 5000 - 4096 = 904, which is 0.66 V. Ask for more and get less.
 
 ## 2. Scale
-Turn 0 V to 3 V into 0 to 4095 and store it in \`DacaRegs.DACVALS.bit.DACVALS\`. Storing a \`float\` in the register drops the fraction. Example: 2.25 V becomes 2.25 x 4095 / 3.0 = 3071.25, stored as 3071.
+Turn 0 mV to 3000 mV into 0 to 4095 and store it in \`DacaRegs.DACVALS.bit.DACVALS\`. Storing a \`float\` in the register drops the fraction. Example: 1000 mV becomes 1000 x 4095 / 3000.0 = 1365.
 
-The course library scales with \`volts * 4095.0 / 3.0\`, so that 3.0 V lands exactly on 4095, the largest number. The manual's formula says \`volts * 4096.0 / 3.0\`, which gives 4096 for 3.0 V, one too many. The two differ by less than one step (0.732 mV). Either passes here, but with 4096 you must also limit the number to 4095.
+Scale with \`millivolts * 4095.0 / 3000.0\`, so that 3000 mV lands exactly on 4095, the largest number. The manual's formula is \`millivolts * 4096.0 / 3000.0\`, which gives 4096 for 3000 mV, one too many. The two differ by less than one step (0.732 mV). Either passes here, but with 4096 you must also limit the number to 4095.
 
 ${VALS_NOTE}
 
-\`main()\` switches the DAC on, then asks for 2.25 V, 5 V and -1 V, one millisecond apart.
+\`main()\` switches the DAC on, then asks for 750 mV, 2250 mV, 5000 mV and -1000 mV, one millisecond apart.
 `,
       kit: "robot",
-      durationMs: 4,
-      starter: `void setDACA(float dacouta0)
+      durationMs: 5,
+      starter: `void setDacaMv(float millivolts)
 {
-    // 1. limit dacouta0 to 0.0 ... 3.0
+    // 1. limit millivolts to 0.0 ... 3000.0
 
     // 2. scale to 0 ... 4095 and store it in DACVALS
 
@@ -396,16 +417,18 @@ void main(void)
 
 ${DAC_ON}
 
-    setDACA(2.25);
+    setDacaMv(750.0);
     DELAY_US(1000);
-    setDACA(5.0);
+    setDacaMv(2250.0);
     DELAY_US(1000);
-    setDACA(-1.0);
+    setDacaMv(5000.0);
+    DELAY_US(1000);
+    setDacaMv(-1000.0);
 
     while (1) {}
 }
 `,
-      solution: `${SETDACA}
+      solution: `${SETDACA_MV}
 
 void main(void)
 {
@@ -413,11 +436,13 @@ void main(void)
 
 ${DAC_ON}
 
-    setDACA(2.25);
+    setDacaMv(750.0);
     DELAY_US(1000);
-    setDACA(5.0);
+    setDacaMv(2250.0);
     DELAY_US(1000);
-    setDACA(-1.0);
+    setDacaMv(5000.0);
+    DELAY_US(1000);
+    setDacaMv(-1000.0);
 
     while (1) {}
 }
@@ -427,35 +452,45 @@ ${DAC_ON}
           kind: "signal",
           name: "DACA",
           at: 1.0,
-          equals: 2.25,
+          equals: 0.75,
           tol: 0.002,
-          label: "setDACA(2.25) gives 2.25 V",
-          hint: "At 0 V nothing useful reached DACVALS. Multiply first, then divide: dacouta0 * 4095.0 / 3.0, stored in DacaRegs.DACVALS.bit.DACVALS.",
+          label: "setDacaMv(750.0) gives 0.75 V",
+          hint: "At 0 V nothing useful reached DACVALS. Multiply first, then divide: millivolts * 4095.0 / 3000.0, stored in DacaRegs.DACVALS.bit.DACVALS.",
         },
         {
           kind: "signal",
           name: "DACA",
           at: 2.0,
-          min: 2.997,
-          max: 3.0,
-          label: "setDACA(5.0) is limited to the top of the range",
-          hint: "Without the limit, the 12-bit register cuts the number off and the output drops. Add: if (dacouta0 > 3.0) dacouta0 = 3.0;",
+          equals: 2.25,
+          tol: 0.002,
+          label: "setDacaMv(2250.0) gives 2.25 V",
+          hint: "The number must come from the parameter: millivolts * 4095.0 / 3000.0.",
         },
         {
           kind: "signal",
           name: "DACA",
-          at: 3.5,
+          at: 3.0,
+          min: 2.997,
+          max: 3.0,
+          label: "setDacaMv(5000.0) is limited to the top of the range",
+          hint: "Without the limit, the 12-bit register cuts the number off and the output drops. Add: if (millivolts > 3000.0) millivolts = 3000.0;",
+        },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 4.5,
           equals: 0,
           tol: 0.001,
-          label: "setDACA(-1.0) is limited to 0 V",
-          hint: "A negative float stored in an unsigned register becomes a large number. Add: if (dacouta0 < 0.0) dacouta0 = 0.0;",
+          label: "setDacaMv(-1000.0) is limited to 0 V",
+          hint: "A negative float stored in an unsigned register becomes a large number. Add: if (millivolts < 0.0) millivolts = 0.0;",
         },
+        OWN_SCALING,
       ],
       inspect: ["DacaRegs.DACVALS", "DacaRegs.DACVALA"],
       hints: [
         "Two `if` lines for the limits, then one assignment.",
-        "`if (dacouta0 > 3.0) dacouta0 = 3.0;` and the same idea for 0.0.",
-        "`DacaRegs.DACVALS.bit.DACVALS = dacouta0 * 4095.0 / 3.0;` after the two limit lines.",
+        "`if (millivolts > 3000.0) millivolts = 3000.0;` and the same idea for 0.0.",
+        "`DacaRegs.DACVALS.bit.DACVALS = millivolts * 4095.0 / 3000.0;` after the two limit lines.",
       ],
       takeaway: "Saturate first, then scale. A 12-bit register does not complain about a number that is too big, it silently keeps the low 12 bits.",
     },
@@ -467,7 +502,7 @@ ${DAC_ON}
       goal: "Find the two reasons this program shows 0 V instead of 1 V and then 2 V.",
       refs: [{ trm: "12.4.2" }, { trm: "12.2.1" }, { course: "L5", slide: 11 }],
       brief: `
-This program should put **1.0 V** on DACA, wait a millisecond, and then go to **2.0 V**. \`setDACA\` is correct.
+This program should put **1.0 V** on DACA, wait a millisecond, and then go to **2.0 V**. ${LIB_NOTE} So the mistake is not there.
 
 The meter shows 0 V the whole time. There are **two** separate mistakes in \`main()\`, both in the set-up, and each one alone is enough to keep the pin at 0 V.
 
@@ -475,9 +510,7 @@ Run it and read what the simulator reports. Then compare the set-up with the seq
 `,
       kit: "robot",
       durationMs: 3,
-      starter: `${SETDACA}
-
-void main(void)
+      starter: `void main(void)
 {
     InitSysCtrl();
 
@@ -494,9 +527,7 @@ void main(void)
     while (1) {}
 }
 `,
-      solution: `${SETDACA}
-
-void main(void)
+      solution: `void main(void)
 {
     InitSysCtrl();
 
@@ -563,7 +594,7 @@ Make a **sawtooth**: the output climbs in equal steps, then drops back to 0 V an
 - Timer 0 interrupts every **1 ms**. Its set-up and vector are already in \`main()\`.
 - In \`cpu_timer0_isr\`, count the interrupts in \`step\`. After interrupt number k the output is **k x 0.03 V**: 0.03 V after the first, 0.30 V after the tenth, 3.0 V after number 100.
 - On the next interrupt after 3.0 V, start over at 0 V (\`step\` back to 0), then 0.03 V, and so on.
-- Use \`setDACA\`, which is given. It limits and scales for you.
+- Use \`setDACA(volts)\` from the board's library. It limits and scales for you.
 
 Count with an integer and multiply (\`step * 0.03\`). Adding 0.03 to a \`float\` a hundred times collects rounding errors, an integer count does not.
 
@@ -576,8 +607,6 @@ Do not forget what every group 1 interrupt function ends with.
 __interrupt void cpu_timer0_isr(void);
 
 int16_t step = 0;
-
-${SETDACA}
 
 void main(void)
 {
@@ -604,8 +633,6 @@ __interrupt void cpu_timer0_isr(void)
 __interrupt void cpu_timer0_isr(void);
 
 int16_t step = 0;
-
-${SETDACA}
 
 void main(void)
 {
@@ -698,13 +725,13 @@ __interrupt void cpu_timer0_isr(void)
       brief: `
 This program is a small amplifier: it makes a signal bigger. Every millisecond the timer interrupt takes the next value of a test signal, multiplies it by 2 (the factor is called the **gain**), and sends it to DACA.
 
-The test signal goes 0.5 V, 1.0 V, 1.4 V, 1.6 V, 2.0 V. Times two, that is 1.0 V, 2.0 V, 2.8 V, then 3.2 V and 4.0 V. The last two are more than the DAC can do, so the output should simply stay at the top, 3.0 V.
+The test signal is in millivolts: 500, 1000, 1400, 1600, 2000. Times two, that is 1000 mV, 2000 mV, 2800 mV, then 3200 mV and 4000 mV. The last two are more than the DAC can do, so the output should simply stay at the top, 3.0 V.
 
 Instead the output **drops** to 0.2 V and 1.0 V on the last two values.
 
 {{figure:dac-staircase}}
 
-Find out why. In the figure, push the number past 4095 and watch the output. Then look at what number the code stores for 3.2 V, and remember how many bits \`DACVALS\` keeps. Then fix \`setDACA\` so that it can be trusted with any input.
+Find out why. In the figure, push the number past 4095 and watch the output. Then look at what number the code stores for 3200 mV, and remember how many bits \`DACVALS\` keeps. Then fix \`setDacaMv\`, this program's own helper, so that it can be trusted with any input.
 `,
       kit: "robot",
       durationMs: 7,
@@ -712,14 +739,12 @@ Find out why. In the figure, push the number past 4095 and watch the output. The
 
 __interrupt void cpu_timer0_isr(void);
 
-float signal[5] = {0.5, 1.0, 1.4, 1.6, 2.0};
+float signal[5] = {500.0, 1000.0, 1400.0, 1600.0, 2000.0};   // millivolts
 int16_t n = 0;
 
-void setDACA(float dacouta0)
+void setDacaMv(float millivolts)
 {
-    EALLOW;
-    DacaRegs.DACVALS.bit.DACVALS = dacouta0 * 4095.0 / 3.0;
-    EDIS;
+    DacaRegs.DACVALS.bit.DACVALS = millivolts * 4095.0 / 3000.0;
 }
 
 void main(void)
@@ -738,7 +763,7 @@ ${TIMER0(1000)}
 __interrupt void cpu_timer0_isr(void)
 {
     if (n < 5) {
-        setDACA(2.0 * signal[n]);
+        setDacaMv(2.0 * signal[n]);
         n++;
     }
 
@@ -749,10 +774,10 @@ __interrupt void cpu_timer0_isr(void)
 
 __interrupt void cpu_timer0_isr(void);
 
-float signal[5] = {0.5, 1.0, 1.4, 1.6, 2.0};
+float signal[5] = {500.0, 1000.0, 1400.0, 1600.0, 2000.0};   // millivolts
 int16_t n = 0;
 
-${SETDACA}
+${SETDACA_MV}
 
 void main(void)
 {
@@ -770,7 +795,7 @@ ${TIMER0(1000)}
 __interrupt void cpu_timer0_isr(void)
 {
     if (n < 5) {
-        setDACA(2.0 * signal[n]);
+        setDacaMv(2.0 * signal[n]);
         n++;
     }
 
@@ -778,16 +803,16 @@ __interrupt void cpu_timer0_isr(void)
 }
 `,
       checks: [
-        { kind: "signal", name: "DACA", at: 2.0, equals: 1.0, tol: 0.003, label: "0.5 V in, 1.0 V out" },
-        { kind: "signal", name: "DACA", at: 4.0, equals: 2.8, tol: 0.003, label: "1.4 V in, 2.8 V out" },
+        { kind: "signal", name: "DACA", at: 2.0, equals: 1.0, tol: 0.003, label: "500 mV in, 1.0 V out" },
+        { kind: "signal", name: "DACA", at: 4.0, equals: 2.8, tol: 0.003, label: "1400 mV in, 2.8 V out" },
         {
           kind: "signal",
           name: "DACA",
           at: 5.0,
           min: 2.995,
           max: 3.0,
-          label: "1.6 V in: the output stays at the top",
-          hint: "3.2 V scales to 4368, and 4368 does not fit in 12 bits: 4368 - 4096 = 272 is stored. Limit the voltage before scaling.",
+          label: "1600 mV in: the output stays at the top",
+          hint: "3200 mV scales to 4368, and 4368 does not fit in 12 bits: 4368 - 4096 = 272 is stored. Limit the voltage before scaling.",
         },
         {
           kind: "signal",
@@ -795,16 +820,17 @@ __interrupt void cpu_timer0_isr(void)
           at: 6.0,
           min: 2.995,
           max: 3.0,
-          label: "2.0 V in: still at the top",
-          hint: "Same cause: 4.0 V scales to 5460, stored as 5460 - 4096 = 1364. Add if (dacouta0 > 3.0) dacouta0 = 3.0; before the scaling line.",
+          label: "2000 mV in: still at the top",
+          hint: "Same cause: 4000 mV scales to 5460, stored as 5460 - 4096 = 1364. Add if (millivolts > 3000.0) millivolts = 3000.0; before the scaling line.",
         },
+        OWN_SCALING,
       ],
       watch: ["n"],
       inspect: ["DacaRegs.DACVALS"],
       hints: [
-        "3.2 * 4095 / 3 = 4368. The largest 12-bit number is 4095.",
+        "3200 * 4095 / 3000 = 4368. The largest 12-bit number is 4095.",
         "The register keeps the low 12 bits: 4368 becomes 272, which is 0.2 V. This is called wrap-around.",
-        "Add the two limit lines at the top of `setDACA`: `if (dacouta0 > 3.0) dacouta0 = 3.0;` and `if (dacouta0 < 0.0) dacouta0 = 0.0;`",
+        "Add the two limit lines at the top of `setDacaMv`: `if (millivolts > 3000.0) millivolts = 3000.0;` and `if (millivolts < 0.0) millivolts = 0.0;`",
       ],
       takeaway: "Wrap-around turns 'a bit too much' into 'almost nothing'. Every value that goes to hardware gets saturated first.",
     },
@@ -822,23 +848,25 @@ The second DAC works exactly like the first. Its registers are \`DacbRegs\`, and
 This time nothing is given for DACB.
 
 1. In \`main()\`, bring up **DACB** the same way DACA is brought up: reference VREFHI, output enabled, value 0. The given wait after it covers the power-up time.
-2. Write \`setDACB(float volts)\`, with the same limits and scaling as \`setDACA\`.
-3. \`main()\` already steps a voltage \`v\` through 0.5 V, 1.25 V and 2.75 V, one millisecond apart. After each step, DACA must output \`v\` and DACB must output **3.0 - v**, so that the two always add up to 3 V.
+2. Write \`setDacbMv(float millivolts)\`, with the same limits and scaling as \`setDacaMv\`, which is given.
+3. \`main()\` already steps a voltage \`v\` through 500 mV, 1250 mV, 2750 mV and 3500 mV, one millisecond apart. After each step, DACA must output \`v\` and DACB must output **3000 - v**, so that the two add up to 3 V.
+
+The last step asks for more than a DAC can do: 3500 mV and -500 mV. The limits must hold DACA at the top and DACB at 0 V.
 
 Two voltages that move in opposite directions around a middle are how many motor drivers and audio amplifiers want their input.
 `,
       kit: "robot",
-      durationMs: 4.5,
-      starter: `${SETDACA}
+      durationMs: 5.5,
+      starter: `${SETDACA_MV}
 
-void setDACB(float dacouta1)
+void setDacbMv(float millivolts)
 {
     // TODO
 }
 
 void main(void)
 {
-    float v[3] = {0.5, 1.25, 2.75};
+    float v[4] = {500.0, 1250.0, 2750.0, 3500.0};   // millivolts
     int16_t i = 0;
 
     InitSysCtrl();
@@ -849,8 +877,8 @@ ${DAC_ON}
 
 ${SYNC}
 
-    for (i = 0; i < 3; i++) {
-        // TODO: DACA = v[i], DACB = 3.0 - v[i]
+    for (i = 0; i < 4; i++) {
+        // TODO: DACA = v[i], DACB = 3000.0 - v[i]
 
         DELAY_US(1000);
     }
@@ -858,21 +886,19 @@ ${SYNC}
     while (1) {}
 }
 `,
-      solution: `${SETDACA}
+      solution: `${SETDACA_MV}
 
-void setDACB(float dacouta1)
+void setDacbMv(float millivolts)
 {
-    if (dacouta1 > 3.0) dacouta1 = 3.0;
-    if (dacouta1 < 0.0) dacouta1 = 0.0;
+    if (millivolts > 3000.0) millivolts = 3000.0;
+    if (millivolts < 0.0) millivolts = 0.0;
 
-    EALLOW;
-    DacbRegs.DACVALS.bit.DACVALS = dacouta1 * 4095.0 / 3.0;
-    EDIS;
+    DacbRegs.DACVALS.bit.DACVALS = millivolts * 4095.0 / 3000.0;
 }
 
 void main(void)
 {
-    float v[3] = {0.5, 1.25, 2.75};
+    float v[4] = {500.0, 1250.0, 2750.0, 3500.0};   // millivolts
     int16_t i = 0;
 
     InitSysCtrl();
@@ -887,9 +913,9 @@ ${DAC_ON}
 
 ${SYNC}
 
-    for (i = 0; i < 3; i++) {
-        setDACA(v[i]);
-        setDACB(3.0 - v[i]);
+    for (i = 0; i < 4; i++) {
+        setDacaMv(v[i]);
+        setDacbMv(3000.0 - v[i]);
         DELAY_US(1000);
     }
 
@@ -920,7 +946,7 @@ ${SYNC}
           equals: 0.5,
           tol: 0.003,
           label: "Step 1: DACA at 0.5 V",
-          hint: "Call setDACA(v[i]); inside the for loop, before the DELAY_US line.",
+          hint: "Call setDacaMv(v[i]); inside the for loop, before the DELAY_US line.",
         },
         {
           kind: "signal",
@@ -929,17 +955,28 @@ ${SYNC}
           equals: 2.5,
           tol: 0.003,
           label: "Step 1: DACB at 2.5 V",
-          hint: "\"Never produced a value\" means DACB is still off (DACOUTEN). At 0 V, setDACB is empty or is not called with 3.0 - v[i].",
+          hint: "\"Never produced a value\" means DACB is still off (DACOUTEN). At 0 V, setDacbMv is empty or is not called with 3000.0 - v[i].",
         },
         { kind: "signal", name: "DACB", at: 2.5, equals: 1.75, tol: 0.003, label: "Step 2: DACB at 1.75 V" },
         { kind: "signal", name: "DACA", at: 3.5, equals: 2.75, tol: 0.003, label: "Step 3: DACA at 2.75 V" },
         { kind: "signal", name: "DACB", at: 3.5, equals: 0.25, tol: 0.003, label: "Step 3: DACB at 0.25 V" },
+        { kind: "signal", name: "DACA", at: 4.5, min: 2.995, max: 3.0, label: "Step 4: 3500 mV asked, DACA stays at the top" },
+        {
+          kind: "signal",
+          name: "DACB",
+          at: 4.5,
+          equals: 0,
+          tol: 0.003,
+          label: "Step 4: -500 mV asked, DACB stays at 0 V",
+          hint: "setDacbMv needs the same two limit lines as setDacaMv. Without them a negative voltage becomes a large number in the register.",
+        },
+        OWN_SCALING,
       ],
       inspect: ["DacbRegs.DACCTL", "DacbRegs.DACOUTEN", "DacbRegs.DACVALS"],
       hints: [
         "Copy the DACA set-up and change every `Daca` to `Dacb`.",
-        "`setDACB` is `setDACA` with `DacbRegs`.",
-        "In the loop: `setDACA(v[i]); setDACB(3.0 - v[i]);`",
+        "`setDacbMv` is `setDacaMv` with `DacbRegs`.",
+        "In the loop: `setDacaMv(v[i]); setDacbMv(3000.0 - v[i]);`",
       ],
       takeaway: "The three DACs are identical blocks. Only the register name changes.",
     },
@@ -1017,7 +1054,7 @@ ${DAC_ON}
 
     for (i = 0; i < 100; i++) {
         v = 1.5 + 1.0 * sin(2.0 * PI * i / 100.0);
-        table[i] = v * 4095.0 / 3.0;
+        table[i] = v * 4096.0 / 3.0;
     }
 
 ${SYNC}
@@ -1061,9 +1098,10 @@ __interrupt void cpu_timer0_isr(void)
         },
         { kind: "signal", name: "DACA", at: 18.55, equals: 0.5, tol: 0.01, label: "The second period has its trough too" },
         { kind: "isr", fn: "cpu_timer0_isr", min: 200, max: 214, label: "A new value every 100 us" },
+        { kind: "reg", reg: "DacaRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "The reference is VREFHI", hint: "DacaRegs.DACCTL.bit.DACREFSEL = 1; between EALLOW; and EDIS;." },
         {
           kind: "source",
-          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{[^}]*sin",
+          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{(?:[^{}]|\\{[^{}]*\\})*\\bsin\\s*\\(",
           label: "The interrupt function does not call sin()",
           hint: "Fill an array in main() and index it in the interrupt function.",
         },
@@ -1071,7 +1109,7 @@ __interrupt void cpu_timer0_isr(void)
       bonus: [
         {
           kind: "source",
-          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{[^}]*(\\d\\.\\d|float|setDAC)",
+          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{(?:[^{}]|\\{[^{}]*\\})*(\\d\\.\\d|float|set[Dd][Aa][Cc])",
           label: "The interrupt function only looks up and writes: no float arithmetic, no helper call",
           hint: "Store 12-bit numbers in a uint16_t table and write DacaRegs.DACVALS.bit.DACVALS = table[k]; directly.",
         },
@@ -1079,7 +1117,7 @@ __interrupt void cpu_timer0_isr(void)
       watch: ["k"],
       hints: [
         "Entry i of the table is the value for t = i x 100 us: the angle is 2 PI i / 100.",
-        "Scale in main(): `table[i] = v * 4095.0 / 3.0;` with a `uint16_t` table. No limit is needed, 0.5 V to 2.5 V is inside the range.",
+        "Scale in main(): `table[i] = v * 4096.0 / 3.0;` with a `uint16_t` table. No limit is needed, 0.5 V to 2.5 V is inside the range.",
         "In the interrupt: advance the index, wrap at 100, `DacaRegs.DACVALS.bit.DACVALS = table[k];`.",
       ],
       takeaway: "Work that can be done once goes in main(). An interrupt that runs 10 000 times a second should look things up, not compute them.",
@@ -1218,7 +1256,8 @@ __interrupt void cpu_timer0_isr(void)
         },
         { kind: "signal", name: "DACB", at: 7.375, equals: (64 * 3) / 4096, tol: 0.001, label: "Then up again" },
         { kind: "signal", name: "DACB", at: 10.475, equals: (4032 * 3) / 4096, tol: 0.001, label: "The second peak comes 6.3 ms after the first" },
-        { kind: "source", mustNotMatch: "float|setDAC|\\d\\.\\d", label: "No float and no helper function" },
+        { kind: "reg", reg: "DacbRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "DACB uses VREFHI", hint: "DacbRegs.DACCTL.bit.DACREFSEL = 1; between EALLOW; and EDIS;." },
+        { kind: "source", mustNotMatch: "float|set[Dd][Aa][Cc]|\\d\\.\\d", label: "No float and no helper function" },
       ],
       inspect: ["DacbRegs.DACVALS", "DacbRegs.DACVALA"],
       hints: [

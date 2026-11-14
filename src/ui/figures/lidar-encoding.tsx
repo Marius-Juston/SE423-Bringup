@@ -7,6 +7,8 @@ import { MAX_MM, MIN_MM, encode } from "../../sim/plugins/lidar";
 // both are printable characters from '0' (0x30) to 'o' (0x6F). The course's
 // parser (RXCINT_recv_ready in F28379dSerial.c) undoes it with
 // ((hi - 0x30) << 6) + (lo - 0x30). `encode` is the simulator's own function.
+/** A character as it must be written inside '...' in C. */
+const esc = (c: string) => (c === "\\" || c === "'" ? `\\${c}` : c);
 const hex2 = (v: number) => `0x${v.toString(16).toUpperCase().padStart(2, "0")}`;
 const bin6 = (v: number) => v.toString(2).padStart(6, "0");
 const PRESETS = [1000, 20, 64, 4095];
@@ -35,7 +37,7 @@ function LidarEncoding() {
         {
           title: "1. Two characters arrive",
           text: `The sensor sent '${chars[0]}' and '${chars[1]}'. To the chip they are just two numbers, their ASCII codes ${hex2(cHi)} and ${hex2(cLo)}.`,
-          code: `char hi = '${chars[0]}';   // ${hex2(cHi)}\nchar lo = '${chars[1]}';   // ${hex2(cLo)}`,
+          code: `char hi = '${esc(chars[0])}';   // ${hex2(cHi)}\nchar lo = '${esc(chars[1])}';   // ${hex2(cLo)}`,
         },
         {
           title: "2. Subtract 0x30 from each",

@@ -95,6 +95,6 @@ function MechatronicLoop() {
 export const figure = {
   id: "mechatronic-loop",
   title: "The mechatronic loop",
-  description: "Select sensor, controller, actuator or mechanism to see what each part of the measure, decide, act loop does on the robot.",
+  description: "Select the sensors, the microcontroller, the actuators, the world or the wires to see what each part of the measure, decide, act loop does on the robot.",
   Component: MechatronicLoop,
 };

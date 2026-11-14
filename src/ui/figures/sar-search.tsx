@@ -57,7 +57,7 @@ function SarSearch() {
   const Y0 = 140;
   const cw = (X1 - X0) / bits;
   const y = (v: number) => Y0 - (v / VREF) * (Y0 - Y1);
-  const PX = 312;
+  const PX = 306;
   const width = cur ? cur.hi - cur.lo : VREF;
 
   let why: string;
@@ -77,7 +77,7 @@ function SarSearch() {
   return (
     <figure className="figure sar" aria-label="Step-through of a successive approximation conversion">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 190" role="img" aria-label={cur ? `Round ${step} of ${bits}. Trial voltage ${trim(cur.trial)} volts against held voltage ${vin.toFixed(2)} volts: ${cur.yes ? "yes, bit kept" : "no, bit cleared"}. Bits so far ${rs.slice(0, step).map((r) => (r.yes ? 1 : 0)).join("")}.` : `Held voltage ${vin.toFixed(2)} volts. No bit decided yet.`}>
+      <svg viewBox="0 0 420 202" role="img" aria-label={cur ? `Round ${step} of ${bits}. Trial voltage ${trim(cur.trial)} volts against held voltage ${vin.toFixed(2)} volts: ${cur.yes ? "yes, bit kept" : "no, bit cleared"}. Bits so far ${rs.slice(0, step).map((r) => (r.yes ? 1 : 0)).join("")}.` : `Held voltage ${vin.toFixed(2)} volts. No bit decided yet.`}>
         {/* axes */}
         {[0, 1.5, 3].map((v) => (
           <g key={v}>
@@ -111,16 +111,17 @@ function SarSearch() {
         <text x={PX} y="37" className="fig-value" style={{ fill: "var(--orange)" }}>{vin.toFixed(2)} V</text>
         <line x1={PX} x2={PX + 12} y1="52" y2="52" stroke="var(--harvest)" strokeWidth="2.6" />
         <text x={PX + 16} y="55" className="fig-label dim">DAC trial voltage</text>
-        <text x={PX} y="68" className="fig-value">{cur ? `${trim(cur.trial)} V` : "-"}</text>
-        <rect x={PX - 4} y="78" width="106" height="36" rx="4" className={`fig-box ${cur ? "hot" : ""}`} />
-        <text x={PX + 2} y="91" className="fig-label">comparator: held is</text>
-        <text x={PX + 2} y="102" className="fig-label">at least the trial?</text>
-        {cur && <text x={PX + 98} y="107" textAnchor="end" className={cur.yes ? "sar-yes" : "sar-no"}>{cur.yes ? "YES" : "NO"}</text>}
+        <text x={PX} y="68" className="fig-value">{cur ? `${trim(cur.trial)} V` : "none yet"}</text>
+        <rect x={PX - 4} y="76" width="112" height="43" rx="4" className={`fig-box ${cur ? "hot" : ""}`} />
+        <text x={PX + 2} y="88" className="fig-label">comparator: held is</text>
+        <text x={PX + 2} y="99" className="fig-label">at least the trial?</text>
+        {cur && <text x={PX + 104} y="115.5" textAnchor="end" className={cur.yes ? "sar-yes" : "sar-no"}>{cur.yes ? "YES" : "NO"}</text>}
         <text x={PX} y="131" className="fig-value">{cur ? `bit ${cur.bit} = ${cur.yes ? 1 : 0}` : " "}</text>
         <text x={PX} y="143" className="fig-label dim">{cur ? (cur.yes ? "kept" : "cleared") : "press Next to start"}</text>
-        <text x={PX} y="160" className="fig-label dim">voltage (V) is between</text>
-        <text x={PX} y="172" className="fig-value small">{trim(cur ? cur.lo : 0)} and {trim(cur ? cur.hi : VREF)}</text>
-        <text x={PX} y="184" className="fig-label dim">a band {width >= 0.1 ? `${trim(width)} V` : `${(width * 1000).toFixed(2)} mV`} wide</text>
+        <text x={PX} y="160" className="fig-label dim">the held voltage is</text>
+        <text x={PX} y="172" className="fig-value small">from {trim(cur ? cur.lo : 0)} V</text>
+        <text x={PX} y="184" className="fig-value small">to {trim(cur ? cur.hi : VREF)} V</text>
+        <text x={PX} y="196" className="fig-label dim">a band {width >= 0.1 ? `${trim(width)} V` : `${(width * 1000).toFixed(2)} mV`} wide</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls row">

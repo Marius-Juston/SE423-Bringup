@@ -56,17 +56,61 @@ function fit(root: HTMLElement) {
   }
 }
 
+/**
+ * The sentence that reacts to the state, a code read-out or a row of
+ * controls is taller in some states than in others. Every block of a figure
+ * keeps the tallest height it has had at this width, so a control never
+ * makes what is below it jump back up.
+ */
+const HELD = ".figure > :not(svg):not(style):not(details):not(table), .fig-why, .fig-step";
+function hold(root: HTMLElement, tallest: WeakMap<Element, number>) {
+  for (const box of root.querySelectorAll<HTMLElement>(HELD)) {
+    // A part the student folds open and shut keeps its own height.
+    if (box.querySelector("details")) continue;
+    const h = box.offsetHeight;
+    if (!h) continue;
+    const most = Math.max(tallest.get(box) ?? 0, h);
+    tallest.set(box, most);
+    // min-height counts the content only, unless the box is sized by its border.
+    const cs = getComputedStyle(box);
+    const edges = cs.boxSizing === "border-box" ? 0 : parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.borderTopWidth) + parseFloat(cs.borderBottomWidth);
+    const want = `${Math.max(0, most - edges)}px`;
+    if (box.style.minHeight !== want) box.style.minHeight = want;
+  }
+}
+
 export function Figure({ id }: { id: string }) {
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
+    let tallest = new WeakMap<Element, number>();
+    let width = el.clientWidth;
     fit(el);
-    const sized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => fit(el));
+    hold(el, tallest);
+    const sized =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            fit(el);
+            // Another width wraps the text differently: start again.
+            if (Math.abs(el.clientWidth - width) > 1) {
+              width = el.clientWidth;
+              tallest = new WeakMap();
+              for (const b of el.querySelectorAll<HTMLElement>(HELD)) b.style.minHeight = "";
+            }
+            hold(el, tallest);
+          });
     sized?.observe(el);
-    // A figure may swap its drawing (another scene, another viewBox).
-    const changed = typeof MutationObserver === "undefined" ? null : new MutationObserver(() => fit(el));
-    changed?.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ["viewBox"] });
+    // A figure may swap its drawing (another scene, another viewBox), and its text changes with every control.
+    const changed =
+      typeof MutationObserver === "undefined"
+        ? null
+        : new MutationObserver(() => {
+            fit(el);
+            hold(el, tallest);
+          });
+    changed?.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["viewBox"] });
     return () => {
       sized?.disconnect();
       changed?.disconnect();

@@ -71,9 +71,14 @@ function Prefixes() {
   const from = PREFIXES.find((p) => p.exp === ex.exp)!;
   const X = (exp: number) => 34 + ((exp + 9) / 15) * 332;
   // Where the value itself sits on the line (a logarithmic scale: each step is x 1000).
-  const at = X(ex.exp + Math.log10(ex.m));
+  const exact = X(ex.exp + Math.log10(ex.m));
+  // 200 MHz lies beyond the last prefix: the marker stops at the end of the line and points on.
+  const beyond = exact > 376;
+  const at = Math.min(exact, 376);
   const out = `${plain(ex.m, ex.exp - to.exp)} ${to.sym}${ex.unit}`;
   const base = `${plain(ex.m, ex.exp)} ${ex.unit}`;
+  // Width of the read-out under the line: 13-unit monospace characters are 7.8 wide.
+  const outW = (label(ex).length + 3 + out.length) * 7.8;
   const steps = (from.exp - to.exp) / 3;
   const why =
     steps === 0
@@ -95,9 +100,9 @@ function Prefixes() {
             {k < PREFIXES.length - 1 && <text x={X(p.exp) + 33} y="58" textAnchor="middle" className="fig-label dim">x 1000</text>}
           </g>
         ))}
-        <polygon points={`${at - 5},104 ${at + 5},104 ${at},94`} className="px-mark" />
-        <line x1={at} y1="94" x2={at} y2="62" className="fig-sample" />
-        <text x={Math.min(Math.max(at, 70), 330)} y="120" textAnchor="middle" className="px-out">{label(ex)} = {out}</text>
+        {beyond ? <polygon points={`${at - 4},94 ${at + 6},99 ${at - 4},104`} className="px-mark" /> : <polygon points={`${at - 5},104 ${at + 5},104 ${at},94`} className="px-mark" />}
+        {!beyond && <line x1={at} y1="94" x2={at} y2="62" className="fig-sample" />}
+        <text x={Math.min(Math.max(at, 6 + outW / 2), 394 - outW / 2)} y="120" textAnchor="middle" className="px-out">{label(ex)} = {out}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">

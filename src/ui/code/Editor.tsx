@@ -6,6 +6,27 @@ import { indentWithTab } from "@codemirror/commands";
 import { cpp } from "@codemirror/lang-cpp";
 import { HighlightStyle, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
+import { completeAnyWord, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import { syntaxTree } from "@codemirror/language";
+import { offerAt } from "./complete";
+
+/** Completion for the course's C: register members after "." and "->", and the library's names. */
+function courseCompletion(kit: string) {
+  return (ctx: CompletionContext): CompletionResult | null => {
+    // Nothing is offered inside a comment or a string.
+    const node = syntaxTree(ctx.state).resolveInner(ctx.pos, -1);
+    if (/Comment|String|CharLiteral/.test(node.name)) return null;
+    const line = ctx.state.doc.lineAt(ctx.pos);
+    const offer = offerAt(line.text.slice(0, ctx.pos - line.from), kit, ctx.explicit);
+    if (!offer) return null;
+    return {
+      from: ctx.pos - offer.typed,
+      options: offer.options.map((o) => ({ label: o.label, type: o.kind, detail: o.detail, info: o.info })),
+      validFor: /^\w*$/,
+    };
+  };
+}
+
 
 export interface Mark {
   line: number;
@@ -47,6 +68,15 @@ const theme = EditorView.theme(
     ".cm-mark-warning": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 3px 0 0 var(--value)" },
     ".cm-mark-current": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 4px 0 0 var(--accent)" },
     ".cm-mark-info": { backgroundColor: "var(--accent-soft)", boxShadow: "inset 3px 0 0 var(--info)" },
+    // Pop-ups (completion, search) in the game's colours, in both themes.
+    ".cm-tooltip": { backgroundColor: "var(--surface)", color: "var(--text)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius)", boxShadow: "var(--shadow)" },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul": { fontFamily: "var(--mono)", maxHeight: "14em" },
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li": { padding: "2px 6px" },
+    ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "var(--select)", color: "var(--text)" },
+    ".cm-completionDetail": { color: "var(--dim)", fontStyle: "normal", marginLeft: "0.8em" },
+    ".cm-tooltip.cm-completionInfo": { maxWidth: "22rem", padding: "4px 8px", fontFamily: "var(--sans)" },
+    ".cm-completionMatchedText": { textDecoration: "underline", textUnderlineOffset: "2px" },
+    ".cm-panels": { backgroundColor: "var(--surface)", color: "var(--text)", borderColor: "var(--border)" },
     "&.cm-focused": { outline: "none" },
     ".cm-scroller:focus-visible": { outline: "none" },
   },
@@ -70,13 +100,15 @@ export interface EditorHandle {
   reveal(line: number): void;
 }
 
-export function Editor({ value, onChange, marks, handle }: { value: string; onChange: (v: string) => void; marks: Mark[]; handle?: { current: EditorHandle | null } }) {
+export function Editor({ value, onChange, marks, handle, kit = "robot" }: { value: string; onChange: (v: string) => void; marks: Mark[]; handle?: { current: EditorHandle | null }; /** The board the program runs on: its registers and library are what the editor completes. */ kit?: string }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const changed = useRef(onChange);
   changed.current = onChange;
 
   useEffect(() => {
+    // The same source objects every time: the editor tells sources apart by identity.
+    const sources = [{ autocomplete: courseCompletion(kit) }, { autocomplete: completeAnyWord }];
     const v = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -88,12 +120,22 @@ export function Editor({ value, onChange, marks, handle }: { value: string; onCh
           keymap.of([indentWithTab]),
           indentUnit.of("    "),
           cpp(),
+          // The library's names first; the words of the program itself (its own variables and functions) as well.
+          EditorState.languageData.of(() => sources),
           theme,
           syntaxHighlighting(highlight),
           markField,
           EditorView.contentAttributes.of({ "aria-label": "C source code editor. Press Escape then Tab to leave the editor.", "aria-describedby": "editor-exit", tabindex: "0" }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) changed.current(u.state.doc.toString());
+            // The completion list scrolls: name it and let it take the focus, as any scrolling region must
+            // (it is still operated from the editor with the arrow keys).
+            const list = u.view.dom.querySelector<HTMLElement>(".cm-tooltip-autocomplete > ul:not([tabindex])");
+            if (list) {
+              // Tab indents in the editor, so this adds no stop to the Tab order while typing.
+              list.tabIndex = 0;
+              list.setAttribute("aria-label", "Suggestions");
+            }
           }),
         ],
       }),

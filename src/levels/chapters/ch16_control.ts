@@ -253,7 +253,7 @@ Timer 0 already interrupts every 1 ms, and the function measures the left wheel 
 
 1. **Compare**: \`eLeft\` is the reference \`vref\` minus the measured speed \`vLeft\`.
 2. **Compute**: \`uLeft\` is \`Kp\` times the error.
-3. **Saturate**: limit \`uLeft\` to -10 ... 10 with two \`if\` statements, as in \`setEPWM1A\` of Lab 3.
+3. **Saturate**: limit \`uLeft\` to -10 ... 10 with two \`if\` statements, as in the motor functions of chapter 10.
 
 The last line sends \`uLeft\` to both motors, so the robot drives straight. Keep the variable names: the tests read them.
 
@@ -424,6 +424,8 @@ ${SAT}
         { kind: "signal", name: "TB_VLEFT", at: 790, equals: 1.0, tol: 0.005, label: "The wheel settles at the reference, 1.0 ft/s", hint: "Stuck at 0.7: the integral does nothing. Is `Ki * ILeft` in the effort, and does ILeft add to its own old value? At 2.3 or -2.3: vLeft is never read with tb_left_speed(), or the error has the wrong sign." },
         { kind: "signal", name: "TB_VRIGHT", at: 790, equals: 1.0, tol: 0.005, label: "The right wheel gets the same effort" },
         { kind: "var", name: "ILeft", at: 790, min: 0.0475, max: 0.0485, label: "ILeft settles at 0.048 (4.8 / Ki)", hint: "Near 0: the sum is not kept. Write `ILeft = ILeft + eLeft * 0.001;` on the global ILeft, and write 0.001, not 1/1000 (two whole numbers divided give 0 in C). Far too large: the 0.001 is missing." },
+        { kind: "var", name: "ILeft", at: 60, min: 0.019, max: 0.028, label: "After 60 ms ILeft has grown to about 0.025: each pass adds error x 0.001", hint: "About twice that or more: the time step is too large. Half or less: it is too small. The interrupt runs every 1 ms, so each pass adds eLeft * 0.001." },
+        { kind: "source", mustMatch: "uLeft\\s*<\\s*-\\s*10", label: "The effort is limited at -10 as well", hint: "This test never drives backwards, but the robot will: add `if (uLeft < -10.0) uLeft = -10.0;`" },
         { kind: "signal", name: "TB_VLEFT_PEAK", max: 1.02, label: "The speed does not overshoot", hint: "The integral grows too fast: each pass adds error x 0.001 s." },
         { kind: "signal", name: "TB_VLEFT", equals: 1.0, tol: 0.005, label: "With the load of 2 the wheel is back at 1.0 ft/s", hint: "ILeft must be a global that keeps summing the error on every pass." },
         { kind: "var", name: "ILeft", min: 0.0675, max: 0.0685, label: "ILeft has grown to 0.068: the integral found the extra effort (6.8 / Ki)" },
@@ -947,7 +949,9 @@ ${SAT}
       checks: [
         { kind: "signal", name: "TB_VLEFT", equals: 1.5, tol: 0.01, label: "The wheel settles at 1.5 ft/s", hint: "Running backwards at -2.3 ft/s: the error has the wrong sign. It is reference minus measurement." },
         { kind: "var", name: "uLeft", at: 1.5, min: 9.99, max: 10.01, label: "uLeft is limited to 10 at the start (8 x 1.5 would be 12)", hint: "Add the two if statements that keep uLeft between -10 and 10, before tb_set_effort." },
+        { kind: "source", mustMatch: "uLeft\\s*<\\s*-\\s*10", label: "uLeft is limited at -10 as well", hint: "This test never drives backwards, but the robot will: add `if (uLeft < -10.0) uLeft = -10.0;`" },
         { kind: "signal", name: "TB_VLEFT_PEAK", max: 1.6, label: "The speed never goes above 1.6 ft/s on the way", hint: "A large overshoot: the integral grows too fast. The function runs every 1 ms, so the time step is 0.001 s." },
+        { kind: "var", name: "ILeft", at: 60, min: 0.033, max: 0.05, label: "After 60 ms ILeft is about 0.04: each pass adds error x 0.001", hint: "About 0.08 or more: the time step is still too large. The function runs every 1 ms, so it is 0.001 s." },
         { kind: "var", name: "ILeft", min: 0.067, max: 0.069, label: "ILeft settles at 0.068 (6.8 / Ki)", hint: "Negative: the error is still measurement minus reference, with a second minus sign hiding it somewhere else." },
       ],
       watch: ["vref", "vLeft", "eLeft", "ILeft", "uLeft"],
@@ -1052,11 +1056,22 @@ The same controller works for any quantity you can measure and influence. Here i
 
 Write the PI controller with the given gains (\`Kp = 3\`, \`Ki = 40\`), saturation to -10 ... 10 and anti-windup. Use the variables \`wGyro\`, \`eTurn\`, \`ITurn\` and \`uTurn\`.
 
-The wheels are 0.6 ft apart, so at 1 rad/s each wheel runs at 0.3 ft/s, in opposite directions. After 0.8 s the floor gets stickier (each wheel needs 1 more unit of effort): the turn rate must stay at 1 rad/s.
+The wheels are 0.6 ft apart, so at 1 rad/s each wheel runs at 0.3 ft/s, in opposite directions.
+
+## The test
+- **0 to 0.5 s**: the robot is held by hand and cannot turn. When it is let go the turn rate must not shoot past 3 rad/s (0.9 ft/s at the wheels): that is what the anti-windup is for. Without it the robot spins up to more than 7 rad/s.
+- **From 1.5 s**: the floor gets stickier (each wheel needs 1 more unit of effort). The turn rate must stay at 1 rad/s.
 `,
       kit: "robot",
-      durationMs: 2000,
-      stimuli: [{ at: 800, set: "TB_LOAD_LEFT", value: -1 }, { at: 800, set: "TB_LOAD_RIGHT", value: 1 }],
+      durationMs: 2700,
+      stimuli: [
+        { at: 0, set: "TB_LOAD_LEFT", value: -9.5 },
+        { at: 0, set: "TB_LOAD_RIGHT", value: 9.5 },
+        { at: 500, set: "TB_LOAD_LEFT", value: 0 },
+        { at: 500, set: "TB_LOAD_RIGHT", value: 0 },
+        { at: 1500, set: "TB_LOAD_LEFT", value: -1 },
+        { at: 1500, set: "TB_LOAD_RIGHT", value: 1 },
+      ],
       starter: prog(
         `float wref = 1.0;    // reference turn rate, rad/s
 float Kp = 3.0;
@@ -1095,7 +1110,9 @@ float uTurn = 0;`,
         { kind: "signal", name: "TB_VRIGHT", equals: 0.3, tol: 0.005, label: "The right wheel runs forwards at 0.3 ft/s" },
         { kind: "signal", name: "TB_VLEFT", equals: -0.3, tol: 0.005, label: "The left wheel runs backwards at 0.3 ft/s" },
         { kind: "signal", name: "TB_X_FT", min: -0.01, max: 0.01, label: "The robot turns on the spot" },
-        { kind: "var", name: "uTurn", at: 790, min: 1.95, max: 2.05, label: "uTurn settles at 2.0 (4 x 0.3 + 0.8)" },
+        { kind: "var", name: "uTurn", at: 450, min: 9.99, max: 10.01, label: "While the robot is held, uTurn is limited to 10", hint: "Far above 10: limit uTurn to -10 ... 10 before tb_set_effort. Below 10: the integral must be allowed to grow until the effort reaches the limit." },
+        { kind: "signal", name: "TB_VRIGHT_PEAK", at: 1490, max: 0.9, label: "Let go after 0.5 s, the turn rate never exceeds 3 rad/s (0.9 ft/s at the wheel)", hint: "The integral wound up while the robot was held. Store the new ITurn only while the effort is inside the limits." },
+        { kind: "var", name: "uTurn", at: 1490, min: 1.95, max: 2.05, label: "uTurn settles at 2.0 (4 x 0.3 + 0.8)" },
         { kind: "var", name: "uTurn", min: 2.95, max: 3.05, label: "On the sticky floor uTurn rises to 3.0 and the turn rate holds" },
       ],
       watch: ["wref", "wGyro", "eTurn", "ITurn", "uTurn"],
@@ -1172,7 +1189,7 @@ ${BENCH_NOTE}`,
         { kind: "signal", name: "TB_VLEFT_PEAK", max: 1.05, label: "Overshoot: the speed never exceeds 1.05 ft/s", hint: "Too much Ki for this Kp. Lower Ki or raise Kp." },
         { kind: "signal", name: "TB_VLEFT", at: 250, equals: 1.0, tol: 0.02, label: "Settling: within 0.02 ft/s at 250 ms", hint: "Still creeping up: Ki is too low." },
         { kind: "signal", name: "TB_VLEFT", equals: 1.0, tol: 0.005, label: "No steady-state error" },
-        { kind: "source", mustMatch: "ILeft\\s*=\\s*ILeft\\s*\\+\\s*eLeft\\s*\\*\\s*0\\.001", label: "The controller itself is unchanged" },
+        { kind: "source", mustMatch: "uLeft\\s*=\\s*Kp\\s*\\*\\s*eLeft\\s*\\+\\s*Ki\\s*\\*\\s*\\(\\s*ILeft\\s*\\+\\s*eLeft\\s*\\*\\s*0\\.001\\s*\\)\\s*;[\\s\\S]*ILeft\\s*=\\s*ILeft\\s*\\+\\s*eLeft\\s*\\*\\s*0\\.001\\s*;", label: "The controller itself is unchanged", hint: "Change the two numbers Kp and Ki only. The effort line and the integral line stay as they were." },
       ],
       bonus: [
         { kind: "signal", name: "TB_VLEFT", at: 45, min: 0.9, label: "0.9 ft/s after only 45 ms" },

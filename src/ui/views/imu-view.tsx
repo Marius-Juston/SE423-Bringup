@@ -19,7 +19,7 @@ const CSS = `
 `;
 
 const NAMES = ["IMU_AX_G", "IMU_AY_G", "IMU_AZ_G", "IMU_GX_DPS", "IMU_GY_DPS", "IMU_GZ_DPS"];
-const VARS = ["gyrox", "gyroy", "gyroz", "gyrox_raw", "gyroz_raw", "accelx", "accely", "accelz", "heading", "roll", "pitch", "bias"];
+const VARS = ["gyrox", "gyroy", "gyroz", "gyrox_raw", "gyroz_raw", "accelx", "accely", "accelz", "heading", "roll", "pitch", "rollrate", "bias"];
 
 /** A program value: whole numbers as they are, others with three decimals, no "-0.000". */
 const show = (v: number) => {

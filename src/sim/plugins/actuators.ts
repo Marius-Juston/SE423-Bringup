@@ -24,6 +24,20 @@
 //
 // The duty cycle seen by a model is measured over whole PWM periods
 // (rising edge to rising edge), as an averaging load does.
+//
+// Course library functions (SE423Lib.h): setEPWM1A(float controleffort) and
+// setEPWM2A(float controleffort). The course's robot library provides them
+// from Lab 3 on, and students write them in Lab 3, so the game never prints
+// their C source: they are native here. The control effort is limited to
+// -10..10 and mapped on a straight line to a compare value between 0 and
+// TBPRD (-10 is 0 % duty, 0 is 50 %, 10 is 100 %); the fraction is cut off,
+// as C does when a float is assigned to CMPA (TRM 15.5: CMPA is compared
+// with the 16-bit counter). The period is read from TBPRD at the call, and
+// CMPA is written as a CPU write, so the ePWM model and its diagnostics see
+// it on the line of the call. A call takes the simulated time of the five
+// or six C statements such a function has. A student's file may define functions of the
+// same names (saved programs from before the library had them do): the
+// student's definition then replaces the library's.
 
 import type { Board } from "../board";
 import type { SimPlugin } from "../plugin";
@@ -113,7 +127,45 @@ const SERVOS: { pin: number; name: string }[] = [
 ];
 const BUZZER_PIN = 16;
 
+/** The course's motor functions: effort -10..10 to CMPA of EPWM<n>, with single-precision arithmetic as on the chip. */
+function installMotorLibrary(b: Board): void {
+  const fr = Math.fround;
+  for (const n of [1, 2]) {
+    const name = `setEPWM${n}A`;
+    const prd = b.dev.reg(`EPwm${n}Regs.TBPRD`);
+    const cmp = b.dev.reg(`EPwm${n}Regs.CMPA`);
+    b.compiler.defineNative(name, (args, _types, line) => {
+      // The function takes the time of its C statements (two tests, one more statement when
+      // a limit applies, then three), so a control loop that calls it is as long as on the
+      // chip and events and interrupts fall between its steps as they would in C.
+      let u = fr(args[0]);
+      b.tick(line);
+      if (u < -10) {
+        b.tick(line);
+        u = -10;
+      }
+      b.tick(line);
+      if (u > 10) {
+        b.tick(line);
+        u = 10;
+      }
+      b.tick(line);
+      const period = b.mem.read(prd.addr, 1);
+      b.tick(line);
+      const counts = fr(fr(fr(u + 10) * period) / 20);
+      b.tick(line);
+      // The compare value is the upper word of the 32-bit CMPA register; CMPAHR below it is kept.
+      const low = b.mem.read(cmp.addr, 2) & 0xffff;
+      b.mem.write(cmp.addr, 2, (((Math.trunc(counts) & 0xffff) << 16) | low) >>> 0);
+      return 0;
+    });
+    b.compiler.fns.get(name)!.replaceable = true;
+  }
+}
+
 function install(b: Board): void {
+  installMotorLibrary(b);
+
   // ----- DC motors -----
   const motors: Motor[] = [
     { pin: 0, name: "LEFT_WHEEL_RADPS", sign: 1, pwm: new PwmIn(), w: 0 },
@@ -188,18 +240,25 @@ function install(b: Board): void {
 
 const meter = (id: string, label: string, unit: string, digits: number): Part => ({ kind: "meter", id, label, output: id, unit, digits });
 const servoMeters = [meter("SERVO1_DEG", "RC servo 1 (EPWM8A)", "deg", 1), meter("SERVO2_DEG", "RC servo 2 (EPWM8B)", "deg", 1)];
+// The robot's own servo connectors (SE423Lib.c): shown once a servo there has moved.
+const robotServoMeters = [meter("SERVO5A_DEG", "RC servo on EPWM5A", "deg", 1), meter("SERVO5B_DEG", "RC servo on EPWM5B", "deg", 1)];
 const buzzerMeter = meter("BUZZER_HZ", "Buzzer tone", "Hz", 1);
 
 export const plugin: SimPlugin = {
   name: "actuators",
   // After the peripherals, so their pin drivers exist.
   order: 10,
+  prelude: `
+void setEPWM1A(float controleffort);
+void setEPWM2A(float controleffort);
+`,
   install,
   parts: {
     robot: [
       meter("LEFT_WHEEL_RADPS", "Left wheel speed", "rad/s", 2),
       meter("RIGHT_WHEEL_RADPS", "Right wheel speed", "rad/s", 2),
       ...servoMeters,
+      ...robotServoMeters,
       buzzerMeter,
     ],
     redboard: [...servoMeters, buzzerMeter],

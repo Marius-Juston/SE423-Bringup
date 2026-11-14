@@ -1,6 +1,10 @@
 import type { Chapter } from "../types";
 
-// ---- C building blocks (setupSpib() in SE423Lib.c, HW3 exercises 4 and 5) ---
+// ---- C building blocks --------------------------------------------------------
+// SPIB is set up by the course library: setupSpib() and enableSpibInterrupt()
+// (src/sim/plugins/spi.ts). Writing that set-up is graded work in HW3, so no
+// level prints it. The library sets up the port only: the MPU-9250 keeps its
+// power-on settings until a level writes its registers.
 const START = `    InitSysCtrl();
     InitGpio();
 `;
@@ -11,52 +15,15 @@ const LED1 = `    // LED1 on GPIO22, off
     GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
 `;
 
-/** Pins and registers of SPIB as the course sets them: 16-bit words, 1 MHz, read on the rising edge. */
-const SPIB = `    // SPIB set-up, given: it is the one explained line by line in the SPI chapter
-    // ("Talking to yourself"). Chip selects, both high: GPIO66 for the MPU-9250,
-    // GPIO29 for the DAN28027
-    GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL);
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+/** SPIB for both chips: the DAN28027's chip select held high, then the library's set-up. */
+const SPIB = `    // GPIO29 is the chip select of the DAN28027, the other chip on this bus: held high
     GPIO_SetupPinMux(29, GPIO_MUX_CPU1, 0);
     GPIO_SetupPinOptions(29, GPIO_OUTPUT, GPIO_PUSHPULL);
     GpioDataRegs.GPASET.bit.GPIO29 = 1;
 
-    GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15);  // SPISIMOB
-    GPIO_SetupPinMux(64, GPIO_MUX_CPU1, 15);  // SPISOMIB
-    GPIO_SetupPinMux(65, GPIO_MUX_CPU1, 15);  // SPICLKB
-    EALLOW;
-    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO64 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO65 = 0;
-    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO65 = 3;
-    EDIS;
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 0;
-    SpibRegs.SPICTL.bit.CLK_PHASE = 1;        // clock rests low,
-    SpibRegs.SPICCR.bit.CLKPOLARITY = 0;      // data read on the rising edge
-    SpibRegs.SPICTL.bit.MASTER_SLAVE = 1;
-    SpibRegs.SPICCR.bit.SPICHAR = 0xF;        // 16-bit words
-    SpibRegs.SPICTL.bit.TALK = 1;
-    SpibRegs.SPIPRI.bit.FREE = 1;
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;
-    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 49;    // 1 MHz
-    SpibRegs.SPISTS.all = 0x0000;
-    SpibRegs.SPIFFTX.bit.SPIRST = 1;
-    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;
-    SpibRegs.SPIFFTX.bit.TXFIFO = 0;
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIENA = 1;        // interrupt when RXFFST >= RXFFIL
-    SpibRegs.SPIFFCT.bit.TXDLY = 0;
-    SpibRegs.SPICCR.bit.SPISWRESET = 1;
-    SpibRegs.SPIFFTX.bit.TXFIFO = 1;
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIL = 16;         // changed before each transfer
+    // Course library: SPIB with 16-bit words at 1 MHz, clock resting low, data read on
+    // the rising edge, FIFOs on. GPIO66, the MPU-9250's chip select, is set high.
+    setupSpib();
 `;
 
 const PIE_INIT = `    DINT;
@@ -65,7 +32,7 @@ const PIE_INIT = `    DINT;
     IFR = 0x0000;
     InitPieVectTable();`;
 
-/** Timer 0 every millisecond and the SPIB receive interrupt (INT6.3), then interrupts on. */
+/** Timer 0 every millisecond and the SPIB receive interrupt, then interrupts on. */
 const VECTORS = (extra = "") => `    EALLOW;
     PieVectTable.TIMER0_INT = &cpu_timer0_isr;
     PieVectTable.SPIB_RX_INT = &SPIB_isr;
@@ -76,9 +43,8 @@ const VECTORS = (extra = "") => `    EALLOW;
     CpuTimer0Regs.TCR.all = 0x4000;
 ${extra}
     PieCtrlRegs.PIEIER1.bit.INTx7 = 1;        // timer 0 is INT1.7
-    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;        // SPIB receive is INT6.3
     IER |= M_INT1;
-    IER |= M_INT6;
+    enableSpibInterrupt();                    // course library: SPIB receive, in the PIE and in IER
     EINT;`;
 
 const MPU_WRITE = `// Given (you wrote it in "Choosing the range"): writes one register of the MPU-9250
@@ -116,93 +82,72 @@ const MPU_RANGES = `    mpu_write(0x1B, 0x00);                    // GYRO_CONFIG
     mpu_write(0x1C, 0x08);                    // ACCEL_CONFIG: +-4 g
 `;
 
-// ---- imu-setup: the student writes the SPIB set-up from the MPU-9250's data sheet ----
-const SETUP_SOLUTION = `    // Chip selects, both high: GPIO66 for the MPU-9250, GPIO29 for the DAN28027
-    GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL);
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
-    GPIO_SetupPinMux(29, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(29, GPIO_OUTPUT, GPIO_PUSHPULL);
-    GpioDataRegs.GPASET.bit.GPIO29 = 1;
+// ---- imu-setup: the student configures the MPU-9250 from its register map ----
+const imuSetup = (o: { gyro: string; accel: string; body: string }) => `// Given functions, written out below main(). These three lines only announce them.
+void mpu_write(uint16_t reg, uint16_t value);
+uint16_t mpu_read(uint16_t reg);
+void measure(void);
 
-    GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15);  // SPISIMOB
-    GPIO_SetupPinMux(64, GPIO_MUX_CPU1, 15);  // SPISOMIB
-    GPIO_SetupPinMux(65, GPIO_MUX_CPU1, 15);  // SPICLKB
-    EALLOW;
-    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO64 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO65 = 0;
-    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO65 = 3;
-    EDIS;
+float gyro_range = ${o.gyro}
+float accel_range = ${o.accel}
 
-    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // hold the SPI in reset
-    SpibRegs.SPICCR.bit.CLKPOLARITY = 0;      // clock rests low,
-    SpibRegs.SPICTL.bit.CLK_PHASE = 1;        // data read on the rising edge, the first
-    SpibRegs.SPICTL.bit.MASTER_SLAVE = 1;
-    SpibRegs.SPICCR.bit.SPICHAR = 0xF;        // address byte + data byte = 16 bits
-    SpibRegs.SPICTL.bit.TALK = 1;
-    SpibRegs.SPIPRI.bit.FREE = 1;
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;
-    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 49;    // 50 MHz / (49 + 1) = 1 MHz, the chip's limit
-    SpibRegs.SPISTS.all = 0x0000;
+uint16_t cfg19 = 0;
+uint16_t cfg1a = 0;
+uint16_t cfg1b = 0;
+uint16_t cfg1c = 0;
+float gyroz = 0;              // degrees per second
+float accelz = 0;             // g
 
-    SpibRegs.SPIFFTX.bit.SPIRST = 1;
-    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;
-    SpibRegs.SPIFFTX.bit.TXFIFO = 0;
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
-    SpibRegs.SPIFFCT.bit.TXDLY = 0;
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // release the SPI
-
-    SpibRegs.SPIFFTX.bit.TXFIFO = 1;          // release the FIFOs
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;`;
-
-const imuSetup = (body: string) => `uint16_t whoami = 0;
-uint16_t pwr = 0;
-
-// SPIB for the MPU-9250, from its data sheet
-void setupSpib(void)
+// Configures the MPU-9250 for this robot
+void setup_mpu(void)
 {
-${body}
-}
-
-// Given: reads the registers 0x75 (WHO_AM_I) and 0x6B (PWR_MGMT_1), the way mpu_read() does
-void read_ids(void)
-{
-    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
-    SpibRegs.SPITXBUF = 0x8000 | (0x75 << 8);
-    while (SpibRegs.SPIFFRX.bit.RXFFST != 1);
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
-    whoami = SpibRegs.SPIRXBUF & 0x00FF;
-    DELAY_US(10);
-
-    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
-    SpibRegs.SPITXBUF = 0x8000 | (0x6B << 8);
-    while (SpibRegs.SPIFFRX.bit.RXFFST != 1);
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
-    pwr = SpibRegs.SPIRXBUF & 0x00FF;
-    DELAY_US(10);
+${o.body}
 }
 
 void main(void)
 {
 ${START}
-${LED1}
-    setupSpib();
+${SPIB}
+    setup_mpu();
 
-    read_ids();
-
-    if (whoami == 0x71) {
-        GpioDataRegs.GPASET.bit.GPIO22 = 1;
-    }
+    cfg19 = mpu_read(0x19);
+    cfg1a = mpu_read(0x1A);
+    cfg1b = mpu_read(0x1B);
+    cfg1c = mpu_read(0x1C);
 
     while (1) {
+        measure();
+        DELAY_US(200);
     }
+}
+
+${MPU_WRITE}
+${MPU_READ}
+// Given: reads the Z turn rate and the Z acceleration and converts them with the two ranges
+void measure(void)
+{
+    int16_t temp;
+    int16_t raw;
+
+    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = 0x8000 | 0x4600;      // 0x46, then 0x47 and 0x48: gyro Z
+    SpibRegs.SPITXBUF = 0x0000;
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 2);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    temp = SpibRegs.SPIRXBUF;
+    raw = SpibRegs.SPIRXBUF;
+    gyroz = raw * gyro_range / 32767.0;
+    DELAY_US(10);
+
+    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = 0x8000 | 0x3E00;      // 0x3E, then 0x3F and 0x40: acceleration Z
+    SpibRegs.SPITXBUF = 0x0000;
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 2);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    temp = SpibRegs.SPIRXBUF;
+    raw = SpibRegs.SPIRXBUF;
+    accelz = raw * accel_range / 32767.0;
+    DELAY_US(10);
 }
 `;
 
@@ -387,7 +332,7 @@ Order the steps of reading the WHO_AM_I register (0x75). Think about what the de
       goal: "Complete the function that reads one MPU-9250 register, and use it to check the chip's identity.",
       refs: [{ course: "L12", slide: [31, 34] }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
-SPIB is set up as in the SPI chapter: 16-bit words, 1 MHz, clock resting low, data read on the rising edge. GPIO66 is the MPU-9250's chip select.
+SPIB is set up by the course library's \`setupSpib()\`, as in the SPI chapter: 16-bit words, 1 MHz, clock resting low, data read on the rising edge. Writing that set-up yourself is part of HW3. GPIO66 is the MPU-9250's chip select.
 
 Complete \`mpu_read(reg)\`. It reads one register and returns its 8-bit value:
 
@@ -676,11 +621,14 @@ Then convert in \`SPIB_isr\`:
 gyrox = gyrox_raw * 250.0 / 32767.0;   // degrees per second
 \`\`\`
 
-The gyro range is +-250 degrees per second, set in \`main()\`. The test rolls the board at -90 degrees per second after 5.5 ms.
+The gyro range is +-250 degrees per second, set in \`main()\`. The test rolls the board at -90 degrees per second after 5.5 ms, and the other way at 40 degrees per second after 9.5 ms.
 `,
       kit: "robot",
       durationMs: 12,
-      stimuli: [{ at: 5.5, set: "IMU_GX_DPS", value: -90 }],
+      stimuli: [
+        { at: 5.5, set: "IMU_GX_DPS", value: -90 },
+        { at: 9.5, set: "IMU_GX_DPS", value: 40 },
+      ],
       starter: `__interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
 void mpu_write(uint16_t reg, uint16_t value);
@@ -769,8 +717,9 @@ ${MPU_WRITE}`,
       checks: [
         { kind: "isr", fn: "SPIB_isr", min: 11, max: 11, label: "SPIB_isr runs once per millisecond", hint: "It runs when RXFFST >= RXFFIL: two words sent, RXFFIL = 2, and both words read before the flag is cleared." },
         { kind: "var", name: "gyrox", at: 5.2, min: -0.01, max: 0.01, label: "gyrox is 0 while the board is still" },
-        { kind: "var", name: "gyrox_raw", equals: -11796, label: "gyrox_raw is -11796 while rolling at -90 degrees per second", hint: "-1 (0xFFFF) means no device answered: pull GPIO66 low before writing SPITXBUF. Any other number comes from another register: the read must start one register before 0x43 (0x8000 | 0x4200), and the reading is the second word received." },
-        { kind: "var", name: "gyrox", min: -90.05, max: -89.95, label: "gyrox is -90 degrees per second", hint: "0 means the sum was done in whole numbers and overflowed: write 250.0 and 32767.0, with the decimal point. A large positive number means gyrox_raw is unsigned: it must be an int16_t." },
+        { kind: "var", name: "gyrox_raw", at: 9.2, equals: -11796, label: "gyrox_raw is -11796 while rolling at -90 degrees per second", hint: "-1 (0xFFFF) means no device answered: pull GPIO66 low before writing SPITXBUF. Any other number comes from another register: the read must start one register before 0x43 (0x8000 | 0x4200), and the reading is the second word received." },
+        { kind: "var", name: "gyrox", at: 9.2, min: -90.05, max: -89.95, label: "gyrox is -90 degrees per second", hint: "0 means the sum was done in whole numbers and overflowed: write 250.0 and 32767.0, with the decimal point. A large positive number means gyrox_raw is unsigned: it must be an int16_t." },
+        { kind: "var", name: "gyrox", min: 39.95, max: 40.05, label: "gyrox ends at 40 degrees per second" },
         { kind: "pin", pin: 66, at: 7.5, level: 1, label: "The chip select is high between reads" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
@@ -1007,13 +956,15 @@ The timer interrupt starts the message every millisecond and \`SPIB_isr\` collec
 - TODO 4: read the three words into \`dan_first\`, \`dan_adc1\`, \`dan_adc2\`, in that order
 - TODO 5: raise the chip select
 
-The test puts 1.65 V and 1.0 V on the DAN28027's two measuring pins.
+The test puts 1.65 V and 1.0 V on the DAN28027's two measuring pins. After 3.5 ms it changes them to 0.825 V and 2.5 V.
 `,
       kit: "robot",
       durationMs: 6,
       stimuli: [
         { at: 0.1, set: "DAN_ADC1", value: 1.65 },
         { at: 0.1, set: "DAN_ADC2", value: 1.0 },
+        { at: 3.5, set: "DAN_ADC1", value: 0.825 },
+        { at: 3.5, set: "DAN_ADC2", value: 2.5 },
       ],
       starter: `__interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
@@ -1121,9 +1072,12 @@ __interrupt void SPIB_isr(void)
       checks: [
         { kind: "signal", name: "DAN_PWM1", equals: 1500, label: "The DAN28027 received PWM value 1 = 1500", hint: "It only accepts a message that starts with 0x00DA, sent while GPIO29 is low." },
         { kind: "signal", name: "DAN_PWM2", equals: 2250, label: "The DAN28027 received PWM value 2 = 2250" },
-        { kind: "var", name: "dan_adc1", equals: 2048, label: "dan_adc1 is 2048 (1.65 V)", hint: "The first word received is not a reading. The ADC values are the second and third." },
-        { kind: "var", name: "dan_adc2", equals: 1241, label: "dan_adc2 is 1241 (1.0 V)" },
-        { kind: "var", name: "volts1", min: 1.649, max: 1.651, label: "volts1 is 1.65 V" },
+        { kind: "var", name: "dan_adc1", at: 3.4, equals: 2048, label: "dan_adc1 is 2048 (1.65 V) at first", hint: "The first word received is not a reading. The ADC values are the second and third." },
+        { kind: "var", name: "dan_adc2", at: 3.4, equals: 1241, label: "dan_adc2 is 1241 (1.0 V) at first" },
+        { kind: "var", name: "volts1", at: 3.4, min: 1.649, max: 1.651, label: "volts1 is 1.65 V at first" },
+        { kind: "var", name: "dan_adc1", equals: 1024, label: "dan_adc1 ends at 1024 (0.825 V)" },
+        { kind: "var", name: "dan_adc2", equals: 3103, label: "dan_adc2 ends at 3103 (2.5 V)" },
+        { kind: "var", name: "volts1", min: 0.824, max: 0.826, label: "volts1 ends at 0.825 V" },
         { kind: "isr", fn: "SPIB_isr", min: 5, max: 5, label: "SPIB_isr runs once per message" },
         { kind: "pin", pin: 29, at: 3.5, level: 1, label: "The DAN28027's chip select is high between messages" },
         { kind: "pin", pin: 66, at: 3.06, level: 1, label: "The MPU-9250's chip select stays high" },
@@ -1167,15 +1121,16 @@ Put the chapter together: a burst read driven by two interrupts, scaling, an LED
 gz:45.0 az:1.00
 \`\`\`
 
-End the line with \`\\r\\n\`. The test turns the board at 45 degrees per second between 300 ms and 600 ms, and the other way at -30 degrees per second between 700 ms and 900 ms.
+End the line with \`\\r\\n\`. The test turns the board at 45 degrees per second between 300 ms and 600 ms, and the other way at -25 degrees per second between 700 ms and 900 ms. From 920 ms on it turns slowly, at 10 degrees per second: too slow for the LED.
 `,
       kit: "robot",
       durationMs: 1100,
       stimuli: [
         { at: 300, set: "IMU_GZ_DPS", value: 45 },
         { at: 600, set: "IMU_GZ_DPS", value: 0 },
-        { at: 700, set: "IMU_GZ_DPS", value: -30 },
+        { at: 700, set: "IMU_GZ_DPS", value: -25 },
         { at: 900, set: "IMU_GZ_DPS", value: 0 },
+        { at: 920, set: "IMU_GZ_DPS", value: 10 },
       ],
       starter: `__interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
@@ -1291,13 +1246,14 @@ __interrupt void SPIB_isr(void)
 
 ${MPU_WRITE}`,
       checks: [
-        { kind: "serial", matches: "^gz:0\\.0 az:1\\.00\\r\\ngz:45\\.0 az:1\\.00\\r\\ngz:-30\\.0 az:1\\.00\\r\\ngz:0\\.0 az:1\\.00\\r\\n", label: "The lines are gz:0.0 az:1.00, gz:45.0 az:1.00, gz:-30.0 az:1.00, gz:0.0 az:1.00", hint: "The first word received holds the address byte and register 0x3E. Accelerometer Z is the word after it, gyro Z the last one. Use %.1f and %.2f." },
+        { kind: "serial", matches: "^gz:0\\.0 az:1\\.00\\r\\ngz:45\\.0 az:1\\.00\\r\\ngz:-25\\.0 az:1\\.00\\r\\ngz:10\\.0 az:1\\.00\\r\\n", label: "The lines are gz:0.0 az:1.00, gz:45.0 az:1.00, gz:-25.0 az:1.00, gz:10.0 az:1.00", hint: "The first word received holds the address byte and register 0x3E. Accelerometer Z is the word after it, gyro Z the last one. Use %.1f and %.2f." },
         { kind: "serial-period", periodMs: 250, label: "A line is printed every 250 ms" },
         { kind: "led", led: "LED1", at: 200, on: false, label: "LED1 is off while the board is still" },
         { kind: "led", led: "LED1", at: 450, on: true, label: "LED1 is on while the board turns at 45 degrees per second" },
         { kind: "led", led: "LED1", at: 650, on: false, label: "LED1 goes off again when the turn ends" },
-        { kind: "led", led: "LED1", at: 800, on: true, label: "LED1 is on while the board turns the other way, at -30 degrees per second", hint: "Either direction counts: compare fabs(gyroz) with 20.0." },
-        { kind: "led", led: "LED1", at: 950, on: false, label: "LED1 is off at the end" },
+        { kind: "led", led: "LED1", at: 800, on: true, label: "LED1 is on while the board turns the other way, at -25 degrees per second", hint: "Either direction counts: compare fabs(gyroz) with 20.0." },
+        { kind: "led", led: "LED1", at: 910, on: false, label: "LED1 goes off again when the second turn ends" },
+        { kind: "led", led: "LED1", at: 1050, on: false, label: "LED1 stays off during the slow turn at 10 degrees per second", hint: "The limit is 20 degrees per second: compare fabs(gyroz) with 20.0." },
         { kind: "latency", led: "LED1", after: 300, withinUs: 1300, label: "LED1 reacts within 1.3 ms of the turn starting" },
         { kind: "isr", fn: "SPIB_isr", min: 1095, max: 1100, label: "The sensor is read once per millisecond" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
@@ -1321,10 +1277,10 @@ ${MPU_WRITE}`,
       mode: "complete",
       tier: "practice",
       title: "Five registers, one transfer",
-      goal: "Write five neighbouring MPU-9250 registers in a single burst, the way the course's setupSpib() configures the chip.",
+      goal: "Write five neighbouring MPU-9250 registers in a single burst, the way the course's set-up code configures the chip.",
       refs: [{ course: "L12", slide: 35 }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
-The course's \`setupSpib()\` configures the MPU-9250 by writing a run of registers with **one** chip-select pulse. HW3 has you work out that burst. This level practises the same thing on a shorter run with other values: registers 0x19 to 0x1D.
+In the course projects, \`setupSpib()\` goes on to configure the MPU-9250 by writing a run of registers with **one** chip-select pulse. (In this game it sets up the port only.) HW3 has you work out that burst. This level practises the same thing on a shorter run with other values: registers 0x19 to 0x1D.
 
 \`\`\`c
 0x19 = 0x09     0x1A = 0x03     0x1B = 0x08     0x1C = 0x10     0x1D = 0x05
@@ -1443,67 +1399,75 @@ ${MPU_READ}`,
       kind: "code",
       mode: "write",
       tier: "practice",
-      title: "Read the data sheet, write the set-up",
-      goal: "Write the SPIB set-up for the MPU-9250 from what its data sheet and the board require.",
-      refs: [{ course: "L12", slide: [29, 33, 41] }, { course: "L6-7", slide: [43, 44] }, { course: "HW3" }, { trm: "18.3.6" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }],
+      title: "Read the data sheet, set up the chip",
+      goal: "Work out four MPU-9250 register values from its register map and what the robot needs, and write them.",
+      refs: [{ course: "L12", slide: [29, 34] }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
-In this chapter the SPIB set-up was always given. A new chip never comes with one. It comes with a **data sheet**: the maker's document that says how the chip must be driven. Here \`setupSpib()\` is empty, and these are your sources.
+The library's \`setupSpib()\` sets up the port. How the **chip** should measure is your decision, and no library knows it. The answer is in the chip's **register map**: the part of its data sheet that lists every register and what its bits do. This is what it says about four registers:
 
-## From the MPU-9250's data sheet
-- Data is latched on the **rising edge** of the clock. ("Latched" means read and kept.)
-- The clock may be at most **1 MHz** for these registers.
-- Each transfer is an address byte followed by a data byte, most significant bit first.
-- The chip select is low from the start of a transfer to its end.
+\`\`\`c
+0x19 SMPLRT_DIV    measurements per second = 1000 / (1 + SMPLRT_DIV)
+0x1A CONFIG        bits 2..0, DLPF_CFG: low-pass filter
+                   1 = 184 Hz   2 = 92 Hz   3 = 41 Hz   4 = 20 Hz   5 = 10 Hz
+0x1B GYRO_CONFIG   bits 4..3, GYRO_FS_SEL: range in degrees per second
+                   0 = +-250    1 = +-500   2 = +-1000  3 = +-2000
+0x1C ACCEL_CONFIG  bits 4..3, ACCEL_FS_SEL: range in g
+                   0 = +-2      1 = +-4     2 = +-8     3 = +-16
+\`\`\`
 
-## From the board
-- SPIB: GPIO63 is SIMO, GPIO64 is SOMI, GPIO65 is the clock, all at mux position 15. LSPCLK is 50 MHz.
-- The MPU-9250's chip select is **GPIO66**.
-- The **DAN28027** shares the bus. Its chip select is **GPIO29**. Hold it high, or two chips answer at once.
-- The DAN28027 needs the clock to **rest low**.
+## From a field to a byte
+A register map gives the value of a **field**, a group of bits inside the register. You write the whole byte, so you must move the field value to its place. A field whose lowest bit is bit 3 is shifted up by 3: field value 1 becomes \`1 << 3\` = 0x08. "Choosing the range" handed you those bytes ready made. A data sheet does not.
 
-## From the code
-\`read_ids()\` is given. It sends one word per register and waits until \`RXFFST\` is 1, so the **FIFOs** must be on. It uses no interrupt, so leave \`RXFFIENA\` alone.
+## What this robot needs
+- It can spin at up to **800 degrees per second**. Choose the smallest gyro range that holds that.
+- It feels bumps of up to **12 g**. Choose the smallest accelerometer range that holds that.
+- A new measurement **125 times a second**.
+- The low-pass filter at **20 Hz**.
 
-## Your decisions
-1. Bits per word, for an address byte plus a data byte.
-2. \`SPIBRR\`, for the fastest clock the chip allows.
-3. \`CLKPOLARITY\` and \`CLK_PHASE\`. A clock that rests low makes its first edge a rising one. To be read on the **first** edge, the data must already be on the line: that is what \`CLK_PHASE = 1\` does.
+## Your part
+1. In \`setup_mpu()\`, write the four registers with the given \`mpu_write(reg, value)\`.
+2. Set \`gyro_range\` and \`accel_range\` at the top to the ranges you chose. The given \`measure()\` uses them to turn raw counts into \`gyroz\` (degrees per second) and \`accelz\` (g).
 
-Write the block in the order you know: chip selects and pins, reset held, settings, FIFOs, reset released, FIFOs released. LED1 lights when the chip answers 0x71.
+\`main()\` reads the four registers back, then measures again and again. The test turns the robot at 600 and then at -900 degrees per second, and bumps it with 10 g.
 `,
       kit: "robot",
-      durationMs: 2,
-      starter: imuSetup("    // TODO: the whole set-up"),
-      solution: imuSetup(SETUP_SOLUTION),
+      durationMs: 4,
+      stimuli: [
+        { at: 0, set: "IMU_GZ_DPS", value: 600 },
+        { at: 2, set: "IMU_GZ_DPS", value: -900 },
+        { at: 2, set: "IMU_AZ_G", value: 10 },
+      ],
+      starter: imuSetup({
+        gyro: "250.0;     // TODO: the gyro range you chose, in degrees per second",
+        accel: "2.0;      // TODO: the accelerometer range you chose, in g",
+        body: "    // TODO: write registers 0x19, 0x1A, 0x1B and 0x1C",
+      }),
+      solution: imuSetup({
+        gyro: "1000.0;    // degrees per second",
+        accel: "16.0;     // g",
+        body: `    mpu_write(0x19, 7);                       // 1000 / (1 + 7) = 125 measurements a second
+    mpu_write(0x1A, 4);                       // DLPF_CFG = 4: 20 Hz
+    mpu_write(0x1B, 2 << 3);                  // GYRO_FS_SEL = 2: +-1000 degrees per second
+    mpu_write(0x1C, 3 << 3);                  // ACCEL_FS_SEL = 3: +-16 g`,
+      }),
       checks: [
-        { kind: "pin", pin: 66, at: 1.5, level: 1, label: "The MPU-9250's chip select (GPIO66) rests high", hint: "Plain GPIO, output, then GpioDataRegs.GPCSET.bit.GPIO66 = 1; GPIO66 is in port C. Low with whoami still 0: read_ids() is stuck waiting for a word, so look at the FIFO and reset checks below." },
-        { kind: "pin", pin: 29, at: 1.5, level: 1, label: "The DAN28027's chip select (GPIO29) is held high", hint: "Plain GPIO, output, then GpioDataRegs.GPASET.bit.GPIO29 = 1; GPIO29 is in port A. Left floating, the other chip may answer too." },
-        { kind: "no-diagnostic", code: "spi-mux", label: "GPIO63, 64 and 65 are switched to SPIB", hint: "GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15); and the same for 64 and 65." },
-        { kind: "no-diagnostic", code: "eallow", label: "Every protected write is between EALLOW; and EDIS;", hint: "The pin option registers GPxPUD and GPxQSEL are protected." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "SPIB is the master", hint: "The F28379D makes the clock: SPICTL.MASTER_SLAVE = 1." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "TALK", equals: 1, label: "SPIB drives its SIMO pin", hint: "SPICTL.TALK = 1, or the chip receives only 1s." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Decision 1: 16 bits per word", hint: "Address byte plus data byte is 16 bits, and SPICHAR holds one less." },
-        { kind: "reg", reg: "SpibRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 49, label: "Decision 2: the clock is 1 MHz", hint: "50 MHz / (SPIBRR + 1) = 1 MHz. Slower works but wastes time. Faster breaks the data sheet's limit." },
-        { kind: "no-diagnostic", code: "mpu-too-fast", label: "The MPU-9250 is not clocked faster than its limit", hint: "SPIBRR is too small. 49 gives exactly 1 MHz." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "CLKPOLARITY", equals: 0, label: "Decision 3: the clock rests low", hint: "CLKPOLARITY is the level of the clock between words. The DAN28027 needs 0." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "CLK_PHASE", equals: 1, label: "Decision 3: data is read on the rising edge", hint: "With the clock resting low, CLK_PHASE = 0 has the data read on the falling edge. The data sheet says rising: CLK_PHASE = 1." },
-        { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "SPIFFENA", equals: 1, label: "The FIFOs are in use", hint: "read_ids() waits for RXFFST, which only counts with SPIFFTX.SPIFFENA = 1 (and SPIRST = 1)." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "The SPI is released from reset", hint: "SPISWRESET = 1 after the configuration. While it is 0 nothing is sent." },
-        { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "TXFIFO", equals: 1, label: "The transmit FIFO is released", hint: "SPIFFTX.TXFIFO = 1, or every word written is dropped." },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFIFORESET", equals: 1, label: "The receive FIFO is released", hint: "SPIFFRX.RXFIFORESET = 1, or RXFFST never counts and read_ids() waits for ever." },
-        { kind: "var", name: "whoami", equals: 0x71, label: "whoami is 0x71", hint: "Fix the first red check above. If the program is stuck in read_ids(), no word ever arrives in the receive FIFO." },
-        { kind: "var", name: "pwr", equals: 0x01, label: "pwr (register 0x6B) is 0x01" },
-        { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
-        { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported", hint: "The message names the cause. A setting changed after SPISWRESET = 1 belongs before it." },
+        { kind: "var", name: "cfg19", equals: 7, label: "Register 0x19 holds 7: 125 measurements a second", hint: "1000 / (1 + SMPLRT_DIV) = 125, so 1 + SMPLRT_DIV = 8. Still 0: the write did not happen." },
+        { kind: "var", name: "cfg1a", equals: 4, label: "Register 0x1A holds 0x04: the filter is at 20 Hz", hint: "DLPF_CFG starts at bit 0, so the field value is the byte. The value is the code in front of 20 Hz, not 20." },
+        { kind: "var", name: "cfg1b", equals: 0x10, label: "Register 0x1B holds 0x10: +-1000 degrees per second", hint: "+-500 is too small for 800 degrees per second, +-2000 wastes resolution. The field starts at bit 3: write the field value shifted up by 3, not the field value itself." },
+        { kind: "var", name: "cfg1c", equals: 0x18, label: "Register 0x1C holds 0x18: +-16 g", hint: "+-8 g is too small for 12 g. The field value is 3, at bits 4..3: 3 << 3." },
+        { kind: "var", name: "gyroz", at: 1.9, min: 598, max: 602, label: "Turning at 600 degrees per second: gyroz is 600", hint: "About 250 or 500: the chip's range is too small and the reading is stuck at full scale. Another wrong number: gyro_range does not match the range in register 0x1B." },
+        { kind: "var", name: "gyroz", min: -902, max: -898, label: "Turning at -900 degrees per second: gyroz is -900" },
+        { kind: "var", name: "accelz", at: 1.9, min: 0.98, max: 1.02, label: "Lying still: accelz is 1 g", hint: "accel_range must be the range you selected in register 0x1C, in g." },
+        { kind: "var", name: "accelz", min: 9.9, max: 10.1, label: "A bump of 10 g: accelz is 10" },
+        { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
-      watch: ["whoami", "pwr"],
-      inspect: ["SpibRegs.SPICCR", "SpibRegs.SPICTL", "SpibRegs.SPIBRR", "SpibRegs.SPIFFTX", "SpibRegs.SPIFFRX"],
+      watch: ["cfg19", "cfg1a", "cfg1b", "cfg1c", "gyroz", "accelz"],
       hints: [
-        "Two chip selects first, both outputs and both high. Then the three mux lines and the pin options, then the registers.",
-        "SPICHAR = 0xF, SPI_BIT_RATE = 49, CLKPOLARITY = 0, CLK_PHASE = 1. No RXFFIENA line.",
-        "It is the block you wrote in the SPI chapter (\"The whole set-up, from an empty function\") with GPIO29 added, SPI_BIT_RATE = 49 and no interrupt enable.",
+        "Four decisions, four calls of mpu_write. For each range, pick the first entry of the table that is large enough.",
+        "+-1000 degrees per second is field value 2, +-16 g is field value 3, both at bits 4..3. 125 a second needs 1 + SMPLRT_DIV = 8. The 20 Hz filter is code 4.",
+        "`mpu_write(0x19, 7); mpu_write(0x1A, 4); mpu_write(0x1B, 2 << 3); mpu_write(0x1C, 3 << 3);` and at the top `gyro_range = 1000.0`, `accel_range = 16.0`.",
       ],
-      takeaway: "A data sheet answers four questions: bits per word, top speed, where the clock rests, which edge reads. The board answers the rest: which pins, and who else is on the bus.",
+      takeaway: "A register map gives field values. You shift each to its place in the byte, and the scale factors in your code must follow the ranges you chose.",
     },
     {
       id: "dan-debug",
@@ -1773,38 +1737,40 @@ ${MPU_WRITE}`,
       mode: "write",
       tier: "expert",
       title: "Which way is down?",
-      goal: "Read the three accelerometer axes in one burst and compute the board's roll and pitch angles with atan2.",
+      goal: "Read two accelerometer axes and one gyro axis in one burst, and compute the board's roll angle with atan2 and its roll rate.",
       refs: [{ course: "L12", slide: [38, 30], note: "accelerometer burst read" }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
-At rest the accelerometer measures only gravity: a vector of length 1 g that always points down. How that vector is split over the board's X, Y and Z axes tells you how the board is tilted.
+At rest the accelerometer measures only gravity: a vector of length 1 g that always points down. How that vector is split over the board's axes tells you how the board is tilted. This level measures **roll**: tipping sideways, about the X axis.
 
-Lying flat, the reading is (0, 0, 1 g). Define the two tilt angles as:
+Lying flat, the reading is (0, 0, 1 g). When the board rolls, gravity moves from the Z axis to the Y axis:
 
 \`\`\`c
-roll  = atan2(ay, az)                          // tipping sideways, about the X axis
-pitch = atan2(-ax, sqrt(ay * ay + az * az))    // nose up or down, about the Y axis
+roll = atan2(ay, az)      // in radians
 \`\`\`
 
 \`atan2(y, x)\` returns the angle of the point (x, y) in **radians**, in the right quadrant for any signs. Multiply by 180 / PI for degrees.
 
-Notice that only **ratios** of the readings appear. The scale factor cancels, so the raw numbers can be used as they are, converted to \`float\`.
+Notice that only a **ratio** of the readings appears. The scale factor cancels, so the raw numbers can be used as they are, converted to \`float\`.
+
+The accelerometer says how far the board is tipped. The gyro says how fast it is tipping: gyro X is the turn rate about the X axis, the **roll rate**. That one needs its scale factor: \`raw * 250.0 / 32767.0\` is degrees per second.
 
 ## Your task
 Nothing is given but the set-up. Write both interrupt functions:
 
-- \`cpu_timer0_isr\`, every 1 ms: start a burst read that returns the three accelerometer readings, each as one whole word. Decide where the read must start and how many words it needs.
-- \`SPIB_isr\`: take the words, store the readings in \`ax_raw\`, \`ay_raw\`, \`az_raw\`, and compute \`roll\` and \`pitch\` in **degrees**.
+- \`cpu_timer0_isr\`, every 1 ms: start **one** burst read that returns accelerometer Y, accelerometer Z and gyro X, each as one whole word. Decide where the read must start and how many words it needs. The register list is in the chapter's briefing.
+- \`SPIB_isr\`: take the words, store the readings in \`ay_raw\`, \`az_raw\` and \`gx_raw\`, and compute \`roll\` in **degrees** and \`rollrate\` in **degrees per second**.
 
-The test holds the board flat, then rolls it by 30 degrees, then pitches it up by 20 degrees.
+The test holds the board flat and still. Then it rolls it to 30 degrees while it turns at 60 degrees per second, then to -45 degrees while it turns the other way at -40.
 `,
       kit: "robot",
       durationMs: 16,
       stimuli: [
         { at: 5.5, set: "IMU_AY_G", value: 0.5 },
         { at: 5.5, set: "IMU_AZ_G", value: 0.8660254 },
-        { at: 10.5, set: "IMU_AX_G", value: -0.3420201 },
-        { at: 10.5, set: "IMU_AY_G", value: 0 },
-        { at: 10.5, set: "IMU_AZ_G", value: 0.9396926 },
+        { at: 5.5, set: "IMU_GX_DPS", value: 60 },
+        { at: 10.5, set: "IMU_AY_G", value: -0.7071068 },
+        { at: 10.5, set: "IMU_AZ_G", value: 0.7071068 },
+        { at: 10.5, set: "IMU_GX_DPS", value: -40 },
       ],
       starter: `#define PI 3.1415926535897932384626433832795
 
@@ -1812,11 +1778,11 @@ __interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
 void mpu_write(uint16_t reg, uint16_t value);
 
-int16_t ax_raw = 0;
 int16_t ay_raw = 0;
 int16_t az_raw = 0;
+int16_t gx_raw = 0;
 float roll = 0;        // degrees
-float pitch = 0;       // degrees
+float rollrate = 0;    // degrees per second
 
 void main(void)
 {
@@ -1830,7 +1796,6 @@ ${VECTORS()}
     while (1) {
     }
 }
-
 __interrupt void cpu_timer0_isr(void)
 {
     // TODO
@@ -1852,11 +1817,11 @@ __interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
 void mpu_write(uint16_t reg, uint16_t value);
 
-int16_t ax_raw = 0;
 int16_t ay_raw = 0;
 int16_t az_raw = 0;
+int16_t gx_raw = 0;
 float roll = 0;        // degrees
-float pitch = 0;       // degrees
+float rollrate = 0;    // degrees per second
 
 void main(void)
 {
@@ -1870,13 +1835,13 @@ ${VECTORS()}
     while (1) {
     }
 }
-
 __interrupt void cpu_timer0_isr(void)
 {
-    // Start at 0x3A: [address, 0x3A] [0x3B, 0x3C] [0x3D, 0x3E] [0x3F, 0x40]
+    // Start at 0x3C: [address, 0x3C] [0x3D, 0x3E] [0x3F, 0x40] [0x41, 0x42] [0x43, 0x44]
     GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIL = 4;
-    SpibRegs.SPITXBUF = (0x8000 | 0x3A00);
+    SpibRegs.SPIFFRX.bit.RXFFIL = 5;
+    SpibRegs.SPITXBUF = (0x8000 | 0x3C00);
+    SpibRegs.SPITXBUF = 0x0000;
     SpibRegs.SPITXBUF = 0x0000;
     SpibRegs.SPITXBUF = 0x0000;
     SpibRegs.SPITXBUF = 0x0000;
@@ -1887,21 +1852,20 @@ __interrupt void cpu_timer0_isr(void)
 __interrupt void SPIB_isr(void)
 {
     int16_t temp;
-    float ax;
     float ay;
     float az;
 
-    temp = SpibRegs.SPIRXBUF;
-    ax_raw = SpibRegs.SPIRXBUF;
+    temp = SpibRegs.SPIRXBUF;       // address byte and 0x3C: nothing useful
     ay_raw = SpibRegs.SPIRXBUF;
     az_raw = SpibRegs.SPIRXBUF;
+    temp = SpibRegs.SPIRXBUF;       // the temperature
+    gx_raw = SpibRegs.SPIRXBUF;
     GpioDataRegs.GPCSET.bit.GPIO66 = 1;
 
-    ax = ax_raw;
     ay = ay_raw;
     az = az_raw;
     roll = atan2(ay, az) * 180.0 / PI;
-    pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / PI;
+    rollrate = gx_raw * 250.0 / 32767.0;
 
     SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
     SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
@@ -1910,26 +1874,26 @@ __interrupt void SPIB_isr(void)
 
 ${MPU_WRITE}`,
       checks: [
-        { kind: "var", name: "az_raw", at: 4.5, equals: 8192, label: "Flat: az_raw is 8192 (1 g at +-4 g)", hint: "The accelerometer starts at 0x3B. Start the read one register earlier so each axis is one whole word." },
+        { kind: "var", name: "az_raw", at: 4.5, equals: 8192, label: "Flat: az_raw is 8192 (1 g at +-4 g)", hint: "Accelerometer Y is 0x3D and 0x3E. Start the read one register earlier so each reading is one whole word. Accelerometer Z is the word after Y." },
         { kind: "var", name: "roll", at: 4.5, min: -0.1, max: 0.1, label: "Flat: roll is 0 degrees" },
-        { kind: "var", name: "pitch", at: 4.5, min: -0.1, max: 0.1, label: "Flat: pitch is 0 degrees" },
-        { kind: "var", name: "roll", at: 9.5, min: 29.9, max: 30.1, label: "Rolled: roll is 30 degrees", hint: "0.52 would be radians: multiply by 180 / PI." },
-        { kind: "var", name: "pitch", at: 9.5, min: -0.1, max: 0.1, label: "Rolled: pitch is still 0 degrees" },
-        { kind: "var", name: "pitch", min: 19.9, max: 20.1, label: "Pitched: pitch is 20 degrees" },
-        { kind: "var", name: "roll", min: -0.1, max: 0.1, label: "Pitched: roll is back at 0 degrees" },
+        { kind: "var", name: "rollrate", at: 4.5, min: -0.1, max: 0.1, label: "Still: rollrate is 0 degrees per second" },
+        { kind: "var", name: "roll", at: 9.5, min: 29.9, max: 30.1, label: "Rolled: roll is 30 degrees", hint: "0.52 would be radians: multiply by 180 / PI. 60 would be atan2(az, ay): the Y reading comes first." },
+        { kind: "var", name: "rollrate", at: 9.5, min: 59.9, max: 60.1, label: "Rolling at 60 degrees per second: rollrate is 60", hint: "Still 0: that word is the temperature, which sits between accelerometer Z and gyro X. About 7864: that is the raw count, scale it with * 250.0 / 32767.0." },
+        { kind: "var", name: "roll", min: -45.1, max: -44.9, label: "Rolled the other way: roll is -45 degrees" },
+        { kind: "var", name: "rollrate", min: -40.1, max: -39.9, label: "Rolling the other way: rollrate is -40", hint: "A large positive number: gx_raw must stay an int16_t, so that a negative count keeps its sign." },
         { kind: "isr", fn: "SPIB_isr", min: 15, max: 15, label: "The sensor is read once per millisecond" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
       bonus: [
-        { kind: "signal", name: "SPIB_WORDS", equals: 62, label: "Only four words per read: nothing more than the accelerometer" },
+        { kind: "signal", name: "SPIB_WORDS", equals: 77, label: "Only five words per read: no register before accelerometer Y or after gyro X" },
       ],
-      watch: ["ax_raw", "ay_raw", "az_raw", "roll", "pitch"],
+      watch: ["ay_raw", "az_raw", "gx_raw", "roll", "rollrate"],
       hints: [
-        "Accelerometer X is 0x3B and 0x3C. To get it as one word, the word before must end with 0x3A.",
-        "Four words from 0x3A: one to throw away, then X, Y, Z. RXFFIL = 4.",
-        "Copy the raw values into float variables first, then `roll = atan2(ay, az) * 180.0 / PI;`.",
+        "Accelerometer Y is 0x3D and 0x3E. To get it as one word, the word before must end with 0x3C. Then write down what each later word holds, until you reach gyro X (0x43 and 0x44).",
+        "Five words from 0x3C: one to throw away, accelerometer Y, accelerometer Z, the temperature (throw it away too), gyro X. RXFFIL = 5.",
+        "Copy the two accelerometer counts into float variables first, then `roll = atan2(ay, az) * 180.0 / PI;` and `rollrate = gx_raw * 250.0 / 32767.0;`.",
       ],
-      takeaway: "At rest an accelerometer is a tilt sensor. It stops being one as soon as the robot accelerates, which is why tilt is usually estimated from the accelerometer and the gyro together.",
+      takeaway: "At rest an accelerometer is a tilt sensor. It stops being one as soon as the robot accelerates, which is why tilt is usually estimated from the accelerometer and the gyro together. One burst fetches both.",
     },
     {
       id: "spi-both",
@@ -1957,13 +1921,14 @@ pwm2 = 1500 - 10 * gyroz;
 
 Rules that keep the bus healthy: never have both chip selects low, read exactly as many words as were sent before clearing the interrupt flag, and give each device its \`TXDLY\`.
 
-The test turns the board at 50 degrees per second after 5.5 ms and puts 1.65 V on the DAN28027's first analog input.
+The test turns the board at 50 degrees per second after 5.5 ms and the other way at -20 degrees per second after 9.5 ms. It puts 1.65 V on the DAN28027's first analog input.
 `,
       kit: "robot",
       durationMs: 12,
       stimuli: [
         { at: 0.1, set: "DAN_ADC1", value: 1.65 },
         { at: 5.5, set: "IMU_GZ_DPS", value: 50 },
+        { at: 9.5, set: "IMU_GZ_DPS", value: -20 },
       ],
       starter: `#define MPU9250 1
 #define DAN28027 2
@@ -2091,9 +2056,11 @@ __interrupt void SPIB_isr(void)
 ${MPU_WRITE}`,
       checks: [
         { kind: "signal", name: "DAN_PWM1", at: 5.4, equals: 1500, label: "Standing still: the DAN28027 receives 1500", hint: "The DAN28027 only accepts a message that starts with 0x00DA, sent while GPIO29 is low and GPIO66 is high." },
-        { kind: "var", name: "gyroz", min: 49.9, max: 50.1, label: "gyroz is 50 degrees per second while turning" },
-        { kind: "signal", name: "DAN_PWM1", equals: 2000, tol: 1.5, label: "Turning: PWM value 1 is 2000" },
-        { kind: "signal", name: "DAN_PWM2", equals: 1000, tol: 1.5, label: "Turning: PWM value 2 is 1000" },
+        { kind: "var", name: "gyroz", at: 9.4, min: 49.9, max: 50.1, label: "gyroz is 50 degrees per second while turning" },
+        { kind: "signal", name: "DAN_PWM1", at: 9.4, equals: 2000, tol: 1.5, label: "Turning at 50: PWM value 1 is 2000" },
+        { kind: "signal", name: "DAN_PWM2", at: 9.4, equals: 1000, tol: 1.5, label: "Turning at 50: PWM value 2 is 1000" },
+        { kind: "signal", name: "DAN_PWM1", equals: 1300, tol: 1.5, label: "Turning at -20: PWM value 1 is 1300" },
+        { kind: "signal", name: "DAN_PWM2", equals: 1700, tol: 1.5, label: "Turning at -20: PWM value 2 is 1700" },
         { kind: "var", name: "dan_adc1", equals: 2048, label: "dan_adc1 is 2048 (1.65 V)" },
         { kind: "isr", fn: "SPIB_isr", min: 22, max: 22, label: "SPIB_isr runs twice per millisecond: once per device" },
         { kind: "signal", name: "DAN_COMMANDS", equals: 11, label: "The DAN28027 receives one complete command per millisecond" },

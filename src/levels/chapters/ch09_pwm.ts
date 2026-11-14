@@ -1156,6 +1156,7 @@ void set_brightness(float brightness)
         { kind: "duty", led: "LED1", pct: 25, tolPct: 1, from: 1, to: 9.5, label: "LED1 is on 25 % of the time at first", hint: "CMPA must be 0.25 x TBPRD counts, and the pin must be set at zero and cleared at the match." },
         { kind: "duty", led: "LED1", pct: 60, tolPct: 1, from: 11, to: 20, label: "and 60 % after the second call", hint: "Compute CMPA from the argument: brightness * EPwm12Regs.TBPRD. A constant only works for one brightness." },
         { kind: "reg", reg: "EPwm12Regs.AQCTLA", field: "ZRO", equals: 2, label: "The pin is set when the counter is zero" },
+        { kind: "reg", reg: "EPwm12Regs.TBPRD", equals: 25000, label: "TBPRD is still 25000: 2 kHz at 50 MHz", hint: "The period value was right. The bug is in the divider line above it." },
         { kind: "no-diagnostic", code: "cmp-float", label: "No fraction is lost in CMPA" },
       ],
       hints: [
@@ -1371,7 +1372,11 @@ __interrupt void epwm5_isr(void)
         { kind: "isr", fn: "epwm5_isr", min: 495, max: 502, label: "epwm5_isr runs about 500 times in 500 ms", hint: "If it runs once: ETCLR.INT or PIEACK is missing. If never: check INTPRD, INTEN, PIEIER3, IER and the vector." },
         { kind: "blink", led: "LED2", periodMs: 100, tolPct: 1, label: "LED2 blinks with a period of 100 ms" },
         { kind: "var", name: "ticks", min: 495, max: 502, label: "ticks counts the calls" },
+        { kind: "reg", reg: "EPwm5Regs.ETSEL", field: "INTEN", equals: 1, label: "EPWM5's own interrupt is enabled in its event trigger", hint: "EPwm5Regs.ETSEL.bit.INTEN = 1; together with INTSEL and ETPS.INTPRD." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER3", field: "INTx5", equals: 1, label: "EPWM5 is enabled in the PIE: INT3.5", hint: "PieCtrlRegs.PIEIER3.bit.INTx5 = 1; and IER |= M_INT3;" },
         { kind: "reg", reg: "CpuTimer0Regs.TCR", field: "TIE", equals: 0, label: "No CPU timer interrupt is used" },
+        { kind: "reg", reg: "CpuTimer1Regs.TCR", field: "TIE", equals: 0, label: "CPU Timer 1 does not interrupt either" },
+        { kind: "reg", reg: "CpuTimer2Regs.TCR", field: "TIE", equals: 0, label: "nor CPU Timer 2" },
       ],
       bonus: [
         { kind: "blink", led: "LED2", periodMs: 100, tolPct: 0.001, label: "The period is exactly 1 ms, not 1 ms plus one count", hint: "The counter needs TBPRD + 1 counts per period." },
@@ -1594,6 +1599,12 @@ ${INIT}
         { kind: "var", name: "duty_pct", min: 62.4, max: 62.6, label: "and so does duty_pct" },
         { kind: "source", mustMatch: "CpuTimer1Regs\\.TIM", label: "The time comes from CPU Timer 1" },
         { kind: "source", mustNotMatch: "[=(,<>+*/&-]\\s*EPwm12Regs", label: "Nothing is read from the EPWM12 registers" },
+        {
+          kind: "source",
+          mustNotMatch: "GPEDAT[\\s\\S]*GPEDAT",
+          label: "Your code does not look at PB1: the numbers come from the pin alone",
+          hint: "Only the given signal_isr reads the button. Measure GPIO22 and let the result follow by itself.",
+        },
       ],
       hints: [
         "Four empty while loops on the pin level, with a timer reading after the second, third and fourth.",

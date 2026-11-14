@@ -46,8 +46,16 @@
 //   (seconds, minutes, hours in BCD in registers 0 to 2; starts at 12:34:56).
 //
 // Signal-bus outputs: I2C_STARTS, I2C_STOPS, I2C_ADDR_ACKS, I2C_ADDR_NACKS,
-// I2C_DATA_BYTES (counts seen on the bus), I2C_SCL_HZ, TMP_POINTER,
-// TMP_TLOW_C, TMP_THIGH_C.
+// I2C_DATA_BYTES (counts seen on the bus), I2C_SCL_HZ (the rate the I2C
+// module was set up for, from its registers), TMP_POINTER, TMP_TLOW_C,
+// TMP_THIGH_C, and two measurements taken on the SCL pin itself, so they
+// hold for the module and for a bit-banged master alike:
+// I2C_SCL_MIN_LOW_US and I2C_SCL_MIN_HIGH_US, the shortest SCL low time and
+// high time seen so far inside a transfer, in microseconds. A low time runs
+// from a falling edge to the next rising edge. A high time runs from a
+// rising edge to the next falling edge; the high time that ends in a STOP is
+// not counted, and neither is the bus idle time. The devices here do not
+// misread a clock that is too fast (a real one would): the level checks it.
 
 import type { Board } from "../board";
 import { SYSCLK_NS } from "../consts";
@@ -137,6 +145,12 @@ export class I2cBus {
   private masterAck = false;
   private cur: I2cTransfer | null = null;
   private counts = { I2C_STARTS: 0, I2C_STOPS: 0, I2C_ADDR_ACKS: 0, I2C_ADDR_NACKS: 0, I2C_DATA_BYTES: 0 };
+  /** When SCL last fell / rose inside a transfer (-1: not to be measured). */
+  private sclFellAt = -1;
+  private sclRoseAt = -1;
+  /** Shortest SCL low and high time seen inside a transfer, ns. */
+  minLowNs = Infinity;
+  minHighNs = Infinity;
 
   constructor(private b: Board) {
     b.gpio.listeners.push((pin, level, t) => {
@@ -147,6 +161,7 @@ export class I2cBus {
           else this.onStop(t);
         }
       } else if (pin === SCL) {
+        this.measure(level, t);
         if (level === 1) this.rising();
         else this.falling(t);
       }
@@ -155,6 +170,24 @@ export class I2cBus {
 
   add(d: I2cDevice): void {
     this.devices.set(d.address, d);
+  }
+
+  /** Times the SCL pulses of a transfer on the pin (the module's and a bit-banged master's alike). */
+  private measure(level: number, t: number): void {
+    if (this.phase === "idle") return;
+    if (level === 1) {
+      if (this.sclFellAt >= 0 && t - this.sclFellAt < this.minLowNs) {
+        this.minLowNs = t - this.sclFellAt;
+        this.b.publish("I2C_SCL_MIN_LOW_US", this.minLowNs / 1000, t);
+      }
+      this.sclRoseAt = t;
+    } else {
+      if (this.sclRoseAt >= 0 && t - this.sclRoseAt < this.minHighNs) {
+        this.minHighNs = t - this.sclRoseAt;
+        this.b.publish("I2C_SCL_MIN_HIGH_US", this.minHighNs / 1000, t);
+      }
+      this.sclFellAt = t;
+    }
   }
 
   private count(name: keyof I2cBus["counts"], t: number): void {
@@ -171,6 +204,9 @@ export class I2cBus {
     this.bits = 0;
     this.addressed = false;
     this.cur = null;
+    // The high time before a START is bus idle time (or the set-up of a repeated START), not a clock pulse.
+    this.sclRoseAt = -1;
+    this.sclFellAt = -1;
     this.count("I2C_STARTS", t);
   }
 
@@ -181,6 +217,8 @@ export class I2cBus {
     this.phase = "idle";
     this.addressed = false;
     this.cur = null;
+    this.sclRoseAt = -1;
+    this.sclFellAt = -1;
     this.pull(false, t);
     this.count("I2C_STOPS", t);
   }
@@ -209,6 +247,8 @@ export class I2cBus {
           ack = this.dev !== null;
           this.cur = { t, address, read: this.reading, acked: ack, data: [], stopped: false };
           this.log.push(this.cur);
+          // A live run keeps the recent transfers only.
+          if (this.b.historyLimit && this.log.length > this.b.historyLimit) this.log.splice(0, this.log.length - (this.b.historyLimit >> 1));
           if (this.dev) {
             this.addressed = true;
             this.dev.start(this.reading);
@@ -762,8 +802,18 @@ export class I2cMaster {
     const rm = (mode & M_RM) !== 0;
     // The internal data counter is loaded from I2CCNT (0 means 65536).
     let count = dev.get(`${P}.I2CCNT`) || 65536;
-    const address = dev.get(`${P}.I2CSAR`) & 0x7f;
+    const sar = dev.get(`${P}.I2CSAR`);
+    const address = sar & 0x7f;
+    const startLine = this.b.line;
     if (!(yield* this.sendByte((address << 1) | (trx ? 0 : 1), 8))) {
+      // 20.6.2.8: in 7-bit mode only bits 6-0 of I2CSAR are the address. A larger value is usually an 8-bit address.
+      if (sar > 0x7f && sar !== 0x3ff)
+        this.b.warn(
+          startLine,
+          "i2c-address",
+          `I2CSAR holds 0x${sar.toString(16).toUpperCase()}, but a slave address has 7 bits (0x00 to 0x7F) and is written without the read/write bit. Only bits 6 to 0 were sent (0x${address.toString(16).toUpperCase()}) and no device answered. ` +
+            `If 0x${sar.toString(16).toUpperCase()} is the 8-bit address of a data sheet, shift it right by one: I2cbRegs.I2CSAR.all = 0x${(sar >> 1).toString(16).toUpperCase()};`,
+        );
       this.set(S_NACK | S_ARDY);
       yield* this.hold();
       return;

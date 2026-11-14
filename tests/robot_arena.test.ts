@@ -301,6 +301,13 @@ describe("the world a board is in", () => {
     expect(worldOf(b)).toBe(ROOMS[0]);
   });
 
+  it("leaves out a placed object with a coordinate that is not a number", () => {
+    const b = new Board("robot");
+    setWorldObjects(b, [{ kind: "post", x: NaN, y: 1, r: 0.25 }, { kind: "box", x0: 1, y0: 1, x1: Infinity, y1: 2 }, { kind: "post", x: 3, y: 3, r: 0.25 }]);
+    expect(worldOf(b).posts).toEqual([{ x: 3, y: 3, r: 0.25 }]);
+    expect(worldOf(b).walls).toEqual(ROOMS[0].walls);
+  });
+
   const idle = "void main(void) { while (1) {} }";
   it("starts the robot at a terrain's own start and measures the distance to its goal", () => {
     const r = runProgram({ kit: "robot", durationMs: 20, source: idle, stimuli: [{ at: 0, set: "WORLD_KIND", value: KIND_MAZE }, { at: 0, set: "WORLD_SIZE", value: 4 }, { at: 0, set: "WORLD_SEED", value: 3 }, { at: 0.01, set: "ROBOT_WORLD", value: 1 }] });
@@ -572,5 +579,20 @@ describe("the playground acts through the simulator", () => {
     const after = runProgram({ kit: l.kit, source: l.solution, durationMs: 3000, stimuli: l.stimuli });
     expect(after.board.outputs.get("ROBOT_X_FT")).toEqual(before.board.outputs.get("ROBOT_X_FT"));
     expect(worldOf(after.board)).toBe(ROOMS[3]);
+  });
+});
+
+describe("drawing a wall longer than the picture", () => {
+  it("cuts it along its own line and keeps its slope", async () => {
+    const { clipSegment } = await import("../src/ui/views/robot-arena-model");
+    const c = clipSegment([-100, -52, 100, 48], -6, -6, 18, 8)!;
+    expect((c[3] - c[1]) / (c[2] - c[0])).toBeCloseTo(0.5, 9);
+    expect(c[0]).toBeCloseTo(-6, 9);
+    expect(c[1]).toBeCloseTo(-5, 9);
+    expect(c[2]).toBeCloseTo(18, 9);
+    // A wall that is wholly inside is unchanged; one that misses the picture is not drawn.
+    expect(clipSegment([0, 0, 10, 0], -2, -2, 12, 12)).toEqual([0, 0, 10, 0]);
+    expect(clipSegment([0, 20, 10, 20], -2, -2, 12, 12)).toBeNull();
+    expect(clipSegment([5, -50, 5, 50], -2, -2, 12, 12)).toEqual([5, -2, 5, 12]);
   });
 });

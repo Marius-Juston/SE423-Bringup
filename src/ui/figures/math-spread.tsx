@@ -7,7 +7,7 @@ import { useState } from "react";
 
 const TRUE = 2.0; // ft
 const LO = 0.6;
-const HI = 3.4;
+const HI = 3.5; // the largest reading the sliders can make is 3.42
 const X0 = 10;
 const X1 = 390;
 const BASE = 150;
@@ -85,7 +85,7 @@ function MathSpread() {
         <text x={sx(TRUE) - 4} y={20} textAnchor="end" className="fig-label">true: {fmt(TRUE)}</text>
         <line x1={sx(mean)} x2={sx(mean)} y1={30} y2={BASE} className="mp-mean" />
         <text x={sx(mean) + 4} y={20} className="fig-value small">mean: {fmt(mean)}</text>
-        {n > 1 && <text x={sx(mean + sd) + 3} y={42} className="fig-label dim">grey band: mean ± {fmt(sd)}</text>}
+        {n > 1 && <text x={sx(mean + sd) > 270 ? sx(mean - sd) - 3 : sx(mean + sd) + 3} y={42} textAnchor={sx(mean + sd) > 270 ? "end" : "start"} className="fig-label dim">grey band: mean ± {fmt(sd)}</text>}
         <text x={X0} y={178} className="fig-label">mean = sum / count = <tspan className="fig-value small">{fmt(mean)} ft</tspan></text>
         <text x={X0} y={193} className="fig-label">variance = average of (reading - mean) squared = <tspan className="fig-value small">{fmt(variance, 3)}</tspan></text>
         <text x={X1} y={178} textAnchor="end" className="fig-label dim">bars: readings, blue: bell curve</text>

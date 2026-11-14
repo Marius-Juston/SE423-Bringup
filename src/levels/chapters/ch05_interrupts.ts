@@ -334,9 +334,9 @@ Order the steps the way the manual lists them.
       brief: `
 Table 3-2 of the reference manual lists every PIE interrupt. Each row is a group, each column a channel. The names are peripherals, most of which you meet in later chapters (ADC, EPWM, SPI, SCI). Here you only need to find a name and read off its numbers. A few rows, shortened:
 
-- **INT1.y**: 1 ADCA1, 2 ADCB1, 3 ADCC1, 4 XINT1, 5 XINT2, 6 ADCD1, **7 TIMER0**, 8 WAKE
+- **INT1.y**: 1 ADCA1, ... 4 XINT1, 5 XINT2, 6 ADCD1, **7 TIMER0**, 8 WAKE
 - **INT3.y**: 1 EPWM1, 2 EPWM2, 3 EPWM3 and so on up to 12 EPWM12
-- **INT6.y**: 1 SPIA_RX, 2 SPIA_TX, 3 SPIB_RX, 4 SPIB_TX
+- **INT6.y**: 1 SPIA_RX, 2 SPIA_TX, ... 9 SPIC_RX, 10 SPIC_TX
 - **INT9.y**: 1 SCIA_RX, 2 SCIA_TX, 3 SCIB_RX, 4 SCIB_TX
 - **INT12.y**: 1 XINT3, 2 XINT4, 3 XINT5, ... 9 EMIF_ERROR
 
@@ -1355,8 +1355,8 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "var", name: "UARTPrint", equals: 0, label: "The flag is back at 0 after main used it" },
         {
           kind: "source",
-          mustMatch: "(?=[\\s\\S]*UARTPrint\\s*=\\s*1\\s*;)(?=[\\s\\S]*UARTPrint\\s*=\\s*0\\s*;)",
-          label: "cpu_timer1_isr raises UARTPrint and main sets it back to 0",
+          mustMatch: "(?=[\\s\\S]*UARTPrint\\s*=\\s*1\\s*;)(?=[\\s\\S]*while\\s*\\(\\s*1\\s*\\)\\s*\\{[^}]*UARTPrint[^}]*UARTPrint\\s*=\\s*0\\s*;[^}]*handled|[\\s\\S]*while\\s*\\(\\s*1\\s*\\)\\s*\\{[^}]*UARTPrint[^}]*handled[^}]*UARTPrint\\s*=\\s*0\\s*;)",
+          label: "cpu_timer1_isr raises UARTPrint, and the while (1) loop sets it back to 0 and counts handled",
           hint: "Do not count handled inside the interrupt function. It only sets the flag. The while(1) loop does the work.",
         },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the timing: no DELAY_US" },
@@ -1497,7 +1497,7 @@ The interrupt function ends with \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;\`, li
 
 HW4 warns about one thing. The contacts of a cheap button **bounce**: they close, open and close again a few times within a few milliseconds. Every bounce is an edge.
 
-The simulator does not model XINT yet, so this level is questions only.
+This level is questions only. In the next level you set one up and run it.
 `,
       questions: [
         {
@@ -1653,7 +1653,7 @@ __interrupt void xint1_isr(void)
         { kind: "isr", fn: "xint1_isr", min: 3, max: 3, label: "The interrupt function ran once per press", hint: "Once only: the function must acknowledge PIE group 1 before it returns." },
         { kind: "led", led: "LED1", at: 8, on: true, label: "LED1 turns on with the first press" },
         { kind: "led", led: "LED1", at: 24, on: false, label: "LED1 turns off with the second press" },
-        { kind: "source", mustNotMatch: "GP[EF]DAT", label: "main does not poll the button" },
+        { kind: "source", mustNotMatch: "GP[EF]DAT|GPIO_ReadPin", label: "main does not poll the button", hint: "Do not read the pin yourself. XINT1 watches it and runs xint1_isr on the edge." },
       ],
       bonus: [{ kind: "latency", led: "LED1", after: 33, withinUs: 1, label: "LED1 reacts within 1 microsecond of the press" }],
       hints: [
@@ -1891,6 +1891,15 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "duty", led: "LED1", pct: 30, from: 10, to: 90, label: "LED1 is on 30 % of the time while PB1 is released", hint: "On in slots 0, 1 and 2 of every 10. If it is 0 % or 100 %, check the comparison and that slot goes back to 0." },
         { kind: "duty", led: "LED1", pct: 80, from: 110, to: 190, label: "LED1 is on 80 % of the time while PB1 is held", hint: "PB1 reads 0 while pressed: GpioDataRegs.GPEDAT.bit.GPIO157 == 0." },
         { kind: "duty", led: "LED1", pct: 30, from: 210, to: 290, label: "LED1 is back at 30 % after PB1 is released" },
+        {
+          kind: "period",
+          led: "LED1",
+          periodMs: 10,
+          from: 10,
+          to: 290,
+          label: "LED1 switches on once every 10 ms: one period is 10 interrupts",
+          hint: "slot must count 0 to 9 and then go back to 0: `if (slot >= 10) { slot = 0; }`. A longer period gives the same brightness but starts to flicker.",
+        },
         { kind: "isr", fn: "cpu_timer0_isr", min: 299, max: 301, label: "cpu_timer0_isr runs every 1 ms" },
         { kind: "no-dat-write", label: "LED1 is changed through SET and CLEAR" },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timer does the timing: no DELAY_US" },
@@ -1943,8 +1952,9 @@ React within **2 ms of the first contact**. Waiting until the pin has been quiet
         { at: 60.2, release: "PB1" }, { at: 61.5, press: "PB1" }, { at: 62.4, release: "PB1" },
         { at: 100.7, press: "PB1" }, { at: 100.9, release: "PB1" }, { at: 101.6, press: "PB1" }, { at: 102.2, release: "PB1" }, { at: 102.5, press: "PB1" },
         { at: 130.1, release: "PB1" }, { at: 130.8, press: "PB1" }, { at: 131.9, release: "PB1" }, { at: 132.6, press: "PB1" }, { at: 133.4, release: "PB1" },
-        { at: 170.2, press: "PB1" }, { at: 171.3, release: "PB1" }, { at: 171.6, press: "PB1" },
-        { at: 185.3, release: "PB1" }, { at: 186.1, press: "PB1" }, { at: 187.4, release: "PB1" },
+        // The third press bounces with long gaps, close to the 5 ms the brief allows.
+        { at: 170.2, press: "PB1" }, { at: 170.9, release: "PB1" }, { at: 174.6, press: "PB1" },
+        { at: 185.3, release: "PB1" }, { at: 189.7, press: "PB1" }, { at: 190.1, release: "PB1" },
       ],
       starter: `${FREQ}
 
@@ -2141,9 +2151,6 @@ __interrupt void cpu_timer2_isr(void)
         { kind: "var", name: "filterSum", equals: 3909815408, label: "filter_job is unchanged and finished every time" },
         { kind: "var", name: "logSum", equals: 4049865000, label: "log_job is unchanged and finished every time" },
         { kind: "reg", reg: "PieCtrlRegs.PIEACK", equals: 0, label: "No PIE group is left blocked at the end" },
-      ],
-      bonus: [
-        { kind: "max-lines", max: 84, label: "Done with six added lines or fewer", hint: "SWI_isr needs an IER line, EINT and DINT, and its PIEACK line moved up. cpu_timer2_isr needs EINT and DINT." },
       ],
       watch: ["numTimer0calls", "numSWIcalls", "numTimer2calls"],
       inspect: ["PieCtrlRegs.PIEACK", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEIFR12"],

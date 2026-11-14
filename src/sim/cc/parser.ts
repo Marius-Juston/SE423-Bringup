@@ -33,6 +33,8 @@ export interface VarDecl {
   line: number;
   isStatic: boolean;
   isExtern: boolean;
+  /** Declared const: the program may not write it after its initialiser. */
+  isConst?: boolean;
   file: string;
 }
 
@@ -41,9 +43,9 @@ export type Stmt =
   | { k: "decl"; line: number; vars: VarDecl[] }
   | { k: "block"; line: number; body: Stmt[] }
   | { k: "if"; line: number; c: Expr; a: Stmt; b?: Stmt }
-  | { k: "while"; line: number; c: Expr; body: Stmt }
+  | { k: "while"; line: number; c: Expr; body: Stmt; semiBlock?: boolean }
   | { k: "do"; line: number; c: Expr; body: Stmt }
-  | { k: "for"; line: number; init?: Stmt; c?: Expr; step?: Expr; body: Stmt }
+  | { k: "for"; line: number; init?: Stmt; c?: Expr; step?: Expr; body: Stmt; semiBlock?: boolean }
   | { k: "switch"; line: number; e: Expr; body: Stmt }
   | { k: "case"; line: number; e?: Expr }
   | { k: "break"; line: number }
@@ -91,11 +93,14 @@ interface Specs {
   isStatic: boolean;
   isExtern: boolean;
   interrupt: boolean;
+  isConst: boolean;
 }
 
 interface Declarator {
   name?: string;
   line: number;
+  /** The declared object itself is const: no '*' and a const type, or '* const'. */
+  isConst?: boolean;
   wrap: (base: CType) => CType;
   /** Parameter names when the outermost suffix is a parameter list. */
   params?: { name: string; t: CType }[];
@@ -183,6 +188,7 @@ export class Parser {
       } else {
         const v: VarDecl = {
           name: d.name, t: type, line: d.line, isStatic: specs.isStatic, isExtern: specs.isExtern, file: start.file,
+          isConst: d.isConst ?? specs.isConst,
         };
         if (this.accept("=")) v.init = this.initializer();
         unit.globals.push(v);
@@ -196,7 +202,7 @@ export class Parser {
   // ---------- declarations ----------
 
   private specifiers(): Specs {
-    const s: Specs = { t: INT, typedef: false, isStatic: false, isExtern: false, interrupt: false };
+    const s: Specs = { t: INT, typedef: false, isStatic: false, isExtern: false, interrupt: false, isConst: false };
     let base: CType | undefined;
     let longs = 0;
     let sign: "s" | "u" | undefined;
@@ -210,7 +216,8 @@ export class Parser {
       else if (t.v === "static") s.isStatic = true;
       else if (t.v === "extern") s.isExtern = true;
       else if (t.v === "interrupt" || t.v === "__interrupt") s.interrupt = true;
-      else if (["const", "volatile", "register", "auto", "inline", "__inline"].includes(t.v)) {
+      else if (t.v === "const") s.isConst = true;
+      else if (["volatile", "register", "auto", "inline", "__inline"].includes(t.v)) {
         /* accepted, no effect */
       } else if (t.v === "signed") sign = "s";
       else if (t.v === "unsigned") sign = "u";
@@ -234,6 +241,8 @@ export class Parser {
       this.p++;
     }
     if (base) {
+      if (kw || longs || sign)
+        throw this.err(`Two types in one declaration ('${kw ?? (longs ? "long" : sign === "u" ? "unsigned" : "signed")}' and another type).`, startTok);
       s.t = base;
       return s;
     }
@@ -243,6 +252,9 @@ export class Parser {
     }
     if (longs >= 2) throw this.err("64-bit integers (long long) are not available in this game.", startTok);
     const unsigned = sign === "u";
+    if (kw && (sign || longs) && ["void", "float", "bool", "_Bool"].includes(kw))
+      throw this.err(`'${sign ? (unsigned ? "unsigned" : "signed") : "long"}' cannot be combined with '${kw}'.`, startTok);
+    if (kw === "double" && sign) throw this.err(`'${unsigned ? "unsigned" : "signed"}' cannot be combined with 'double'.`, startTok);
     switch (kw) {
       case "void":
         s.t = VOID;
@@ -316,9 +328,14 @@ export class Parser {
 
   private declarator(): Declarator {
     let ptrs = 0;
+    let constPtr = false;
     while (this.accept("*")) {
       ptrs++;
-      while (this.is("const") || this.is("volatile")) this.p++;
+      constPtr = false;
+      while (this.is("const") || this.is("volatile")) {
+        if (this.is("const")) constPtr = true;
+        this.p++;
+      }
     }
     const line = this.t.line;
     let name: string | undefined;
@@ -380,8 +397,8 @@ export class Parser {
       }
       return inner ? inner.wrap(t) : t;
     };
-    if (inner) return { name: inner.name, line: inner.line, wrap, params: inner.params };
-    return { name, line, wrap, params: first && "fn" in first ? first.fn : undefined };
+    if (inner) return { name: inner.name, line: inner.line, wrap, params: inner.params, isConst: inner.isConst ?? false };
+    return { name, line, wrap, params: first && "fn" in first ? first.fn : undefined, isConst: ptrs ? constPtr : undefined };
   }
 
   private typeName(): CType {
@@ -394,6 +411,8 @@ export class Parser {
     if (this.accept("{")) {
       const items: Init[] = [];
       while (!this.accept("}")) {
+        if (this.is(".") || this.is("["))
+          throw this.err("Naming the member or index inside { } (as in .x = 1 or [2] = 5) is not available in this game. List the values in order.");
         items.push(this.initializer());
         if (!this.accept(",")) {
           this.expect("}");
@@ -418,7 +437,10 @@ export class Parser {
       if (specs.typedef) this.ctx.typedefs.set(d.name, type);
       else if (type.k === "func") throw this.err("Declare functions outside of other functions.");
       else {
-        const v: VarDecl = { name: d.name, t: type, line: d.line, isStatic: specs.isStatic, isExtern: specs.isExtern, file };
+        const v: VarDecl = {
+          name: d.name, t: type, line: d.line, isStatic: specs.isStatic, isExtern: specs.isExtern, file,
+          isConst: d.isConst ?? specs.isConst,
+        };
         if (this.accept("=")) v.init = this.initializer();
         vars.push(v);
       }
@@ -468,7 +490,8 @@ export class Parser {
           this.expect("(", "after 'while'");
           const c = this.expression();
           this.expect(")", "to close the 'while' condition");
-          return { k: "while", line, c, body: this.statement() };
+          const body = this.statement();
+          return { k: "while", line, c, body, semiBlock: body.k === "empty" && this.is("{") };
         }
         case "do": {
           this.p++;
@@ -493,7 +516,8 @@ export class Parser {
           this.expect(";", "inside for ( ; ; )");
           const step = this.is(")") ? undefined : this.expression();
           this.expect(")", "to close the 'for' header");
-          return { k: "for", line, init, c, step, body: this.statement() };
+          const body = this.statement();
+          return { k: "for", line, init, c, step, body, semiBlock: body.k === "empty" && this.is("{") };
         }
         case "switch": {
           this.p++;

@@ -88,7 +88,7 @@ function Quantise() {
         {[0, 1, 2, 3, 4].map((k) => (
           <g key={k}>
             <line x1={rx((c0 + k) * lsb)} x2={rx((c0 + k) * lsb)} y1={Y0} y2={Y0 + 3} className="fig-wire" />
-            {(c0 + k === code || c0 + k === code + 1) && <text x={rx((c0 + k) * lsb)} y={Y0 + 11} textAnchor="middle" className="fig-label">{((c0 + k) * lsb).toFixed(dec)}</text>}
+            {(c0 + k === code || c0 + k === code + 1) && <text x={rx((c0 + k) * lsb) + (dec < 4 ? 0 : c0 + k === code ? 12 : rx((c0 + k) * lsb) > RX1 - 6 ? 18 : -12)} y={Y0 + 11} textAnchor={dec < 4 ? "middle" : c0 + k === code ? "end" : rx((c0 + k) * lsb) > RX1 - 6 ? "end" : "start"} className="fig-label">{((c0 + k) * lsb).toFixed(dec)}</text>}
           </g>
         ))}
         <text x={(RX0 + RX1) / 2} y={Y0 + 24} textAnchor="middle" className="fig-label dim">pin voltage (V)</text>
@@ -122,7 +122,7 @@ function Quantise() {
         </div>
         <div>
           <span>To a number</span>
-          <code>result = {levels} * {vin.toFixed(4)} / 3.0 = {exact.toFixed(2)}, so {code}{clipped ? " (limited)" : ""}</code>
+          <code>result = {levels} * {vin.toFixed(4)} / 3.0 = {(Math.floor(exact * 100 + 1e-7) / 100).toFixed(2)}{Math.abs(exact * 100 - Math.round(exact * 100)) > 1e-7 ? "..." : ""}, so {code}{clipped ? " (limited)" : ""}</code>
         </div>
         <div>
           <span>And back</span>

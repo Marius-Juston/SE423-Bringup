@@ -39,6 +39,23 @@
 // hundred thousand events per simulated second. Above the threshold a word is
 // exchanged as a whole and the pins only show the clock's idle level.
 //
+// Jumper wire. A test can join a module's SIMO pin to its SOMI pin on the
+// LaunchPad header (input SPIA_JUMPER or SPIC_JUMPER = 1, pins in `JUMPER`;
+// the robot kit has a knob for the SPIC one, fitted by default):
+// the master then receives what it sends, in any clock mode, but only if both
+// pins are switched to the module and TALK is 1. That checks a set-up, pins
+// included, without a device. (SPILBK does the same inside the chip and
+// bypasses the pins, TRM 18.5.2.1.)
+//
+// Course library. `setupSpib()` is the SPIB set-up of the course's SE423Lib.c
+// without its MPU-9250 register writes: chip select GPIO66 high, GPIO63, 64
+// and 65 to SPIB, 16-bit words, 1 MHz, clock rests low and data is latched on
+// the rising edge, FIFOs on, receive FIFO interrupt enabled, RXFFIL = 16.
+// `enableSpibInterrupt()` sets the PIE and IER enables of SPIB_RX. Students
+// write this set-up for credit (HW3), so the game provides it instead of
+// printing it; a program may define its own setupSpib(), which replaces the
+// library's.
+//
 // Devices on the bus register with `registerSpiDevice`. A device is selected
 // while its chip-select pin (a plain GPIO output driven by the program) is
 // low. A device with `peek` can also be driven by bit-banging the clock and
@@ -122,8 +139,11 @@ const PINS: Record<string, Record<Sig, [number, number][]>> = {
   a: { simo: [[58, 15], [16, 1], [54, 1]], somi: [[59, 15], [17, 1], [55, 1]], clk: [[60, 15], [18, 1], [56, 1]] },
   // The course: GPIO63 SPISIMOB, GPIO64 SPISOMIB, GPIO65 SPICLKB, all mux 15 (setupSpib, HW3).
   b: { simo: [[63, 15], [24, 6], [60, 6]], somi: [[64, 15], [25, 6], [61, 6]], clk: [[65, 15], [22, 6], [26, 6], [58, 6]] },
-  c: { simo: [[69, 15], [50, 6], [100, 6], [122, 6]], somi: [[70, 15], [51, 6], [101, 6], [123, 6]], clk: [[71, 15], [52, 6], [102, 6], [124, 6]] },
+  // First: the LaunchPad header pins of SPIC (J2.7, J2.8, J2.3 in the course's pin mux table).
+  c: { simo: [[122, 6], [69, 15], [50, 6], [100, 6]], somi: [[123, 6], [70, 15], [51, 6], [101, 6]], clk: [[124, 6], [71, 15], [52, 6], [102, 6]] },
 };
+/** Header pins [SIMO, SOMI] a jumper wire joins while the input SPI<X>_JUMPER is 1. */
+const JUMPER: Record<string, [number, number]> = { a: [58, 59], c: [122, 123] };
 /** PIE group 6 channels [receive, transmit] (TRM Table 3-2). */
 const PIE_CH: Record<string, [number, number]> = { a: [1, 2], b: [3, 4], c: [9, 10] };
 
@@ -164,6 +184,8 @@ interface Bus {
   devices: SpiDevice[];
   ports: Map<string, Port>;
   log: SpiWord[];
+  /** Words removed from the start of the log (live runs keep the recent ones only). */
+  dropped: number;
   /** Number of chip-select falling edges so far, and the chip-select pins that are low now. */
   frame: number;
   csLow: Set<number>;
@@ -174,7 +196,7 @@ interface Bus {
 /** The SPI bus state of a board (created on first use, so plugin load order does not matter). */
 export function spiBus(b: Board): Bus {
   let bus = b.plugins.get("spi") as Bus | undefined;
-  if (!bus) b.plugins.set("spi", (bus = { devices: [], ports: new Map(), log: [], frame: 0, csLow: new Set(), selected: new Set(), bang: new Map() }));
+  if (!bus) b.plugins.set("spi", (bus = { devices: [], ports: new Map(), log: [], dropped: 0, frame: 0, csLow: new Set(), selected: new Set(), bang: new Map() }));
   return bus;
 }
 
@@ -191,6 +213,9 @@ function install(b: Board): void {
   const dev = b.dev;
   const gpio = b.gpio;
   const bus = spiBus(b);
+  for (const name of SPI_REPLACEABLE) b.compiler.fns.get(name)!.replaceable = true;
+  // The PIE channel of SPIB_RX is a blank of HW3: a missing enable is reported without naming the bit.
+  b.pie.libraryEnable.set("6.3", "enableSpibInterrupt();");
 
   for (const id of ["a", "b", "c"] as const) {
     const pre = `Spi${id}Regs`;
@@ -230,11 +255,13 @@ function install(b: Board): void {
     };
 
     // ---- interrupts ----
-    const evalRx = () => {
+    const evalRx = (arrived = false) => {
       if (!fifoOn()) return;
       if (get("SPIFFRX", "RXFFST") >= get("SPIFFRX", "RXFFIL")) set("SPIFFRX", 1, "RXFFINT");
       const line = get("SPIFFRX", "RXFFINT") === 1 && get("SPIFFRX", "RXFFIENA") === 1;
       if (line && !p.rxLine) b.pie.raise(6, PIE_CH[id][0]);
+      // A word arrived with the flag still set from the last interrupt.
+      else if (line && arrived) b.pie.uncleared(6, PIE_CH[id][0], `${pre}.SPIFFRX.bit.RXFFINT`, `${pre}.SPIFFRX.bit.RXFFINTCLR = 1;`);
       p.rxLine = line;
     };
     const evalTx = () => {
@@ -261,6 +288,7 @@ function install(b: Board): void {
       // Left-justified: the top n bits of what was written go out, MSB first.
       const out = (v >>> (16 - n)) & mask;
       let input = mask; // nothing driving SOMI: the pull-up holds it high
+      let jumper = false;
       p.cur = null;
       p.aborted = false;
       const gen = p.gen;
@@ -269,12 +297,19 @@ function install(b: Board): void {
       const somi = pin("somi");
       const talk = get("SPICTL", "TALK") === 1;
 
+      // The bits below the top n are never sent: a value that only has those is right-justified.
+      if (n < 16 && out === 0 && v & 0xffff)
+        b.warn(line, `spi-left-justify-${id}`, `SPITXBUF was written with 0x${(v & 0xffff).toString(16).toUpperCase()}, but with ${n}-bit words only the top ${n} bits of SPITXBUF are sent, so the word that went out is 0. Shift the value up: ${pre}.SPITXBUF = value << ${16 - n};`);
       if (get("SPICCR", "SPILBK")) input = out; // SIMO and SOMI joined inside the chip
       else {
         const missing = [clk === null && "clk", simo === null && "simo", somi === null && "somi"].filter(Boolean) as Sig[];
         if (missing.length) {
-          const fix = missing.map((s) => `GPIO_SetupPinMux(${PINS[id][s][0][0]}, GPIO_MUX_CPU1, ${PINS[id][s][0][1]});`).join(" ");
-          b.warn(line, `spi-mux-${id}`, `${NAME} is sending a word, but no pin is switched to its ${missing.map((s) => `SPI${s.toUpperCase()}${id.toUpperCase()}`).join(", ")} function, so the word never ${missing.length === 1 && missing[0] === "somi" ? "comes back into" : "leaves"} the chip. Add: ${fix}`, "error");
+          // SPIB's mux position is a blank of HW3: point to the library and the table, do not print it.
+          const fix =
+            id === "b"
+              ? `Call setupSpib(); which switches GPIO${missing.map((s) => PINS[id][s][0][0]).join(", GPIO")} to SPIB, or use GPIO_SetupPinMux with the mux position from the pin mux table of the data sheet.`
+              : `Add: ${missing.map((s) => `GPIO_SetupPinMux(${PINS[id][s][0][0]}, GPIO_MUX_CPU1, ${PINS[id][s][0][1]});`).join(" ")}`;
+          b.warn(line, `spi-mux-${id}`, `${NAME} is sending a word, but no pin is switched to its ${missing.map((s) => `SPI${s.toUpperCase()}${id.toUpperCase()}`).join(", ")} function, so the word never ${missing.length === 1 && missing[0] === "somi" ? "comes back into" : "leaves"} the chip. ${fix}`, "error");
         }
         if (!talk) b.warn(line, `spi-talk-${id}`, `${NAME} clocked a word with SPICTL.bit.TALK = 0: its SPISIMO pin is switched off, so the device received only 1s. Set ${pre}.SPICTL.bit.TALK = 1;`);
         const here = bus.devices.filter((d) => {
@@ -282,6 +317,11 @@ function install(b: Board): void {
           const dp = pinsOf(d);
           return clk === dp.clk && simo === dp.simo && muxFor("clk", dp.clk) !== undefined;
         });
+        if (!here.length && clk !== null && simo !== null) {
+          const wired = bus.devices.filter((d) => portOf(d) === id && pinsOf(d).clk === clk && pinsOf(d).simo === simo);
+          if (wired.length)
+            b.warn(line, `spi-no-cs-${id}`, `${NAME} sent a word, but no chip select is low, so no device listened and the word read back is all 1s. Pull the chip select of the device low before writing SPITXBUF (${wired.map((d) => `${d.name}: GPIO${d.csPin}`).join(", ")}).`);
+        }
         if (here.length > 1) {
           b.warn(line, `spi-bus-conflict-${id}`, `Bus conflict: ${here.map((d) => `${d.name} (GPIO${d.csPin})`).join(" and ")} are selected at the same time, so both drive the SOMI line and the word read is garbage. Only one chip select may be low at a time: raise the other one first.`, "error");
           let both = mask;
@@ -302,6 +342,10 @@ function install(b: Board): void {
             p.carryIn = reply & 1;
           }
         }
+        // A jumper wire from SIMO to SOMI: with no device answering, what goes out comes back.
+        const jp = JUMPER[id];
+        jumper = !!jp && !here.length && simo === jp[0] && somi === jp[1] && b.input(`${NAME}_JUMPER`, 0) === 1;
+        if (jumper && talk) input = out;
         if (somi === null) input = mask;
       }
 
@@ -321,6 +365,7 @@ function install(b: Board): void {
               if (k < n) {
                 if (simo !== null) gpio.drivePeripheral(simo, talk ? (((out >>> (n - 1 - k)) & 1) as 0 | 1) : null, at);
                 if (driveSomi && gpio.level[p.cur!.csPin] === 0) gpio.drive(somi!, ((input >>> (n - 1 - k)) & 1) as 0 | 1, at);
+                if (jumper) gpio.drive(somi!, talk ? (((out >>> (n - 1 - k)) & 1) as 0 | 1) : null, at);
               }
               // Without delay the clock leaves idle here; with delay it returns to idle here.
               gpio.drivePeripheral(clk, m.phase === 0 && k < n ? active : idle, at);
@@ -346,6 +391,7 @@ function install(b: Board): void {
       set("SPIDAT", rx);
       p.words++;
       bus.log.push({ t, port: id, bits: n, out, in: input, device: p.cur?.name ?? null, frame: bus.frame });
+      trimLog(b, bus);
       b.publish(`${NAME}_TX`, out, t);
       b.publish(`${NAME}_RX`, input, t);
       b.publish(`${NAME}_WORDS`, p.words, t);
@@ -362,7 +408,7 @@ function install(b: Board): void {
           p.rxq.push(rx);
           set("SPIFFRX", p.rxq.length, "RXFFST");
           set("SPIRXBUF", p.rxq[0]);
-          evalRx();
+          evalRx(true);
         }
       } else {
         if (get("SPISTS", "INT_FLAG")) {
@@ -573,6 +619,7 @@ function install(b: Board): void {
             const out = s.acc;
             d.transfer(out, n, s.t0, t);
             bus.log.push({ t, port: portOf(d), bits: n, out, in: s.reply, device: d.name, frame: bus.frame });
+            trimLog(b, bus);
             s.count = 0;
             s.acc = 0;
             s.reply = d.peek(t);
@@ -583,7 +630,70 @@ function install(b: Board): void {
   });
 }
 
+/** Library functions of this plugin that a program may define itself (HW3 has students write setupSpib()). */
+export const SPI_REPLACEABLE = ["setupSpib", "enableSpibInterrupt"];
+
 export const plugin: SimPlugin = {
   name: "spi",
+  prelude: `
+void setupSpib(void)
+{
+    GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15);
+    GPIO_SetupPinMux(64, GPIO_MUX_CPU1, 15);
+    GPIO_SetupPinMux(65, GPIO_MUX_CPU1, 15);
+    EALLOW;
+    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;
+    GpioCtrlRegs.GPCPUD.bit.GPIO64 = 0;
+    GpioCtrlRegs.GPCPUD.bit.GPIO65 = 0;
+    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;
+    GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3;
+    GpioCtrlRegs.GPCQSEL1.bit.GPIO65 = 3;
+    EDIS;
+    SpibRegs.SPICCR.bit.SPISWRESET = 0;
+    SpibRegs.SPICTL.bit.CLK_PHASE = 1;
+    SpibRegs.SPICCR.bit.CLKPOLARITY = 0;
+    SpibRegs.SPICTL.bit.MASTER_SLAVE = 1;
+    SpibRegs.SPICCR.bit.SPICHAR = 0xF;
+    SpibRegs.SPICTL.bit.TALK = 1;
+    SpibRegs.SPIPRI.bit.FREE = 1;
+    SpibRegs.SPICTL.bit.SPIINTENA = 0;
+    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 49;
+    SpibRegs.SPISTS.all = 0x0000;
+    SpibRegs.SPIFFTX.bit.SPIRST = 1;
+    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;
+    SpibRegs.SPIFFTX.bit.TXFIFO = 0;
+    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
+    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;
+    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
+    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
+    SpibRegs.SPIFFRX.bit.RXFFIENA = 1;
+    SpibRegs.SPIFFCT.bit.TXDLY = 0;
+    SpibRegs.SPICCR.bit.SPISWRESET = 1;
+    SpibRegs.SPIFFTX.bit.TXFIFO = 1;
+    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;
+    SpibRegs.SPIFFRX.bit.RXFFIL = 16;
+}
+void enableSpibInterrupt(void)
+{
+    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;
+    IER |= M_INT6;
+}
+`,
   install,
+  parts: {
+    // Shown once a program sends on GPIO122 and GPIO123 (or a level's test sets it).
+    robot: [{ kind: "knob", id: "SPIC_JUMPER", label: "Jumper wire from GPIO122 (SPIC SIMO) to GPIO123 (SOMI): 1 = fitted", input: "SPIC_JUMPER", min: 0, max: 1, step: 1, initial: 1, unit: "" }],
+  },
 };
+
+/** A live run keeps the recent words only: an IMU read every millisecond adds millions of words an hour. */
+function trimLog(b: Board, bus: { log: SpiWord[]; dropped: number }): void {
+  const limit = b.historyLimit;
+  if (!limit || bus.log.length <= limit) return;
+  const cut = bus.log.length - (limit >> 1);
+  bus.log.splice(0, cut);
+  bus.dropped += cut;
+}

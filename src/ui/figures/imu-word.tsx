@@ -9,6 +9,10 @@ import { useState } from "react";
 // ACCEL_XOUT_H 0x3B .. GYRO_ZOUT_L 0x48, high byte first; WHO_AM_I 0x75
 // reads 0x71. Registers 0x3A to 0x60 and 0x75 are read-only. The address
 // is 7 bits, so a burst here never runs past 0x7F.
+// The examples are the two reads the course shows in full: gyro Z from 0x46
+// (HW3 exercise 4) and accelerometer Y and Z from 0x3C (L12 slide 38). The
+// read of all six axes is graded in HW3 exercise 5, so the figure offers
+// neither its start register nor its word count as a preset.
 
 const CSS = `
 .iw-cell { fill: var(--surface); stroke: var(--border-strong); stroke-width: 0.8; }
@@ -38,8 +42,8 @@ const REGS: [number, string][] = [
   [0x75, "0x75 WHO_AM_I"],
   [0x47, "0x47 gyro Z high"],
   [0x46, "0x46: one before gyro Z"],
-  [0x3b, "0x3B accel X high"],
-  [0x3a, "0x3A: one before accel X"],
+  [0x3d, "0x3D accel Y high"],
+  [0x3c, "0x3C: one before accel Y"],
   [0x1c, "0x1C ACCEL_CONFIG"],
 ];
 const h2 = (v: number) => v.toString(16).toUpperCase().padStart(2, "0");
@@ -98,7 +102,7 @@ function ImuWord() {
   return (
     <figure className="figure iw-fig" aria-label="Interactive builder for MPU-9250 SPI words">
       <style>{CSS}</style>
-      <svg viewBox={`0 0 420 ${RY + 14 + words * 18 + 4}`} role="img" aria-label={`${read ? "Read" : "Write"} register 0x${h2(reg)}: the first word is 0x${h4(first)}, ${words} word${words > 1 ? "s" : ""} in the transfer.`}>
+      <svg viewBox={`0 0 420 ${RY + 14 + 8 * 18 + 4}`} role="img" aria-label={`${read ? "Read" : "Write"} register 0x${h2(reg)}: the first word is 0x${h4(first)}, ${words} word${words > 1 ? "s" : ""} in the transfer.`}>
         <text x={4} y={25} className="fig-label">first word</text>
         <text x={4} y={38} className="fig-value">0x{h4(first)}</text>
         {Array.from({ length: 16 }, (_, i) => (
@@ -172,7 +176,7 @@ function ImuWord() {
         <div>
           <span>Examples</span>
           <button className="fig-opt" aria-pressed={reg === 0x46 && words === 2 && read} onClick={() => { setRead(true); setReg(0x46); setWords(2); }}>read gyro Z</button>
-          <button className="fig-opt" aria-pressed={reg === 0x3a && words === 8 && read} onClick={() => { setRead(true); setReg(0x3a); setWords(8); }}>the course's full read</button>
+          <button className="fig-opt" aria-pressed={reg === 0x3c && words === 3 && read} onClick={() => { setRead(true); setReg(0x3c); setWords(3); }}>read accel Y and Z</button>
         </div>
         <div>
           <span>In C</span>

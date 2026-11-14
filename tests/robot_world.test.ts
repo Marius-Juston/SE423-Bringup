@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { runProgram } from "../src/sim/runner";
+import { setWorldObjects } from "../src/sim/plugins/lidar";
+import type { RobotWorld } from "../src/sim/plugins/robot_world";
 
 // Left motor on EPWM1A (GPIO0), right on EPWM2A (GPIO2); 50 % duty is stopped.
 const drive = (cmpL: number, cmpR: number) => `
@@ -44,5 +46,41 @@ describe("robot world", () => {
   it("is off unless a level switches it on", () => {
     const r = runProgram({ kit: "robot", durationMs: 200, source: drive(1750, 750) });
     expect(r.board.output("ROBOT_X_FT")).toBeUndefined();
+  });
+});
+
+describe("robot world: where the robot starts and what it touches", () => {
+  const idle = "void main(void) { while (1) {} }";
+  it("takes a start pose given at the instant of switching on, whichever stimulus comes first", () => {
+    const start = [
+      { at: 0, set: "ROBOT_START_X_FT", value: 2 },
+      { at: 0, set: "ROBOT_START_Y_FT", value: 3 },
+      { at: 0, set: "ROBOT_START_THETA_RAD", value: 1 },
+    ];
+    const on = { at: 0, set: "ROBOT_WORLD", value: 1 };
+    for (const stimuli of [[...start, on], [on, ...start]]) {
+      const b = runProgram({ kit: "robot", durationMs: 20, source: idle, stimuli }).board;
+      expect([b.output("ROBOT_X_FT"), b.output("ROBOT_Y_FT"), b.output("ROBOT_THETA_RAD")]).toEqual([2, 3, 1]);
+    }
+    // Later it is only the pose for the next start: the robot stays where it is.
+    const later = runProgram({ kit: "robot", durationMs: 20, source: idle, stimuli: [...world, { at: 5, set: "ROBOT_START_X_FT", value: 8 }] });
+    expect(later.board.output("ROBOT_X_FT")).toBe(2);
+  });
+  it("brings a start heading of several turns into -pi .. pi at once", () => {
+    const r = runProgram({ kit: "robot", durationMs: 2, source: idle, stimuli: [{ at: 0, set: "ROBOT_START_THETA_RAD", value: 1 + 6 * Math.PI }, { at: 0.01, set: "ROBOT_WORLD", value: 1 }] });
+    expect(r.board.outputs.get("ROBOT_THETA_RAD")!.map((e) => e.v)).toEqual([1]);
+  });
+  it("has crashed inside a box, also far from the box's sides", () => {
+    const b = runProgram({ kit: "robot", durationMs: 5, source: idle, stimuli: world }).board;
+    const rw = b.plugins.get("robot-world") as RobotWorld;
+    // A 2 ft box: its middle is 1 ft from every side, more than the robot's radius.
+    setWorldObjects(b, [{ kind: "box", x0: 6, y0: 6, x1: 8, y1: 8 }]);
+    rw.place(7, 7, 0);
+    const gen = b.run();
+    b.runUntil(gen, b.now + 3e6);
+    expect(b.output("ROBOT_CRASHED")).toBe(1);
+    rw.place(4, 4, 0);
+    b.runUntil(gen, b.now + 3e6);
+    expect(b.output("ROBOT_CRASHED")).toBe(0);
   });
 });

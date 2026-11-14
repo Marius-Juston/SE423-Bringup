@@ -11,6 +11,8 @@ export interface Led {
   /** The LaunchPad's own LEDs light when the pin is low. */
   activeLow: boolean;
   color: "red" | "blue" | "green" | "amber";
+  /** Where the LED sits in the board's LED display: column and row, counted from 1 at the top left. */
+  at?: [col: number, row: number];
 }
 
 export interface Button {
@@ -78,7 +80,12 @@ export const KITS: Record<string, Kit> = {
     name: "Homework red board",
     parts: [
       ...launchpadLeds,
-      ...[22, 94, 95, 97, 111, 130, 131, 25, 26, 27, 60, 61, 157, 158, 159, 160].map((p, i) => led(i + 1, p)),
+      // The 16 LEDs are a display, as on the board: LED1 to LED15 fill three columns of five from the
+      // top, column by column, and LED16 stands to the right of the bottom row.
+      ...[22, 94, 95, 97, 111, 130, 131, 25, 26, 27, 60, 61, 157, 158, 159, 160].map((p, i): Led => ({
+        ...led(i + 1, p),
+        at: i < 15 ? [Math.floor(i / 5) + 1, (i % 5) + 1] : [4, 5],
+      })),
       pb(1, 4), pb(2, 5), pb(3, 6), pb(4, 7),
     ],
   },
