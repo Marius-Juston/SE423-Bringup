@@ -135,7 +135,7 @@ export interface SpiWord {
 
 type Sig = "simo" | "somi" | "clk";
 /** Pins each module's signals can be muxed to: [pin, mux position]; the first is the default (course) choice. */
-const PINS: Record<string, Record<Sig, [number, number][]>> = {
+export const PINS: Record<string, Record<Sig, [number, number][]>> = {
   a: { simo: [[58, 15], [16, 1], [54, 1]], somi: [[59, 15], [17, 1], [55, 1]], clk: [[60, 15], [18, 1], [56, 1]] },
   // The course: GPIO63 SPISIMOB, GPIO64 SPISOMIB, GPIO65 SPICLKB, all mux 15 (setupSpib, HW3).
   b: { simo: [[63, 15], [24, 6], [60, 6]], somi: [[64, 15], [25, 6], [61, 6]], clk: [[65, 15], [22, 6], [26, 6], [58, 6]] },

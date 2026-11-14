@@ -85,6 +85,33 @@ ${PIE_INIT}
     EINT;
 }`;
 
+// Given in the pin routing level: two counters that already make their waveforms.
+const ROUTE_PWM = `// Given: EPWM10 and EPWM4 make their waveforms. Do not change this function.
+void start_pwm(void)
+{
+    // EPWM10A: 10 kHz, high for a quarter of each period
+    EPwm10Regs.TBCTL.bit.CTRMODE = 0;
+    EPwm10Regs.TBCTL.bit.FREE_SOFT = 2;
+    EPwm10Regs.TBCTL.bit.PHSEN = 0;
+    EPwm10Regs.TBCTL.bit.CLKDIV = 0;
+    EPwm10Regs.TBCTR = 0;
+    EPwm10Regs.TBPRD = 5000;
+    EPwm10Regs.CMPA.bit.CMPA = 1250;
+    EPwm10Regs.AQCTLA.bit.CAU = 1;
+    EPwm10Regs.AQCTLA.bit.ZRO = 2;
+
+    // EPWM4B: 10 kHz, high for three quarters of each period
+    EPwm4Regs.TBCTL.bit.CTRMODE = 0;
+    EPwm4Regs.TBCTL.bit.FREE_SOFT = 2;
+    EPwm4Regs.TBCTL.bit.PHSEN = 0;
+    EPwm4Regs.TBCTL.bit.CLKDIV = 0;
+    EPwm4Regs.TBCTR = 0;
+    EPwm4Regs.TBPRD = 5000;
+    EPwm4Regs.CMPB.bit.CMPB = 3750;
+    EPwm4Regs.AQCTLB.bit.CBU = 1;
+    EPwm4Regs.AQCTLB.bit.ZRO = 2;
+}`;
+
 export const pwm: Chapter = {
   id: "pwm",
   number: 9,
@@ -351,6 +378,81 @@ Build the course's setting: **set** the pin when the counter is zero, **clear** 
         "ZRO = 2 sets bit 1. CAU = 1 sets bit 4. The result is 0x0012.",
       ],
       takeaway: "Swap the two values and the waveform is upside down: low at the start of the period and high after the compare. You will meet that bug later.",
+    },
+    {
+      id: "pwm-pinmux",
+      kind: "calc",
+      title: "Read the pin mux table",
+      goal: "Find in the course's pin mux table which pin can carry a signal and which index GPIO_SetupPinMux needs for it.",
+      refs: [{ course: "L3", slide: [20, 21, 22] }, { course: "HW2", note: "use the PinMux table to set a pin to its EPWM function" }, { course: "Lab 3" }, { trm: "8.7" }, { trm: "8.9.2" }],
+      brief: `
+A PWM waveform exists inside the chip first. It reaches the outside only when a pin is switched over to it. So far the last argument of \`GPIO_SetupPinMux\` was always 0, plain GPIO. For a peripheral it is another number, and which one differs from pin to pin. It is not worked out. It is read from a table: the course's **pin mux table**, which Homework 2 and Lab 3 tell you to open.
+
+{{figure:pin-mux-table}}
+
+## How the table is laid out
+- One **row** per pin. The first cell is the pin as a plain GPIO.
+- One **column** per **mux index**: 1, 2, 3, 5, 6, 7 and 15. The cell names the signal the pin carries at that index. An empty cell means nothing is there.
+- The two header rows under the index are the same number in binary, split over the two register fields of chapter 1: \`GPyGMUXn\` holds the upper two bits, \`GPyMUXn\` the lower two. \`GPIO_SetupPinMux\` writes both for you.
+
+## Worked example: SDAB on GPIO40
+The figure opens on the row of GPIO40. One of its cells says \`SDAB\`, a signal of a bus you meet in chapter 14. The number at the top of that column is **6**, so:
+
+\`\`\`c
+GPIO_SetupPinMux(40, GPIO_MUX_CPU1, 6);   // GPIO40 becomes SDAB
+\`\`\`
+
+Under the 6: \`GPyGMUXn = 01b\`, \`GPyMUXn = 10b\`. Together 0110, which is 6.
+
+## The other way round
+Often you know the signal and need the pin. Type the signal into **Find a signal**: the table keeps only the rows that have it.
+
+A signal exists only where the table prints it. If the cell of your pin is empty, that pin cannot carry the signal, whatever number you write.
+`,
+      fields: [
+        {
+          id: "epwm4b",
+          label: "Mux index that makes GPIO7 the output EPWM4B",
+          answer: 1,
+          why: "In the row of GPIO7, EPWM4B is in the column of index 1.",
+        },
+        {
+          id: "sci",
+          label: "Mux index that makes GPIO10 the serial output SCITXDB",
+          answer: 6,
+          why: "In the row of GPIO10, SCITXDB is in the column of index 6. The same row has EPWM6A at index 1 and CANRXB at index 2: one pin, many possible jobs, one at a time.",
+        },
+        {
+          id: "pin10a",
+          label: "GPIO number of the pin that can carry EPWM10A",
+          answer: 18,
+          why: "Find a signal: EPWM10A appears in one row only, GPIO18. GPIO19 next to it has EPWM10B, the other output of the same counter.",
+        },
+        {
+          id: "idx10a",
+          label: "Mux index of EPWM10A on that pin",
+          answer: 5,
+          why: "The cell is in the column of index 5. The first eight EPWMs are at index 1 on their pins, but that is not a rule you can rely on: read the column.",
+        },
+        {
+          id: "count",
+          label: "How many pins of this table can carry SCITXDB",
+          answer: 6,
+          why: "GPIO9, 10, 14, 18, 22 and 54. The index is not the same on all of them (2, 6, 2, 2, 3 and 6), so the same signal needs a different call on each pin.",
+        },
+        {
+          id: "gmux",
+          label: "Value GPIO_SetupPinMux writes to the GPyGMUXn field for index 5, in decimal",
+          answer: 1,
+          why: "Under the 5 the header says GPyGMUXn = 01b and GPyMUXn = 01b. 5 is 0101 in binary: upper two bits 01, lower two bits 01.",
+        },
+      ],
+      hints: [
+        "For a pin: choose its row (the Pin list under the table) and look along it. For a signal: type it into Find a signal.",
+        "The index is the number at the top of the column the cell is in. The two rows under it give the same number in binary, upper two bits first.",
+        "GPIO7 has EPWM4B at 1. GPIO10 has SCITXDB at 6. EPWM10A is only on GPIO18, at 5. SCITXDB is on six pins. Index 5 is 01b and 01b.",
+      ],
+      takeaway: "The row is the pin, the column is the index, the cell is the signal. `GPIO_SetupPinMux(pin, GPIO_MUX_CPU1, index)` connects the three.",
     },
     {
       id: "pwm-init",
@@ -1272,6 +1374,100 @@ ${INIT}
     },
 
     // ---------------------------------------------------------------- expert
+    {
+      id: "pwm-route",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      kit: "robot",
+      title: "Two signals, no numbers",
+      goal: "Bring two PWM outputs to their pins with nothing but the requirement and the pin mux table.",
+      refs: [{ course: "Lab 3", note: "set a pin to its EPWM function from the PinMux table" }, { course: "HW2" }, { course: "L3", slide: 22 }, { trm: "8.7" }],
+      brief: `
+A lab handout does not give you the pin or the index. It names a signal and points at the table. This level does the same.
+
+## The requirement
+A motor driver board is plugged onto the LaunchPad. It needs two PWM signals from the chip:
+
+- **EPWM10A**
+- **EPWM4B**
+
+The function \`start_pwm()\` is given and already runs both counters with the right period and duty cycle. Nothing comes out yet, because no pin is switched to either signal.
+
+Add the lines to \`main()\` that connect each signal to a pin that can carry it.
+
+## The document
+{{figure:pin-mux-table}}
+
+For each signal: find its cell, read the pin from the row and the index from the top of the column, and write the call. In the read-the-table level you did this for \`SDAB\`: the cell in the row of GPIO40 under index 6 became \`GPIO_SetupPinMux(40, GPIO_MUX_CPU1, 6);\`.
+
+The tests measure the waveform on the pins themselves.
+`,
+      starter: `void start_pwm(void);
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+
+    start_pwm();
+
+    // TODO: connect EPWM10A and EPWM4B to their pins
+
+    while (1) {}
+}
+
+${ROUTE_PWM}
+`,
+      solution: `void start_pwm(void);
+
+void main(void)
+{
+    InitSysCtrl();
+    InitGpio();
+
+    start_pwm();
+
+    GPIO_SetupPinMux(18, GPIO_MUX_CPU1, 5);  // GPIO18 becomes EPWM10A
+    GPIO_SetupPinMux(7, GPIO_MUX_CPU1, 1);   // GPIO7 becomes EPWM4B
+
+    while (1) {}
+}
+
+${ROUTE_PWM}
+`,
+      durationMs: 6,
+      checks: [
+        {
+          kind: "duty",
+          pin: 18,
+          pct: 25,
+          tolPct: 2,
+          from: 1,
+          to: 5,
+          label: "EPWM10A comes out of its pin: high for a quarter of the time",
+          hint: "Nothing there: either the call names another pin, or the index is not the column EPWM10A is in. The pin next to it carries EPWM10B, a different signal.",
+        },
+        { kind: "period", pin: 18, periodMs: 0.1, from: 1, to: 5, label: "EPWM10A repeats every 0.1 ms on its pin" },
+        {
+          kind: "duty",
+          pin: 7,
+          pct: 75,
+          tolPct: 2,
+          from: 1,
+          to: 5,
+          label: "EPWM4B comes out of its pin: high for three quarters of the time",
+          hint: "Nothing there: check the row and the column of the EPWM4B cell. The two signals are not at the same index.",
+        },
+        { kind: "period", pin: 7, periodMs: 0.1, from: 1, to: 5, label: "EPWM4B repeats every 0.1 ms on its pin" },
+      ],
+      hints: [
+        "Type each signal into Find a signal in the figure. Each appears in exactly one row.",
+        "The row gives the first argument of GPIO_SetupPinMux, the number at the top of the column the last one. The two signals sit in different columns.",
+        "`GPIO_SetupPinMux(18, GPIO_MUX_CPU1, 5);` for EPWM10A and `GPIO_SetupPinMux(7, GPIO_MUX_CPU1, 1);` for EPWM4B.",
+      ],
+      takeaway: "A signal name is all you need: the table turns it into a pin and an index.",
+    },
     {
       id: "pwm-x-trigger",
       kind: "code",

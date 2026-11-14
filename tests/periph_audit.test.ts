@@ -397,8 +397,9 @@ describe("SPI, I2C and DAC diagnostics", () => {
 
   it("warns when an 8-bit word is written right-justified (TRM 18.3.4)", () => {
     const r = run(spi(7, ` GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;\n SpibRegs.SPITXBUF = 0xF5;\n ${WAIT}`), 2);
-    expect(codes(r)).toEqual(["spi-left-justify-b"]);
-    const ok = run(spi(7, ` GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;\n SpibRegs.SPITXBUF = 0xF5 << 8;\n ${WAIT}`), 2);
+    // (The MPU-9250 also says that eight clocks are no transfer: it needs an address byte and a data byte.)
+    expect(codes(r)).toEqual(["spi-left-justify-b", "mpu-short-frame"]);
+    const ok = run(spi(7, ` GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;\n SpibRegs.SPITXBUF = 0xF5 << 8;\n SpibRegs.SPITXBUF = 0;\n while (SpibRegs.SPIFFRX.bit.RXFFST != 2) {}\n rx = SpibRegs.SPIRXBUF;\n ${WAIT}`), 2);
     expect(ok.diagnostics).toEqual([]);
   });
 

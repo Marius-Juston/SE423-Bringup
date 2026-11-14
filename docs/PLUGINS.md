@@ -111,6 +111,40 @@ Other world inputs a level or test can set:
 - `MOTOR_RIGHT_GAIN` (default 1): makes the right motor weaker or stronger
   than the left one (`plugins/actuators.ts`).
 
+- The MPU-9250 (`plugins/spi_devices.ts`, whose header lists the document
+  section behind each behaviour): `IMU_AX_G`, `IMU_AY_G`, `IMU_AZ_G`,
+  `IMU_GX_DPS`, `IMU_GY_DPS`, `IMU_GZ_DPS`, `IMU_TEMP_C` are what the chip
+  feels (knobs and stimuli). While `ROBOT_WORLD` is 1 the robot's motion is
+  added for every program: gyro Z is its turn rate, accel X its forward
+  acceleration, accel Y its speed times turn rate. `IMU_REAL` = 1 makes it a
+  real part: a fixed offset per axis and seeded noise on every sample (the
+  Sandbox sets this on the robot board; levels opt in). `IMU_BIAS_GX_DPS`,
+  `.._GY_`, `.._GZ_`, `IMU_BIAS_AX_G`, `.._AY_`, `.._AZ_` replace an axis's
+  offset. `IMU_PU_SLEEP` = 1 gives a part that powers up asleep. Outputs:
+  `IMU_RATE_HZ`, `IMU_GYRO_BW_HZ`, `IMU_ACCEL_BW_HZ` (from the configuration
+  registers) and `MPU_WRITE_FRAMES` (transfers that wrote a register).
+  `b.plugins.get("spi_devices")` is a `SpiDevicesState`; its `imu` holds
+  what the chip feels and its last sample, for a bench view.
+
+- The robot's range sensors and analog gyro (`plugins/robot_sensors.ts`,
+  whose header gives the data sheet section and every assumption about
+  mounting and wiring). While `ROBOT_WORLD` is 1 the room drives them:
+  the two CAN distance sensors (sensor 1 looks ahead, sensor 2 to the
+  right; 27 degree cone; 1.3 m in short mode, 2.9 m medium, 4 m long;
+  ranging status 2 and 0 mm with nothing in range), the two Sharp
+  GP2Y0A41SK0F sensors on `DAN_ADC1` (left) and `DAN_ADC2` (rear) with the
+  data sheet's voltage curve, and the LPR510 gyro on `ADCINC2` to
+  `ADCINC5` (1.23 V at rest, 2.5 mV per deg/s on C5, 10 mV on C4, each held at the
+  ends of its range).
+  A stimulus or knob on `CAN_DIST1_MM`, `CAN_DIST2_MM`, `DAN_ADC1`,
+  `DAN_ADC2` or an `ADCINC` input wins from the moment it is set; with
+  the world off nothing changes. `LPR510_REAL` = 1 gives the gyro a
+  zero-rate error and noise (`LPR510_ZERO_Z_DPS` chooses the error).
+  Outputs: `CAN_DIST1_MM`, `CAN_DIST2_MM`, `DAN_ADC1`, `DAN_ADC2` (what
+  the sensor reports), `LPR510_Z_DPS`, `CAN_SENSOR<n>_MODE`.
+  `b.plugins.get("robot-sensors")` is a `RobotSensors`; `beamsAt()` gives
+  the arena the beams to draw.
+
 A terrain has its own start pose and goal, used by `robot_world.ts` where
 the `ROBOT_START_*` and `ROBOT_GOAL_*` inputs are not set. Changing an
 input in mid-run changes the world at that moment. `worldOf(board)` is the
@@ -181,8 +215,7 @@ files are not copied: a plugin provides what the main file names.
   `3`, `PIcontrol`), `xy_control`, MatrixMath.h and `UpdateOptitrackStates`.
   Formulas and algorithms are native, register set-up is C; all of them are
   replaceable. OptiTrack, the camera, LabVIEW and the Linux commands are
-  inert. While `ROBOT_WORLD` is 1 the IMU's `IMU_GZ_DPS` follows the robot's
-  turning rate unless something else set it.
+  inert.
   `tests/starters_project.test.ts` runs both starters.
 - A library function may take and return a small struct by value
   (`UpdateOptitrackStates` does); a student's file is still told to use

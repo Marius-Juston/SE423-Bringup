@@ -496,4 +496,54 @@ describe("playthrough", () => {
     await page.waitForSelector(".map-cols");
     expect(errors).toEqual([]);
   });
+
+  it("never scrolls the window itself: the top bar stays when a chapter is picked on a phone", async () => {
+    errors.length = 0;
+    await page.setViewportSize({ width: 380, height: 760 });
+    try {
+      await openWith({});
+      const windowFits = () => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight && document.documentElement.scrollWidth <= window.innerWidth);
+      expect(await windowFits(), "the map fits the window").toBe(true);
+      // The chapter's levels are far below the tiles: they are scrolled to inside the page, not by moving the window.
+      const near = [...CHAPTERS].sort((a, b) => a.number - b.number)[1];
+      await page.locator(`button[data-chapter="${near.id}"]`).click();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.id)).toBe("chapter-detail-title");
+      expect(await page.evaluate(() => document.querySelector(".chapter-detail")!.getBoundingClientRect().top), "the levels came into view").toBeLessThan(200);
+      expect(await page.evaluate(() => [window.scrollY, Math.round(document.querySelector(".topbar")!.getBoundingClientRect().top)])).toEqual([0, 0]);
+      // A register puzzle has hidden text in every bit: it must not widen the window either.
+      const reg = CHAPTERS.flatMap((c) => c.levels.map((l) => ({ c, l }))).find((x) => x.l.kind === "register")!;
+      await page.locator(`button[data-chapter="${reg.c.id}"]`).click();
+      await page.locator(`button[data-level="${reg.l.id}"]`).click();
+      await page.waitForSelector(".bits");
+      expect(await windowFits(), "a register puzzle fits the window").toBe(true);
+      await page.locator(".level-head").getByRole("button", { name: "Map", exact: true }).click();
+      await page.waitForSelector(".map-cols");
+    } finally {
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it("keeps the keyboard's place when the control that was used goes away", async () => {
+    errors.length = 0;
+    await openWith({});
+    await page.locator(".topnav").getByRole("button", { name: "Handbook" }).click();
+    await page.fill("#hb-search", "TBCTL");
+    // A search result is gone once it is chosen: the heading of what it opened has the focus.
+    await page.locator(".hb-results section", { has: page.locator("h2", { hasText: "Registers" }) }).locator(".hb-hit").first().click();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.textContent)).toBe("Registers");
+    // The register it chose is in view in its list.
+    expect(await page.evaluate(() => [...document.querySelectorAll("nav.hb-col button[aria-current]")].every((b) => {
+      const col = b.closest(".hb-col")!.getBoundingClientRect();
+      const r = b.getBoundingClientRect();
+      return r.top >= col.top && r.bottom <= col.bottom;
+    }))).toBe(true);
+    await page.locator(".hb-back").click();
+    await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe("H1");
+    expect(await page.title()).toContain("Results for");
+    await page.fill("#hb-search", "");
+    await page.locator(".topnav").getByRole("button", { name: "Map" }).click();
+    await page.waitForSelector(".map-cols");
+    expect(errors).toEqual([]);
+  });
 });

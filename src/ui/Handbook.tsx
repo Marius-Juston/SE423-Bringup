@@ -1,8 +1,9 @@
 import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { device, fieldsOf, hex } from "./device";
+import { device, fieldsOf, hex, TRM_URL } from "./device";
+import { openExternal } from "./external";
 import { KITS } from "../sim/world/kits";
 import { Figure, FIGURE_IDS, figureMeta } from "./figures";
-import { Guard } from "./Markdown";
+import { Guard, Inline } from "./Markdown";
 import { Icon } from "./Icon";
 import { usePref } from "./prefs";
 import { PARTS } from "./MapView";
@@ -116,7 +117,7 @@ function Glossary({ open, q, setQ }: { open: (id: string) => void; q: string; se
       <label className="sr-only" htmlFor="glossary-search">Filter the glossary</label>
       <input id="glossary-search" type="search" placeholder={`Filter ${GLOSSARY.length} terms`} value={q} onChange={(e) => setQ(e.target.value)} />
       <p className="hint-text" role="status">
-        {GLOSSARY.length === 0 ? "No terms have been added yet." : shown.length === 0 ? `No term or meaning contains "${q}".` : s ? `${shown.length} of ${GLOSSARY.length} terms.` : ""}
+        {GLOSSARY.length === 0 ? "No terms have been added yet." : shown.length === 0 ? `No term or meaning contains "${q.trim()}".` : s ? `${shown.length} of ${GLOSSARY.length} terms.` : ""}
       </p>
       <dl>
         {shown.map((g) => {
@@ -125,7 +126,7 @@ function Glossary({ open, q, setQ }: { open: (id: string) => void; q: string; se
             <div key={g.term}>
               <dt>{g.term}</dt>
               <dd>
-                {g.meaning}{" "}
+                <Inline text={g.meaning} />{" "}
                 {at && (
                   <button className="linkish" onClick={() => open(at.level.id)}>
                     Practise it: {levelName(at)}
@@ -314,8 +315,18 @@ function Registers({ sel, setSel, q, setQ }: { sel: string; setSel: (name: strin
   const reg = regs.find((r) => r.name === sel) ?? device().regs.get(sel);
   const shownReg = reg && reg.name.split(".")[0] === periph ? reg : undefined;
   const total = device().regs.size;
+  // The chosen peripheral and register are in view in their lists, also when they were chosen by a search result or a link from a level.
+  const lists = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    for (const b of lists.current?.querySelectorAll<HTMLElement>("nav.hb-col button[aria-current]") ?? []) {
+      const col = b.closest<HTMLElement>(".hb-col")!;
+      const top = b.getBoundingClientRect().top - col.getBoundingClientRect().top;
+      const head = col.querySelector<HTMLElement>(".eyebrow")?.offsetHeight ?? 0;
+      if (top < head || top + b.offsetHeight > col.clientHeight) col.scrollTop += top - (col.clientHeight - b.offsetHeight) / 2;
+    }
+  }, [periph, shownReg?.name]);
   return (
-    <div className="hb-regs">
+    <div className="hb-regs" ref={lists}>
       <div className="hb-regs-head">
         <h1>Registers</h1>
         <label className="sr-only" htmlFor="reg-filter">Filter registers and fields by name</label>
@@ -323,7 +334,7 @@ function Registers({ sel, setSel, q, setQ }: { sel: string; setSel: (name: strin
       </div>
       <nav className="hb-col" aria-label="Peripherals">
         <h2 className="eyebrow">Peripherals ({names.length})</h2>
-        {names.length === 0 && <p className="hint-text" role="status">No register or field name contains "{q}".</p>}
+        {names.length === 0 && <p className="hint-text" role="status">No register or field name contains "{q.trim()}".</p>}
         {names.map((p) => (
           <button key={p} aria-current={p === periph ? "true" : undefined} onClick={() => setPeriph(p)}>
             {p} <span className="count">{s ? all.get(p)!.filter(hit).length : all.get(p)!.length}</span>
@@ -377,7 +388,45 @@ function Pins() {
   );
 }
 
-function Formulas() {
+/** printf on this chip: int and char are 16 bits, long and float 32 (TI C2000 compiler guide). */
+const PRINTF_TYPES: [value: string, write: string, example: string, prints: string][] = [
+  ["int16_t, int", "%d", "-1234", "-1234"],
+  ["uint16_t", "%u", "40000", "40000"],
+  ["16 bits in hexadecimal", "%x, %X", "-1", "ffff, FFFF"],
+  ["int32_t, long", "%ld", "-70000", "-70000"],
+  ["uint32_t", "%lu", "3000000000", "3000000000"],
+  ["32 bits in hexadecimal", "%lx, %lX", "-1", "ffffffff"],
+  ["float", "%f", "2.5", "2.500000"],
+  ["float, 2 decimals", "%.2f", "3.14159", "3.14"],
+  ["float, scientific", "%e", "1234.5", "1.234500e+03"],
+  ["float, shortest", "%g", "392.65", "392.65"],
+  ["char", "%c", "65", "A"],
+  ["string", "%s", '"robot"', "robot"],
+  ["percent sign", "%%", "", "%"],
+];
+const PRINTF_FLAGS: [what: string, example: string, prints: string][] = [
+  ["width: least number of characters", "[%5d] of 42", "[   42]"],
+  ["-: value on the left", "[%-5d] of 42", "[42   ]"],
+  ["0: fill with zeros", "%05d of 42, %04X of 255", "00042, 00FF"],
+  ["+: always a sign", "%+d of 42", "+42"],
+  ["#: prefix", "%#x of 255", "0xff"],
+  [".n with f or e: decimals", "[%8.3f] of 3.14159", "[   3.142]"],
+  [".n with d, u, x: least digits", "%.3d of 7", "007"],
+  [".n with s: most characters", "%.3s of \"Hello\"", "Hel"],
+];
+/** Which document answers which question. Links only where the course site serves the file. */
+const DOCUMENTS: { what: string; where: string; href?: string; figure?: string }[] = [
+  { what: "What a register's bits do, their reset values and whether EALLOW is needed", where: "Technical Reference Manual, the register's page", href: TRM_URL, figure: "A register page" },
+  { what: "Which interrupt is on which PIE group and channel", where: "TRM Table 3-2, or the course's one-page PIE channel map", figure: "PIE channel map" },
+  { what: "Which function a pin has at which mux index", where: "The course's pin mux table for the LaunchPad", figure: "Pin mux table" },
+  { what: "Which trigger number starts an ADC conversion", where: "TRM, the ADCSOCxCTL register page", figure: "ADC trigger table" },
+  { what: "Voltage and current limits of a pin, timing limits", where: "The chip's data sheet" },
+  { what: "The IMU's registers, ranges and filter settings", where: "MPU-9250 register map", href: "https://coecsl.ece.illinois.edu/se423/MPU-9250-Register-Map.pdf" },
+  { what: "How to talk to the IMU over SPI", where: "MPU-9250 addendum (SPI timing and programming tips)", href: "https://coecsl.ece.illinois.edu/se423/MPU-9250-Addendum.pdf" },
+  { what: "The sizes of int, long and float on this chip, and what printf supports", where: "TI C2000 compiler guide" },
+];
+
+function Formulas({ showFigure }: { showFigure: (title: string) => void }) {
   return (
     <>
       <h1>Formulas</h1>
@@ -393,6 +442,51 @@ function Formulas() {
           </tbody>
         </table>
       </div>
+      <h2 style={{ marginTop: "1.6rem" }}>printf on this chip</h2>
+      <p className="hint-text">
+        One conversion per value, in order: <code>%[flags][width][.precision][length]specifier</code>. Here <code>int</code> and <code>char</code> are 16 bits, <code>long</code> and <code>float</code> are 32. A 32-bit value needs the <code>l</code>: without it the number printed is wrong and the 16-bit values after it are shifted. <code>serial_printf</code>, <code>printf</code> and the robot's <code>UART_printfLine</code> all take the same format.
+      </p>
+      <div className="table-scroll">
+        <table className="fields">
+          <thead>
+            <tr><th scope="col">Value</th><th scope="col">Write</th><th scope="col">Example</th><th scope="col">Prints</th></tr>
+          </thead>
+          <tbody>
+            {PRINTF_TYPES.map(([value, write, example, prints]) => (
+              <tr key={value}><td>{value}</td><td className="mono">{write}</td><td className="mono">{example}</td><td className="mono">{prints}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="table-scroll">
+        <table className="fields">
+          <thead>
+            <tr><th scope="col">Flag, width, precision</th><th scope="col">Example</th><th scope="col">Prints</th></tr>
+          </thead>
+          <tbody>
+            {PRINTF_FLAGS.map(([what, example, prints]) => (
+              <tr key={what}><td>{what}</td><td className="mono">{example}</td><td className="mono" style={{ whiteSpace: "pre" }}>{prints}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <h2 style={{ marginTop: "1.6rem" }}>Which document answers which question</h2>
+      <div className="table-scroll">
+        <table className="fields">
+          <thead>
+            <tr><th scope="col">Question</th><th scope="col">Where to look</th><th scope="col">Practise reading it</th></tr>
+          </thead>
+          <tbody>
+            {DOCUMENTS.map((d) => (
+              <tr key={d.what}>
+                <td>{d.what}</td>
+                <td>{d.href ? <a href={d.href} target="_blank" rel="noreferrer" onClick={(e) => openExternal(e, d.href!)}>{d.where}</a> : d.where}</td>
+                <td>{d.figure ? <button className="linkish" onClick={() => showFigure(d.figure!)}>{d.figure}</button> : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -403,6 +497,8 @@ const CAP = 12;
 interface Hit {
   label: string;
   note?: string;
+  /** The note is written like a brief: `code` and **bold** are shown as such. */
+  rich?: boolean;
   go: () => void;
 }
 
@@ -420,7 +516,7 @@ function Results({ q, groups }: { q: string; groups: { title: string; hits: Hit[
               <li key={i}>
                 <button className="hb-hit" onClick={h.go}>
                   <span>{h.label}</span>
-                  {h.note && <span className="hint-text">{h.note}</span>}
+                  {h.note && <span className="hint-text">{h.rich ? <Inline text={h.note} /> : h.note}</span>}
                 </button>
               </li>
             ))}
@@ -464,6 +560,22 @@ export function Handbook({ open, at }: { open: (id: string) => void; at?: Handbo
     if (content.current) content.current.scrollTop = view.startsWith("figure:") ? 0 : (SCROLL.get(view) ?? 0);
   }, [view]);
 
+  // The window's title names the view. When the control that had the focus went away with the old view
+  // (a search result, "Back to the results"), the new view's heading takes it, so the keyboard keeps its place.
+  const first = useRef(true);
+  useEffect(() => {
+    const h = content.current?.querySelector<HTMLElement>("h1");
+    if (h) document.title = `${h.textContent} · Bringup`;
+    if (first.current) {
+      first.current = false;
+      return;
+    }
+    if (h && (!document.activeElement || document.activeElement === document.body)) {
+      h.tabIndex = -1;
+      h.focus({ preventScroll: true });
+    }
+  }, [view, searching ? q.trim() : ""]);
+
   const goto = (s: Section, then?: () => void) => () => {
     setSection(s);
     setResults(false);
@@ -477,7 +589,7 @@ export function Handbook({ open, at }: { open: (id: string) => void; at?: Handbo
     const fields: { r: RegInfo; f: string; desc: string }[] = [];
     for (const r of regs) for (const f of r.fields) if (f.name.toLowerCase().includes(s)) fields.push({ r, f: f.name, desc: f.desc ?? "" });
     return [
-      { title: "Glossary", ...cap(GLOSSARY.filter((g) => g.term.toLowerCase().includes(s) || g.meaning.toLowerCase().includes(s)), (g) => ({ label: g.term, note: g.meaning, go: goto("Glossary", () => setGq(g.term)) })) },
+      { title: "Glossary", ...cap(GLOSSARY.filter((g) => g.term.toLowerCase().includes(s) || g.meaning.toLowerCase().includes(s)), (g) => ({ label: g.term, note: g.meaning, rich: true, go: goto("Glossary", () => setGq(g.term)) })) },
       { title: "Key diagrams", ...cap(figures().filter((f) => figMatches(f, s)), (f) => ({ label: f.title, note: f.description ?? (f.uses[0] ? `Used in ${levelName(f.uses[0])}` : undefined), go: goto("Key diagrams", () => setFig(f.id)) })) },
       { title: "Pins and boards", ...cap(PINS.filter((p) => `${p.label} gpio${p.pin} ${p.kit}`.toLowerCase().includes(s)), (p) => ({ label: `${p.label}: GPIO${p.pin}`, note: `${p.kit}. ${p.note}`, go: goto("Pins and boards") })) },
       { title: "Formulas", ...cap(FORMULAS.filter((f) => `${f.what} ${f.formula}`.toLowerCase().includes(s)), (f) => ({ label: f.what, note: f.formula, go: goto("Formulas") })) },
@@ -492,7 +604,17 @@ export function Handbook({ open, at }: { open: (id: string) => void; at?: Handbo
   else if (section === "Glossary") body = <Glossary open={open} q={gq} setQ={setGq} />;
   else if (section === "Key diagrams") body = <Diagrams open={open} fig={fig} setFig={setFig} />;
   else if (section === "Pins and boards") body = <Pins />;
-  else if (section === "Formulas") body = <Formulas />;
+  else if (section === "Formulas")
+    body = (
+      <Formulas
+        showFigure={(title) => {
+          const f = figures().find((x) => x.title === title);
+          if (!f) return;
+          setSection("Key diagrams");
+          setFig(f.id);
+        }}
+      />
+    );
   else body = <Registers sel={reg} setSel={setReg} q={rq} setQ={setRq} />;
 
   return (

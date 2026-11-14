@@ -5,9 +5,8 @@ import { LiveSession } from "../src/sim/live";
 import { Board } from "../src/sim/board";
 import { fftRadix2 } from "../src/sim/plugins/course_fft";
 import { xyControl } from "../src/sim/plugins/course_final";
-import { starter as fft } from "../src/ui/sandbox-starters/fft";
-import { starter as final } from "../src/ui/sandbox-starters/final";
 
+// The Sandbox's own starting programs are tested in sandbox_starters.test.ts.
 // The course's FFT and final project starters must run unchanged. They live
 // outside this repo (TI and course copyright), so those tests are skipped
 // when the checkout is not present. The library they need is tested always.
@@ -280,52 +279,6 @@ describe.skipIf(!ROOT)("FinalProjectwithCANAprilStarter_main.c, unchanged, on th
     // 4 s of simulated time takes about 1 s here. The limit only catches a run that has become many times
     // slower: a busy test machine (CI runs the test files side by side) is easily three times slower.
     expect(wall).toBeLessThan(12_000);
-  });
-});
-
-describe("the Sandbox's own FFT and final project starting programs", () => {
-  for (const st of [fft, final])
-    it(`${st.id}: plain ASCII, short lines, runs a second with no error and no diagnostics`, () => {
-      expect(st.kit).toBe("robot");
-      for (const line of st.source.split("\n")) {
-        expect(line.length, line).toBeLessThanOrEqual(100);
-        expect(/^[\x20-\x7e]*$/.test(line), line).toBe(true);
-      }
-      clean(runProgram({ kit: "robot", source: st.source, durationMs: 1000, checks: st.watch.map((name): Check => ({ kind: "var", name, min: -1e9, max: 1e9, label: name })) }));
-    });
-
-  it("fft: the LCD shows the tone at the microphone", () => {
-    const r = runProgram({ kit: "robot", source: fft.source, durationMs: 600, stimuli: [{ at: 0, set: "MIC_TONE_HZ", value: 440 }], checks: [{ kind: "lcd", line: 2, matches: "^Freq 439 Hz$", label: "lcd" }] });
-    clean(r);
-    const s = new LiveSession("robot", fft.source);
-    live(s, 600);
-    expect(s.error).toBeNull();
-    expect(s.board.lcd[1]).toBe("Freq 996 Hz"); // the knob starts at 1000 Hz: bin 102
-  });
-
-  it("final: drives the square of waypoints and waits while something is in its way", () => {
-    const r = runProgram({
-      kit: "robot",
-      source: final.source,
-      durationMs: 22000,
-      stimuli: [...final.stimuli, { at: 21000, set: "CAN_DIST1_MM", value: 100 }],
-      checks: [
-        { kind: "var", name: "doneCal", equals: 1, at: 1100, label: "calibrated after a second" },
-        { kind: "var", name: "statePos", equals: 1, at: 9000, label: "first corner reached" },
-        { kind: "var", name: "statePos", equals: 0, at: 20900, label: "once around" },
-        { kind: "var", name: "dis_1", equals: 100, label: "CAN distance" },
-        { kind: "var", name: "vref", equals: 0, label: "waits" },
-        { kind: "signal", name: "ROBOT_CRASHED", equals: 0, label: "no crash" },
-        { kind: "lcd", line: 1, matches: "^Vrf:0.00 trn:0.00$", label: "lcd" },
-      ],
-    });
-    clean(r);
-    const s = new LiveSession("robot", final.source, (final.stimuli ?? []).flatMap((x) => ("set" in x ? [{ set: x.set, value: x.value }] : [])));
-    const wall = live(s, 3000);
-    expect(s.error).toBeNull();
-    expect(s.board.diagnostics.size).toBe(0);
-    // About 1 s here; see the note above on why the limit is this wide.
-    expect(wall).toBeLessThan(9000);
   });
 });
 

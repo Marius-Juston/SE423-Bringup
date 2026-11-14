@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { findLevel, nextLevel } from "../levels/index";
 import { KIND_LABEL, chapterLabel, kindOf, tierOf, type Ref } from "../levels/types";
-import { store, useSave } from "./store";
+import { starsEarned, store, useSave } from "./store";
 import { CodeBlock, Markdown } from "./Markdown";
 import { trmRef } from "./device";
 import { openExternal } from "./external";
@@ -132,7 +132,9 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
   const [attempt, setAttempt] = useState(0);
   // Remembered with the progress: opening the solution, reloading and pasting it must not earn stars.
   const solutionOpened = !!save.peeked[id];
-  const shown = save.hints[id] ?? 0;
+  // A warm-up question starts without the hints that were opened when the level was first played: those open here are not remembered.
+  const [warmHints, setWarmHints] = useState(0);
+  const shown = warmup ? warmHints : (save.hints[id] ?? 0);
   const hints = level.hints ?? [];
   const next = nextLevel(id);
   const isCode = level.kind === "code";
@@ -188,6 +190,22 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
   const taskW = clamp(num(taskPref, taskDefault), 240, taskMax);
   const { bench: benchW, max: benchMax } = benchWidth(winW, taskW, benchPref);
 
+  // A button that goes away when it is used hands the focus on, so the keyboard keeps its place:
+  // the last hint takes it from "Show another hint", and "Try again without help" takes it back from Cancel.
+  const hintsBox = useRef<HTMLDivElement>(null);
+  const retryButton = useRef<HTMLButtonElement>(null);
+  const lostFocus = () => !document.activeElement || document.activeElement === document.body;
+  const shownBefore = useRef(shown);
+  useEffect(() => {
+    if (shown > shownBefore.current && shown >= hints.length && lostFocus()) hintsBox.current?.querySelector<HTMLElement>(".hint:last-of-type")?.focus();
+    shownBefore.current = shown;
+  }, [shown, hints.length]);
+  const wasConfirming = useRef(false);
+  useEffect(() => {
+    if (wasConfirming.current && !confirming && lostFocus()) retryButton.current?.focus();
+    wasConfirming.current = confirming;
+  }, [confirming]);
+
   const retry = () => {
     setConfirming(false);
     store.clearHints(id);
@@ -196,10 +214,12 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
     setBests([]);
     setAttempt((a) => a + 1);
     setTab("code");
+    // The button that was pressed is gone: the fresh editor takes the focus.
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(".level .cm-content")?.focus()));
   };
   const improved = bests.filter((b) => b.improved).slice(0, 3);
   // A level passed without help whose solution was opened afterwards: its remaining stars need a fresh start too.
-  const starsLeft = level.kind === "code" && (level.bonus?.length ?? 0) > (save.stars[id]?.length ?? 0);
+  const starsLeft = level.kind === "code" && (level.bonus?.length ?? 0) > starsEarned(save, id, level.bonus?.length ?? 0);
   const canRetry = assisted || (helped && starsLeft);
 
   const done = warmup ? (
@@ -239,7 +259,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
           ) : (
             <button className="btn primary" onClick={() => go({ name: "map" })}>Back to the map</button>
           )}
-          {canRetry && !confirming && <button className="btn ghost" onClick={() => setConfirming(true)}>{assisted ? "Try again without help" : "Try for the stars without help"}</button>}
+          {canRetry && !confirming && <button className="btn ghost" ref={retryButton} onClick={() => setConfirming(true)}>{assisted ? "Try again without help" : "Try for the stars without help"}</button>}
         </div>
         {canRetry && confirming && (
           <div className="confirm" role="group" aria-label="Try again without help">
@@ -277,14 +297,14 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
         </p>
       )}
       {hints.length > 0 && (
-        <div className="hints">
+        <div className="hints" ref={hintsBox}>
           {hints.slice(0, shown).map((h, i) => (
-            <div className="hint" key={i}>
+            <div className="hint" key={i} tabIndex={-1}>
               <b>Hint {i + 1} of {hints.length}.</b> <Markdown text={h} />
             </div>
           ))}
           {shown < hints.length && (
-            <button className="btn small" onClick={() => store.hint(id, shown + 1)}>
+            <button className="btn small" onClick={() => (warmup ? setWarmHints(shown + 1) : store.hint(id, shown + 1))}>
               <Icon name="bulb" size={14} /> {shown === 0 ? "Show a hint" : "Show another hint"} ({hints.length - shown} left)
             </button>
           )}
@@ -377,12 +397,15 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
                 );
               })}
             </nav>
-            <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title={index === 0 ? "This is the first level of the chapter" : "Previous level"}>
-              <Icon name="back" size={16} />
-            </button>
-            <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title={next ? "Next level" : "This is the last level"}>
-              <Icon name="next" size={16} />
-            </button>
+            {/* One unit, so a narrow header never wraps between the two buttons. */}
+            <span className="level-arrows">
+              <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title={index === 0 ? "This is the first level of the chapter" : "Previous level"}>
+                <Icon name="back" size={16} />
+              </button>
+              <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title={next ? "Next level" : "This is the last level"}>
+                <Icon name="next" size={16} />
+              </button>
+            </span>
           </>
         )}
       </div>

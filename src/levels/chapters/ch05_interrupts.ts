@@ -329,24 +329,24 @@ Order the steps the way the manual lists them.
       id: "int-table",
       kind: "quiz",
       title: "Reading the PIE table",
-      goal: "Use the PIE channel table to find the group, channel, IER mask and PIEACK constant of an interrupt.",
-      refs: [{ course: "L4", slide: 28 }, { trm: "3.4.5" }, { trm: "3.4.6" }, { trm: "3.4.4" }],
+      goal: "Find an interrupt in the manual's PIE channel table and read off its group, channel, IER mask and PIEACK constant.",
+      refs: [{ course: "L4", slide: 28 }, { course: "HW2", note: "Table 3-2, handed out as a page of its own" }, { trm: "3.4.5" }, { trm: "3.4.6" }, { trm: "3.4.4" }],
       brief: `
-Table 3-2 of the reference manual lists every PIE interrupt. Each row is a group, each column a channel. The names are peripherals, most of which you meet in later chapters (ADC, EPWM, SPI, SCI). Here you only need to find a name and read off its numbers. A few rows, shortened:
+Which register enables the serial port's interrupt? Which constant acknowledges it? Nobody remembers that. It is all in one table: **Table 3-2** of the reference manual, "PIE Channel Mapping". The course hands it out as a page of its own, and the labs send you to it for every new interrupt.
 
-- **INT1.y**: 1 ADCA1, ... 4 XINT1, 5 XINT2, 6 ADCD1, **7 TIMER0**, 8 WAKE
-- **INT3.y**: 1 EPWM1, 2 EPWM2, 3 EPWM3 and so on up to 12 EPWM12
-- **INT6.y**: 1 SPIA_RX, 2 SPIA_TX, ... 9 SPIC_RX, 10 SPIC_TX
-- **INT9.y**: 1 SCIA_RX, 2 SCIA_TX, 3 SCIB_RX, 4 SCIB_TX
-- **INT12.y**: 1 XINT3, 2 XINT4, 3 XINT5, ... 9 EMIF_ERROR
+{{figure:pie-channel-map}}
 
-The group number x gives you three things at once:
+Each row is a group, each column a channel. The names are peripherals, most of which you meet in later chapters (ADC, EPWM, SPI, SCI). Here you only find a name and read off where it is.
 
-- the enable register: \`PieCtrlRegs.PIEIERx.bit.INTxy\` (y is the channel)
-- the CPU mask: \`IER |= M_INTx;\`
-- the acknowledge at the end of the function: \`PieCtrlRegs.PIEACK.all = PIEACK_GROUPx;\`
+## Worked example: TIMER0
+The figure opens on \`TIMER0\`. It is in row \`INT1.y\` and column \`INTx.7\`: group 1, channel 7, written **INT1.7**. From those two numbers come four names:
 
-The vector is named after the table entry: \`PieVectTable.TIMER0_INT\`, \`PieVectTable.SCIA_RX_INT\`.
+- the vector, named after the cell: \`PieVectTable.TIMER0_INT\`
+- the enable bit: \`PieCtrlRegs.PIEIER1.bit.INTx7\` (group in the register, channel in the bit)
+- the CPU mask: \`IER |= M_INT1;\` (group)
+- the acknowledge at the end of the function: \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;\` (group)
+
+Choose other cells, or type a name into **Find a name**, and watch the four lines change.
 
 ## Two timers skip the PIE
 Timer 1 is wired straight to CPU interrupt **INT13** and timer 2 to **INT14**. They have no \`PIEIER\` bit and need no \`PIEACK\`. They still need a vector (\`TIMER1_INT\`, \`TIMER2_INT\`), their \`IER\` bit (\`M_INT13\`, \`M_INT14\`) and \`EINT;\`.
@@ -356,18 +356,18 @@ When several requests wait at the same time, the **lowest number wins**: the low
 `,
       questions: [
         {
-          prompt: "Which line enables timer 0's channel in the PIE?",
+          prompt: "Find `XINT2` in the table (an external interrupt from a pin). Which line enables its channel in the PIE?",
           options: [
-            "`PieCtrlRegs.PIEIER7.bit.INTx1 = 1;`",
-            "`PieCtrlRegs.PIEIER1.bit.INTx7 = 1;`",
-            "`PieCtrlRegs.PIEIER1.bit.INTx1 = 1;`",
-            "`PieCtrlRegs.PIEIFR1.bit.INTx7 = 1;`",
+            "`PieCtrlRegs.PIEIER5.bit.INTx1 = 1;`",
+            "`PieCtrlRegs.PIEIER1.bit.INTx5 = 1;`",
+            "`PieCtrlRegs.PIEIER1.bit.INTx4 = 1;`",
+            "`PieCtrlRegs.PIEIFR1.bit.INTx5 = 1;`",
           ],
           answer: 1,
-          why: "TIMER0 is INT1.7: group 1, channel 7. PIEIFR is the flag register, not the enable.",
+          why: "XINT2 is in row INT1.y, column INTx.5: group 1, channel 5. The group goes into the register name, the channel into the bit. PIEIFR is the flag register, not the enable.",
         },
         {
-          prompt: "You use the SCIA receive interrupt (SCIA_RX, INT9.1). Which pair do you need?",
+          prompt: "You use the receive interrupt of serial port A. The table calls it `SCIA_RX`. Which pair do you need?",
           options: [
             "`IER |= M_INT1;` and `PIEACK_GROUP9`",
             "`IER |= M_INT9;` and `PIEACK_GROUP1`",
@@ -375,7 +375,7 @@ When several requests wait at the same time, the **lowest number wins**: the low
             "`IER |= M_INT1;` and `PIEACK_GROUP1`",
           ],
           answer: 2,
-          why: "Both come from the group number, 9. The channel number, 1, is only used in PIEIER9.bit.INTx1.",
+          why: "SCIA_RX is INT9.1. Both names come from the group number, 9. The channel number, 1, is only used in PIEIER9.bit.INTx1.",
         },
         {
           prompt: "Which of these does the **timer 1** interrupt need?",
@@ -389,13 +389,13 @@ When several requests wait at the same time, the **lowest number wins**: the low
           why: "Timer 1 goes straight to CPU interrupt INT13. It has no PIE channel, so no PIEIER bit and no PIEACK. There is no PIEIER13 register at all.",
         },
         {
-          prompt: "ADCA1 (INT1.1), TIMER0 (INT1.7) and EPWM1 (INT3.1) are all enabled and request at the same moment. Which function runs first?",
+          prompt: "`ADCA1`, `TIMER0` and `EPWM1` are all enabled and request at the same moment. Find the three in the table. Which function runs first?",
           options: ["TIMER0", "EPWM1", "ADCA1", "Whichever was enabled first"],
           answer: 2,
-          why: "Lowest group first, then lowest channel. Group 1 beats group 3, and inside group 1 channel 1 beats channel 7.",
+          why: "ADCA1 is INT1.1, TIMER0 INT1.7 and EPWM1 INT3.1. Lowest group first, then lowest channel: group 1 beats group 3, and inside group 1 channel 1 beats channel 7.",
         },
         {
-          prompt: "The starter code uses the EMIF_ERROR entry (INT12.9) as a software interrupt. Which line makes its function end correctly?",
+          prompt: "The starter code uses the `EMIF_ERROR` entry of the table as a software interrupt. Which line makes its function end correctly?",
           options: [
             "`PieCtrlRegs.PIEACK.all = PIEACK_GROUP9;`",
             "`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;`",
@@ -403,12 +403,13 @@ When several requests wait at the same time, the **lowest number wins**: the low
             "`PieCtrlRegs.PIEACK.all = PIEACK_GROUP12;`",
           ],
           answer: 3,
-          why: "INT12.9 is group 12. M_INT12 is the name of the IER mask. Keep the two families of names apart: M_INTx for IER, PIEACK_GROUPx for PIEACK.",
+          why: "EMIF_ERROR is INT12.9: group 12. M_INT12 is the name of the IER mask. Keep the two families of names apart: M_INTx for IER, PIEACK_GROUPx for PIEACK.",
         },
       ],
       hints: [
-        "INTx.y: x is the group, y is the channel.",
-        "M_INTx and PIEACK_GROUPx use the group. Only PIEIERx.bit.INTxy uses the channel.",
+        "Type the name into Find a name, or look for it in the table. Its row is the group x, its column the channel y.",
+        "M_INTx and PIEACK_GROUPx use the group. Only PIEIERx.bit.INTxy uses the channel as well.",
+        "XINT2 is INT1.5, SCIA_RX is INT9.1 and EMIF_ERROR is INT12.9. Timers 1 and 2 are not in the table at all.",
       ],
       takeaway: "Find the interrupt in the table once, and the group number gives you PIEIERx, M_INTx and PIEACK_GROUPx.",
     },
@@ -775,6 +776,158 @@ __interrupt void cpu_timer1_isr(void)
         "Add `IER |= M_INT1;` next to `IER |= M_INT13;`.",
       ],
       takeaway: "PIEIER selects the channel, IER selects the group. A PIE interrupt needs both. Timers 1 and 2 need only IER.",
+    },
+    {
+      id: "int-lookup",
+      kind: "code",
+      mode: "complete",
+      kit: "robot",
+      title: "Four names from one cell",
+      goal: "Enable an interrupt you have never used, with its vector, its two enables and its acknowledge read from the PIE channel table.",
+      refs: [{ course: "L4", slide: [29, 28] }, { course: "HW2", note: "find the entry in Table 3-2, then enable it" }, { trm: "3.4.5" }, { trm: "3.4.4" }],
+      brief: `
+Until now every number was given to you: \`TIMER0_INT\`, \`M_INT1\`, \`INTx7\`, \`PIEACK_GROUP1\`. In the labs it is not. A handout says "enable the interrupt of this peripheral" and points at the table. This level works the same way.
+
+## The task
+The function \`start_ticker()\` is given. It makes the peripheral **EPWM5** request its interrupt every 2 ms. EPWM5 is a counter, used here as a plain timer. Chapter 9 explains its registers. You do not need them now.
+
+Make \`ticker_isr\` run on every request. It counts in \`numTicks\` and toggles LED1. The code has four gaps:
+
+1. the vector: which field of \`PieVectTable\` gets \`&ticker_isr\`
+2. the \`IER\` line for the group
+3. the \`PIEIER\` bit for the channel
+4. the \`PIEACK\` line at the end of \`ticker_isr\`
+
+## The look-up, once more
+For timer 0 you found \`TIMER0\` in row \`INT1.y\`, column \`INTx.7\`, and wrote \`TIMER0_INT\`, \`M_INT1\`, \`PIEIER1.bit.INTx7\` and \`PIEACK_GROUP1\`. Do the same for the interrupt of EPWM5.
+
+{{figure:pie-channel-map}}
+
+Read each name in the table to its last letter. Similar names sit in different rows and are different interrupts.
+
+One line of \`ticker_isr\` is new and given: \`EPwm5Regs.ETCLR.bit.INT = 1;\` tells EPWM5 that its request was served. Without it EPWM5 would not ask again.
+`,
+      starter: `${FREQ}
+
+__interrupt void ticker_isr(void);
+void start_ticker(void);
+
+uint32_t numTicks = 0;
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    EALLOW;
+    // TODO 1: point the vector of EPWM5's interrupt at ticker_isr
+    EDIS;
+
+    start_ticker();
+
+    // TODO 2: enable the CPU interrupt line of that group in IER
+    // TODO 3: enable the channel in the group's PIEIER register
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+__interrupt void ticker_isr(void)
+{
+    numTicks++;
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+
+    EPwm5Regs.ETCLR.bit.INT = 1;   // given: EPWM5 may request again
+    // TODO 4: acknowledge the group
+}
+
+// Given: EPWM5 as a timer that requests its interrupt every 2 ms (chapter 9)
+void start_ticker(void)
+{
+    EPwm5Regs.TBCTL.bit.CLKDIV = 1;     // count at 25 MHz
+    EPwm5Regs.TBCTR = 0;
+    EPwm5Regs.TBPRD = 49999;            // 50000 counts = 2 ms
+    EPwm5Regs.ETSEL.bit.INTSEL = 1;     // request each time the counter is back at 0
+    EPwm5Regs.ETPS.bit.INTPRD = 1;      // on every such event
+    EPwm5Regs.ETSEL.bit.INTEN = 1;
+    EPwm5Regs.TBCTL.bit.CTRMODE = 0;    // start counting up
+}
+`,
+      solution: `${FREQ}
+
+__interrupt void ticker_isr(void);
+void start_ticker(void);
+
+uint32_t numTicks = 0;
+
+void main(void)
+{
+${INIT}
+
+${LED1}
+
+${PIE_INIT}
+
+    EALLOW;
+    PieVectTable.EPWM5_INT = &ticker_isr;
+    EDIS;
+
+    start_ticker();
+
+    IER |= M_INT3;
+    PieCtrlRegs.PIEIER3.bit.INTx5 = 1;
+    EINT;
+    ERTM;
+
+    while (1) {}
+}
+
+__interrupt void ticker_isr(void)
+{
+    numTicks++;
+    GpioDataRegs.GPATOGGLE.bit.GPIO22 = 1;
+
+    EPwm5Regs.ETCLR.bit.INT = 1;   // given: EPWM5 may request again
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP3;
+}
+
+// Given: EPWM5 as a timer that requests its interrupt every 2 ms (chapter 9)
+void start_ticker(void)
+{
+    EPwm5Regs.TBCTL.bit.CLKDIV = 1;     // count at 25 MHz
+    EPwm5Regs.TBCTR = 0;
+    EPwm5Regs.TBPRD = 49999;            // 50000 counts = 2 ms
+    EPwm5Regs.ETSEL.bit.INTSEL = 1;     // request each time the counter is back at 0
+    EPwm5Regs.ETPS.bit.INTPRD = 1;      // on every such event
+    EPwm5Regs.ETSEL.bit.INTEN = 1;
+    EPwm5Regs.TBCTL.bit.CTRMODE = 0;    // start counting up
+}
+`,
+      durationMs: 100,
+      checks: [
+        {
+          kind: "isr",
+          fn: "ticker_isr",
+          min: 48,
+          max: 52,
+          label: "ticker_isr runs every 2 ms",
+          hint: "Never: the vector, the IER mask or the PIEIER bit is not the one of EPWM5's cell. Two rows of the table have names that start with EPWM5. Once: the acknowledge names another group.",
+        },
+        { kind: "blink", led: "LED1", periodMs: 4, label: "LED1 blinks with a 4 ms period" },
+        { kind: "reg", reg: "PieCtrlRegs.PIEACK", equals: 0, label: "No PIE group is left blocked at the end", hint: "PIEACK_GROUPx takes the group of the cell, the same number as in M_INTx." },
+      ],
+      watch: ["numTicks"],
+      inspect: ["PieCtrlRegs.PIEIER3", "PieCtrlRegs.PIEIFR3", "PieCtrlRegs.PIEACK"],
+      hints: [
+        "Type EPWM5 into Find a name in the figure. Two cells light up. Only one of them is the interrupt of the counter itself.",
+        "The cell `EPWM5` (not `EPWM5_TZ`) gives a row and a column. The row number goes into M_INTx, PIEIERx and PIEACK_GROUPx. The column number goes into INTxy.",
+        "EPWM5 is INT3.5: `PieVectTable.EPWM5_INT = &ticker_isr;`, `IER |= M_INT3;`, `PieCtrlRegs.PIEIER3.bit.INTx5 = 1;` and `PieCtrlRegs.PIEACK.all = PIEACK_GROUP3;`.",
+      ],
+      takeaway: "One cell of the table gives all four names. The row is the group (IER, PIEIER, PIEACK), the column is the channel (the INTx bit), and the cell's name is the vector.",
     },
     {
       id: "int-two-timers",

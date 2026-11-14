@@ -1,7 +1,7 @@
 import { useMemo, useRef, type KeyboardEvent } from "react";
 import { CHAPTERS, PLANNED, chapterDone, chapterUnlocked } from "../levels/index";
 import { KIND_LABEL, chapterLabel, kindOf, tierOf, type Chapter, type Level } from "../levels/types";
-import { store, useSave, type Save } from "./store";
+import { starsEarned, store, useSave, type Save } from "./store";
 import { usePref } from "./prefs";
 import { Icon, Ring } from "./Icon";
 import { pickSession } from "./review";
@@ -28,7 +28,7 @@ const titlesOf = (ids: string[]) => ids.map((r) => CHAPTERS.find((x) => x.id ===
 function LevelRow({ l, save, open, current }: { l: Level; save: Save; open: (id: string) => void; current: boolean }) {
   const total = starsOf(l);
   // A star a level no longer has (it was dropped in an update) is not shown.
-  const got = Math.min(total, save.stars[l.id]?.length ?? 0);
+  const got = starsEarned(save, l.id, total);
   const tier = tierOf(l);
   const passed = !!save.passed[l.id];
   const helped = passed && !!save.assisted[l.id];
@@ -67,7 +67,7 @@ function ChapterDetail({ c, save, open, nextId }: { c: Chapter; save: Save; open
   const optional = [...practice, ...expert];
   const optionalDone = optional.filter((l) => save.passed[l.id]).length;
   const starTotal = c.levels.reduce((t, l) => t + starsOf(l), 0);
-  const starGot = c.levels.reduce((t, l) => t + Math.min(starsOf(l), save.stars[l.id]?.length ?? 0), 0);
+  const starGot = c.levels.reduce((t, l) => t + starsEarned(save, l.id, starsOf(l)), 0);
   const group = (title: string, cls: string, levels: Level[], note: string) =>
     levels.length > 0 && (
       <section className={`tier-group ${cls}`}>
@@ -137,7 +137,7 @@ export function MapView({ open, warmup, note }: { open: (id: string) => void; /*
   const coreTotal = all.filter((l) => tierOf(l) === "core").length;
   const extraPassed = all.filter((l) => tierOf(l) !== "core" && save.passed[l.id]).length;
   // Counted per level that still exists, and never more than the level has now.
-  const starGot = all.reduce((s, l) => s + Math.min(starsOf(l), save.stars[l.id]?.length ?? 0), 0);
+  const starGot = all.reduce((s, l) => s + starsEarned(save, l.id, starsOf(l)), 0);
   const starTotal = all.reduce((s, l) => s + starsOf(l), 0);
   const chaptersDone = CHAPTERS.filter((c) => chapterDone(c, save.passed)).length;
   const parts = useRef<HTMLDivElement>(null);
@@ -241,7 +241,8 @@ export function MapView({ open, warmup, note }: { open: (id: string) => void; /*
               onClick={() => setWeek(w)}
               onKeyDown={(e) => {
                 // One stop in the Tab order: the arrow keys move along the row.
-                const next = e.key === "ArrowRight" || e.key === "ArrowDown" ? e.currentTarget.nextElementSibling : e.key === "ArrowLeft" || e.key === "ArrowUp" ? e.currentTarget.previousElementSibling : null;
+                const row = [...(e.currentTarget.parentElement?.querySelectorAll("button.week") ?? [])];
+                const next = e.key === "ArrowRight" || e.key === "ArrowDown" ? e.currentTarget.nextElementSibling : e.key === "ArrowLeft" || e.key === "ArrowUp" ? e.currentTarget.previousElementSibling : e.key === "Home" ? row[0] : e.key === "End" ? row[row.length - 1] : null;
                 if (next instanceof HTMLButtonElement) {
                   e.preventDefault();
                   next.focus();

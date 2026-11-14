@@ -55,7 +55,7 @@ void main(void)
     }
 
     // Push buttons 1 to 4 on GPIO4 to GPIO7: inputs with the pull-up resistor.
-    // A held button reads 0, for example GpioDataRegs.GPADAT.bit.GPIO4 == 0.
+    // A held button reads 0 on its pin.
     for (i = 4; i <= 7; i++) {
         GPIO_SetupPinMux(i, GPIO_MUX_CPU1, 0);
         GPIO_SetupPinOptions(i, GPIO_INPUT, GPIO_PULLUP);

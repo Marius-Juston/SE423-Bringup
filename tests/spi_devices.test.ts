@@ -281,21 +281,41 @@ ${SETUP_SPIB}`);
     expect(v(r, "pwr")).toBe(0x0001);
   });
 
+  // The course's set-up selects 50 samples a second, a 92 Hz gyro filter, a 5 Hz accelerometer filter and
+  // writes the accelerometer offsets of the instructor's own part. HW3 says what a student then sees: the
+  // accelerometer is far off, "possibly saturated", until the offsets are adjusted. So the first read here
+  // is saturated or shifted, and the second, after the offsets are set to 0 and the filter has settled, is right.
   it("burst-reads accel, temperature and gyro from 0x3A as the course does, in the selected ranges", () => {
     const r = run(`void setupSpib(void);
 int16_t readdata[8];
+int16_t first[8];
 float accelx, accely, accelz, gyrox, gyroy, gyroz;
-void main(void) {
+void zero(uint16_t reg) {
+    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
+    SpibRegs.SPITXBUF = (reg << 8);
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 1);
+    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+    dummyread = SpibRegs.SPIRXBUF;
+    DELAY_US(10);
+}
+void burst(int16_t *to) {
     int i;
-${CS}
-    setupSpib();
-    DELAY_US(1000);
     GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
     SpibRegs.SPITXBUF = ((0x8000) | (0x3A00));
     for (i = 0; i < 7; i++) SpibRegs.SPITXBUF = 0;
     while (SpibRegs.SPIFFRX.bit.RXFFST != 8);
     GpioDataRegs.GPCSET.bit.GPIO66 = 1;
-    for (i = 0; i < 8; i++) readdata[i] = SpibRegs.SPIRXBUF;
+    for (i = 0; i < 8; i++) to[i] = SpibRegs.SPIRXBUF;
+    DELAY_US(10);
+}
+void main(void) {
+${CS}
+    setupSpib();
+    DELAY_US(300000);
+    burst(first);
+    zero(0x77); zero(0x78); zero(0x7A); zero(0x7B); zero(0x7D); zero(0x7E);
+    DELAY_US(300000);
+    burst(readdata);
     accelx = (((float)(readdata[1])) * 4.0 / 32767.0);
     accely = (((float)(readdata[2])) * 4.0 / 32767.0);
     accelz = (((float)(readdata[3])) * 4.0 / 32767.0);
@@ -304,7 +324,7 @@ ${CS}
     gyroz = (((float)(readdata[7])) * 250.0 / 32767.0);
     while (1) {}
 }
-${SETUP_SPIB}`, 3, [
+${SETUP_SPIB}`, 620, [
       { at: 0.5, set: "IMU_AX_G", value: 0.5 },
       { at: 0.5, set: "IMU_AY_G", value: -0.25 },
       { at: 0.5, set: "IMU_GX_DPS", value: 10 },
@@ -320,10 +340,19 @@ ${SETUP_SPIB}`, 3, [
     expect(v(r, "gyroz")).toBeCloseTo(100, 2);
     // The word between accel Z and gyro X is the temperature: (25 - 21) * 333.87.
     const words = new Int16Array(8);
+    const first = new Int16Array(8);
     for (let i = 0; i < 8; i++) words[i] = r.board.mem.peek(r.board.compiler.globals.get("readdata")!.addr + i, 1);
+    for (let i = 0; i < 8; i++) first[i] = r.board.mem.peek(r.board.compiler.globals.get("first")!.addr + i, 1);
     expect(words[4]).toBe(1335);
     // +-4 g: 1 g is 8192 counts.
     expect(words[3]).toBe(8192);
+    // With the instructor's offsets (0xEB12, 0x10FA, 0x2150: -2679, 2173 and 4264 steps of 0.98 mg) on this
+    // part: X = 0.5 - 2.625 g, Y = -0.25 + 2.130 g, Z = 1 + 4.179 g, which is beyond +-4 g.
+    expect((first[1] * 4) / 32768).toBeCloseTo(0.5 - 2679 * 0.00098, 2);
+    expect((first[2] * 4) / 32768).toBeCloseTo(-0.25 + 2173 * 0.00098, 2);
+    expect(first[3]).toBe(32767);
+    // The gyro has no offset written and is right from the first read.
+    expect(first[7]).toBe(Math.round((100 * 32768) / 250));
   });
 
   it("gives the gyro Z reading in the second word of HW3's two-word read, at the power-on range", () => {
@@ -337,7 +366,7 @@ ${CS}
     while (SpibRegs.SPIFFRX.bit.RXFFST != 1);
     GpioDataRegs.GPCSET.bit.GPIO66 = 1;
     spivalue1 = SpibRegs.SPIRXBUF;
-    DELAY_US(10);
+    DELAY_US(60000);                             // the set-up's 92 Hz filter and 50 samples a second
     GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
     SpibRegs.SPITXBUF = (0x8000 | 0x4600);
     SpibRegs.SPITXBUF = 0x0000;
@@ -347,7 +376,7 @@ ${CS}
     spivalue2 = SpibRegs.SPIRXBUF;
     while (1) {}
 }
-${SETUP_SPIB}`, 3, [{ at: 0.1, set: "IMU_GZ_DPS", value: -125 }, { at: 0.1, set: "IMU_GY_DPS", value: 1 }]);
+${SETUP_SPIB}`, 70, [{ at: 0.1, set: "IMU_GZ_DPS", value: -125 }, { at: 0.1, set: "IMU_GY_DPS", value: 1 }]);
     expect(v(r, "spivalue2")).toBe(-16384);
     // First word: nothing during the address byte, then GYRO_YOUT_L (1 deg/s = 131 = 0x0083).
     expect(v(r, "spivalue1")).toBe(0x0083);

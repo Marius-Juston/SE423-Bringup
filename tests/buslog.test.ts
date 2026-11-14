@@ -123,7 +123,8 @@ describe("what the bus traffic view reads", () => {
 
   it("SPI words carry a chip-select frame number, and the view groups by it", () => {
     const r = run(SPI, 2);
-    expect(r.diagnostics).toEqual([]);
+    // The second transfer starts with no pause after the first: the MPU-9250's model remarks on that, nothing else.
+    expect(r.diagnostics.map((d) => d.code)).toEqual(["mpu-cs-gap"]);
     const log = spiBus(r.board).log;
     expect(log.length).toBe(4);
     expect(log.map((w) => w.device)).toEqual(Array(4).fill(log[0].device));

@@ -332,6 +332,120 @@ A full mux position has four bits, 0 to 15. The upper two are in a second regist
       takeaway: "The course code never writes these fields by hand. TI's helper GPIO_SetupPinMux(43, GPIO_MUX_CPU1, 15) does it: 15 is binary 1111, so it writes 3 to the GPBGMUX1 field and 3 to the GPBMUX1 field of GPIO43. Position 0 is plain GPIO.",
     },
     {
+      id: "reg-page",
+      kind: "quiz",
+      title: "Read a register page",
+      goal: "Find a field's bits, its reset value, its access type and its write protection on the manual's page of a register.",
+      refs: [{ course: "L2", slide: [13, 9] }, { course: "HW2", note: "fill in the blanks from the register descriptions" }, { trm: "3.15.2" }, { trm: "3.15.6" }],
+      brief: `
+## Where the bits come from
+Every register in this game is described in one book: the chip's **Technical Reference Manual**, about 2,500 pages. Nobody knows it by heart. You open the page of the register you need and read it. The homeworks and labs hand you code with blanks and tell you to do exactly that.
+
+{{figure:register-page}}
+
+The figure is the manual's page for \`TCR\`, the timer control register of the earlier puzzle. A page says everything twice:
+
+- **The picture.** Bit numbers on top, the field names in boxes, and under each box a code such as \`R/W-0h\`.
+- **The table.** One row per field: Bit, Field, Type, Reset, Description.
+
+## Worked example: TSS
+Find \`TSS\` in the picture. The number above it is 4, so \`TSS\` is bit 4. Under it stands \`R/W-0h\`:
+
+- **Type R/W**: you can read it and write it.
+- **Reset 0h**: the value it holds after a **reset**, the moment the chip starts again from the beginning (power on, or the reset button). The \`h\` says the number is hexadecimal.
+- The **Description** row says what each value does: 0 means the timer runs, 1 stops it.
+
+So after a reset the timer runs. Choose \`TSS\` in the figure to see the same thing in words and in C.
+
+## Three more things to look for
+- **R/W1C**: a flag the hardware sets. You put it back to 0 by writing 1. Writing 0 does nothing.
+- **RESERVED**: bits the chip keeps for itself. Leave them alone.
+- **Write Protection**: \`EALLOW\` here means the register is one of the protected ones from the EALLOW level. This line comes from the list of the peripheral's registers, one page earlier in the manual.
+
+Answer from the page. Use the **Register** buttons under the picture to turn to another page.
+`,
+      questions: [
+        {
+          prompt: "Turn to the page of `XINT1CR`. Which bits does its `POLARITY` field occupy?",
+          options: ["Bit 0", "Bits 1 to 0", "Bits 3 to 2", "Bits 15 to 4"],
+          answer: 2,
+          why: "POLARITY sits under the numbers 3 and 2 in the picture, and its row of the table starts with 3-2. Bits 15 to 4 are RESERVED and bit 0 is ENABLE.",
+        },
+        {
+          prompt: "Back on the page of `TCR`: right after a reset, what do its four lowest bits (3 to 0) hold?",
+          options: ["0", "1", "15", "The page does not say"],
+          answer: 1,
+          why: "Under that RESERVED box stands R-1h: read only, reset value 1. That is also why the heading says [reset = 1h] for the whole register.",
+        },
+        {
+          prompt: "The timer has set the flag `TIF`. Which line puts it back to 0?",
+          options: [
+            "`CpuTimer0Regs.TCR.bit.TIF = 0;`",
+            "`CpuTimer0Regs.TCR.bit.TIF = 1;`",
+            "Nothing: `TIF` is read only",
+            "`CpuTimer0Regs.TCR.bit.TIE = 0;`",
+          ],
+          answer: 1,
+          why: "TIF has Type R/W1C: write 1 to clear. The Description says the same: writes of 0 are ignored, writing a 1 clears the flag.",
+        },
+        {
+          prompt: "Which of these registers must be written between `EALLOW;` and `EDIS;`?",
+          options: ["`TCR`", "`XINT1CR`", "`GPAMUX1`", "All three"],
+          answer: 2,
+          why: "Only the page of GPAMUX1 has Write Protection: EALLOW. The other two say none. Never guess this: a write to a protected register without EALLOW is ignored without any error.",
+        },
+        {
+          prompt: "On the page of `XINT1CR`: which value of `POLARITY` selects a positive (rising) edge only?",
+          options: ["0", "1", "2", "3"],
+          answer: 1,
+          why: "The Description lists the values in binary: 01 is positive edge. 00 and 10 are both the negative edge, and 11 is both edges.",
+        },
+      ],
+      hints: [
+        "Each question names a register. Turn to its page with the Register buttons first.",
+        "Bits: the numbers above the box. Reset and access: the code under the box, such as R/W1C-0h. Meaning of each value: the Description column.",
+        "POLARITY is under 3 and 2. The lowest box of TCR says R-1h. TIF is R/W1C. Look for the line Write Protection on each page.",
+      ],
+      takeaway: "A register page answers four questions: which bits, what they hold after reset, how they may be accessed, and what each value means. Read it instead of guessing.",
+    },
+    {
+      id: "reg-page-set",
+      kind: "register",
+      tier: "practice",
+      title: "Set a register from its page",
+      goal: "Set XINT2CR for an interrupt on both edges, with every value read from the manual's page.",
+      refs: [{ course: "L2", slide: 13 }, { trm: "3.15.6" }],
+      brief: `
+An **external interrupt** lets a pin call one of your functions when its voltage changes, for example when a button is pressed. Chapter 5 uses it. Its control register decides which change counts: a rising edge (low to high), a falling edge (high to low), or both.
+
+The puzzle is the register \`XINT2CR\`. The manual prints one page for each of the five registers \`XINT1CR\` to \`XINT5CR\`, and all five have the same fields.
+
+{{figure:register-page}}
+
+Choose **XINT1CR** under the picture in the figure and read its page. Then set the puzzle so that:
+
+- the interrupt reacts to **both** edges, rising and falling
+- the interrupt is **enabled**
+
+The register starts at \`0x0004\`. Leave the reserved bits at 0.
+
+The puzzle shows where the fields are, but not what their values mean. Only the Description column of the page tells you that.
+`,
+      reg: "XintRegs.XINT2CR",
+      initial: 0x0004,
+      targets: [
+        { field: "POLARITY", value: 3 },
+        { field: "ENABLE", value: 1 },
+      ],
+      code: "XintRegs.XINT2CR.bit.POLARITY = 3;   // 11: positive or negative edge\nXintRegs.XINT2CR.bit.ENABLE = 1;     // 1: interrupt enabled",
+      hints: [
+        "Two fields matter: POLARITY and ENABLE. The page lists what each of their values does.",
+        "The values of POLARITY are printed in binary. Find the line that says positive or negative edge.",
+        "POLARITY must be 11 (both of its bits on) and ENABLE 1. The value is 0x000D.",
+      ],
+      takeaway: "The field names tell you where to write. Only the Description column tells you what to write.",
+    },
+    {
       id: "reg-raw",
       tier: "practice",
       kind: "code",

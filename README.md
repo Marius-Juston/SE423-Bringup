@@ -143,9 +143,15 @@ Things worth knowing about the simulator:
   `XINTstarter` on the homework red board. They are test fixtures
   (`tests/labstarter.test.ts`, `tests/starters_basic.test.ts`,
   `tests/starters_project.test.ts`, skipped when the course repo is not
-  present at `./SE423Spring26`). The Sandbox's "Starting program" menu offers
-  a short version of each, written for the game, on the board it belongs to
-  (`src/ui/sandbox-starters/`).
+  present at `./SE423Spring26`).
+- The Sandbox's "Starting program" menu offers short programs of the game's
+  own (`src/ui/sandbox-starters/`): a blinking LED, a push button interrupt
+  and timers on the homework red board, and on the robot board a circle in
+  the arena, the LADAR, the microphone's FFT and a tour where the push
+  buttons drive the motors. They show the hardware through the board's
+  library and are never the answer to a level, a lab or a homework:
+  `tests/sandbox_starters.test.ts` pastes each one into every code level and
+  none may pass.
 
 ## Adding content
 

@@ -30,7 +30,8 @@ export type Check = { label: string; hint?: string } & (
   | { kind: "console"; includes?: string; equals?: string; matches?: string }
   /** Time between the starts of consecutive printed lines. */
   | { kind: "serial-period"; port?: number; periodMs: number; tolPct?: number }
-  | { kind: "lcd"; line: 1 | 2; matches: string }
+  /** A line of the robot board's LCD, at `at` ms (default: at the end of the run). */
+  | { kind: "lcd"; line: 1 | 2; matches: string; at?: number }
   | { kind: "reg"; reg: string; field?: string; equals: number; at?: number }
   /**
    * The output latch of a whole port ("A" to "F"): what DAT / SET / CLEAR / TOGGLE writes left in
@@ -165,10 +166,12 @@ export function runProgram(spec: RunSpec): RunResult {
 
   // Samples that must be taken while running.
   const samples = new Map<Check, number | undefined>();
+  const lcdSamples = new Map<Check, string>();
   for (const c of [...(spec.checks ?? []), ...(spec.bonus ?? [])]) {
     if ((c.kind === "reg" || c.kind === "var") && c.at !== undefined) {
       b.at(c.at * MS, () => samples.set(c, c.kind === "reg" ? b.dev.get(c.reg, c.field) : b.readVar(c.name)));
     }
+    if (c.kind === "lcd" && c.at !== undefined) b.at(c.at * MS, () => lcdSamples.set(c, b.lcd[c.line - 1]));
     if (c.kind === "latch" && c.at !== undefined) b.at(c.at * MS, () => samples.set(c, b.gpio.latchOf(PORTS.indexOf(c.port))));
   }
 
@@ -363,9 +366,9 @@ export function runProgram(spec: RunSpec): RunResult {
         break;
       }
       case "lcd": {
-        const text = b.lcd[c.line - 1];
+        const text = lcdSamples.get(c) ?? b.lcd[c.line - 1];
         pass = new RegExp(c.matches).test(text);
-        detail = `LCD line ${c.line} shows ${JSON.stringify(text)}.`;
+        detail = `LCD line ${c.line} ${c.at !== undefined ? `showed ${JSON.stringify(text)} at ${fmtMs(c.at)}` : `shows ${JSON.stringify(text)}`}.`;
         break;
       }
       case "reg": {

@@ -4,6 +4,7 @@ import type { Board } from "../../sim/board";
 import type { LidarState } from "../../sim/plugins/lidar";
 import { worldObjects, worldOf } from "../../sim/plugins/lidar";
 import { ROBOT_RADIUS_FT } from "../../sim/plugins/robot_world";
+import { beamsAt, type RobotSensors } from "../../sim/plugins/robot_sensors";
 import { WHEEL_BASE } from "../../sim/plugins/plant";
 import { MAX_OBJECTS, clearance, insideBox, objectTouches, snap, tidyObject, type Obstacle, type World } from "../../sim/world/terrain";
 import { usePanelSize } from "../Panel";
@@ -37,6 +38,8 @@ import {
   type SceneKind,
   type SceneSource,
   clipSegment,
+  easeView,
+  type ViewBox,
 } from "./robot-arena-model";
 import { ArenaPlayground } from "./robot-arena-play";
 import type { BenchView, ViewProps } from "./types";
@@ -86,6 +89,8 @@ const STYLE = `
 .arena-dot { stroke: var(--info); stroke-width: 3; stroke-linecap: round; fill: none; }
 .arena-named { stroke: var(--accent); stroke-width: 2; fill: none; }
 .arena-named.miss { stroke-dasharray: 5 4; }
+.arena-beam { stroke: var(--value); stroke-width: 1.6; fill: var(--value); fill-opacity: 0.12; stroke-linejoin: round; }
+.arena-beam.miss { stroke-dasharray: 4 4; fill-opacity: 0.04; }
 .arena-named-end { fill: var(--accent); stroke: var(--inset); stroke-width: 1; }
 .arena-trail { stroke: var(--info); stroke-width: 2.4; fill: none; stroke-linejoin: round; stroke-linecap: round; }
 .arena-est-trail { stroke: var(--value); stroke-width: 1.8; stroke-dasharray: 6 4; fill: none; stroke-linejoin: round; }
@@ -108,6 +113,7 @@ const STYLE = `
 .arena-key i { display: inline-block; width: 18px; height: 0; border-top: 2.4px solid var(--info); }
 .arena-key i.est { border-top: 2px dashed var(--value); }
 .arena-key i.named { border-top-color: var(--accent); }
+.arena-key i.beam { border-top-color: var(--value); }
 .arena-now { margin: 0; font-size: 0.95rem; color: var(--text); border-left: 3px solid var(--info); padding: 0.15rem 0.6rem; background: var(--surface); border-radius: 0 var(--radius) var(--radius) 0; }
 .arena-now.bad { border-left-color: var(--bad); }
 .arena-read { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 0.25rem 0.5rem; margin: 0; font-size: 0.82rem; }
@@ -264,10 +270,22 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
   // The accessible name says what is happening, but changes at most once a second while the program runs.
   const said = useRef({ text: "", at: 0 });
   const goalTol = useMemo(() => goalTolerance(ctx?.checks ?? []), [ctx?.checks]);
+  /** The view as it was last drawn, for gliding to the next one. */
+  const glide = useRef<{ view: ViewBox; at: number; scene: string } | null>(null);
 
   if (!shown || !kind) return <p className="hint-text">Nothing to show yet: the program has not used the robot or the LIDAR.</p>;
   const s = shown;
-  const view = fitView(s);
+  // The view follows the robot smoothly while something moves (a live run or a replay that plays): its
+  // edges glide to where the scene needs them. It jumps when nothing is moving, when the world is another
+  // one, and for someone who asked for reduced motion.
+  const target = fitView(s);
+  const moving = running || playing;
+  const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const scene0 = `${kind}:${s.world?.name ?? ""}`;
+  const clock = typeof performance === "undefined" ? 0 : performance.now();
+  const before = glide.current;
+  const view = moving && !still && before && before.scene === scene0 ? easeView(before.view, target, Math.min(100, clock - before.at)) : target;
+  glide.current = { view, at: clock, scene: scene0 };
   const W = Math.max(220, box.w);
   const spanX = view.x1 - view.x0;
   const spanY = view.y1 - view.y0;
@@ -316,6 +334,10 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
         return { name, i, echo, x1: px(l.x), y1: py(l.y), x2: lim(px(tx)), y2: lim(py(ty)), lx: Math.max(PAD.l + 14, Math.min(W - 18, px(l.x) + at * Math.cos(a))), ly: Math.max(14, Math.min(H - PAD.b - 4, py(l.y) - at * Math.sin(a) + 4)) };
       })
     : [];
+
+  // ---- the CAN and Sharp distance sensors, while the room drives them and the program reads them ----
+  const sensors = board && kind === "world" && s.world ? (board.plugins.get("robot-sensors") as RobotSensors | undefined) : undefined;
+  const beams = sensors && s.world ? beamsAt(s.world, { x: s.pose.x, y: s.pose.y, th: s.pose.th }, sensors, (n) => board!.inputsUsed.has(n)) : [];
 
   // ---- words ----
   const sentence = describe(s, { goalTol, live: !!session });
@@ -458,6 +480,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
         {s.trail.some((t) => t.length > 1) && <span><i /> path driven</span>}
         {s.est && <span><i className="est" /> {kind === "bench" ? "pose the program reports (dashed)" : "the program's own x, y (dashed)"}</span>}
         {named.length > 0 && <span><i className="named" /> LIDAR front, left, right</span>}
+        {beams.length > 0 && <span><i className="beam" /> distance sensors</span>}
         {world && <span>grid: {step} ft</span>}
       </div>
       <p className={`arena-now ${s.crashed ? "bad" : ""}`} data-arena-now aria-live={running || playing ? "off" : "polite"}>{sentence}</p>
@@ -476,6 +499,9 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
             <div data-read="right"><dt>Right [28]</dt><dd>{dist(s.lidar.right)}</dd></div>
           </>
         )}
+        {beams.map((b) => (
+          <div key={b.kind + b.where} data-read={`${b.kind}-${b.where}`} className="wide"><dt>{b.kind === "tof" ? "CAN sensor" : "Sharp sensor"}, {b.where}</dt><dd>{b.text}</dd></div>
+        ))}
         {s.est && <div data-read="estimate" className="wide"><dt>{kind === "bench" ? "Pose the program reports" : "The program's own x, y"}</dt><dd>{fmt(s.est.x)}, {fmt(s.est.y)} ft</dd></div>}
         {s.estErr !== undefined && <div data-read="error"><dt>It is off by</dt><dd>{s.estErr < 100 ? s.estErr.toFixed(3) : s.estErr.toFixed(0)} ft</dd></div>}
         {states.map((x) => (
@@ -586,6 +612,9 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
               {s.trail.map((t, i) => t.length > 1 && <path key={i} d={line(t)} className="arena-trail" />)}
               {s.estTrail.map((t, i) => t.length > 1 && <path key={i} d={line(t)} className="arena-est-trail" />)}
               {dots && <path d={dots} className="arena-dot" />}
+              {beams.map((b) => (
+                <path key={b.kind + b.where} d={`M${P(b.x, b.y)}${b.ends.map((e) => `L${P(e[0], e[1])}`).join("")}${b.ends.length > 1 ? "Z" : ""}`} className={`arena-beam ${b.hit ? "" : "miss"}`} />
+              ))}
               {named.map((n) => (
                 <g key={n.name}>
                   <line x1={n.x1} y1={n.y1} x2={n.x2} y2={n.y2} className={`arena-named ${n.echo ? "" : "miss"}`} />

@@ -67,6 +67,11 @@ function inline(text: string, key: number): ReactNode[] {
   return out;
 }
 
+/** One line of text with **bold** and `code`, for places that are not a paragraph of their own (a glossary meaning). */
+export function Inline({ text }: { text: string }) {
+  return <>{inline(text, 0)}</>;
+}
+
 /** Small Markdown subset: paragraphs, "- " lists, "1. " lists, ``` code blocks, "## " headings. */
 export function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = [];

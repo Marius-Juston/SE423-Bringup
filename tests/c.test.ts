@@ -42,7 +42,9 @@ describe("C on a 16-bit-int machine", () => {
   });
   it("prints 32-bit values wrongly with %d, as the board does", () => {
     const r = run(main(`int32_t big = 70000; printf("%d|%ld", big, big);`));
-    expect(r.console.endsWith("|70000")).toBe(false);
+    // 70000 is 0x00011170. %d meets the upper half first (the value's high word lies at the
+    // higher address and the library walks down), and %ld starts again at an even address.
+    expect(r.console).toBe("1|70000");
     expect(codes(r)).toContain("printf-type");
     expect(out(main(`int32_t big = 70000; printf("%ld", big);`))).toBe("70000");
   });

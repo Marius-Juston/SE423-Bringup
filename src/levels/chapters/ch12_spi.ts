@@ -264,6 +264,79 @@ ${o.isr}
 }
 `;
 
+// "Back up to the wall": a Sharp infrared distance sensor on the DAN28027's second analog input (robot world).
+const sharp = (convert: string, use: string) => `#define N_PTS 14
+// The sensor's data sheet curve, 4 cm to 30 cm: distance in cm and the voltage it gives there
+const float curve_cm[N_PTS] = { 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 25, 30 };
+const float curve_v[N_PTS] = { 2.72, 2.34, 2.02, 1.77, 1.56, 1.40, 1.27,
+                               1.06, 0.93, 0.81, 0.74, 0.66, 0.53, 0.43 };
+
+uint16_t dan_first = 0;      // first word back: nothing useful
+uint16_t dan_adc1 = 0;       // second word back: analog input 1
+uint16_t dan_adc2 = 0;       // third word back: analog input 2, the rear distance sensor
+float volts = 0;             // voltage of the rear sensor
+float rear_cm = 0;           // distance behind the robot, cm
+
+// Distance in cm for a sensor voltage, from the table
+float sharp_cm(float v)
+{
+${convert}
+}
+
+// One message to the DAN28027 (chapter 13 takes it apart): three words out, three words back
+void read_dan(void)
+{
+    SpibRegs.SPIFFCT.bit.TXDLY = 16;          // a pause between the words: the DAN28027 needs it
+    GpioDataRegs.GPACLEAR.bit.GPIO29 = 1;     // its chip select low
+    SpibRegs.SPITXBUF = 0x00DA;               // start code
+    SpibRegs.SPITXBUF = 0;                    // two values for its outputs, not used here
+    SpibRegs.SPITXBUF = 0;
+    while (SpibRegs.SPIFFRX.bit.RXFFST != 3) {}   // wait for the three words that come back
+    GpioDataRegs.GPASET.bit.GPIO29 = 1;       // chip select high again
+    dan_first = SpibRegs.SPIRXBUF;
+    dan_adc1 = SpibRegs.SPIRXBUF;
+    dan_adc2 = SpibRegs.SPIRXBUF;
+}
+
+void main(void)
+{
+${START}
+    // GPIO29 is the chip select of the DAN28027: an output, high means "not selected"
+    GPIO_SetupPinMux(29, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(29, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GpioDataRegs.GPASET.bit.GPIO29 = 1;
+    setupSpib();                              // course library: SPIB for the robot's sensors
+    init_EPWM1and2();                         // course library: the two motor outputs, stopped
+
+    while (1) {
+        DELAY_US(20000);                      // 50 times a second
+        read_dan();
+${use}
+        if (rear_cm < 10.0) {
+            setEPWM1A(0);                     // stop
+            setEPWM2A(0);
+        } else {
+            setEPWM1A(-2.0);                  // backward: left motor
+            setEPWM2A(2.0);                   // right motor, mounted the other way round
+        }
+    }
+}
+`;
+
+const SHARP_CONVERT = `    int i;
+    if (v >= curve_v[0]) return curve_cm[0];
+    if (v <= curve_v[N_PTS - 1]) return curve_cm[N_PTS - 1];
+    for (i = 1; i < N_PTS; i++) {
+        if (v >= curve_v[i]) {
+            return curve_cm[i - 1]
+                + (curve_cm[i] - curve_cm[i - 1]) * (curve_v[i - 1] - v) / (curve_v[i - 1] - curve_v[i]);
+        }
+    }
+    return curve_cm[N_PTS - 1];`;
+
+const SHARP_USE = `        volts = dan_adc2 * 3.3 / 4096.0;
+        rear_cm = sharp_cm(volts);`;
+
 export const ch12: Chapter = {
   id: "spi",
   number: 12,
@@ -1542,6 +1615,82 @@ ${START}
       takeaway: "A wrong clock mode does not stop the transfer. Clock and data still move, and every bit is read half a cycle off. WHO_AM_I is how you notice.",
     },
 
+    {
+      id: "spi-sharp",
+      kind: "code",
+      mode: "write",
+      tier: "practice",
+      title: "Back up to the wall",
+      goal: "Turn the voltage of an infrared distance sensor, read over SPI, into centimetres with the data sheet's curve, so the robot backs up and stops 10 cm from a wall.",
+      refs: [{ course: "L14", slide: [12, 13], note: "the Sharp GP2Y0A41SK0F and how it measures" }, { trm: "18.3.7" }],
+      brief: `
+A word that arrives over SPI is often only a voltage somebody measured. Here it comes from the **DAN28027**, the second chip on SPIB (chip select GPIO29). Its message is given in \`read_dan()\`. In this game's robot its second analog input, \`dan_adc2\`, is wired to a **Sharp GP2Y0A41SK0F** that looks backward: the infrared distance sensor of lecture 14.
+
+## From the word to volts
+The DAN28027 measures 0 V to 3.3 V in 4096 steps. A reading of 1241 is 1241 x 3.3 / 4096 = 1.0 V.
+
+## From volts to centimetres
+The sensor's voltage is not a straight line. The data sheet gives a curve, here as a table: \`curve_cm[i]\` centimetres give \`curve_v[i]\` volts. Nearer is a higher voltage.
+
+Between two rows, take a straight line (**interpolation**). Example: 1.165 V lies between 1.27 V (10 cm) and 1.06 V (12 cm). It is (1.27 - 1.165) / (1.27 - 1.06) = 0.5 of the way, so the distance is 10 + 0.5 x 2 = 11 cm.
+
+## Its limits
+- It measures 4 cm to 30 cm. Beyond 30 cm the voltage hardly changes: answer 30.
+- Nearer than 4 cm the voltage **falls** again (2 cm gives the same 2.22 V as 5.4 cm), so keep things further away than 4 cm. Above 2.72 V answer 4.
+- It makes a new measurement every 16.5 ms.
+
+## Your task
+1. Write \`sharp_cm(v)\`: 4 for \`v\` of 2.72 or more, 30 for 0.43 or less. Otherwise find the first row \`i\` with \`v >= curve_v[i]\` and interpolate between rows \`i - 1\` and \`i\`.
+2. In the loop: compute \`volts\` from \`dan_adc2\`, then \`rear_cm = sharp_cm(volts);\`
+
+The rest is given: the robot backs up and stops when \`rear_cm\` is below 10. \`setupSpib\`, \`init_EPWM1and2\`, \`setEPWM1A\` and \`setEPWM2A\` come from the board's library (writing them is part of HW3 and Lab 3).
+`,
+      kit: "robot",
+      starter: sharp("    // TODO 1: 4 or 30 at the ends, otherwise interpolate in the table\n    return 30;", "        // TODO 2: volts from dan_adc2, then rear_cm from sharp_cm()\n        rear_cm = 30;"),
+      solution: sharp(SHARP_CONVERT, SHARP_USE),
+      durationMs: 2500,
+      stimuli: [
+        { at: 0, set: "LIDAR_ROOM", value: 0 },
+        { at: 0, set: "ROBOT_START_X_FT", value: 1.2 },
+        { at: 0, set: "ROBOT_START_Y_FT", value: 5 },
+        { at: 0, set: "ROBOT_START_THETA_RAD", value: 0 },
+        { at: 0, set: "ROBOT_WORLD", value: 1 },
+      ],
+      checks: [
+        { kind: "signal", name: "DAN_COMMANDS", min: 100, label: "The DAN28027 is asked 50 times a second" },
+        {
+          kind: "var", name: "volts", at: 30, min: 0.5, max: 0.525,
+          label: "At the start the sensor gives 0.51 V and volts says so",
+          hint: "volts = dan_adc2 * 3.3 / 4096.0; The DAN28027 measures up to 3.3 V, not 3.0 V, and dan_adc2 is the third word.",
+        },
+        {
+          kind: "var", name: "rear_cm", at: 30, min: 25, max: 27,
+          label: "At the start the wall is 25.9 cm behind: rear_cm is 25 to 27",
+          hint: "0.51 V lies between 0.53 V (25 cm) and 0.43 V (30 cm), near the 25 cm end. About 29 means the share is counted from the wrong row, or one straight line from 4 cm to 30 cm was used instead of the two neighbouring rows.",
+        },
+        {
+          kind: "var", name: "rear_cm", min: 7.5, max: 10,
+          label: "At the end rear_cm is 7.5 to 10 cm",
+          hint: "The share of the way from row i - 1 to row i is (curve_v[i - 1] - v) / (curve_v[i - 1] - curve_v[i]).",
+        },
+        {
+          kind: "signal", name: "ROBOT_X_FT", min: 0.59, max: 0.69,
+          label: "The robot stands with its back 7.5 to 10 cm from the wall",
+          hint: "Its centre is 0.35 ft further in than its back. If it stopped early or ran into the wall, sharp_cm() gave a wrong distance near 10 cm: try 1.27 V, which must give 10.",
+        },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", equals: 0, tol: 0.05, label: "The wheels stand still at the end" },
+        { kind: "signal", name: "ROBOT_CRASHED", equals: 0, label: "The robot never touched the wall" },
+        { kind: "no-diagnostic", code: "dan", label: "The DAN28027 reports no problem" },
+      ],
+      watch: ["dan_adc2", "volts", "rear_cm"],
+      hints: [
+        "Start with the two ends: `if (v >= curve_v[0]) return curve_cm[0];` and `if (v <= curve_v[N_PTS - 1]) return curve_cm[N_PTS - 1];`",
+        "Then a loop `for (i = 1; i < N_PTS; i++)`. The voltages in the table fall, so the first `i` with `v >= curve_v[i]` is the row just beyond the distance you look for.",
+        "Inside the `if`: `return curve_cm[i - 1] + (curve_cm[i] - curve_cm[i - 1]) * (curve_v[i - 1] - v) / (curve_v[i - 1] - curve_v[i]);` and in the loop of main(): `volts = dan_adc2 * 3.3 / 4096.0;`",
+      ],
+      takeaway: "A sensor with a curved output needs its data sheet curve in the program: a table and a straight line between two rows. Know where the curve ends and where it turns back.",
+    },
+
     // ------------------------------------------------------------------ expert
     {
       id: "spi-setup-own",
@@ -1779,6 +1928,7 @@ ${START}
     GPIO_SetupPinOptions(64, GPIO_INPUT, GPIO_PULLUP);
 
     whoami = mpu_read(0x75);
+    DELAY_US(100);                            // the chip wants a pause between two transfers
 
     while (1) {
         az_high = mpu_read(0x3F);
@@ -1843,6 +1993,7 @@ ${START}
     GPIO_SetupPinOptions(64, GPIO_INPUT, GPIO_PULLUP);
 
     whoami = mpu_read(0x75);
+    DELAY_US(100);                            // the chip wants a pause between two transfers
 
     while (1) {
         az_high = mpu_read(0x3F);
@@ -1854,7 +2005,7 @@ ${START}
         { kind: "var", name: "whoami", equals: 0x71, label: "whoami is 0x71", hint: "0xE2 or 0x38 means the bits are read at the wrong moment: read SOMI while the clock is high, before the falling edge." },
         { kind: "var", name: "az_high", at: 0.95, equals: 0x40, label: "Lying flat: the upper byte of the Z acceleration is 0x40", hint: "The chip select must go high after every register read, or the device takes the next byte as more data, not as a new address." },
         { kind: "var", name: "az_high", equals: 0xe0, label: "Tipped over: the byte changes to 0xE0" },
-        { kind: "no-diagnostic", code: "mpu", label: "The clock is not faster than 1 MHz", hint: "Wait with DELAY_US(1) before the rising edge and again before the falling edge." },
+        { kind: "no-diagnostic", code: "mpu-too-fast", label: "The clock is not faster than 1 MHz", hint: "Wait with DELAY_US(1) before the rising edge and again before the falling edge." },
         { kind: "source", mustNotMatch: "SpibRegs", label: "The SPI module is not used" },
       ],
       watch: ["whoami", "az_high"],

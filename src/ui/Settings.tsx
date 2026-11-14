@@ -1,10 +1,14 @@
 import { useRef, useState } from "react";
-import { store } from "./store";
+import { store, useSave } from "./store";
 import { usePref } from "./prefs";
 
 export function Settings() {
   const file = useRef<HTMLInputElement>(null);
-  const [msg, setMsg] = useState("");
+  // The text below shows the progress as it is now, also after another window of the game saved.
+  useSave();
+  const [note, setNote] = useState<{ text: string; ok: boolean }>({ text: "", ok: true });
+  const setMsg = (text: string, ok = true) => setNote({ text, ok });
+  const TOO_LARGE = "That progress is too large to store in this browser. Your progress from before is kept.";
   const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
   const [scale, setScale] = usePref<number>("text-scale", 1);
   const [text, setText] = useState<string | null>(null);
@@ -76,11 +80,13 @@ export function Settings() {
             type="file"
             accept="application/json,.json"
             className="sr-only"
+            tabIndex={-1}
             aria-label="Progress file to import"
             onChange={async (e) => {
               const f = e.target.files?.[0];
               if (!f) return;
-              setMsg(store.import(await f.text()) ? "Progress imported." : "That file is not a Bringup progress file.");
+              const r = store.import(await f.text());
+              setMsg(r === "ok" ? "Progress imported." : r === "too-large" ? TOO_LARGE : "That file is not a Bringup progress file. Your progress is unchanged.", r === "ok");
               e.target.value = "";
             }}
           />
@@ -96,7 +102,7 @@ export function Settings() {
             Erase progress
           </button>
         </div>
-        <p role="status" className="verdict ok">{msg}</p>
+        <p role="status" className={`verdict ${note.ok ? "ok" : "bad"}`}>{note.text}</p>
         <details>
           <summary>Copy and paste instead of using a file</summary>
           <p className="hint-text">Copy this text to save your progress. To restore, paste saved text here and press Load.</p>
@@ -106,8 +112,10 @@ export function Settings() {
             <button
               className="btn"
               onClick={() => {
-                setMsg(store.import(text ?? "") ? "Progress loaded." : "That text is not Bringup progress.");
-                setText(null);
+                const r = store.import(text ?? "");
+                setMsg(r === "ok" ? "Progress loaded." : r === "too-large" ? TOO_LARGE : "That text is not Bringup progress. Check that you pasted all of it. Your progress is unchanged.", r === "ok");
+                // A text that did not load stays, so it can be corrected.
+                if (r === "ok") setText(null);
               }}
               disabled={text === null}
             >

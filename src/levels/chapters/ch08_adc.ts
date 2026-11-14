@@ -702,6 +702,76 @@ In the test the photoresistor is at 1.2 V, then at 2.4 V. On the board you can t
       takeaway: "A software trigger, a timer and an ePWM all do the same thing: set the SOC's flag. Everything after that is identical.",
     },
     {
+      id: "adc-trigger-table",
+      kind: "calc",
+      title: "Read the trigger table",
+      goal: "Find the TRIGSEL and CHSEL values for a requirement on the manual's page of ADCSOC0CTL.",
+      refs: [{ course: "L5", slide: [23, 24] }, { course: "HW2", note: "fill in the blanks from the ADC register descriptions" }, { trm: "11.16.2" }, { trm: "11.5.1" }],
+      brief: `
+In the last level \`TRIGSEL\` was 0, "software only". Any other trigger has a number, and the number is not something you work out. It is a row of a list in the manual. Homework 2 and Lab 4 leave \`TRIGSEL\` and \`CHSEL\` blank and send you to that list.
+
+{{figure:adc-trigger-table}}
+
+The figure is the manual's page of \`ADCSOC0CTL\`, the register that holds the three settings of SOC0. It reads like the register pages of chapter 1: the picture of the bits, then one row per field. SOC1 to SOC15 have a page each with the same fields.
+
+## Worked example: EPWM5 sends SOCA
+The page opens on \`TRIGSEL\`. Its Description is a list with one row per trigger. Find the row that names the source:
+
+\`\`\`c
+0Dh ADCTRIG13 - ePWM5, ADCSOCA
+\`\`\`
+
+The value is at the start of the row, in hexadecimal: \`0Dh\` is 13. So the line is
+
+\`\`\`c
+AdcaRegs.ADCSOC0CTL.bit.TRIGSEL = 13;   // or 0xD
+\`\`\`
+
+Two things go wrong here. The list is in **hexadecimal**: the row after \`09h\` is \`0Ah\`, not 10. And every ePWM has **two** rows, ADCSOCA and ADCSOCB: read the row to its end.
+
+## Your turn
+Answer in decimal, as you would type the number in C. Choose \`CHSEL\` or \`ACQPS\` in the picture to open their lists.
+`,
+      fields: [
+        {
+          id: "epwm2b",
+          label: "TRIGSEL so that the ADCSOCB pulse of ePWM2 starts the conversion",
+          answer: 8,
+          why: "The row is 08h ADCTRIG8 - ePWM2, ADCSOCB. The row above it, 07h, is ePWM2's other pulse, ADCSOCA.",
+        },
+        {
+          id: "timer2",
+          label: "TRIGSEL so that CPU timer 2 of CPU1 starts the conversion",
+          answer: 3,
+          why: "03h ADCTRIG3 - CPU1 Timer 2, TINT2n. The value is one more than the timer's number, because 00h is software only. The CPU2 timers at the end of the list belong to the chip's second processor.",
+        },
+        {
+          id: "epwm9a",
+          label: "TRIGSEL so that the ADCSOCA pulse of ePWM9 starts the conversion",
+          answer: 21,
+          why: "The row is 15h ADCTRIG21 - ePWM9, ADCSOCA. 15h is hexadecimal: 1 x 16 + 5 = 21. Typing 15 selects ePWM6, ADCSOCA.",
+        },
+        {
+          id: "chsel",
+          label: "CHSEL to measure the pin ADCIN14",
+          answer: 14,
+          why: "In the list of CHSEL the row is Eh ADCIN14. Eh is 14. In single-ended mode, which the course uses, the value is the number in the pin's name.",
+        },
+        {
+          id: "acqps",
+          label: "The largest value ACQPS can hold",
+          answer: 511,
+          why: "The last row of its list is 1FFh: 1 x 256 + 15 x 16 + 15 = 511. The picture says the same: ACQPS is bits 8 to 0, nine bits, and 2^9 - 1 = 511.",
+        },
+      ],
+      hints: [
+        "Each answer is the start of one row of a list in the Description column. Choose the field in the picture to open its list.",
+        "The values end in h: they are hexadecimal. Convert to decimal: the first digit times 16 plus the second, with A = 10 up to F = 15.",
+        "ePWM2 ADCSOCB is 08h. CPU1 Timer 2 is 03h. ePWM9 ADCSOCA is 15h, which is 21. ADCIN14 is Eh. The last ACQPS row is 1FFh.",
+      ],
+      takeaway: "The trigger number is a look-up, not a calculation. Find the row that names the source and the pulse, and remember the list is in hexadecimal.",
+    },
+    {
       id: "adc-epwm",
       kind: "code",
       mode: "complete",
@@ -718,7 +788,7 @@ Now hand the trigger to hardware: an ePWM, used only as a very regular clock. Ho
 - \`TBCTL.CTRMODE\`: 3 freezes the counter, 0 counts up.
 
 ## The listening side: SOC0
-\`TRIGSEL\` holds the number of the trigger. From the manual's table: 0 is software only, 1 to 3 are CPU timers 0 to 2, 4 is a pin. Then come two numbers per ePWM, SOCA first: 5 and 6 for EPWM1, 7 and 8 for EPWM2, and so on.
+\`TRIGSEL\` holds the number of the trigger, from the list on the manual's page of \`ADCSOC0CTL\` that you read in the last level. The list is in hexadecimal: the row of ePWM5, ADCSOCA starts with 0Dh, which is 13.
 
 ## The blanks
 1. \`SOCASEL\`: pulse when the counter equals **zero**.
@@ -1061,7 +1131,7 @@ The robot carries a **rate gyro**. It is a sensor whose output voltage follows h
 ## Where it is connected
 The gyro is on pin **ADCINC5**: a pin of **ADCC**, not ADCA. Everything you know carries over with a new letter: \`AdccRegs\`, \`AdccResultRegs\`, and the interrupt **ADCC1**, which is in PIE group 1 like ADCA1.
 
-The set-up in \`main()\` is given: **four** SOCs of ADCC on one trigger, for the pins ADCINC2 to ADCINC5, with the interrupt after the last one. Each SOC has the three lines you know. One line is new: \`enableAdccInterrupt()\` comes from the board's library and sets the PIE and IER enables of ADCC1. Finding that PIE channel in Table 3-2 is part of Lab 4.
+The set-up in \`main()\` is given: **four** SOCs of ADCC on one trigger, for the pins ADCINC2 to ADCINC5, with the interrupt after the last one. The lab robot's gyro uses all four pins: it measures turning about two axes and gives each one twice, once as it is and once amplified four times for slow turns (Lab 4). This level reads ADCINC5 only. Each SOC has the three lines you know. One line is new: \`enableAdccInterrupt()\` comes from the board's library and sets the PIE and IER enables of ADCC1. Finding that PIE channel in Table 3-2 is part of Lab 4.
 
 ## Your part, in ADCC_ISR
 1. Find in \`main()\` the SOC whose \`CHSEL\` is 5. The result register has **that SOC's number**, not the pin's. Convert it to volts in \`adcC5Volt\`:
@@ -1161,7 +1231,7 @@ At rest the gyro outputs a constant voltage, its **offset**, about 1.2 V. The ex
 One sample is not a safe offset. Right after power-on the gyro has not settled, and every sample carries **noise**: a small random error. The **average** of many samples is much steadier. To average 200 samples, add them up and divide the sum by 200.
 
 ## Rate and angle
-A gyro's data sheet gives its range as two points. For the gyro of this simulated robot: **0.43 V at -200 deg/s** and **2.03 V at +200 deg/s**, with 1.23 V at rest. So 0.8 V away from rest is 200 deg/s, and one volt is 200 / 0.8 = **250 degrees per second**. Example: 1.43 V with an offset of 1.23 V is 0.2 V x 250 = 50 deg/s.
+A gyro's data sheet gives its range as two points. For the gyro of this simulated robot: **0.43 V at -200 deg/s** and **2.03 V at +200 deg/s**, with 1.23 V at rest. So 0.8 V away from rest is 200 deg/s, and one volt is 200 / 0.8 = **250 degrees per second**. Example: 1.43 V with an offset of 1.23 V is 0.2 V x 250 = 50 deg/s. One step of the ADC is 3.0 / 4096 = 0.73 mV, which is 0.18 deg/s here: a slower turn than that cannot be told from rest.
 
 The gyro on the lab robot (an LPR510) has another range. Lab 4 gives it in the same form, and you work out its scale the same way.
 
