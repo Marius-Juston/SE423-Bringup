@@ -1,12 +1,15 @@
 // The H-bridge and the course's way of driving it (Lab 3, exercise 2;
-// SE423Lib.c setEPWM1A / setEPWM2A; src/sim/plugins/actuators.ts): one PWM
-// signal on the amplifier's direction input. Pin high closes one diagonal,
-// pin low the other, so 50 % duty is zero average voltage, 100 % full
-// voltage one way and 0 % full voltage the other way. The control effort
-// u = -10..10 is saturated and mapped to CMPA = (u + 10) x TBPRD / 20 with
-// TBPRD = 2500 (20 kHz; TRM 15.4.3, 15.5). EPWM1A is the left motor, where
-// a duty cycle above 50 % drives the robot forward; the right motor is
-// mounted mirrored, so the course calls setEPWM2A(-u). In PWM mode the
+// src/sim/plugins/actuators.ts): one PWM signal on the amplifier's
+// direction input. Pin high closes one diagonal, pin low the other, so
+// 50 % duty is zero average voltage, 100 % full voltage one way and 0 %
+// full voltage the other way. The command is the power in percent of the
+// chapter 10 levels (setMotor1 / setMotor2), p = -100..100, saturated and
+// mapped to CMPA = (p + 100) x TBPRD / 200 with TBPRD = 2500 (20 kHz; TRM
+// 15.4.3, 15.5). It is not the course's control effort of -10..10: the
+// functions for that scale are a graded exercise of Lab 3, so the figure
+// does not show their line. EPWM1A is the left motor, where a duty cycle
+// above 50 % drives the robot forward; the right motor is mounted
+// mirrored, so it gets the opposite command, setMotor2(-p). In PWM mode the
 // drawing shows one half of the period at a time (never all four switches
 // closed: that would be shoot-through).
 import { useState } from "react";
@@ -40,7 +43,7 @@ function Head({ x, y, deg, c }: { x: number; y: number; deg: number; c: string }
 function HBridge() {
   const [pwm, setPwm] = useState(false);
   const [sw, setSw] = useState([true, false, false, true]);
-  const [u, setU] = useState(5);
+  const [u, setU] = useState(50);
   const [high, setHigh] = useState(true);
   const [s1, s2, s3, s4] = pwm ? [high, !high, !high, high] : sw;
   const toggle = (i: number) => {
@@ -48,9 +51,10 @@ function HBridge() {
     setSw(sw.map((v, k) => (k === i ? !v : v)));
   };
 
-  const us = Math.max(-10, Math.min(10, u));
+  // u is the power in percent.
+  const us = Math.max(-100, Math.min(100, u));
   const saturated = us !== u;
-  const cmpa = Math.floor(((us + 10) * TBPRD) / 20);
+  const cmpa = Math.floor(((us + 100) * TBPRD) / 200);
   const duty = cmpa / TBPRD;
   const net = 2 * duty - 1;
 
@@ -104,10 +108,10 @@ function HBridge() {
 
   let why: string;
   if (pwm) {
-    const first = saturated ? `u = ${u} is outside -10..10, so the function first cuts it back to ${us}. ` : "";
+    const first = saturated ? `p = ${u} is outside -100..100, so the function first cuts it back to ${us}. ` : "";
     why =
       net === 0
-        ? `${first}u = 0 is a 50 % duty cycle: the motor gets full voltage forward and full voltage backward for equal times, 20 000 times a second. The average is zero and the motor stands still, although the pin is switching the whole time.`
+        ? `${first}p = 0 is a 50 % duty cycle: the motor gets full voltage forward and full voltage backward for equal times, 20 000 times a second. The average is zero and the motor stands still, although the pin is switching the whole time.`
         : `${first}Duty ${pct(duty)}: in every 50 µs period the pin is high for ${pct(duty)} (S1 and S4 closed, forward) and low for ${pct(1 - duty)} (S3 and S2 closed, backward). The motor feels the difference, ${net > 0 ? "+" : "-"}${pct(Math.abs(net))} of the battery voltage: ${Math.abs(net) === 1 ? "full power" : "part power"} ${net > 0 ? "forward" : "backward"}. The drawing shows the part with the pin ${high ? "high" : "low"}.`;
   } else if (short)
     why = `Shoot-through: ${shortL && shortR ? "S1 and S2 are closed together, and so are S3 and S4. Each pair connects the battery" : `${shortL ? "S1 and S2" : "S3 and S4"} are closed together, so the battery is connected`} straight to ground through two switches. Nothing limits that current: the transistors burn. The amplifier's logic never allows this state.`;
@@ -120,14 +124,14 @@ function HBridge() {
   const X1 = 300;
   const Y0 = 92;
   const Y1 = 18;
-  const tx = (v: number) => X0 + ((v + 14) / 28) * (X1 - X0);
+  const tx = (v: number) => X0 + ((v + 140) / 280) * (X1 - X0);
   const ty = (c: number) => Y0 - (c / TBPRD) * (Y0 - Y1);
   const names = ["S1", "S2", "S3", "S4"];
 
   return (
     <figure className="figure hbr" aria-label="Interactive H-bridge: four switches around a motor, and the course's PWM drive">
       <style>{CSS}</style>
-      <svg viewBox={pwm ? "0 0 420 190" : "30 0 300 190"} role="img" aria-label={pwm ? `PWM drive, control effort ${u}, duty cycle ${pct(duty)}: motor ${state}. Drawn: the part of the period with the pin ${high ? "high, S1 and S4 closed" : "low, S3 and S2 closed"}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
+      <svg viewBox={pwm ? "0 0 420 190" : "30 0 300 190"} role="img" aria-label={pwm ? `PWM drive, power ${u} percent, duty cycle ${pct(duty)}: motor ${state}. Drawn: the part of the period with the pin ${high ? "high, S1 and S4 closed" : "low, S3 and S2 closed"}.` : `Switches closed: ${names.filter((_, i) => sw[i]).join(", ") || "none"}. Motor ${state}.`}>
         <text x={CX} y="12" textAnchor="middle" className="fig-label">battery +</text>
         <text x={CX} y="184" textAnchor="middle" className="fig-label">ground</text>
         {line(`M${CX},${TOP} H${LX}`, P.tl)}
@@ -217,9 +221,9 @@ function HBridge() {
       </div>
       {pwm && (
         <>
-          <svg viewBox="0 -4 420 120" role="img" aria-label={`Transfer line of setEPWM1A: control effort ${u} gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
-            <rect x={X0} y={Y1} width={tx(-10) - X0} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
-            <rect x={tx(10)} y={Y1} width={X1 - tx(10)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
+          <svg viewBox="0 -4 420 120" role="img" aria-label={`Transfer line of setMotor1: power ${u} percent gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
+            <rect x={X0} y={Y1} width={tx(-100) - X0} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
+            <rect x={tx(100)} y={Y1} width={X1 - tx(100)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
             <text x={X0 + 4} y={Y1 + 12} className="fig-label dim">saturated</text>
             <text x={X1 - 4} y={Y0 - 8} textAnchor="end" className="fig-label dim">saturated</text>
             {[0, 1250, 2500].map((c, i) => (
@@ -230,32 +234,32 @@ function HBridge() {
               </g>
             ))}
             <text x="4" y={Y1 - 9} className="fig-label dim">CMPA</text>
-            {[-10, 0, 10].map((v) => (
+            {[-100, 0, 100].map((v) => (
               <g key={v}>
                 <line x1={tx(v)} x2={tx(v)} y1={Y0} y2={Y0 + 3} className="fig-wire" />
                 <text x={tx(v)} y={Y0 + 13} textAnchor="middle" className="fig-label">{v}</text>
               </g>
             ))}
-            <text x={X1} y={Y0 + 13} textAnchor="end" className="fig-label dim">u</text>
-            <path d={`M${X0},${ty(0)} H${tx(-10)} L${tx(10)},${ty(TBPRD)} H${X1}`} className="fig-trace data" strokeLinejoin="round" />
+            <text x={X1} y={Y0 + 13} textAnchor="end" className="fig-label dim">p</text>
+            <path d={`M${X0},${ty(0)} H${tx(-100)} L${tx(100)},${ty(TBPRD)} H${X1}`} className="fig-trace data" strokeLinejoin="round" />
             <line x1={tx(u)} x2={tx(u)} y1={Y0} y2={ty(cmpa)} className="fig-sample" />
             <line x1={X0} x2={tx(u)} y1={ty(cmpa)} y2={ty(cmpa)} className="fig-sample" />
             <circle cx={tx(u)} cy={ty(cmpa)} r="4" fill="var(--accent)" stroke="var(--text)" strokeWidth="1" />
           </svg>
           <div className="fig-controls">
             <div>
-              <span>Effort u</span>
-              <input type="range" min={-14} max={14} step={0.5} value={u} aria-label="Control effort u" onChange={(e) => setU(+e.target.value)} />
+              <span>Power p</span>
+              <input type="range" min={-140} max={140} step={5} value={u} aria-label="Power p in percent" onChange={(e) => setU(+e.target.value)} />
               <span className="hbr-num">{u}</span>
               <button className="fig-opt" onClick={() => setU(0)}>stop (0)</button>
             </div>
           </div>
-          <CodePre><code>{`setEPWM1A(${u});${saturated ? `   // saturated to ${us}` : ""}\n// -10 is 0 % duty, 0 is 50 %, +10 is 100 %,\n// on a straight line in between: here ${pct(duty)}`}</code></CodePre>
+          <CodePre><code>{`setMotor1(${u});${saturated ? `   // saturated to ${us}` : ""}\n// -100 is 0 % duty, 0 is 50 %, +100 is 100 %,\n// on a straight line in between: here ${pct(duty)}`}</code></CodePre>
         </>
       )}
       <figcaption>
         {pwm
-          ? "The robot's amplifier takes one PWM signal as its direction input and works the four switches itself, one diagonal at a time. The duty cycle is a signed command centred on 50 %: a stopped motor is a pin switching at exactly half. The right motor is mounted mirrored, so the course calls setEPWM2A(-u)."
+          ? "The robot's amplifier takes one PWM signal as its direction input and works the four switches itself, one diagonal at a time. The duty cycle is a signed command centred on 50 %: a stopped motor is a pin switching at exactly half. The right motor is mounted mirrored, so it gets the opposite command: setMotor2(-p)."
           : "Four switches connect the motor to the battery either way round. The two diagonals are the two directions. Two closed switches in the same leg short the battery: the one state that must never happen."}
       </figcaption>
     </figure>

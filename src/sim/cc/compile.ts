@@ -258,6 +258,8 @@ export class Compiler {
             : `The function '${f.name}' is defined twice.`,
         );
       }
+      // The student's definition takes the place of a replaceable native of the library.
+      if (existing?.replaceable && existing.native) existing.native = undefined;
       this.declareFn(f.name, f.t, f.line, f.interrupt).t = f.t;
     }
     for (const g of unit.globals) this.globalDecl(g);

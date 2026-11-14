@@ -1,9 +1,12 @@
 // An RC servo reads the width of a pulse that repeats every 20 ms (HW4,
 // SE423Lib.c; src/sim/plugins/actuators.ts): 0.8 ms (4 %) is -90 degrees,
-// 1.6 ms (8 %) is 0 and 2.4 ms (12 %) is +90. The time base is the one of
-// chapter 10 (ch10_actuators.ts, act-pwm-math and act-servo), not the
-// homework's: CLKDIV = 5 (/32) so TBCLK = 50 MHz / 32 = 1.5625 MHz, 640 ns
-// a count (TBCTL, TRM 15.15.2), and TBPRD = 31250 for 20 ms (15.4.3).
+// 1.6 ms (8 %) is 0 and 2.4 ms (12 %) is +90. The time base, the channel
+// and the command are those of chapter 10 (ch10_actuators.ts,
+// act-servo-numbers and act-servo), not the homework's: EPWM5A on GPIO8,
+// CLKDIV = 5 (/32) so TBCLK = 50 MHz / 32 = 1.5625 MHz, 640 ns a count
+// (TBCTL, TRM 15.15.2), TBPRD = 31250 for 20 ms (15.4.3), and a position
+// counted from one end of the travel, 0 to 180, where Homework 4 has the
+// students write a function of the angle from the middle.
 // CMPA: 1250 (-90), 2500 (0), 3750 (+90); the slider runs 625 to 4375
 // (0.4 to 2.8 ms) in steps of 25 counts (16 us) to show the stops.
 import { useRef, useState } from "react";
@@ -71,7 +74,7 @@ function ServoPulse() {
   };
 
   const why = over
-    ? `${ms.toFixed(2)} ms is ${raw > 0 ? "wider than the 2.4 ms for +90" : "narrower than the 0.8 ms for -90"} degrees. The arm is already at its mechanical stop and the servo strains against it. The course's function saturates the angle first, so CMPA stays between ${CENTRE - PER_90} and ${CENTRE + PER_90}.`
+    ? `${ms.toFixed(2)} ms is ${raw > 0 ? "wider than the 2.4 ms for +90" : "narrower than the 0.8 ms for -90"} degrees. The arm is already at its mechanical stop and the servo strains against it. A servo function saturates its command first, so CMPA stays between ${CENTRE - PER_90} and ${CENTRE + PER_90}.`
     : `A pulse ${ms.toFixed(2)} ms wide, repeated every 20 ms, means ${angle > 0 ? "+" : ""}${angle.toFixed(1).replace(/\.0$/, "")} degrees. Only the width counts: the other ${(20 - ms).toFixed(2)} ms of the frame carry no information, which is why the duty cycle only runs from 4 % to 12 %.`;
 
   return (
@@ -79,8 +82,8 @@ function ServoPulse() {
       <style>{CSS}</style>
       <svg ref={svg} viewBox="0 -3 420 171" role="img" aria-label={`Pulse width ${ms.toFixed(2)} milliseconds in a 20 millisecond frame, CMPA ${cmpa}: servo arm at ${angle.toFixed(1)} degrees${over ? ", at its mechanical stop" : ""}.`}>
         {/* whole frame */}
-        <text x="4" y={FH - 3} className="fig-label">EPWM8A</text>
-        <text x="4" y={FH + 9} className="fig-label dim">GPIO14</text>
+        <text x="4" y={FH - 3} className="fig-label">EPWM5A</text>
+        <text x="4" y={FH + 9} className="fig-label dim">GPIO8</text>
         <path d={`M${X0},${FL} V${FH} H${xf(ms)} V${FL} Z M${xf(20)},${FL} V${FH} H${xf(20 + ms)} V${FL} Z`} fill="var(--accent-soft)" />
         <path d={frame} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         <path d={`M${X0},14 V10 H${xf(20)} V14`} className="fig-wire" />
@@ -132,7 +135,7 @@ function ServoPulse() {
       <div className="srvp-read">
         <div>Pulse width<b>{ms.toFixed(2)} ms</b>{cmpa} x 640 ns</div>
         <div>Duty cycle<b>{duty.toFixed(2).replace(/\.?0+$/, "")} %</b>{cmpa} / {TBPRD}</div>
-        <div>Angle<b>{angle.toFixed(1).replace(/\.0$/, "")}°</b>{over ? "limited by the stop" : "90° per 0.8 ms"}</div>
+        <div>Angle<b>{angle.toFixed(1).replace(/\.0$/, "")}°</b>{over ? "limited by the stop" : `position ${(angle + 90).toFixed(1).replace(/\.0$/, "")} of 180`}</div>
       </div>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -148,7 +151,7 @@ function ServoPulse() {
           ))}
         </div>
       </div>
-      <CodePre><code>{`EPwm8Regs.TBCTL.bit.CLKDIV = 5;  // /32: 640 ns a count\nEPwm8Regs.TBPRD = ${TBPRD};         // 20 ms\nEPwm8Regs.CMPA.bit.CMPA = ${cmpa};  // ${ms.toFixed(2)} ms${over ? "" : `\n// = ${CENTRE} + (${angle.toFixed(1).replace(/\.0$/, "")}) * ${PER_90}.0 / 90.0`}`}</code></CodePre>
+      <CodePre><code>{`EPwm5Regs.TBCTL.bit.CLKDIV = 5;  // /32: 640 ns a count\nEPwm5Regs.TBPRD = ${TBPRD};         // 20 ms\nEPwm5Regs.CMPA.bit.CMPA = ${cmpa};  // ${ms.toFixed(2)} ms${over ? "" : `\n// position ${(angle + 90).toFixed(1).replace(/\.0$/, "")}: ${CENTRE - PER_90} + ${(angle + 90).toFixed(1).replace(/\.0$/, "")} * ${2 * PER_90}.0 / 180.0`}`}</code></CodePre>
       <figcaption>Top: the whole 20 ms frame, in which the pulse is only a sliver. Below: the first 3.2 ms enlarged; the falling edge can be dragged. At 50 MHz a 20 ms frame would be a million counts, too many for the 16-bit TBPRD, so the clock is divided, here by 32.</figcaption>
     </figure>
   );

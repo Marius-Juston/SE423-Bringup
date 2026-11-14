@@ -2,12 +2,13 @@ import { useState } from "react";
 import { CodePre } from "../CopyButton";
 
 // Proportional steering: the correction is a gain times the error, then
-// limited. The numbers are the wall follower of the course's final project
-// starter (lecture 14, Lab 6): ref_right_wall = 1.1 ft, Kp_right_wal = -4.0,
-// turn_saturation = 2.5, and the course's sign: positive turn = right.
-const REF = 1.1;
-const LIMIT = 2.5;
-const GAINS = [-1, -4, -8];
+// limited. The law and the variable names are the wall follower's of lecture
+// 14 and Lab 6, with the course's sign: positive turn = right. The numbers
+// are those of the level "Steer in proportion" (chapter 17), which are the
+// game's own: the course has students find theirs on the robot (Lab 6).
+const REF = 1.5;
+const LIMIT = 2;
+const GAINS = [-1, -3, -6];
 
 const WALL_Y = 156;
 const PX_PER_FT = 40;
@@ -16,8 +17,8 @@ const yOf = (ft: number) => WALL_Y - ft * PX_PER_FT;
 const signed = (v: number, digits = 2) => `${v > 0 ? "+" : ""}${v.toFixed(digits)}`;
 
 function MathProportional() {
-  const [d, setD] = useState(1.5);
-  const [kp, setKp] = useState(-4);
+  const [d, setD] = useState(1.9);
+  const [kp, setKp] = useState(-3);
 
   const error = REF - d;
   const raw = kp * error;
@@ -30,7 +31,7 @@ function MathProportional() {
   const bend = turn * 14;
   /** Baseline of the "turns left / right" label at the arrow's end. */
   const turnY = y + bend + (turn >= 0 ? 12 : -5);
-  const gy = (v: number) => 86 + v * 26; // gauge: -2.5 at the top, +2.5 at the bottom
+  const gy = (v: number) => 86 + (v * 65) / LIMIT; // gauge: -LIMIT at the top, +LIMIT at the bottom
 
   const why = onTarget
     ? `The robot is at the wanted distance. The error is ${error.toFixed(1)}, so turn is ${turn.toFixed(1)}: it drives straight on.`
@@ -89,9 +90,9 @@ function MathProportional() {
         <text x="362" y="12" textAnchor="middle" className="fig-label">{limited ? "turn (limited)" : "turn"}</text>
         <rect x="354" y={gy(-LIMIT)} width="16" height={gy(LIMIT) - gy(-LIMIT)} rx="3" className="mprop-gauge" />
         <line x1="350" x2="374" y1={gy(0)} y2={gy(0)} className="fig-wire" />
-        <text x="348" y={gy(-LIMIT) + 8} textAnchor="end" className="fig-label dim">left -{LIMIT}</text>
+        <text x="348" y={gy(-LIMIT) + 8} textAnchor="end" className="fig-label dim">left -{LIMIT.toFixed(1)}</text>
         <text x="348" y={gy(0) + 3} textAnchor="end" className="fig-label dim">0</text>
-        <text x="348" y={gy(LIMIT)} textAnchor="end" className="fig-label dim">right +{LIMIT}</text>
+        <text x="348" y={gy(LIMIT)} textAnchor="end" className="fig-label dim">right +{LIMIT.toFixed(1)}</text>
         <rect x="354" y={Math.min(gy(0), gy(turn))} width="16" height={Math.abs(gy(turn) - gy(0))} className="mprop-mark" opacity="0.35" />
         <polygon points={`376,${gy(turn)} 386,${gy(turn) - 5} 386,${gy(turn) + 5}`} className="mprop-mark" />
         <text x="389" y={gy(turn) + 3} className="fig-value small">{signed(turn, 1)}</text>

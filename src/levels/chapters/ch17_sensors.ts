@@ -815,18 +815,24 @@ const DELIVER_HINT: Record<number, string> = {
 
 // ---------- the course's two-state wall follower ----------
 
-// Names (with their spelling) and starting values of the final project starter.
-const STEER_VARS = `// The wall-following variables of the course's final project starter,
-// with their names and starting values
+// The names (with their spelling) are those of the final project starter. The values are
+// not: finding the wanted distance, the gains, the thresholds and the limit on the robot is
+// graded work in Lab 6 (exercise 5), so the game follows its wall with numbers of its own.
+// The two speeds are the starting values the lab handout itself names.
+const WF = { kpFront: -1.0, frontV: 0.4, stop: 4.0, kpRight: -3.0, ref: 1.5, fwd: 1.0, start: 1.6, sat: 2.0 };
+const f1 = (v: number) => v.toFixed(1);
+
+const STEER_VARS = `// The wall follower's variables, with the names of the course's final project
+// starter. The values are this game's own: you tune yours on the robot in Lab 6
 uint16_t right_wall_follow_state = 2;   // 1: left turn, 2: right wall follow
-float Kp_front_wall = -2.0;
-float front_turn_velocity = 0.2;        // ft/s while turning left
-float left_turn_Stop_threshold = 3.5;   // ft: the turn ends when the front is this open
-float Kp_right_wal = -4.0;
-float ref_right_wall = 1.1;             // ft: wanted reading of LADARrightfront
-float foward_velocity = 1.0;            // ft/s along the wall
-float left_turn_Start_threshold = 1.3;  // ft: closer than this in front starts a turn
-float turn_saturation = 2.5;
+float Kp_front_wall = ${f1(WF.kpFront)};
+float front_turn_velocity = ${f1(WF.frontV)};        // ft/s while turning left
+float left_turn_Stop_threshold = ${f1(WF.stop)};   // ft: the turn ends when the front is this open
+float Kp_right_wal = ${f1(WF.kpRight)};
+float ref_right_wall = ${f1(WF.ref)};             // ft: wanted reading of LADARrightfront
+float foward_velocity = ${f1(WF.fwd)};            // ft/s along the wall
+float left_turn_Start_threshold = ${f1(WF.start)};  // ft: closer than this in front starts a turn
+float turn_saturation = ${f1(WF.sat)};
 
 float LADARfront = 0;        // smallest of points 111 to 115, feet
 float LADARrightfront = 0;   // smallest of points 52 to 56, feet
@@ -857,10 +863,10 @@ const STEER_BODY = `    if (right_wall_follow_state == 1) {
 
 /** One call of the course's wall follower: the commands of this scan and the state for the next. */
 const steerStep = (state: number, front: number, rightFront: number) => {
-  const raw = state === 1 ? -2.0 * (14.5 - front) : -4.0 * (1.1 - rightFront);
-  const turn = Math.max(-2.5, Math.min(2.5, raw));
-  const vref = state === 1 ? 0.2 : 1.0;
-  const next = state === 1 ? (front > 3.5 ? 2 : 1) : front < 1.3 ? 1 : 2;
+  const raw = state === 1 ? WF.kpFront * (14.5 - front) : WF.kpRight * (WF.ref - rightFront);
+  const turn = Math.max(-WF.sat, Math.min(WF.sat, raw));
+  const vref = state === 1 ? WF.frontV : WF.fwd;
+  const next = state === 1 ? (front > WF.stop ? 2 : 1) : front < WF.start ? 1 : 2;
   return { turn, vref, next };
 };
 
@@ -894,14 +900,14 @@ __interrupt void cpu_timer1_isr(void)
 
 // One pose per scan, in the 10 ft box, starting in state 2 (right wall follow).
 const STEER_SCRIPT: { pose: Partial<Pose>; why: string }[] = [
-  { pose: { room: 0, x: 5, y: 1, theta: 0 }, why: "wall 1 ft to the right: almost no correction" },
-  { pose: { x: 5, y: 1.4, theta: 0 }, why: "too far from the wall: turn right, towards it" },
-  { pose: { x: 5, y: 0.7, theta: 0 }, why: "too close: turn left, away from it" },
-  { pose: { x: 5, y: 2.5, theta: 0 }, why: "far too far: the turn command is limited" },
-  { pose: { x: 8.9, y: 1, theta: 0 }, why: "a wall 1.1 ft ahead: still following on this scan, left turn from the next" },
-  { pose: { x: 8.9, y: 1, theta: 0.8 }, why: "turning left, front 1.5 ft: not open enough, keep turning" },
-  { pose: { x: 8.9, y: 1, theta: Math.PI / 2 }, why: "front open: this scan still turns, the next one follows" },
-  { pose: { x: 8.9, y: 1.2, theta: Math.PI / 2 }, why: "following the new wall" },
+  { pose: { room: 0, x: 5, y: 1.3, theta: 0 }, why: "wall 1.3 ft to the right: almost no correction" },
+  { pose: { x: 5, y: 1.7, theta: 0 }, why: "too far from the wall: turn right, towards it" },
+  { pose: { x: 5, y: 1.0, theta: 0 }, why: "too close: turn left, away from it" },
+  { pose: { x: 5, y: 2.8, theta: 0 }, why: "far too far: the turn command is limited" },
+  { pose: { x: 8.6, y: 1.3, theta: 0 }, why: "a wall 1.4 ft ahead: still following on this scan, left turn from the next" },
+  { pose: { x: 8.6, y: 1.3, theta: 0.8 }, why: "turning left, front 1.9 ft: not open enough, keep turning" },
+  { pose: { x: 8.6, y: 1.3, theta: Math.PI / 2 }, why: "front open: this scan still turns, the next one follows" },
+  { pose: { x: 8.6, y: 1.5, theta: Math.PI / 2 }, why: "following the new wall" },
 ];
 const STEER_RUN = (() => {
   let pose: Pose = { room: 0, x: 5, y: 5, theta: 0 };
@@ -1732,10 +1738,10 @@ Notice the two different numbers for the front: the robot starts turning below 1
       id: "sens-pturn",
       kind: "calc",
       title: "Steer in proportion",
-      goal: "Compute the turn command of a robot that should stay 1.1 ft from a wall: the error, the gain and the limit.",
+      goal: "Compute the turn command of a robot that should stay 1.5 ft from a wall: the error, the gain and the limit.",
       refs: [{ course: "L14", slide: 37, note: "the turn law of state 1" }, { course: "Lab 6" }],
       brief: `
-The robot should drive along a wall on its right, 1.1 ft away from it. How hard should it steer when it is off? Full lock every time makes it zigzag. The usual answer is to steer **in proportion**: a little when it is a little off, more when it is far off. That takes three steps.
+The robot should drive along a wall on its right, 1.5 ft away from it. How hard should it steer when it is off? Full lock every time makes it zigzag. The usual answer is to steer **in proportion**: a little when it is a little off, more when it is far off. That takes three steps.
 
 1. The **error**: what you want minus what you measure. Zero means nothing to correct.
 2. The command: the error times a fixed number, the **gain**. A larger gain reacts harder to the same error.
@@ -1753,9 +1759,9 @@ if (turn < -turn_saturation) {
 }
 \`\`\`
 
-with \`ref_right_wall = 1.1\` (wanted, ft), \`Kp_right_wal = -4.0\` (the gain) and \`turn_saturation = 2.5\`. \`LADARrightfront\` is the measured distance to the wall.
+Here \`ref_right_wall = 1.5\` (wanted, ft), \`Kp_right_wal = -3.0\` (the gain) and \`turn_saturation = 2.0\`. \`LADARrightfront\` is the measured distance to the wall. These three numbers are this game's own. On the real robot you find yours by trying, which is part of Lab 6.
 
-**Worked example.** The robot measures 1.5 ft. Error: 1.1 - 1.5 = **-0.4** ft, so it is too far away. Turn: -4.0 * -0.4 = **+1.6**: positive, to the right, back towards the wall. Inside the limit, so it stays 1.6.
+**Worked example.** The robot measures 1.9 ft. Error: 1.5 - 1.9 = **-0.4** ft, so it is too far away. Turn: -3.0 * -0.4 = **+1.2**: positive, to the right, back towards the wall. Inside the limit, so it stays 1.2.
 
 The gain is negative because the wall is on the right: "too far" is a negative error and must give a positive turn.
 
@@ -1764,16 +1770,16 @@ Try it in the figure: move the robot away from the wall until the command hits t
 {{figure:math-proportional}}
 `,
       fields: [
-        { id: "err", label: "The robot measures 0.8 ft. Error (wanted - measured)", unit: "ft", answer: 0.3, tolPct: 1, why: "1.1 - 0.8 = +0.3 ft: positive, the robot is too close to the wall." },
-        { id: "turn", label: "turn for that reading", answer: -1.2, tolPct: 1, why: "-4.0 * 0.3 = -1.2: negative, a left turn, away from the wall." },
-        { id: "far", label: "The robot measures 2.0 ft. turn before the limit", answer: 3.6, tolPct: 1, why: "Error 1.1 - 2.0 = -0.9. -4.0 * -0.9 = +3.6." },
-        { id: "sat", label: "turn after the limit, for that reading", answer: 2.5, why: "3.6 is more than turn_saturation, so turn is cut to 2.5: turn right as hard as allowed." },
-        { id: "zero", label: "Measured distance at which turn is exactly 0", unit: "ft", answer: 1.1, tolPct: 1, why: "turn is 0 when the error is 0: when the robot measures what it wants, 1.1 ft." },
+        { id: "err", label: "The robot measures 1.2 ft. Error (wanted - measured)", unit: "ft", answer: 0.3, tolPct: 1, why: "1.5 - 1.2 = +0.3 ft: positive, the robot is too close to the wall." },
+        { id: "turn", label: "turn for that reading", answer: -0.9, tolPct: 1, why: "-3.0 * 0.3 = -0.9: negative, a left turn, away from the wall." },
+        { id: "far", label: "The robot measures 2.4 ft. turn before the limit", answer: 2.7, tolPct: 1, why: "Error 1.5 - 2.4 = -0.9. -3.0 * -0.9 = +2.7." },
+        { id: "sat", label: "turn after the limit, for that reading", answer: 2.0, why: "2.7 is more than turn_saturation, so turn is cut to 2.0: turn right as hard as allowed." },
+        { id: "zero", label: "Measured distance at which turn is exactly 0", unit: "ft", answer: 1.5, tolPct: 1, why: "turn is 0 when the error is 0: when the robot measures what it wants, 1.5 ft." },
       ],
       hints: [
-        "Always wanted minus measured, in that order. Then multiply by -4.0. Keep track of the signs: minus times minus is plus.",
-        "For 0.8 ft: 1.1 - 0.8, then times -4.0. For 2.0 ft: 1.1 - 2.0, then times -4.0, then compare with 2.5.",
-        "0.3, then -4.0 * 0.3 = -1.2. For 2.0 ft: -4.0 * -0.9 = 3.6, which the limit cuts to 2.5. The turn is 0 at the wanted distance.",
+        "Always wanted minus measured, in that order. Then multiply by -3.0. Keep track of the signs: minus times minus is plus.",
+        "For 1.2 ft: 1.5 - 1.2, then times -3.0. For 2.4 ft: 1.5 - 2.4, then times -3.0, then compare with 2.0.",
+        "0.3, then -3.0 * 0.3 = -0.9. For 2.4 ft: -3.0 * -0.9 = 2.7, which the limit cuts to 2.0. The turn is 0 at the wanted distance.",
       ],
       takeaway: "Error = wanted - measured, command = gain * error, then limit. This is a proportional (P) controller. Chapter 16 uses the same three steps for the wheel speeds.",
     },
@@ -1819,12 +1825,12 @@ turn = Kp_front_wall*(14.5 - LADARfront);
 vref = front_turn_velocity;
 \`\`\`
 
-With a wall 1.2 ft ahead that is -2.0 * 13.3 = -26.6, which the limit cuts to -2.5: a hard left. Then, if \`LADARfront > left_turn_Stop_threshold\`, the way is open: go to state 2.
+With a wall 1.5 ft ahead that is -1.0 * 13.0 = -13.0, which the limit cuts to -2.0: a hard left. Then, if \`LADARfront > left_turn_Stop_threshold\`, the way is open: go to state 2.
 
 **In both states**, last of all, limit \`turn\` to the range \`-turn_saturation\` to \`turn_saturation\`.
 
 ## Your task
-Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (right_wall_follow_state == 2) { ... }\`. Keep the order above: first the commands of the state you are in, then the test that may change the state for the **next** scan. All the variables exist, with the starter's names (and spelling: \`foward_velocity\`, \`Kp_right_wal\`) and values. The tests place the robot along a wall of a 10 ft room, at a wall ahead, and through the left turn.
+Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (right_wall_follow_state == 2) { ... }\`. Keep the order above: first the commands of the state you are in, then the test that may change the state for the **next** scan. All the variables exist, with the starter's names (and spelling: \`foward_velocity\`, \`Kp_right_wal\`). Their values are this game's own: tuning them on the real robot is part of Lab 6. The tests place the robot along a wall of a 10 ft room, at a wall ahead, and through the left turn.
 `,
       kit: "robot",
       durationMs: 60 + 100 * STEER_SCRIPT.length,
@@ -1840,16 +1846,16 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
             160 + 100 * i,
             `Scan ${i + 1}, ${STEER_SCRIPT[i].why}: turn is ${r.turn.toFixed(2)}`,
             i === 6
-              ? "A small positive number: these commands came from state 2. On the scan that ends the turn, turn and vref are still those of state 1 and only the state changes, so use else if: one state's code per call. About -11: the limit is missing on the negative side."
-              : Math.abs(r.turn) === 2.5 && r.before === 1
-                ? "The left-turn law gives about -26 here. Limit turn to -turn_saturation .. turn_saturation after the if chain, for both signs and in both states."
-                : Math.abs(r.turn) === 2.5
-                  ? "More than 2.5: limit turn to -turn_saturation .. turn_saturation after the if chain. -2.5: the sign of the law is wrong, see the hint of scan 2."
+              ? "A small positive number: these commands came from state 2. On the scan that ends the turn, turn and vref are still those of state 1 and only the state changes, so use else if: one state's code per call. About -6: the limit is missing on the negative side."
+              : Math.abs(r.turn) === WF.sat && r.before === 1
+                ? "The left-turn law gives about -13 here. Limit turn to -turn_saturation .. turn_saturation after the if chain, for both signs and in both states."
+                : Math.abs(r.turn) === WF.sat
+                  ? "More than 2.0: limit turn to -turn_saturation .. turn_saturation after the if chain. -2.0: the sign of the law is wrong, see the hint of scan 2."
                   : i === 1
                     ? "The sign is wrong if this is negative: turn = Kp_right_wal*(ref_right_wall - LADARrightfront), wanted minus measured, and Kp_right_wal is already negative."
                     : i === 4
                       ? "On the scan that sees the wall ahead, the commands still come from state 2. Only the state changes."
-                      : "0: wall_follow() did not set turn in this state. The opposite sign: the bracket is (ref_right_wall - LADARrightfront), wanted minus measured. -2.5: the code of state 1 ran; compare with == and not with =.",
+                      : "0: wall_follow() did not set turn in this state. The opposite sign: the bracket is (ref_right_wall - LADARrightfront), wanted minus measured. -2.0: the code of state 1 ran; compare with == and not with =.",
           ),
           {
             kind: "var" as const,
@@ -1857,11 +1863,11 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
             at: 160 + 100 * i,
             equals: r.next,
             label: `Scan ${i + 1}: front ${r.front.toFixed(2)} ft, so the state for the next scan is ${r.next}`,
-            hint: i === 5 ? "A left turn ends above left_turn_Stop_threshold (3.5 ft), not above the 1.3 ft that started it." : undefined,
+            hint: i === 5 ? "A left turn ends above left_turn_Stop_threshold (4.0 ft), not above the 1.6 ft that started it." : undefined,
           },
         ]),
         near("vref", 1.0, 0.001, 160, "Following the wall: vref is foward_velocity, 1.0 ft/s", "Set vref in each state, next to turn."),
-        near("vref", 0.2, 0.001, 660, "Turning left: vref is front_turn_velocity, 0.2 ft/s", "State 1 drives slowly: vref = front_turn_velocity; there."),
+        near("vref", WF.frontV, 0.001, 660, "Turning left: vref is front_turn_velocity, 0.4 ft/s", "State 1 drives slowly: vref = front_turn_velocity; there."),
       ],
       watch: ["right_wall_follow_state", "LADARfront", "LADARrightfront", "vref", "turn"],
       hints: [
@@ -1869,7 +1875,7 @@ Write \`wall_follow()\` as \`if (right_wall_follow_state == 1) { ... } else if (
         "The limit comes after both branches: `if (turn > turn_saturation) { turn = turn_saturation; }` and the same for the negative side.",
         "State 2: `turn = Kp_right_wal*(ref_right_wall - LADARrightfront); vref = foward_velocity; if (LADARfront < left_turn_Start_threshold) { right_wall_follow_state = 1; }`. State 1 has the same shape with the other two lines of the brief and `>` `left_turn_Stop_threshold`.",
       ],
-      takeaway: "Wall following is a proportional controller on a distance, wrapped in a state machine. With the starter's numbers the left turn is always at the limit (-2.5), because LADARfront is far below 14.5 ft for any wall the sensor can see: the gains and thresholds are a starting point that you tune on the robot.",
+      takeaway: "Wall following is a proportional controller on a distance, wrapped in a state machine. With these numbers the left turn is always at the limit (-2.0), because LADARfront is far below 14.5 ft for any wall the sensor can see. The gains, distances and thresholds here are only a starting point: you tune your own on the robot in Lab 6.",
     },
     {
       id: "sens-chatter",

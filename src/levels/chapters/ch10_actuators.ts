@@ -67,40 +67,48 @@ ${motorPwm(2, tbprd, tbprd / 2)}
     GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);  // EPWM2A
 }`;
 
-/** setEPWM1A / setEPWM2A as in SE423Lib.c. */
-const setEpwm = (n: number) => `void setEPWM${n}A(float controleffort)
+/**
+ * This chapter's motor function: a power in percent, -100 to 100. The course's
+ * own setEPWM1A / setEPWM2A (control effort -10 to 10) are written by the
+ * students in Lab 3, so no level shows their bodies: the simulator's library
+ * provides them (src/sim/plugins/actuators.ts).
+ */
+const setMotor = (n: number) => `void setMotor${n}(float percent)
 {
-    if (controleffort < -10) {
-        controleffort = -10;
+    if (percent < -100) {
+        percent = -100;
     }
-    if (controleffort > 10) {
-        controleffort = 10;
+    if (percent > 100) {
+        percent = 100;
     }
     uint16_t period = EPwm${n}Regs.TBPRD;
-    float value = (controleffort + 10) * period / 20.0;
+    float value = (percent + 100) * period / 200.0;
     EPwm${n}Regs.CMPA.bit.CMPA = value;
 }`;
 
-const SERVO_A_INIT = `    EPwm8Regs.TBCTL.bit.CTRMODE = 0;     // count up
-    EPwm8Regs.TBCTL.bit.FREE_SOFT = 3;   // free run
-    EPwm8Regs.TBCTL.bit.CLKDIV = 5;      // divide by 32: 1.5625 MHz
-    EPwm8Regs.TBCTL.bit.PHSEN = 0;
-    EPwm8Regs.TBCTR = 0;
-    EPwm8Regs.TBPRD = 31250;             // 20 ms: 50 Hz
-    EPwm8Regs.CMPA.bit.CMPA = 2500;      // 8 %: 0 degrees
-    EPwm8Regs.AQCTLA.bit.CAU = 1;        // clear at CMPA
-    EPwm8Regs.AQCTLA.bit.ZRO = 2;        // set at zero
-    EPwm8Regs.TBPHS.bit.TBPHS = 0;`;
+// The servo levels use the robot's connectors on EPWM5A / EPWM5B (GPIO8, GPIO9) and count
+// the position from one end of the travel (0 to 180), where Homework 4 has the students
+// write functions for EPWM8 with an angle from the middle.
+const SERVO_A_INIT = `    EPwm5Regs.TBCTL.bit.CTRMODE = 0;     // count up
+    EPwm5Regs.TBCTL.bit.FREE_SOFT = 3;   // free run
+    EPwm5Regs.TBCTL.bit.CLKDIV = 5;      // divide by 32: 1.5625 MHz
+    EPwm5Regs.TBCTL.bit.PHSEN = 0;
+    EPwm5Regs.TBCTR = 0;
+    EPwm5Regs.TBPRD = 31250;             // 20 ms: 50 Hz
+    EPwm5Regs.CMPA.bit.CMPA = 2500;      // 8 %: the middle
+    EPwm5Regs.AQCTLA.bit.CAU = 1;        // clear at CMPA
+    EPwm5Regs.AQCTLA.bit.ZRO = 2;        // set at zero
+    EPwm5Regs.TBPHS.bit.TBPHS = 0;`;
 
-const SET_SERVO_A = `void setEPWM8A_RCServo(float angle)
+const SET_SERVO_A = `void setServo5A(float position)
 {
-    if (angle > 90) {
-        angle = 90;
+    if (position > 180) {
+        position = 180;
     }
-    if (angle < -90) {
-        angle = -90;
+    if (position < 0) {
+        position = 0;
     }
-    EPwm8Regs.CMPA.bit.CMPA = 2500 + angle * 1250.0 / 90.0;
+    EPwm5Regs.CMPA.bit.CMPA = 1250 + position * 2500.0 / 180.0;
 }`;
 
 const NOTES = `#define C4NOTE ((uint16_t)(((50000000/4)/2)/261.63))
@@ -259,37 +267,39 @@ The amplifier's direction input chooses between those two pairs, and never close
       id: "act-numbers",
       kind: "calc",
       title: "From a command to counts",
-      goal: "Convert motor commands from -10 to 10 into duty cycles and compare values.",
+      goal: "Convert motor commands from -100 to 100 percent into duty cycles and compare values.",
       refs: [{ course: "L6-7", slide: 77 }, { course: "Lab 3" }, { trm: "15.5" }],
       brief: `
-Your control code should not have to think in counts. Lab 3 has you write every motor command as a **control effort** \`u\`: a number from **-10** (full power backward) through **0** (stop) to **10** (full power forward). One function, \`setEPWM2A(float u)\`, turns it into a duty cycle on a straight line:
+Your control code should not have to think in counts. In this chapter a motor command is a **power** \`p\` in percent: **-100** is full power backward, **0** is stop and **100** is full power forward. One function per motor turns it into a duty cycle on a straight line:
 
-- u = -10 is 0 %
-- u = 0 is 50 %
-- u = 10 is 100 %
+- p = -100 is 0 %
+- p = 0 is 50 %
+- p = 100 is 100 %
 
 Two steps:
 
-1. \`duty = (u + 10) / 20\`. Adding 10 moves the range -10..10 to 0..20, and dividing by 20 makes it a fraction from 0 to 1.
+1. \`duty = (p + 100) / 200\`. Adding 100 moves the range -100..100 to 0..200, and dividing by 200 makes it a fraction from 0 to 1.
 2. \`CMPA = duty x TBPRD\`, as in chapter 9.
 
 The motor PWMs run at 20 kHz, so \`TBPRD = 2500\` (50 MHz / 20 kHz).
 
-**Worked example**, u = 2: duty = (2 + 10) / 20 = 0.60, so CMPA = 0.60 x 2500 = 1500.
+**Worked example**, p = 20: duty = (20 + 100) / 200 = 0.60, so CMPA = 0.60 x 2500 = 1500.
 
-A value outside -10..10 is first **saturated**: cut back to the nearest limit. A command of 14 is treated as 10. Without that step, 14 would ask for a duty of 120 %, and a \`CMPA\` above \`TBPRD\` is never reached by the counter.
+A value outside -100..100 is first **saturated**: cut back to the nearest limit. A command of 130 is treated as 100. Without that step, 130 would ask for a duty of 115 %, and a \`CMPA\` above \`TBPRD\` is never reached by the counter.
+
+The course uses another scale for the same command. It calls it a **control effort**, a number from -10 to 10, and Lab 3 has you work out its line yourself. Later chapters use that scale.
 `,
       fields: [
-        { id: "duty5", label: "Duty cycle for u = 5", unit: "%", answer: 75, why: "(5 + 10) / 20 = 0.75." },
-        { id: "cmpa0", label: "CMPA for u = 0 (motor stopped)", answer: 1250, why: "50 % of 2500." },
-        { id: "cmpam4", label: "CMPA for u = -4", answer: 750, why: "(-4 + 10) / 20 = 0.30, and 0.30 x 2500 = 750. Below 50 %, so the motor turns in the negative direction." },
-        { id: "cmpa14", label: "CMPA for u = 14", answer: 2500, why: "14 is saturated to 10 first. That is 100 %: CMPA = TBPRD." },
-        { id: "uback", label: "Control effort u that gives CMPA = 1875", answer: 5, why: "1875 / 2500 = 0.75, and 0.75 x 20 - 10 = 5. Going backwards through the line is how you check a value you see in the register view." },
+        { id: "duty5", label: "Duty cycle for p = 40", unit: "%", answer: 70, why: "(40 + 100) / 200 = 0.70." },
+        { id: "cmpa0", label: "CMPA for p = 0 (motor stopped)", answer: 1250, why: "50 % of 2500." },
+        { id: "cmpam4", label: "CMPA for p = -60", answer: 500, why: "(-60 + 100) / 200 = 0.20, and 0.20 x 2500 = 500. Below 50 %, so the motor turns in the negative direction." },
+        { id: "cmpa14", label: "CMPA for p = 130", answer: 2500, why: "130 is saturated to 100 first. That is 100 %: CMPA = TBPRD." },
+        { id: "uback", label: "Power p that gives CMPA = 2000", unit: "%", answer: 60, why: "2000 / 2500 = 0.80, and 0.80 x 200 - 100 = 60. Going backwards through the line is how you check a value you see in the register view." },
       ],
       hints: [
-        "Saturate u to -10..10 first. Then duty = (u + 10) / 20.",
-        "CMPA = duty x 2500. For the last field go backwards: duty = CMPA / 2500, then u = duty x 20 - 10.",
-        "75, 1250, 750, 2500, 5.",
+        "Saturate p to -100..100 first. Then duty = (p + 100) / 200.",
+        "CMPA = duty x 2500. For the last field go backwards: duty = CMPA / 2500, then p = duty x 200 - 100.",
+        "70, 1250, 500, 2500, 60.",
       ],
       takeaway: "A motor command ends as a number of counts. Write the straight line once, in one function, and saturate before you scale.",
     },
@@ -297,29 +307,29 @@ A value outside -10..10 is first **saturated**: cut back to the nearest limit. A
       id: "act-setepwm",
       kind: "code",
       mode: "complete",
-      title: "setEPWM1A and setEPWM2A",
-      goal: "Complete the two functions that turn a control effort of -10 to 10 into a motor duty cycle.",
+      title: "One function per motor",
+      goal: "Complete the two functions that turn a power of -100 to 100 percent into a motor duty cycle.",
       refs: [{ course: "L6-7", slide: 77 }, { course: "Lab 3" }, { trm: "15.5" }],
       brief: `
-Lab 3, exercise 2. EPWM1A (GPIO0) drives the left motor and EPWM2A (GPIO2) the right motor, both at 20 kHz. \`init_EPWM1and2()\`, at the bottom of the file, is given: it is the chapter 9 set-up written once per motor, and it leaves both at 50 %: stopped.
+EPWM1A (GPIO0) drives the left motor and EPWM2A (GPIO2) the right motor, both at 20 kHz. \`init_EPWM1and2()\`, at the bottom of the file, is given: it is the chapter 9 set-up written once per motor, and it leaves both at 50 %: stopped.
 
 Write the missing parts of
 
 \`\`\`c
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);   // left motor, EPWM1A
+void setMotor2(float percent);   // right motor, EPWM2A
 \`\`\`
 
-1. **Saturate**: above 10 becomes 10, below -10 becomes -10. These two ifs are written in \`setEPWM1A\`.
-2. **Scale**: -10 is 0 % duty, 0 is 50 %, 10 is 100 %. This is the line of the last level: \`(u + 10) / 20\`, times the period.
+1. **Saturate**: above 100 becomes 100, below -100 becomes -100. These two ifs are written in \`setMotor1\`.
+2. **Scale**: -100 is 0 % duty, 0 is 50 %, 100 is 100 %. This is the line of the last level: \`(p + 100) / 200\`, times the period.
 3. **Write CMPA**. Read the period from the register (\`EPwm1Regs.TBPRD\`) instead of typing 2500 again.
 
 \`CMPA\` is an integer and your value is a \`float\`. C converts by cutting off the fraction: 345.67 becomes 345. That is fine here.
 
 ## The test
-A timer function (written, do not change it) steps through the efforts 0, 5, 12, -12 and -3, one every 100 ms. It calls \`setEPWM1A(u)\` and \`setEPWM2A(-u)\`.
+A timer function (written, do not change it) steps through the powers 0, 40, 130, -130 and -30, one every 100 ms. It calls \`setMotor1(p)\` and \`setMotor2(-p)\`.
 
-The minus sign is there because the two motors are mounted mirrored: for the robot to drive forward the right motor needs the opposite command. Lab 3's advice is to put that sign **at the call**, as here, and never to write \`uRight = -uRight;\`, which would also flip the variable your controller keeps using.
+The minus sign is there because the two motors are mounted mirrored: for the robot to drive forward the right motor needs the opposite command. Lab 3's advice is to put that sign **at the call**, as here, and never to write \`pRight = -pRight;\`, which would also flip the variable your controller keeps using.
 `,
       kit: "robot",
       durationMs: 600,
@@ -329,10 +339,10 @@ The minus sign is there because the two motors are mounted mirrored: for the rob
 
 __interrupt void cpu_timer0_isr(void);
 void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);
+void setMotor2(float percent);
 
-float test[5] = {0.0, 5.0, 12.0, -12.0, -3.0};
+float test[5] = {0.0, 40.0, 130.0, -130.0, -30.0};
 uint16_t step = 0;
 
 void main(void)
@@ -349,19 +359,21 @@ ${TIMER0(100000)}
     }
 }
 
-void setEPWM1A(float controleffort)
+// Left motor: percent is -100 (full backward) to 100 (full forward)
+void setMotor1(float percent)
 {
-    if (controleffort < -10) {
-        controleffort = -10;
+    if (percent < -100) {
+        percent = -100;
     }
-    if (controleffort > 10) {
-        controleffort = 10;
+    if (percent > 100) {
+        percent = 100;
     }
-    // Scale -10..10 to 0..TBPRD and write CMPA
+    // Scale -100..100 to 0..TBPRD and write CMPA
 
 }
 
-void setEPWM2A(float controleffort)
+// Right motor
+void setMotor2(float percent)
 {
     // The same for EPWM2
 
@@ -371,8 +383,8 @@ void setEPWM2A(float controleffort)
 __interrupt void cpu_timer0_isr(void)
 {
     if (step < 5) {
-        setEPWM1A(test[step]);
-        setEPWM2A(-test[step]);
+        setMotor1(test[step]);
+        setMotor2(-test[step]);
         step++;
     }
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
@@ -384,10 +396,10 @@ ${INIT_MOTORS()}
 
 __interrupt void cpu_timer0_isr(void);
 void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);
+void setMotor2(float percent);
 
-float test[5] = {0.0, 5.0, 12.0, -12.0, -3.0};
+float test[5] = {0.0, 40.0, 130.0, -130.0, -30.0};
 uint16_t step = 0;
 
 void main(void)
@@ -404,16 +416,18 @@ ${TIMER0(100000)}
     }
 }
 
-${setEpwm(1)}
+// Left motor: percent is -100 (full backward) to 100 (full forward)
+${setMotor(1)}
 
-${setEpwm(2)}
+// Right motor
+${setMotor(2)}
 
 // Called every 100 ms. Do not change it.
 __interrupt void cpu_timer0_isr(void)
 {
     if (step < 5) {
-        setEPWM1A(test[step]);
-        setEPWM2A(-test[step]);
+        setMotor1(test[step]);
+        setMotor2(-test[step]);
         step++;
     }
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
@@ -422,22 +436,24 @@ __interrupt void cpu_timer0_isr(void)
 ${INIT_MOTORS()}
 `,
       checks: [
-        { kind: "duty", pin: 0, pct: 50, tolPct: 0.5, from: 110, to: 190, label: "u = 0: EPWM1A at 50 %", hint: "At 0 %: CMPA is 0 or 1. A fraction such as 0.5 is not counts yet: multiply it by TBPRD. Or the + 10 is missing." },
-        { kind: "duty", pin: 0, pct: 75, tolPct: 0.5, from: 210, to: 290, label: "u = 5: EPWM1A at 75 %", hint: "Still at 50 %: setEPWM1A does not write CMPA yet. Otherwise check the line: duty = (u + 10) / 20, and CMPA = duty x TBPRD. For u = 5 that is 1875." },
-        { kind: "duty", pin: 2, pct: 25, tolPct: 0.5, from: 210, to: 290, label: "u = -5 on the right motor: EPWM2A at 25 %", hint: "At 50 %: setEPWM2A is still empty, or it writes EPwm1Regs. At 75 %: the sign was flipped twice. The timer function already passes -u, so setEPWM2A must be the same code as setEPWM1A." },
-        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 295, min: 10, label: "The left wheel turns forward", hint: "The wheel follows the duty cycle of EPWM1A. Fix the duty checks above and this one follows." },
-        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 295, min: 10, label: "The right wheel turns forward too", hint: "The right motor is mirrored: it drives forward for a duty cycle below 50 %. Fix the EPWM2A check above and this one follows." },
-        { kind: "duty", pin: 0, pct: 100, tolPct: 0.5, from: 310, to: 390, label: "u = 12 is saturated: EPWM1A at 100 %", hint: "Saturate before scaling. Without it CMPA goes above TBPRD." },
-        { kind: "duty", pin: 0, pct: 0, tolPct: 0.5, from: 410, to: 490, label: "u = -12 is saturated: EPWM1A at 0 %", hint: "Without the lower limit, -12 gives a negative count. CMPA has no sign, so it wraps around to a huge number. Keep the if for -10." },
-        { kind: "duty", pin: 2, pct: 65, tolPct: 0.5, from: 510, to: 590, label: "u = 3 on the right motor: EPWM2A at 65 %", hint: "setEPWM2A needs its own two saturation ifs and its own scaling line, with EPwm2Regs." },
-        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD", hint: "The message names the line. A value above TBPRD means the command was not limited to -10..10 before it was scaled." },
+        { kind: "duty", pin: 0, pct: 50, tolPct: 0.5, from: 110, to: 190, label: "p = 0: EPWM1A at 50 %", hint: "At 0 %: CMPA is 0 or 1. A fraction such as 0.5 is not counts yet: multiply it by TBPRD. Or the + 100 is missing." },
+        { kind: "duty", pin: 0, pct: 70, tolPct: 0.5, from: 210, to: 290, label: "p = 40: EPWM1A at 70 %", hint: "Still at 50 %: setMotor1 does not write CMPA yet. Otherwise check the line: duty = (p + 100) / 200, and CMPA = duty x TBPRD. For p = 40 that is 1750." },
+        { kind: "duty", pin: 2, pct: 30, tolPct: 0.5, from: 210, to: 290, label: "p = -40 on the right motor: EPWM2A at 30 %", hint: "At 50 %: setMotor2 is still empty, or it writes EPwm1Regs. At 70 %: the sign was flipped twice. The timer function already passes -p, so setMotor2 must be the same code as setMotor1." },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 295, min: 8, label: "The left wheel turns forward", hint: "The wheel follows the duty cycle of EPWM1A. Fix the duty checks above and this one follows." },
+        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 295, min: 8, label: "The right wheel turns forward too", hint: "The right motor is mirrored: it drives forward for a duty cycle below 50 %. Fix the EPWM2A check above and this one follows." },
+        { kind: "duty", pin: 0, pct: 100, tolPct: 0.5, from: 310, to: 390, label: "p = 130 is saturated: EPWM1A at 100 %", hint: "Saturate before scaling. Without it CMPA goes above TBPRD." },
+        { kind: "duty", pin: 0, pct: 0, tolPct: 0.5, from: 410, to: 490, label: "p = -130 is saturated: EPWM1A at 0 %", hint: "Without the lower limit, -130 gives a negative count. CMPA has no sign, so it wraps around to a huge number. Keep the if for -100." },
+        { kind: "duty", pin: 2, pct: 65, tolPct: 0.5, from: 510, to: 590, label: "p = 30 on the right motor: EPWM2A at 65 %", hint: "setMotor2 needs its own two saturation ifs and its own scaling line, with EPwm2Regs." },
+        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD", hint: "The message names the line. A value above TBPRD means the command was not limited to -100..100 before it was scaled." },
+        { kind: "source", mustNotMatch: "setEPWM[12]A", label: "The scaling is your own: the library's setEPWM1A and setEPWM2A are not called", hint: "This level is about writing the line from a command to counts yourself, in setMotor1 and setMotor2." },
       ],
       hints: [
-        "Add 10 to move -10..10 to 0..20, then divide by 20 for a fraction between 0 and 1.",
-        "float value = (controleffort + 10) * EPwm1Regs.TBPRD / 20.0; then assign value to CMPA.",
-        "setEPWM2A is the same function with EPwm2Regs, including the two saturation ifs.",
+        "Add 100 to move -100..100 to 0..200, then divide by 200 for a fraction between 0 and 1.",
+        "float value = (percent + 100) * EPwm1Regs.TBPRD / 200.0; then assign value to CMPA.",
+        "setMotor2 is the same function with EPwm2Regs, including the two saturation ifs.",
       ],
-      takeaway: "One function per motor is the only place that knows about TBPRD and 50 %. Everything above it thinks in -10 to 10.",
+      takeaway:
+        "One function per motor is the only place that knows about TBPRD and 50 %. Everything above it thinks in percent. The course's own pair, setEPWM1A and setEPWM2A, does the same job for a control effort of -10 to 10. You write that pair in Lab 3.",
     },
     {
       id: "act-debug-creep",
@@ -447,13 +463,13 @@ ${INIT_MOTORS()}
       goal: "Find out why both motors turn slowly when the command is zero, and fix it.",
       refs: [{ course: "L6-7", slide: 77, note: "50 % duty is a stopped motor" }, { course: "Lab 3" }, { trm: "15.5" }, { trm: "15.6.3" }],
       brief: `
-Your lab partner raised the motor PWM from 20 kHz to **25 kHz**, so \`TBPRD\` is now 2000. Since then the robot slowly turns on the spot with a command of zero, and a command of 10 no longer gives full power.
+Your lab partner raised the motor PWM from 20 kHz to **25 kHz**, so \`TBPRD\` is now 2000. Since then the robot slowly turns on the spot with a command of zero, and a command of 100 no longer gives full power.
 
 A motor only stands still at **exactly** 50 % duty. A duty cycle of 62.5 % is a real command: a quarter of full power.
 
-\`main\` commands 0 for 200 ms, then 10, then 4. Look at the duty cycle of GPIO0 in each phase and compare it with what the command should give. Then look at how \`setEPWM1A\` and \`setEPWM2A\` get from the command to counts.
+\`main\` commands 0 for 200 ms, then 100, then 40. Look at the duty cycle of GPIO0 in each phase and compare it with what the command should give. Then look at how \`setMotor1\` and \`setMotor2\` get from the command to counts.
 
-The figure shows what the robot should do at 20 kHz. Choose "one PWM pin" and move the control effort: zero sits at exactly half of the period, and 10 at all of it.
+The figure shows what the robot should do at 20 kHz. Choose "one PWM pin" and move the power: zero sits at exactly half of the period, and 100 at all of it.
 
 {{figure:h-bridge}}
 
@@ -463,8 +479,8 @@ Keep the carrier at 25 kHz.
       durationMs: 420,
       inspect: ["EPwm1Regs.TBPRD", "EPwm1Regs.CMPA", "EPwm2Regs.CMPA"],
       starter: `void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);
+void setMotor2(float percent);
 
 void main(void)
 {
@@ -472,46 +488,46 @@ ${INIT}
 
     init_EPWM1and2();
 
-    setEPWM1A(0.0);
-    setEPWM2A(0.0);
+    setMotor1(0.0);
+    setMotor2(0.0);
     DELAY_US(200000);
-    setEPWM1A(10.0);
-    setEPWM2A(-10.0);
+    setMotor1(100.0);
+    setMotor2(-100.0);
     DELAY_US(100000);
-    setEPWM1A(4.0);
-    setEPWM2A(-4.0);
+    setMotor1(40.0);
+    setMotor2(-40.0);
 
     while (1) {
     }
 }
 
-void setEPWM1A(float controleffort)
+void setMotor1(float percent)
 {
-    if (controleffort < -10) {
-        controleffort = -10;
+    if (percent < -100) {
+        percent = -100;
     }
-    if (controleffort > 10) {
-        controleffort = 10;
+    if (percent > 100) {
+        percent = 100;
     }
-    EPwm1Regs.CMPA.bit.CMPA = 1250 + controleffort * 125;
+    EPwm1Regs.CMPA.bit.CMPA = 1250 + percent * 12.5;
 }
 
-void setEPWM2A(float controleffort)
+void setMotor2(float percent)
 {
-    if (controleffort < -10) {
-        controleffort = -10;
+    if (percent < -100) {
+        percent = -100;
     }
-    if (controleffort > 10) {
-        controleffort = 10;
+    if (percent > 100) {
+        percent = 100;
     }
-    EPwm2Regs.CMPA.bit.CMPA = 1250 + controleffort * 125;
+    EPwm2Regs.CMPA.bit.CMPA = 1250 + percent * 12.5;
 }
 
 ${INIT_MOTORS(2000, "25 kHz")}
 `,
       solution: `void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);
+void setMotor2(float percent);
 
 void main(void)
 {
@@ -519,22 +535,22 @@ ${INIT}
 
     init_EPWM1and2();
 
-    setEPWM1A(0.0);
-    setEPWM2A(0.0);
+    setMotor1(0.0);
+    setMotor2(0.0);
     DELAY_US(200000);
-    setEPWM1A(10.0);
-    setEPWM2A(-10.0);
+    setMotor1(100.0);
+    setMotor2(-100.0);
     DELAY_US(100000);
-    setEPWM1A(4.0);
-    setEPWM2A(-4.0);
+    setMotor1(40.0);
+    setMotor2(-40.0);
 
     while (1) {
     }
 }
 
-${setEpwm(1)}
+${setMotor(1)}
 
-${setEpwm(2)}
+${setMotor(2)}
 
 ${INIT_MOTORS(2000, "25 kHz")}
 `,
@@ -542,19 +558,20 @@ ${INIT_MOTORS(2000, "25 kHz")}
         { kind: "reg", reg: "EPwm1Regs.TBPRD", equals: 2000, label: "The carrier is still 25 kHz (TBPRD = 2000)", hint: "Do not change init_EPWM1and2. The bug is in the two set functions." },
         { kind: "duty", pin: 0, pct: 50, tolPct: 0.5, from: 20, to: 180, label: "Command 0: EPWM1A at 50 %", hint: "1250 is half of 2500, not half of the TBPRD in use now." },
         { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 190, equals: 0, label: "The left wheel stands still at command 0", hint: "It stands still only at exactly 50 %. Fix the check above." },
-        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 190, equals: 0, label: "The right wheel stands still at command 0", hint: "setEPWM2A has the same bug as setEPWM1A." },
-        { kind: "duty", pin: 0, pct: 100, tolPct: 0.5, from: 220, to: 290, label: "Command 10: EPWM1A at 100 %", hint: "100 % is CMPA = TBPRD = 2000. The old numbers give 2500." },
-        { kind: "duty", pin: 0, pct: 70, tolPct: 0.5, from: 320, to: 400, label: "Command 4: EPWM1A at 70 %", hint: "The slope is wrong too: 125 counts per unit of command is a twentieth of 2500, not of the TBPRD in use now." },
-        { kind: "duty", pin: 2, pct: 30, tolPct: 0.5, from: 320, to: 400, label: "Command -4: EPWM2A at 30 %", hint: "Both numbers in setEPWM2A must come from EPwm2Regs.TBPRD as well." },
-        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD", hint: "1250 + 10 x 125 = 2500 counts, but the counter now turns back at 2000." },
+        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 190, equals: 0, label: "The right wheel stands still at command 0", hint: "setMotor2 has the same bug as setMotor1." },
+        { kind: "duty", pin: 0, pct: 100, tolPct: 0.5, from: 220, to: 290, label: "Command 100: EPWM1A at 100 %", hint: "100 % is CMPA = TBPRD = 2000. The old numbers give 2500." },
+        { kind: "duty", pin: 0, pct: 70, tolPct: 0.5, from: 320, to: 400, label: "Command 40: EPWM1A at 70 %", hint: "The slope is wrong too: 12.5 counts per percent is a two-hundredth of 2500, not of the TBPRD in use now." },
+        { kind: "duty", pin: 2, pct: 30, tolPct: 0.5, from: 320, to: 400, label: "Command -40: EPWM2A at 30 %", hint: "Both numbers in setMotor2 must come from EPwm2Regs.TBPRD as well." },
+        { kind: "no-diagnostic", code: "cmp-over-period", label: "CMPA never goes above TBPRD", hint: "1250 + 100 x 12.5 = 2500 counts, but the counter now turns back at 2000." },
+        { kind: "source", mustNotMatch: "setEPWM[12]A", label: "The scaling is your own: the library's setEPWM1A and setEPWM2A are not called", hint: "This level is about writing the line from a command to counts yourself, in setMotor1 and setMotor2." },
       ],
       hints: [
         "The two numbers in the last line of each function were right for one particular TBPRD.",
-        "Half of the period and a twentieth of the period should come from the register, not from constants.",
-        "uint16_t period = EPwm1Regs.TBPRD; float value = (controleffort + 10) * period / 20.0; EPwm1Regs.CMPA.bit.CMPA = value;",
+        "Half of the period and a two-hundredth of the period should come from the register, not from constants.",
+        "uint16_t period = EPwm1Regs.TBPRD; float value = (percent + 100) * period / 200.0; EPwm1Regs.CMPA.bit.CMPA = value;",
       ],
       takeaway:
-        "Zero effort must be half of whatever TBPRD is. Read the period from the register, as the course's setEPWM functions do, and a change of carrier frequency cannot move the zero point.",
+        "Zero power must be half of whatever TBPRD is. Read the period from the register, and a change of carrier frequency cannot move the zero point.",
     },
     {
       id: "act-servo-numbers",
@@ -575,27 +592,29 @@ The field \`CLKDIV\` in \`TBCTL\` divides the counter clock. It does not hold th
 
 **Worked example**, \`CLKDIV = 4\`: divide by 16, so the counter clock is 50 MHz / 16 = 3.125 MHz. In 20 ms it counts 0.020 s x 3 125 000 = 62 500 counts. That fits. It is what the robot's library uses.
 
-Homework 4 has you choose the divider. This chapter uses \`CLKDIV = 5\`, so its counts are not the homework's.
+Homework 4 has you choose the divider. This chapter uses \`CLKDIV = 5\`.
 
-## The angle is a share of the period
-\`TBPRD\` is 100 % of the period. The pulse is **8 %** of it for 0 degrees, **4 %** for -90 degrees and **12 %** for +90 degrees, on a straight line in between. So 90 degrees is worth 4 % of \`TBPRD\`, and
+## The position is a share of the period
+\`TBPRD\` is 100 % of the period. The arm is at one end of its travel for a pulse of **4 %**, in the middle for **8 %** and at the other end for **12 %**, on a straight line in between. From end to end it turns 180 degrees.
 
-\`CMPA = (8 % of TBPRD) + angle / 90 x (4 % of TBPRD)\`
+This chapter counts the **position** from the first end: 0 to 180 degrees, with 90 in the middle. (Homework 4 counts from the middle.) The whole travel is worth 12 % - 4 % = 8 % of \`TBPRD\`, so
 
-**Worked example** with the robot's 62 500: 0 degrees is 8 % = 5000 counts, and 90 degrees is worth 4 % = 2500 counts. For -90 degrees: 5000 - 2500 = 2500 counts.
+\`CMPA = (4 % of TBPRD) + position / 180 x (8 % of TBPRD)\`
+
+**Worked example** with the robot's 62 500: position 0 is 4 % = 2500 counts, and the whole travel is worth 8 % = 5000 counts. For position 45, a quarter of the travel: 2500 + 1250 = 3750 counts.
 `,
       fields: [
         { id: "div", label: "Divider for CLKDIV = 5", answer: 32, why: "2 to the power 5 = 32." },
         { id: "tbclk", label: "Counter clock with CLKDIV = 5", unit: "Hz", answer: 1562500, why: "50 MHz / 32 = 1.5625 MHz, one count every 640 ns." },
         { id: "tbprd", label: "TBPRD for a 20 ms period at that clock (round number)", answer: 31250, why: "0.020 s x 1 562 500 counts per second = 31 250 counts. It fits in 16 bits." },
-        { id: "servo0", label: "CMPA for 0 degrees", answer: 2500, why: "8 % of 31250 = 2500 counts, a pulse of 1.6 ms." },
-        { id: "per90", label: "Counts that 90 degrees is worth", answer: 1250, why: "4 % of 31250 = 1250 counts." },
-        { id: "servo45", label: "CMPA for +45 degrees", answer: 3125, why: "45 degrees is half of 90, so 625 counts above the centre: 2500 + 625." },
+        { id: "servo0", label: "CMPA for position 0", answer: 1250, why: "4 % of 31250 = 1250 counts, a pulse of 0.8 ms." },
+        { id: "per90", label: "Counts that the whole travel of 180 degrees is worth", answer: 2500, why: "8 % of 31250 = 2500 counts." },
+        { id: "servo45", label: "CMPA for position 135", answer: 3125, why: "135 is three quarters of 180, so 1875 counts above position 0: 1250 + 1875." },
       ],
       hints: [
         "Divider = 2 to the power CLKDIV. Clock = 50 000 000 / divider. Counts in 20 ms = 0.020 x clock.",
-        "The counts in 20 ms are 100 %. 8 % is the centre, and 90 degrees is worth 4 %.",
-        "32, 1 562 500, 31 250, 2500, 1250, 3125.",
+        "The counts in 20 ms are 100 %. 4 % is position 0, and the 180 degrees of travel are worth 8 %.",
+        "32, 1 562 500, 31 250, 1250, 2500, 3125.",
       ],
       takeaway: "CLKDIV is a code for a power of two. Pick the smallest one that makes the period fit in 16 bits, then every servo number is a percentage of TBPRD.",
     },
@@ -603,29 +622,31 @@ Homework 4 has you choose the divider. This chapter uses \`CLKDIV = 5\`, so its 
       id: "act-servo",
       kind: "code",
       mode: "write",
-      title: "An angle on EPWM8A",
-      goal: "Set up EPWM8A for an RC servo and write the function that commands an angle.",
+      title: "A position on EPWM5A",
+      goal: "Set up EPWM5A for an RC servo and write the function that commands a position.",
       refs: [{ course: "L6-7", slide: [80, 81] }, { course: "HW4" }, { trm: "15.4.3" }, { trm: "15.15.2" }],
       brief: `
-Homework 4 connects an RC servo to **GPIO14** of the red homework board. In the pin mux table GPIO14 is **EPWM8A** at index 1. This is the first ePWM you set up from an empty function. The comments in the starter name each register, in the order chapter 9 used for EPWM12.
+The robot has connectors for RC servos. One of them is on **GPIO8**. In the pin mux table GPIO8 is **EPWM5A** at index 1. This is the first ePWM you set up from an empty function. The comments in the starter name each register, in the order chapter 9 used for EPWM12.
 
 ## init_servo()
-- **Clock and period**: \`CLKDIV = 5\` and the \`TBPRD\` for 20 ms from the last level. (The homework lets you choose the divider. Any divider that fits passes here.)
-- **Start at 0 degrees**: \`CMPA\` at 8 % of \`TBPRD\`.
+- **Clock and period**: \`CLKDIV = 5\` and the \`TBPRD\` for 20 ms from the last level. (Any divider that fits passes here.)
+- **Start in the middle**: \`CMPA\` at 8 % of \`TBPRD\`.
 - **Actions**: set at zero, clear at \`CMPA\`, as for the LED and the motors.
 - **Pin**: pull-up off, then the mux.
 
-## setEPWM8A_RCServo(float angle)
-- Saturate \`angle\` to -90..90, with two ifs as in \`setEPWM1A\`.
-- Scale: -90 degrees is 4 % of \`TBPRD\`, 0 is 8 %, +90 is 12 %, on a straight line. In counts that is the centre value plus \`angle\` times the counts per degree.
+## setServo5A(float position)
+- Saturate \`position\` to 0..180, with two ifs as in \`setMotor1\`.
+- Scale: position 0 is 4 % of \`TBPRD\`, 90 is 8 %, 180 is 12 %, on a straight line. In counts that is the value for position 0 plus \`position\` times the counts per degree.
 
-\`main\` is written. It commands 0, 60, -45, 200 and then -200 degrees, 100 ms apart. The meter "RC servo 1" shows where the arm points.
+\`main\` is written. It commands the positions 90, 150, 45, 300 and then -100, 100 ms apart.
+
+The meter "RC servo on EPWM5A" shows the arm's angle from the middle, as a servo's data sheet does: position 90 reads 0 degrees, position 150 reads +60 and position 0 reads -90.
 `,
-      kit: "redboard",
+      kit: "robot",
       durationMs: 500,
-      inspect: ["EPwm8Regs.TBCTL", "EPwm8Regs.TBPRD", "EPwm8Regs.CMPA"],
+      inspect: ["EPwm5Regs.TBCTL", "EPwm5Regs.TBPRD", "EPwm5Regs.CMPA"],
       starter: `void init_servo(void);
-void setEPWM8A_RCServo(float angle);
+void setServo5A(float position);
 
 void main(void)
 {
@@ -633,21 +654,21 @@ ${INIT}
 
     init_servo();
 
-    setEPWM8A_RCServo(0.0);
+    setServo5A(90.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(60.0);
+    setServo5A(150.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(-45.0);
+    setServo5A(45.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(200.0);
+    setServo5A(300.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(-200.0);
+    setServo5A(-100.0);
 
     while (1) {
     }
 }
 
-// EPWM8A on GPIO14: 50 Hz, 0 degrees
+// EPWM5A on GPIO8: 50 Hz, arm in the middle
 void init_servo(void)
 {
     // 1. TBCTL fields: CTRMODE (count up), FREE_SOFT (free run),
@@ -659,20 +680,20 @@ void init_servo(void)
 
     // 4. AQCTLA fields: ZRO (set) and CAU (clear)
 
-    // 5. Pull-up of GPIO14 off (GPAPUD, inside EALLOW ... EDIS),
+    // 5. Pull-up of GPIO8 off (GPAPUD, inside EALLOW ... EDIS),
     //    then the pin mux
 
 }
 
-// angle in degrees, -90 to 90
-void setEPWM8A_RCServo(float angle)
+// position in degrees from one end of the travel, 0 to 180
+void setServo5A(float position)
 {
-    // Saturate angle, then write CMPA
+    // Saturate position, then write CMPA
 
 }
 `,
       solution: `void init_servo(void);
-void setEPWM8A_RCServo(float angle);
+void setServo5A(float position);
 
 void main(void)
 {
@@ -680,69 +701,69 @@ ${INIT}
 
     init_servo();
 
-    setEPWM8A_RCServo(0.0);
+    setServo5A(90.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(60.0);
+    setServo5A(150.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(-45.0);
+    setServo5A(45.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(200.0);
+    setServo5A(300.0);
     DELAY_US(100000);
-    setEPWM8A_RCServo(-200.0);
+    setServo5A(-100.0);
 
     while (1) {
     }
 }
 
-// EPWM8A on GPIO14: 50 Hz, 0 degrees
+// EPWM5A on GPIO8: 50 Hz, arm in the middle
 void init_servo(void)
 {
 ${SERVO_A_INIT}
 
     EALLOW;
-    GpioCtrlRegs.GPAPUD.bit.GPIO14 = 1;  // pull-up off on a PWM pin
+    GpioCtrlRegs.GPAPUD.bit.GPIO8 = 1;   // pull-up off on a PWM pin
     EDIS;
-    GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);  // EPWM8A
+    GPIO_SetupPinMux(8, GPIO_MUX_CPU1, 1);   // EPWM5A
 }
 
-// angle in degrees, -90 to 90
+// position in degrees from one end of the travel, 0 to 180
 ${SET_SERVO_A}
 `,
       checks: [
-        { kind: "reg", reg: "EPwm8Regs.TBCTL", field: "CTRMODE", equals: 0, label: "The counter of EPWM8 is running (count up)", hint: "After reset the counter is frozen. EPwm8Regs.TBCTL.bit.CTRMODE = 0; starts it." },
-        { kind: "reg", reg: "EPwm8Regs.AQCTLA", field: "ZRO", equals: 2, label: "The pin is set when the counter is zero", hint: "EPwm8Regs.AQCTLA.bit.ZRO = 2;" },
-        { kind: "reg", reg: "EPwm8Regs.AQCTLA", field: "CAU", equals: 1, label: "The pin is cleared when the counter reaches CMPA", hint: "EPwm8Regs.AQCTLA.bit.CAU = 1;" },
-        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM8A is connected to GPIO14", hint: "GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);" },
-        { kind: "signal", name: "SERVO1_DEG", at: 95, equals: 0, tol: 0.1, label: "The servo starts at 0 degrees", hint: "No value at all: the servo saw no pulse that repeats every 20 ms. With CLKDIV = 5 (the code 5, not 32), TBPRD is 31250. A million does not fit in TBPRD: only its low 16 bits are kept. At -90 degrees: CMPA is far too small. It is a count, 8 % of TBPRD, not the number 8." },
-        { kind: "signal", name: "SERVO1_DEG", at: 195, equals: 60, tol: 0.1, label: "60 degrees", hint: "90 degrees is worth 4 % of TBPRD, 1250 counts. Write 1250.0 / 90.0: with whole numbers, 1250 / 90 is cut off to 13 and every angle comes out too small." },
-        { kind: "signal", name: "SERVO1_DEG", at: 295, equals: -45, tol: 0.1, label: "-45 degrees", hint: "A negative angle must give fewer counts than the centre: centre + angle x counts per degree." },
-        { kind: "signal", name: "SERVO1_DEG", at: 395, equals: 90, tol: 0.1, label: "200 degrees is saturated to 90", hint: "Limit angle to -90..90 before you scale it." },
+        { kind: "reg", reg: "EPwm5Regs.TBCTL", field: "CTRMODE", equals: 0, label: "The counter of EPWM5 is running (count up)", hint: "After reset the counter is frozen. EPwm5Regs.TBCTL.bit.CTRMODE = 0; starts it." },
+        { kind: "reg", reg: "EPwm5Regs.AQCTLA", field: "ZRO", equals: 2, label: "The pin is set when the counter is zero", hint: "EPwm5Regs.AQCTLA.bit.ZRO = 2;" },
+        { kind: "reg", reg: "EPwm5Regs.AQCTLA", field: "CAU", equals: 1, label: "The pin is cleared when the counter reaches CMPA", hint: "EPwm5Regs.AQCTLA.bit.CAU = 1;" },
+        { kind: "no-diagnostic", code: "pwm-mux", label: "EPWM5A is connected to GPIO8", hint: "GPIO_SetupPinMux(8, GPIO_MUX_CPU1, 1);" },
+        { kind: "signal", name: "SERVO5A_DEG", at: 95, equals: 0, tol: 0.1, label: "Position 90: the arm is in the middle, 0 degrees on the meter", hint: "No value at all: the servo saw no pulse that repeats every 20 ms. With CLKDIV = 5 (the code 5, not 32), TBPRD is 31250. A million does not fit in TBPRD: only its low 16 bits are kept. At +90 degrees: the line starts at 4 % for position 0, not at 8 %. At -90 degrees: CMPA is far too small. It is a count, not a percentage." },
+        { kind: "signal", name: "SERVO5A_DEG", at: 195, equals: 60, tol: 0.1, label: "Position 150: +60 degrees on the meter", hint: "The 180 degrees of travel are worth 8 % of TBPRD, 2500 counts. Write 2500.0 / 180.0: with whole numbers, 2500 / 180 is cut off to 13 and every position comes out too low." },
+        { kind: "signal", name: "SERVO5A_DEG", at: 295, equals: -45, tol: 0.1, label: "Position 45: -45 degrees on the meter", hint: "Position 45 is a quarter of the travel: the counts for position 0 plus a quarter of 2500." },
+        { kind: "signal", name: "SERVO5A_DEG", at: 395, equals: 90, tol: 0.1, label: "Position 300 is saturated to 180", hint: "Limit position to 0..180 before you scale it." },
         {
           kind: "duty",
-          pin: 14,
+          pin: 8,
           pct: 12,
           tolPct: 0.2,
           from: 320,
           to: 400,
           label: "and the pulse itself stops at 12 %",
-          hint: "The servo's arm stops at its mechanical end, but a pulse wider than 12 % pushes against it. Saturate angle in the function.",
+          hint: "The servo's arm stops at its mechanical end, but a pulse wider than 12 % pushes against it. Saturate position in the function.",
         },
-        { kind: "signal", name: "SERVO1_DEG", at: 495, equals: -90, tol: 0.1, label: "-200 degrees is saturated to -90", hint: "The lower limit needs its own if: below -90 becomes -90." },
+        { kind: "signal", name: "SERVO5A_DEG", at: 495, equals: -90, tol: 0.1, label: "Position -100 is saturated to 0", hint: "The lower limit needs its own if: below 0 becomes 0." },
         {
           kind: "duty",
-          pin: 14,
+          pin: 8,
           pct: 4,
           tolPct: 0.2,
           from: 420,
           to: 500,
           label: "and the pulse stops at 4 %",
-          hint: "Without the lower limit, -200 degrees gives a negative count. CMPA has no sign, so it wraps around to a huge number.",
+          hint: "Without the lower limit, position -100 gives a negative count. CMPA has no sign, so it wraps around to a huge number.",
         },
       ],
       hints: [
-        "Each line is EPwm8Regs. and a register from the comments. The given init_EPWM1and2 function of the motor levels is the same list for EPWM1: copy its shape and change the numbers.",
-        "20 ms at 1.5625 MHz is 31250 counts. 8 % of that is 2500 counts. 4 % is 1250 counts, and that is what 90 degrees is worth.",
-        "EPwm8Regs.CMPA.bit.CMPA = 2500 + angle * 1250.0 / 90.0; after the two saturation ifs.",
+        "Each line is EPwm5Regs. and a register from the comments. The given init_EPWM1and2 function of the motor levels is the same list for EPWM1: copy its shape and change the numbers.",
+        "20 ms at 1.5625 MHz is 31250 counts. 4 % of that is 1250 counts: position 0. 8 % is 2500 counts, and that is what the 180 degrees of travel are worth.",
+        "EPwm5Regs.CMPA.bit.CMPA = 1250 + position * 2500.0 / 180.0; after the two saturation ifs.",
       ],
       takeaway: "Same peripheral, different numbers: a slow clock for the 20 ms period, and a compare value that only ever moves between 4 % and 12 %.",
     },
@@ -941,21 +962,21 @@ __interrupt void cpu_timer1_isr(void)
       goal: "Ramp both motors back and forth from a timer interrupt, show the power on LED1, and stop while PB1 is held.",
       refs: [{ course: "L6-7", slide: 77 }, { course: "Lab 3" }, { course: "Lab 2" }, { trm: "15.5" }],
       brief: `
-Lab 3 ends its PWM part with the robot on the bench stand, wheels in the air, both motors sweeping slowly from full forward to full reverse. Build that, with a stop button and a power light.
+Lab 3 ends its PWM part with the robot on the bench stand, wheels in the air, both motors sweeping slowly from full forward to full reverse. Build a bench test of your own, with a stop button and a power light.
 
 \`cpu_timer0_isr\` runs every **1 ms**. In it:
 
-1. **Ramp.** Keep the command in the global \`float u\`. Add **0.1** per call until it reaches 10, then subtract 0.1 per call until it reaches -10, and repeat. Limit \`u\` to -10..10. Keep the direction in \`updown\` (1: going up, 0: going down), as in the breathing LED of chapter 9. (Lab 3 uses 0.005 per call. 0.1 keeps the test short.)
-2. **Stop button.** While **PB1** (GPIO157, reads 0 when pressed) is held, send a command of **0** to both motors and **do not change** \`u\`. When PB1 is released the ramp continues from where it was.
+1. **Ramp.** Keep the command in the global \`float power\`, in percent. Add **1** per call until it reaches 100, then subtract 1 per call until it reaches -100, and repeat. Limit \`power\` to -100..100. Keep the direction in \`updown\` (1: going up, 0: going down), as in the breathing LED of chapter 9. (This ramp is fast, to keep the test short. On the real robot you would go far slower.)
+2. **Stop button.** While **PB1** (GPIO157, reads 0 when pressed) is held, send a command of **0** to both motors and **do not change** \`power\`. When PB1 is released the ramp continues from where it was.
 3. **Motors.** Send the command to both motors so that both wheels drive the robot **forward** for a positive command. The right motor is mounted mirrored. Put the sign at the call.
-4. **Power light.** Set LED1's brightness to the size of the command being sent: 0 % at 0, 100 % at 10 or -10. \`fabs(x)\` gives the size of a float without its sign: \`fabs(-3.5)\` is 3.5. \`TBPRD\` of EPWM12 is 5000, so a size of 10 must give 5000 counts.
+4. **Power light.** Set LED1's brightness to the size of the command being sent: 0 % at 0, 100 % at 100 or -100. \`fabs(x)\` gives the size of a float without its sign: \`fabs(-3.5)\` is 3.5. \`TBPRD\` of EPWM12 is 5000, so a size of 100 must give 5000 counts.
 5. Acknowledge the interrupt.
 
-Also write \`setEPWM1A\` and \`setEPWM2A\`. All set-up code is written.
+Also write \`setMotor1\` and \`setMotor2\`, the functions of the level "One function per motor". All set-up code is written.
 `,
       kit: "robot",
       durationMs: 652,
-      watch: ["u", "updown"],
+      watch: ["power", "updown"],
       inspect: ["EPwm1Regs.CMPA", "EPwm2Regs.CMPA", "EPwm12Regs.CMPA"],
       stimuli: [
         { at: 420.5, press: "PB1" },
@@ -965,11 +986,11 @@ Also write \`setEPWM1A\` and \`setEPWM2A\`. All set-up code is written.
 
 __interrupt void cpu_timer0_isr(void);
 void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);
+void setMotor2(float percent);
 
-float u = 0;          // motor command, -10 to 10
-int16_t updown = 1;   // 1: u going up, 0: going down
+float power = 0;      // motor command in percent, -100 to 100
+int16_t updown = 1;   // 1: power going up, 0: going down
 
 void main(void)
 {
@@ -989,11 +1010,13 @@ ${TIMER0(1000)}
     }
 }
 
-void setEPWM1A(float controleffort)
+// Left motor, EPWM1A
+void setMotor1(float percent)
 {
 }
 
-void setEPWM2A(float controleffort)
+// Right motor, EPWM2A
+void setMotor2(float percent)
 {
 }
 
@@ -1009,11 +1032,11 @@ ${INIT_MOTORS()}
 
 __interrupt void cpu_timer0_isr(void);
 void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
+void setMotor1(float percent);
+void setMotor2(float percent);
 
-float u = 0;          // motor command, -10 to 10
-int16_t updown = 1;   // 1: u going up, 0: going down
+float power = 0;      // motor command in percent, -100 to 100
+int16_t updown = 1;   // 1: power going up, 0: going down
 
 void main(void)
 {
@@ -1033,9 +1056,11 @@ ${TIMER0(1000)}
     }
 }
 
-${setEpwm(1)}
+// Left motor, EPWM1A
+${setMotor(1)}
 
-${setEpwm(2)}
+// Right motor, EPWM2A
+${setMotor(2)}
 
 // Called every 1 ms
 __interrupt void cpu_timer0_isr(void)
@@ -1045,24 +1070,24 @@ __interrupt void cpu_timer0_isr(void)
     if (GpioDataRegs.GPEDAT.bit.GPIO157 != 0) {
         // PB1 is not pressed: move the ramp
         if (updown == 1) {
-            u = u + 0.1;
-            if (u >= 10.0) {
-                u = 10.0;
+            power = power + 1.0;
+            if (power >= 100.0) {
+                power = 100.0;
                 updown = 0;
             }
         } else {
-            u = u - 0.1;
-            if (u <= -10.0) {
-                u = -10.0;
+            power = power - 1.0;
+            if (power <= -100.0) {
+                power = -100.0;
                 updown = 1;
             }
         }
-        command = u;
+        command = power;
     }
 
-    setEPWM1A(command);
-    setEPWM2A(-command);   // the right motor is mounted mirrored
-    EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 500.0;
+    setMotor1(command);
+    setMotor2(-command);   // the right motor is mounted mirrored
+    EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 50.0;
 
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
@@ -1070,27 +1095,30 @@ __interrupt void cpu_timer0_isr(void)
 ${INIT_MOTORS()}
 `,
       checks: [
-        { kind: "var", name: "u", at: 50.5, min: 4.9, max: 5.1, label: "After 50 ms u is 5", hint: "Add 0.1 to u on every call while updown is 1. If u stops at 0.1, the function ran only once: keep the PIEACK line at its end." },
-        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 105, min: 8, label: "The left wheel drives forward on the way up", hint: "Write setEPWM1A (it is empty in the starter) and call it with the command on every pass." },
-        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 105, min: 8, label: "The right wheel drives forward too", hint: "The right motor needs the opposite sign: setEPWM2A(-command)." },
-        { kind: "duty", led: "LED1", pct: 98, tolPct: 3, from: 96, to: 104, label: "LED1 is brightest when u is near 10", hint: "EPwm12Regs.CMPA.bit.CMPA must be 5000 when the size of the command is 10: size x 500." },
-        { kind: "var", name: "u", at: 150.5, min: 4.8, max: 5.2, label: "After 150 ms u is on its way down, at 5" },
-        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 320, max: -12, label: "The left wheel drives backward around u = -10", hint: "After reaching 10, u must come down by 0.1 per call until -10, and updown must flip at both ends." },
+        { kind: "var", name: "power", at: 50.5, min: 49, max: 51, label: "After 50 ms power is 50", hint: "Add 1 to power on every call while updown is 1. If power stops at 1, the function ran only once: keep the PIEACK line at its end." },
+        { kind: "duty", pin: 0, pct: 75.25, tolPct: 1.5, from: 48, to: 53, label: "Halfway up the ramp EPWM1A is near 75 %", hint: "The duty cycle must follow the command step by step: power 50 is 75 %. At 50 %: setMotor1 is still empty. At 100 %: the command is not scaled for -100..100." },
+        { kind: "duty", pin: 2, pct: 24.75, tolPct: 1.5, from: 48, to: 53, label: "and EPWM2A near 25 %", hint: "The right motor gets the opposite command: setMotor2(-command), with setMotor2 the same code as setMotor1 for EPwm2Regs." },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 105, min: 8, label: "The left wheel drives forward on the way up", hint: "Write setMotor1 (it is empty in the starter) and call it with the command on every pass." },
+        { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 105, min: 8, label: "The right wheel drives forward too", hint: "The right motor needs the opposite sign: setMotor2(-command)." },
+        { kind: "duty", led: "LED1", pct: 98, tolPct: 3, from: 96, to: 104, label: "LED1 is brightest when power is near 100", hint: "EPwm12Regs.CMPA.bit.CMPA must be 5000 when the size of the command is 100: size x 50." },
+        { kind: "var", name: "power", at: 150.5, min: 48, max: 52, label: "After 150 ms power is on its way down, at 50" },
+        { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 320, max: -12, label: "The left wheel drives backward around power = -100", hint: "After reaching 100, power must come down by 1 per call until -100, and updown must flip at both ends." },
         { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 320, max: -12, label: "The right wheel drives backward too" },
         { kind: "duty", pin: 0, pct: 50, tolPct: 0.5, from: 440, to: 590, label: "PB1 held: EPWM1A at 50 %", hint: "While GPIO157 reads 0, send 0 to both motors." },
         { kind: "duty", pin: 2, pct: 50, tolPct: 0.5, from: 440, to: 590, label: "PB1 held: EPWM2A at 50 %" },
-        { kind: "duty", led: "LED1", pct: 0, tolPct: 1, from: 440, to: 590, label: "PB1 held: LED1 is dark", hint: "The light shows the command you send, which is 0 while PB1 is held, not u." },
-        { kind: "var", name: "u", at: 590, min: 1.5, max: 2.5, label: "u is frozen while PB1 is held", hint: "Do not move the ramp while the button is pressed." },
-        { kind: "var", name: "u", at: 650.5, min: 6.5, max: 7.5, label: "The ramp continues after PB1 is released" },
+        { kind: "duty", led: "LED1", pct: 0, tolPct: 1, from: 440, to: 590, label: "PB1 held: LED1 is dark", hint: "The light shows the command you send, which is 0 while PB1 is held, not power." },
+        { kind: "var", name: "power", at: 590, min: 15, max: 25, label: "power is frozen while PB1 is held", hint: "Do not move the ramp while the button is pressed." },
+        { kind: "var", name: "power", at: 650.5, min: 65, max: 75, label: "The ramp continues after PB1 is released" },
         { kind: "no-diagnostic", code: "cmp-over-period", label: "No compare value goes above its period", hint: "A negative brightness wraps around to a huge count. Take fabs() of the command before scaling it for LED1." },
+        { kind: "source", mustNotMatch: "setEPWM[12]A", label: "The scaling is your own: the library's setEPWM1A and setEPWM2A are not called", hint: "This level is about writing the line from a command to counts yourself, in setMotor1 and setMotor2." },
       ],
       hints: [
-        "Use a local float for the command that is actually sent. It is u normally and 0 while PB1 is held.",
-        "Only run the ramp code when GpioDataRegs.GPEDAT.bit.GPIO157 is not 0. Clamp u to exactly 10 or -10 when it gets there.",
-        "setEPWM1A(command); setEPWM2A(-command); EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 500.0;",
+        "Use a local float for the command that is actually sent. It is power normally and 0 while PB1 is held.",
+        "Only run the ramp code when GpioDataRegs.GPEDAT.bit.GPIO157 is not 0. Clamp power to exactly 100 or -100 when it gets there.",
+        "setMotor1(command); setMotor2(-command); EPwm12Regs.CMPA.bit.CMPA = fabs(command) * 50.0;",
       ],
       takeaway:
-        "A timer interrupt that computes a command and hands it to setEPWM functions is the skeleton of every controller you will write for the robot. Later labs replace the ramp with a control law.",
+        "A timer interrupt that computes a command and hands it to one function per motor is the skeleton of every controller you will write for the robot. Later labs replace the ramp with a control law.",
     },
 
     // ---------------------------------------------------------------- practice
@@ -1100,38 +1128,40 @@ ${INIT_MOTORS()}
       mode: "write",
       tier: "practice",
       title: "Two servos, one time base",
-      goal: "Add EPWM8B for a second servo and sweep the two servos in opposite directions.",
+      goal: "Add EPWM5B for a second servo and sweep the two servos in opposite directions.",
       refs: [{ course: "L6-7", slide: [67, 80] }, { course: "HW4" }, { trm: "15.5.2" }, { trm: "15.6.2" }],
       brief: `
-HW4's second servo is on **GPIO15**, which is **EPWM8B** at mux index 1. A and B are two outputs of the same module:
+The robot's second servo connector is on **GPIO9**, which is **EPWM5B** at mux index 1. A and B are two outputs of the same module:
 
 - They share the counter, so there is **one** \`TBPRD\` and one clock divider for both. Nothing to add there.
-- B has its own compare register, \`CMPB\` (\`EPwm8Regs.CMPB.bit.CMPB\`), and its own action register, \`AQCTLB\`.
+- B has its own compare register, \`CMPB\` (\`EPwm5Regs.CMPB.bit.CMPB\`), and its own action register, \`AQCTLB\`.
 - In \`AQCTLB\`, the compare event for \`CMPB\` is **CBU**, not CAU. If you write \`AQCTLB.bit.CAU\`, output B is cleared when the counter reaches \`CMPA\`, and both servos get the same pulse.
 
 The figure shows output A as you set it up in the servo level: drag the pulse and watch the arm. Output B gets the same numbers in its own registers.
 
 {{figure:servo-pulse}}
 
-EPWM8A is set up. Add:
+EPWM5A is set up. Add:
 
-1. The EPWM8B lines in \`init_servos()\`: start at 0 degrees, set at zero, clear at \`CMPB\`, pin mux and pull-up for GPIO15.
-2. \`setEPWM8B_RCServo(float angle)\`.
-3. The sweep in \`cpu_timer0_isr\`, which runs every **20 ms**: add **5** degrees to \`angle\` per call until it reaches 90, then subtract 5 per call until it reaches -90, and repeat. Send \`angle\` to servo A and \`-angle\` to servo B.
+1. The EPWM5B lines in \`init_servos()\`: start in the middle, set at zero, clear at \`CMPB\`, pin mux and pull-up for GPIO9.
+2. \`setServo5B(float position)\`.
+3. The sweep in \`cpu_timer0_isr\`, which runs every **20 ms**: add **10** degrees to \`position\` per call until it reaches 180, then subtract 10 per call until it reaches 0, and repeat. Send \`position\` to servo A and \`180 - position\` to servo B, so the two arms mirror each other.
+
+\`position\` starts at 90, the middle. The meters show each arm's angle from the middle: position 180 reads +90 degrees.
 `,
-      kit: "redboard",
+      kit: "robot",
       durationMs: 1200,
-      watch: ["angle", "updown"],
-      inspect: ["EPwm8Regs.CMPA", "EPwm8Regs.CMPB", "EPwm8Regs.AQCTLB"],
+      watch: ["position", "updown"],
+      inspect: ["EPwm5Regs.CMPA", "EPwm5Regs.CMPB", "EPwm5Regs.AQCTLB"],
       starter: `${FREQ}
 
 __interrupt void cpu_timer0_isr(void);
 void init_servos(void);
-void setEPWM8A_RCServo(float angle);
-void setEPWM8B_RCServo(float angle);
+void setServo5A(float position);
+void setServo5B(float position);
 
-float angle = 0;      // degrees
-int16_t updown = 1;   // 1: angle going up, 0: going down
+float position = 90;  // degrees from one end of the travel, 0 to 180
+int16_t updown = 1;   // 1: position going up, 0: going down
 
 void main(void)
 {
@@ -1152,17 +1182,17 @@ void init_servos(void)
 ${SERVO_A_INIT}
 
     EALLOW;
-    GpioCtrlRegs.GPAPUD.bit.GPIO14 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO8 = 1;
     EDIS;
-    GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);  // EPWM8A
+    GPIO_SetupPinMux(8, GPIO_MUX_CPU1, 1);   // EPWM5A
 
-    // EPWM8B on GPIO15
+    // EPWM5B on GPIO9
 
 }
 
 ${SET_SERVO_A}
 
-void setEPWM8B_RCServo(float angle)
+void setServo5B(float position)
 {
 }
 
@@ -1176,11 +1206,11 @@ __interrupt void cpu_timer0_isr(void)
 
 __interrupt void cpu_timer0_isr(void);
 void init_servos(void);
-void setEPWM8A_RCServo(float angle);
-void setEPWM8B_RCServo(float angle);
+void setServo5A(float position);
+void setServo5B(float position);
 
-float angle = 0;      // degrees
-int16_t updown = 1;   // 1: angle going up, 0: going down
+float position = 90;  // degrees from one end of the travel, 0 to 180
+int16_t updown = 1;   // 1: position going up, 0: going down
 
 void main(void)
 {
@@ -1201,67 +1231,69 @@ void init_servos(void)
 ${SERVO_A_INIT}
 
     EALLOW;
-    GpioCtrlRegs.GPAPUD.bit.GPIO14 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO8 = 1;
     EDIS;
-    GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);  // EPWM8A
+    GPIO_SetupPinMux(8, GPIO_MUX_CPU1, 1);   // EPWM5A
 
-    // EPWM8B on GPIO15
-    EPwm8Regs.CMPB.bit.CMPB = 2500;      // 8 %: 0 degrees
-    EPwm8Regs.AQCTLB.bit.CBU = 1;        // clear at CMPB
-    EPwm8Regs.AQCTLB.bit.ZRO = 2;        // set at zero
+    // EPWM5B on GPIO9
+    EPwm5Regs.CMPB.bit.CMPB = 2500;      // 8 %: the middle
+    EPwm5Regs.AQCTLB.bit.CBU = 1;        // clear at CMPB
+    EPwm5Regs.AQCTLB.bit.ZRO = 2;        // set at zero
     EALLOW;
-    GpioCtrlRegs.GPAPUD.bit.GPIO15 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO9 = 1;
     EDIS;
-    GPIO_SetupPinMux(15, GPIO_MUX_CPU1, 1);  // EPWM8B
+    GPIO_SetupPinMux(9, GPIO_MUX_CPU1, 1);   // EPWM5B
 }
 
 ${SET_SERVO_A}
 
-void setEPWM8B_RCServo(float angle)
+void setServo5B(float position)
 {
-    if (angle > 90) {
-        angle = 90;
+    if (position > 180) {
+        position = 180;
     }
-    if (angle < -90) {
-        angle = -90;
+    if (position < 0) {
+        position = 0;
     }
-    EPwm8Regs.CMPB.bit.CMPB = 2500 + angle * 1250.0 / 90.0;
+    EPwm5Regs.CMPB.bit.CMPB = 1250 + position * 2500.0 / 180.0;
 }
 
 // Called every 20 ms
 __interrupt void cpu_timer0_isr(void)
 {
     if (updown == 1) {
-        angle = angle + 5;
-        if (angle >= 90) {
+        position = position + 10;
+        if (position >= 180) {
             updown = 0;
         }
     } else {
-        angle = angle - 5;
-        if (angle <= -90) {
+        position = position - 10;
+        if (position <= 0) {
             updown = 1;
         }
     }
-    setEPWM8A_RCServo(angle);
-    setEPWM8B_RCServo(-angle);
+    setServo5A(position);
+    setServo5B(180 - position);
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 `,
       checks: [
-        { kind: "signal", name: "SERVO1_DEG", at: 215, min: 44, max: 51, label: "Servo 1 is near 50 degrees after 210 ms", hint: "Add 5 to angle on every call and pass it to setEPWM8A_RCServo." },
-        { kind: "signal", name: "SERVO2_DEG", at: 215, min: -51, max: -44, label: "Servo 2 is near -50 degrees", hint: "Servo 2 needs CMPB, AQCTLB with CBU and ZRO, and GPIO15 at mux index 1." },
-        { kind: "signal", name: "SERVO1_DEG", at: 395, min: 84, max: 90.1, label: "Servo 1 has turned around near 90 degrees" },
-        { kind: "signal", name: "SERVO1_DEG", at: 595, min: 34, max: 41, label: "Servo 1 is on its way back, near 35 degrees" },
-        { kind: "signal", name: "SERVO2_DEG", at: 595, min: -41, max: -34, label: "Servo 2 mirrors it, near -35 degrees" },
-        { kind: "signal", name: "SERVO1_DEG", at: 1195, min: -72, max: -58, label: "Servo 1 has turned around again at -90 degrees and is coming back, near -65", hint: "When angle reaches -90, set updown back to 1 and start adding." },
-        { kind: "signal", name: "SERVO2_DEG", at: 1195, min: 58, max: 72, label: "Servo 2 mirrors it, near 65 degrees" },
-        { kind: "reg", reg: "EPwm8Regs.AQCTLB", field: "CBU", equals: 1, label: "Output B is cleared at CMPB" },
-        { kind: "reg", reg: "EPwm8Regs.TBPRD", equals: 31250, label: "The shared period is still 20 ms" },
+        { kind: "signal", name: "SERVO5A_DEG", at: 135, min: 44, max: 56, label: "Servo A is near +50 degrees after 135 ms (position 140)", hint: "Add 10 to position on every call and pass it to setServo5A." },
+        { kind: "signal", name: "SERVO5B_DEG", at: 135, min: -56, max: -44, label: "Servo B mirrors it, near -50 degrees", hint: "Servo B needs CMPB, AQCTLB with CBU and ZRO, GPIO9 at mux index 1, and the position 180 - position." },
+        { kind: "signal", name: "SERVO5A_DEG", at: 195, min: 84, max: 90.1, label: "Servo A has reached the end, +90 degrees (position 180)" },
+        { kind: "signal", name: "SERVO5A_DEG", at: 395, min: -16, max: -4, label: "Servo A is on its way back, near -10 degrees", hint: "After reaching 180, position must come down by 10 per call." },
+        { kind: "signal", name: "SERVO5B_DEG", at: 395, min: 4, max: 16, label: "Servo B mirrors it, near +10 degrees" },
+        { kind: "signal", name: "SERVO5A_DEG", at: 555, min: -90.1, max: -84, label: "Servo A has reached the other end, -90 degrees (position 0)" },
+        { kind: "signal", name: "SERVO5A_DEG", at: 895, min: 74, max: 90.1, label: "Servo A has turned around at position 0 and come back up", hint: "When position reaches 0, set updown back to 1 and start adding." },
+        { kind: "signal", name: "SERVO5A_DEG", at: 1195, min: -58, max: -42, label: "Servo A is on its second way down, near -50 degrees" },
+        { kind: "signal", name: "SERVO5B_DEG", at: 1195, min: 42, max: 58, label: "Servo B mirrors it, near +50 degrees" },
+        { kind: "reg", reg: "EPwm5Regs.AQCTLB", field: "CBU", equals: 1, label: "Output B is cleared at CMPB" },
+        { kind: "reg", reg: "EPwm5Regs.TBPRD", equals: 31250, label: "The shared period is still 20 ms" },
       ],
       hints: [
         "For B you write CMPB, two AQCTLB fields, the pull-up bit and the pin mux. Do not write TBPRD or TBCTL again.",
-        "EPwm8Regs.AQCTLB.bit.CBU = 1; EPwm8Regs.AQCTLB.bit.ZRO = 2; and setEPWM8B_RCServo is setEPWM8A_RCServo with CMPB.",
-        "The sweep is the brightness ramp again: add 5 while updown is 1, switch at 90, subtract 5, switch at -90.",
+        "EPwm5Regs.AQCTLB.bit.CBU = 1; EPwm5Regs.AQCTLB.bit.ZRO = 2; and setServo5B is setServo5A with CMPB.",
+        "The sweep is the brightness ramp again: add 10 while updown is 1, switch at 180, subtract 10, switch at 0.",
       ],
       takeaway: "One module, one period, two compare values, two pins. Two servos can share a module because they want the same 50 Hz.",
     },
@@ -1271,44 +1303,44 @@ __interrupt void cpu_timer0_isr(void)
       mode: "debug",
       tier: "practice",
       title: "The second servo broke the first",
-      goal: "Fix a set-up in which adding EPWM8B stopped both servos.",
+      goal: "Fix a set-up in which adding EPWM5B stopped both servos.",
       refs: [{ course: "L6-7", slide: [67, 80] }, { course: "HW4" }, { trm: "15.5.2" }, { trm: "15.4.3" }, { trm: "15.6.3" }],
       brief: `
-Servo 1 on EPWM8A worked. Then a second servo was added on EPWM8B by pasting a block from the LED code and changing the names. Now **neither** servo moves.
+The servo on EPWM5A worked. Then a second servo was added on EPWM5B by pasting a block from the LED code and changing the names. Now **neither** servo moves.
 
-Servo 1 should be at **0 degrees** and servo 2 at **+45 degrees**.
+The servo on EPWM5A should stand in the middle: an 8 % pulse, **0 degrees** on its meter. The servo on EPWM5B should get a 10 % pulse: **+45 degrees** on its meter.
 
-Things to remember from HW4:
+Things to remember:
 
-- EPWM8A and EPWM8B must use the same carrier frequency, because there is only **one** \`TBPRD\` (and one \`TBCTL\`) per module. A second write replaces the first.
+- A and B of one module must use the same carrier frequency, because there is only **one** \`TBPRD\` (and one \`TBCTL\`) per module. A second write replaces the first.
 - A compare value above the period never matches.
 - In \`AQCTLB\` the compare event for \`CMPB\` is \`CBU\`.
 
 There are two bugs. The message under the code points at the first.
 `,
-      kit: "redboard",
+      kit: "robot",
       durationMs: 90,
-      inspect: ["EPwm8Regs.TBCTL", "EPwm8Regs.TBPRD", "EPwm8Regs.CMPA", "EPwm8Regs.CMPB", "EPwm8Regs.AQCTLB"],
+      inspect: ["EPwm5Regs.TBCTL", "EPwm5Regs.TBPRD", "EPwm5Regs.CMPA", "EPwm5Regs.CMPB", "EPwm5Regs.AQCTLB"],
       starter: `void main(void)
 {
 ${INIT}
 
-    // RC servo 1 on EPWM8A (GPIO14): 50 Hz, 0 degrees
+    // RC servo on EPWM5A (GPIO8): 50 Hz, in the middle
 ${SERVO_A_INIT}
 
-    // RC servo 2 on EPWM8B (GPIO15): pasted from the LED set-up
-    EPwm8Regs.TBCTL.bit.CLKDIV = 0;      // divide by 1
-    EPwm8Regs.TBPRD = 5000;
-    EPwm8Regs.CMPB.bit.CMPB = 500;       // 10 %: +45 degrees
-    EPwm8Regs.AQCTLB.bit.CAU = 1;        // clear at the compare match
-    EPwm8Regs.AQCTLB.bit.ZRO = 2;        // set at zero
+    // RC servo on EPWM5B (GPIO9): pasted from the LED set-up
+    EPwm5Regs.TBCTL.bit.CLKDIV = 0;      // divide by 1
+    EPwm5Regs.TBPRD = 5000;
+    EPwm5Regs.CMPB.bit.CMPB = 500;       // 10 %: +45 degrees
+    EPwm5Regs.AQCTLB.bit.CAU = 1;        // clear at the compare match
+    EPwm5Regs.AQCTLB.bit.ZRO = 2;        // set at zero
 
     EALLOW;
-    GpioCtrlRegs.GPAPUD.bit.GPIO14 = 1;
-    GpioCtrlRegs.GPAPUD.bit.GPIO15 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO8 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO9 = 1;
     EDIS;
-    GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);  // EPWM8A
-    GPIO_SetupPinMux(15, GPIO_MUX_CPU1, 1);  // EPWM8B
+    GPIO_SetupPinMux(8, GPIO_MUX_CPU1, 1);   // EPWM5A
+    GPIO_SetupPinMux(9, GPIO_MUX_CPU1, 1);   // EPWM5B
 
     while (1) {
     }
@@ -1318,34 +1350,34 @@ ${SERVO_A_INIT}
 {
 ${INIT}
 
-    // RC servo 1 on EPWM8A (GPIO14): 50 Hz, 0 degrees
+    // RC servo on EPWM5A (GPIO8): 50 Hz, in the middle
 ${SERVO_A_INIT}
 
-    // RC servo 2 on EPWM8B (GPIO15): same time base, its own compare
-    EPwm8Regs.CMPB.bit.CMPB = 3125;      // 10 % of 31250: +45 degrees
-    EPwm8Regs.AQCTLB.bit.CBU = 1;        // clear at CMPB
-    EPwm8Regs.AQCTLB.bit.ZRO = 2;        // set at zero
+    // RC servo on EPWM5B (GPIO9): same time base, its own compare
+    EPwm5Regs.CMPB.bit.CMPB = 3125;      // 10 % of 31250: +45 degrees
+    EPwm5Regs.AQCTLB.bit.CBU = 1;        // clear at CMPB
+    EPwm5Regs.AQCTLB.bit.ZRO = 2;        // set at zero
 
     EALLOW;
-    GpioCtrlRegs.GPAPUD.bit.GPIO14 = 1;
-    GpioCtrlRegs.GPAPUD.bit.GPIO15 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO8 = 1;
+    GpioCtrlRegs.GPAPUD.bit.GPIO9 = 1;
     EDIS;
-    GPIO_SetupPinMux(14, GPIO_MUX_CPU1, 1);  // EPWM8A
-    GPIO_SetupPinMux(15, GPIO_MUX_CPU1, 1);  // EPWM8B
+    GPIO_SetupPinMux(8, GPIO_MUX_CPU1, 1);   // EPWM5A
+    GPIO_SetupPinMux(9, GPIO_MUX_CPU1, 1);   // EPWM5B
 
     while (1) {
     }
 }
 `,
       checks: [
-        { kind: "signal", name: "SERVO1_DEG", equals: 0, tol: 0.1, label: "Servo 1 is at 0 degrees", hint: "Both outputs share TBPRD and CLKDIV. The pasted block changed them for servo 1 as well." },
-        { kind: "signal", name: "SERVO2_DEG", equals: 45, tol: 0.1, label: "Servo 2 is at +45 degrees", hint: "10 % of the shared period of 31250 counts, and the event for CMPB in AQCTLB is CBU." },
+        { kind: "signal", name: "SERVO5A_DEG", equals: 0, tol: 0.1, label: "The servo on EPWM5A is at 0 degrees", hint: "Both outputs share TBPRD and CLKDIV. The pasted block changed them for the first servo as well." },
+        { kind: "signal", name: "SERVO5B_DEG", equals: 45, tol: 0.1, label: "The servo on EPWM5B is at +45 degrees", hint: "10 % of the shared period of 31250 counts, and the event for CMPB in AQCTLB is CBU." },
         { kind: "no-diagnostic", code: "cmp-over-period", label: "No compare value is above the period" },
       ],
       hints: [
         "Delete what the pasted block has no business setting: the clock divider and the period belong to the whole module.",
         "With the period back at 31250, 10 % is 3125 counts, not 500.",
-        "EPwm8Regs.CMPB.bit.CMPB = 3125; EPwm8Regs.AQCTLB.bit.CBU = 1; EPwm8Regs.AQCTLB.bit.ZRO = 2;",
+        "EPwm5Regs.CMPB.bit.CMPB = 3125; EPwm5Regs.AQCTLB.bit.CBU = 1; EPwm5Regs.AQCTLB.bit.ZRO = 2;",
       ],
       takeaway:
         "A and B of one module can differ in duty cycle, never in frequency. Two signals with different frequencies need two modules, which is why the buzzer has EPWM9 to itself.",
@@ -1496,12 +1528,12 @@ Jumping a motor from stop to full power draws a large current and jerks the gear
 ## Requirements
 \`cpu_timer0_isr\` runs every **1 ms**. In it:
 
-- Choose the **target**: **8** while PB1 (GPIO157) is held, **-8** while PB2 (GPIO158) is held, **0** otherwise. If both are held, PB1 wins.
+- Choose the **target** effort: **8** while PB1 (GPIO157) is held, **-8** while PB2 (GPIO158) is held, **0** otherwise. If both are held, PB1 wins.
 - Move the global \`float u\` towards the target by **at most 0.05** per call.
 - \`u\` must **land exactly on the target** and stay there. It must not step past it and it must not hover around it. Floats do not add up exactly, so "is u equal to the target" is not the test to use. Ask whether the remaining distance is smaller than one step.
 - Send \`u\` to both motors so both wheels drive forward for positive \`u\`.
 
-\`setEPWM1A\`, \`setEPWM2A\` and the set-up are written.
+The set-up is written. For the motors this level uses the course's own functions, \`setEPWM1A\` and \`setEPWM2A\`. You write them in Lab 3. Here the board's library provides them. They take a **control effort** from -10 to 10 where your \`setMotor1\` takes percent: -10 is full power backward, 0 is stop and 10 is full power forward.
 `,
       kit: "robot",
       durationMs: 770,
@@ -1519,10 +1551,8 @@ Jumping a motor from stop to full power draws a large current and jerks the gear
 
 __interrupt void cpu_timer0_isr(void);
 void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
 
-float u = 0;   // command sent to the motors, -10 to 10
+float u = 0;   // control effort sent to the motors, -10 to 10
 
 void main(void)
 {
@@ -1546,20 +1576,14 @@ __interrupt void cpu_timer0_isr(void)
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
 
-${setEpwm(1)}
-
-${setEpwm(2)}
-
 ${INIT_MOTORS()}
 `,
       solution: `${FREQ}
 
 __interrupt void cpu_timer0_isr(void);
 void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
 
-float u = 0;   // command sent to the motors, -10 to 10
+float u = 0;   // control effort sent to the motors, -10 to 10
 
 void main(void)
 {
@@ -1603,10 +1627,6 @@ __interrupt void cpu_timer0_isr(void)
 
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }
-
-${setEpwm(1)}
-
-${setEpwm(2)}
 
 ${INIT_MOTORS()}
 `,

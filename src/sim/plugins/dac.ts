@@ -4,6 +4,18 @@
 // DACVALA on the next SYSCLK. The output pin is driven only while
 // DACOUTEN.DACOUTEN = 1.
 //
+// Course library functions (SE423Lib.h): setDACA(float volts) and
+// setDACB(float volts). The course's robot library provides them, and students
+// fill in their scaling line in Lab 4 (exercise 1), so the game never prints
+// their C source: they are native here. The voltage is limited to 0..3.0 V
+// and mapped on a straight line to DACVALS, 3.0 V giving the largest 12-bit
+// number; the fraction is cut off, as C does when a float is assigned to the
+// register. DACVALS is written as a CPU write, so the diagnostics below see it
+// on the line of the call. A call takes the simulated time of the three to
+// five C statements such a function has. A student's file may define functions
+// of the same names (saved programs from before the library had them do): the
+// student's definition then replaces the library's.
+//
 // This file is also the reference example of a simulator plugin: see
 // docs/PLUGINS.md.
 
@@ -14,7 +26,37 @@ const VREF = 3.0;
 
 export const plugin: SimPlugin = {
   name: "dac",
+  prelude: `
+void setDACA(float volts);
+void setDACB(float volts);
+`,
   install(b) {
+    // The course's DAC functions: volts to DACVALS, with single-precision arithmetic as on the chip.
+    const fr = Math.fround;
+    for (const ch of ["a", "b"]) {
+      const name = `setDAC${ch.toUpperCase()}`;
+      const vals = b.dev.reg(`Dac${ch}Regs.DACVALS`);
+      b.compiler.defineNative(name, (args, _types, line) => {
+        // One step for each C statement: two tests, one more where a limit applies, one assignment.
+        let v = fr(args[0]);
+        b.tick(line);
+        if (v > VREF) {
+          b.tick(line);
+          v = VREF;
+        }
+        b.tick(line);
+        if (v < 0) {
+          b.tick(line);
+          v = 0;
+        }
+        b.tick(line);
+        const counts = Math.trunc(fr(fr(v * 4095) / VREF)) & 0xfff;
+        // The 12-bit field is written; the upper bits of the register are kept.
+        b.mem.write(vals.addr, 1, (b.mem.read(vals.addr, 1) & 0xf000) | counts);
+        return 0;
+      });
+      b.compiler.fns.get(name)!.replaceable = true;
+    }
     for (const ch of ["a", "b", "c"]) {
       const pre = `Dac${ch}Regs`;
       const out = `DAC${ch.toUpperCase()}`;

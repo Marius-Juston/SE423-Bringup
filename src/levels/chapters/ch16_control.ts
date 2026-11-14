@@ -253,7 +253,7 @@ Timer 0 already interrupts every 1 ms, and the function measures the left wheel 
 
 1. **Compare**: \`eLeft\` is the reference \`vref\` minus the measured speed \`vLeft\`.
 2. **Compute**: \`uLeft\` is \`Kp\` times the error.
-3. **Saturate**: limit \`uLeft\` to -10 ... 10 with two \`if\` statements, as in \`setEPWM1A\` of Lab 3.
+3. **Saturate**: limit \`uLeft\` to -10 ... 10 with two \`if\` statements, as in the motor functions of chapter 10.
 
 The last line sends \`uLeft\` to both motors, so the robot drives straight. Keep the variable names: the tests read them.
 

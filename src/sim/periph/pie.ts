@@ -9,6 +9,12 @@ import type { Board } from "../board";
 export class Pie {
   /** Vector name per "group.channel", from the TI header's own comments ("12.9 - ..."). */
   private vectors = new Map<string, string>();
+  /**
+   * Channels ("group.channel") whose PIEIER bit is a blank students fill in for credit, with
+   * the library call that sets it. A message about such a missing enable names the call and
+   * the manual's table, never the bit.
+   */
+  libraryEnable = new Map<string, string>();
   /** PIEACK bits written as 1 since the CPU last took an interrupt of that group. */
   acked = 0;
 
@@ -57,7 +63,12 @@ export class Pie {
     const dev = this.b.dev;
     let reason: string | null = null;
     if (!dev.get("PieCtrlRegs.PIECTRL", "ENPIE")) reason = "the PIE is not enabled. InitPieVectTable() sets ENPIE.";
-    else if (!(dev.get(`PieCtrlRegs.PIEIER${x}`) & (1 << (y - 1)))) reason = `PieCtrlRegs.PIEIER${x}.bit.INTx${y} is 0. Add PieCtrlRegs.PIEIER${x}.bit.INTx${y} = 1;`;
+    else if (!(dev.get(`PieCtrlRegs.PIEIER${x}`) & (1 << (y - 1)))) {
+      const lib = this.libraryEnable.get(`${x}.${y}`);
+      reason = lib
+        ? `${this.pieBit(x, y)} is 0. Call ${lib} or set the bit that Table 3-2 of the reference manual gives for ${this.vectorName(x, y)}.`
+        : `PieCtrlRegs.PIEIER${x}.bit.INTx${y} is 0. Add PieCtrlRegs.PIEIER${x}.bit.INTx${y} = 1;`;
+    }
     this.b.blocked(this.vectorName(x, y), x, reason);
   }
 
@@ -114,11 +125,16 @@ export class Pie {
     return this.vectorName(x, y);
   }
 
+  /** The enable bit of INTx.y as a message names it. */
+  private pieBit(x: number, y: number): string {
+    return this.libraryEnable.has(`${x}.${y}`) ? `the enable bit of ${this.vectorName(x, y)} in PieCtrlRegs.PIEIER${x}` : `PieCtrlRegs.PIEIER${x}.bit.INTx${y}`;
+  }
+
   /** Whether INTx.y would reach the CPU right now, and if not, why. */
   explain(x: number, y: number): string | null {
     const dev = this.b.dev;
     if (!dev.get("PieCtrlRegs.PIECTRL", "ENPIE")) return "the PIE is not enabled (InitPieVectTable() sets ENPIE)";
-    if (!(dev.get(`PieCtrlRegs.PIEIER${x}`) & (1 << (y - 1)))) return `PieCtrlRegs.PIEIER${x}.bit.INTx${y} is 0`;
+    if (!(dev.get(`PieCtrlRegs.PIEIER${x}`) & (1 << (y - 1)))) return `${this.pieBit(x, y)} is 0`;
     if (!(this.b.ier & (1 << (x - 1)))) return `IER does not have M_INT${x} set`;
     if (this.b.intm) return "interrupts are globally disabled (EINT has not run)";
     if (dev.get("PieCtrlRegs.PIEACK") & (1 << (x - 1))) return `group ${x} was never acknowledged (PieCtrlRegs.PIEACK.all = PIEACK_GROUP${x};)`;

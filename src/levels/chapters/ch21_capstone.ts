@@ -77,18 +77,12 @@ const motorPwm = (n: number) => `    EPwm${n}Regs.TBCTL.bit.CTRMODE = 0;     // 
     EPwm${n}Regs.AQCTLA.bit.ZRO = 2;        // set at zero
     EPwm${n}Regs.TBPHS.bit.TBPHS = 0;`;
 
-const setEpwm = (n: number) => `void setEPWM${n}A(float controleffort)
-{
-    if (controleffort < -10) {
-        controleffort = -10;
-    }
-    if (controleffort > 10) {
-        controleffort = 10;
-    }
-    uint16_t period = EPwm${n}Regs.TBPRD;
-    float value = (controleffort + 10) * period / 20.0;
-    EPwm${n}Regs.CMPA.bit.CMPA = value;
-}`;
+// setEPWM1A() and setEPWM2A() are the course's motor functions. Students write them in
+// Lab 3, so no program here contains their bodies: the simulator's library provides them
+// (src/sim/plugins/actuators.ts), as the course's SE423Lib does on the real robot.
+const LIB_NOTE = `// setEPWM1A(u) and setEPWM2A(u) are not in this file. They are the motor functions
+// you write in Lab 3. Here the board's library provides them. u is a control
+// effort: -10 is full power backward, 0 is stop, 10 is full power forward.`;
 
 const INIT_PWM = `// Motor PWM (chapter 10, Lab 3): EPWM1A on GPIO0 is the left motor,
 // EPWM2A on GPIO2 the right motor. 20 kHz, 50 % duty is stopped.
@@ -388,8 +382,6 @@ function program(n: number, o: Opts): string {
 __interrupt void cpu_timer0_isr(void);`);
   add(n >= 7, `__interrupt void cpu_timer1_isr(void);`);
   add(true, `void init_EPWM1and2(void);
-void setEPWM1A(float controleffort);
-void setEPWM2A(float controleffort);
 void init_eQEPs(void);`);
   add(n >= 2, `float readEncLeft(void);
 float readEncRight(void);`);
@@ -533,9 +525,7 @@ ${o.mission.replace(/^\n+|\s+$/g, "")}
 `);
   add(true, `${INIT_PWM}
 
-${setEpwm(1)}
-
-${setEpwm(2)}
+${LIB_NOTE}
 
 ${INIT_QEP}`);
   add(n >= 2, `
@@ -1029,14 +1019,7 @@ function blank(source: string, pieces: [string, string][]): string {
 const OPEN_STARTER = blank(S_OPEN, [
   [motorPwm(2), `    // TODO 1: set up EPWM2 for the right motor, exactly like EPWM1 above`],
   [`    GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);  // EPWM2A`, `    // TODO 2: give GPIO2 to EPWM2A`],
-  [
-    setEpwm(2),
-    `void setEPWM2A(float controleffort)
-{
-    // TODO 3: saturate to -10 ... 10, scale to 0 ... TBPRD, write CMPA of EPWM2
-
-}`,
-  ],
+  [`    init_EPWM1and2();`, `    // TODO 3: call the motor set-up function`],
   [M_OPEN.replace(/^\n+|\s+$/g, ""), `    // TODO 4: set uLeft and uRight: effort 5 for the first part of the run, then 0`],
   [`    setEPWM2A(-uRight);`, `    // TODO 5: send uRight to the right motor. It is mounted mirrored`],
 ]);
@@ -1223,7 +1206,7 @@ Nothing here is new hardware. Every part is something you wrote in an earlier ch
 2. **Estimate**: work out which way the robot points and where it is, from what the wheels did. This is called dead reckoning, and this chapter teaches it from the start. The part of it that needs slow maths (\`cos\`, \`sin\`) is handed to the main loop with a flag (chapter 5), so that this function stays short.
 3. **Decide**: a **state machine** (chapter 17: a variable that remembers what the robot is doing, and rules for when to change it) sets two numbers: the speed command \`vref\` and the turn command \`turn\`.
 4. **Control**: a PI controller per wheel (chapter 16) compares the commanded speed with the measured speed and produces a **control effort** for each motor: a number from -10 (full power backwards) through 0 (stopped) to 10 (full power forwards). They are called \`uLeft\` and \`uRight\`.
-5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` (chapter 10) turn the efforts into PWM duty cycles, the motors turn, and the wheels move.
+5. **Act**: \`setEPWM1A\` and \`setEPWM2A\` (the course's motor functions, which the board's library provides here) turn the efforts into PWM duty cycles, the motors turn, and the wheels move.
 
 The wheels turn the encoders, and the next pass measures the result. That circle is the **feedback loop**.
 
@@ -1252,7 +1235,7 @@ ${ROOM_NOTE}${MOTOR_NOTE}`,
           prompt: "The motors are driven by one PWM signal each (chapter 10). Which duty cycle stops a motor?",
           options: ["0 %", "50 %", "100 %", "Any, as long as CMPA is 0"],
           answer: 1,
-          why: "The PWM pin switches the motor between full voltage one way and full voltage the other way. At 50 % the two cancel and the average is zero. That is why setEPWM1A turns an effort of 0 into half of TBPRD.",
+          why: "The PWM pin switches the motor between full voltage one way and full voltage the other way. At 50 % the two cancel and the average is zero. That is why an effort of 0 becomes half of TBPRD.",
         },
         {
           prompt: "The course code calls setEPWM1A(uLeft); setEPWM2A(-uRight);. Why the minus sign?",
@@ -1353,17 +1336,17 @@ The file you see is the skeleton of the whole chapter. Read it once from top to 
 
 - \`main\` sets up the pins and a timer interrupt every 1 ms. This is the timer 0 set-up you have written since chapter 5.
 - \`cpu_timer0_isr\` is the 1 ms loop. It has two sections so far: **Decide** (the mission) and **Act** (the motors).
-- At the bottom are the hardware functions. \`init_EPWM1and2()\` and \`setEPWM1A()\` are yours from the chapter 10 level "setEPWM1A and setEPWM2A". \`init_eQEPs()\` is Lab 3's encoder set-up from the chapter 11 level "The second encoder". It is not used yet: it waits for the next level.
+- At the bottom are the hardware functions. \`init_EPWM1and2()\` is the motor set-up of chapter 10. \`setEPWM1A()\` and \`setEPWM2A()\` are not in the file: they are the functions you write in Lab 3, and here the board's library provides them. \`init_eQEPs()\` is Lab 3's encoder set-up from the chapter 11 level "The second encoder". It is not used yet: it waits for the next level.
 
 ## The motors, again
 - The left motor is on **EPWM1A** (pin GPIO0), the right motor on **EPWM2A** (pin GPIO2).
-- The mission speaks in **control efforts**: a number from -10 to 10. \`setEPWM1A(u)\` turns it into a duty cycle: -10 is 0 %, 0 is 50 %, 10 is 100 %. **50 % is stopped.**
+- The mission speaks in **control efforts**: a number from -10 to 10. It is the percent of chapter 10 divided by 10: -10 is full power backward, 0 is stop and 10 is full power forward. \`setEPWM1A(u)\` turns it into a duty cycle, and **50 % is stopped.**
 - The right motor is mounted **mirrored**. The same duty cycle that drives the left wheel forwards drives the right wheel backwards.
 
 ## What to add (five gaps, marked TODO 1 to 5)
 1. In \`init_EPWM1and2()\`: the set-up of **EPWM2**. It is the same ten lines as the EPWM1 block above it, with \`EPwm2Regs\`.
 2. In the same function: \`GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);\` gives pin GPIO2 to EPWM2A, as the line above it does for GPIO0.
-3. The body of \`setEPWM2A()\`. It is \`setEPWM1A()\`, which is written just above, with \`EPwm2Regs\`.
+3. In \`main\`: the call \`init_EPWM1and2();\`. A set-up function that is never called sets up nothing, and both motors stay dead.
 4. In \`cpu_timer0_isr\`, under "Decide": **the mission**. Set \`uLeft\` and \`uRight\` to 5 for the first part of the run and to 0 after that. \`numTimer0calls\` counts the passes, so it is the time in milliseconds.
 5. Under "Act": send \`uRight\` to the right motor, with the sign that a mirrored motor needs.
 
@@ -1396,7 +1379,7 @@ ${ROOM_NOTE}${MOTOR_NOTE}`,
       inspect: ["EPwm1Regs.CMPA", "EPwm2Regs.CMPA"],
       hints: [
         "Do the hardware first (gaps 1, 2, 3 and 5). For gap 4 write `uLeft = 5.0; uRight = 5.0;` for now and watch the two wheel speed meters: both must show a positive speed. Then add the timing.",
-        "Gap 3 is the eight lines inside setEPWM1A with EPwm2Regs instead of EPwm1Regs. Gap 5 is `setEPWM2A(-uRight);`. Gap 2 is `GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);`.",
+        "Gap 2 is `GPIO_SetupPinMux(2, GPIO_MUX_CPU1, 1);`. Gap 3 is `init_EPWM1and2();` on a line of its own in main. Gap 5 is `setEPWM2A(-uRight);`.",
         "Gap 4: 2 ft at 1.4 ft/s is 1.43 s, so `if (numTimer0calls <= 1430) { uLeft = 5.0; uRight = 5.0; } else { uLeft = 0.0; uRight = 0.0; }`",
       ],
       takeaway: "Open loop gets you roughly there, pointing roughly the right way, on a good day. Note the two lines under \"Act\": from now on everything above them only has to produce uLeft and uRight.",

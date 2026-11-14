@@ -120,7 +120,7 @@ export const glossary: GlossaryEntry[] = [
   {
     term: "Control effort",
     meaning:
-      "The course's name for a motor command: a number from -10 (full power backward) through 0 (stop) to 10 (full power forward). setEPWM1A and setEPWM2A turn it into a duty cycle.",
+      "The course's name for a motor command: a number from -10 (full power backward) through 0 (stop) to 10 (full power forward). The course's functions setEPWM1A and setEPWM2A turn it into a duty cycle. Chapter 10 writes the same command in percent, -100 to 100.",
     level: "act-numbers",
   },
   {
@@ -300,7 +300,7 @@ export const glossary: GlossaryEntry[] = [
   {
     term: "Mirrored motor",
     meaning:
-      "The robot's two motors face opposite ways, so the right one needs the opposite command to drive the robot forward. Put the minus sign at the call, setEPWM2A(-u).",
+      "The robot's two motors face opposite ways, so the right one needs the opposite command to drive the robot forward. Put the minus sign at the call: setMotor2(-p) in chapter 10, setEPWM2A(-u) with the course's functions.",
     level: "act-setepwm",
   },
   {

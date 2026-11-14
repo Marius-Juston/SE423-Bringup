@@ -334,9 +334,9 @@ Order the steps the way the manual lists them.
       brief: `
 Table 3-2 of the reference manual lists every PIE interrupt. Each row is a group, each column a channel. The names are peripherals, most of which you meet in later chapters (ADC, EPWM, SPI, SCI). Here you only need to find a name and read off its numbers. A few rows, shortened:
 
-- **INT1.y**: 1 ADCA1, 2 ADCB1, 3 ADCC1, 4 XINT1, 5 XINT2, 6 ADCD1, **7 TIMER0**, 8 WAKE
+- **INT1.y**: 1 ADCA1, ... 4 XINT1, 5 XINT2, 6 ADCD1, **7 TIMER0**, 8 WAKE
 - **INT3.y**: 1 EPWM1, 2 EPWM2, 3 EPWM3 and so on up to 12 EPWM12
-- **INT6.y**: 1 SPIA_RX, 2 SPIA_TX, 3 SPIB_RX, 4 SPIB_TX
+- **INT6.y**: 1 SPIA_RX, 2 SPIA_TX, ... 9 SPIC_RX, 10 SPIC_TX
 - **INT9.y**: 1 SCIA_RX, 2 SCIA_TX, 3 SCIB_RX, 4 SCIB_TX
 - **INT12.y**: 1 XINT3, 2 XINT4, 3 XINT5, ... 9 EMIF_ERROR
 

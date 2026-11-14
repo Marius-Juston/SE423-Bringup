@@ -9,7 +9,7 @@ import type { BenchView, ViewProps } from "./types";
 // (src/sim/plugins/epwm.ts drives the pins; TRM chapter 15).
 
 /** What the course boards connect to a PWM pin. */
-const USE: Record<number, string> = { 0: "left motor", 2: "right motor", 14: "RC servo 1", 15: "RC servo 2", 16: "buzzer", 22: "LED1" };
+const USE: Record<number, string> = { 0: "left motor", 2: "right motor", 8: "RC servo", 9: "RC servo", 14: "RC servo 1", 15: "RC servo 2", 16: "buzzer", 22: "LED1" };
 /** Edges looked at, counted back from the time shown. */
 const TAIL = 48;
 

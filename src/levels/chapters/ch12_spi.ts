@@ -25,71 +25,31 @@ const wave = (row: (0 | 1)[]) => row.map((v) => (v ? "--" : "__")).join("");
 /** Column heads for \`wave\`: r = rest, then the bit numbers, each over its four characters. */
 const HEADER = `r ${BITS.map((k) => `${k}   `).join("")}r`;
 
-// ---- C building blocks (HW3 exercise 3, and setupSpib() in SE423Lib.c) ------
-const PINS = `    // GPIO66 is the chip select of the MPU-9250: high means "not selected"
-    GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL);
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
+// ---- C building blocks --------------------------------------------------------
+// SPIB, the port of the robot's sensors, is set up by the course library:
+// setupSpib() and enableSpibInterrupt() (src/sim/plugins/spi.ts). Writing that
+// set-up is graded work in HW3 (exercise 3: the mux position of GPIO63 to 65
+// and the PIE channel of SPIB_RX are blanks there), so no level prints it.
+// The levels in which the student writes a set-up use SPIC, with its own pins
+// (GPIO122 to 125), mux position (6) and PIE channel (INT6.9).
 
-    GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15);  // GPIO63 is SPISIMOB
-    GPIO_SetupPinMux(64, GPIO_MUX_CPU1, 15);  // GPIO64 is SPISOMIB
-    GPIO_SetupPinMux(65, GPIO_MUX_CPU1, 15);  // GPIO65 is SPICLKB
-    EALLOW;
-    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;       // given: pull-ups on (0 = on), TI's advice for SPI
-    GpioCtrlRegs.GPCPUD.bit.GPIO64 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO65 = 0;
-    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;     // given: 3 = pin goes to the SPI unfiltered
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO65 = 3;
-    EDIS;`;
-
-interface SpibOpts {
-  phase?: number;
-  char?: string;
-  loopback?: boolean;
+interface LoopOpts {
+  /** 8-bit words. */
+  char8?: boolean;
+  /** false: FIFOs off. */
   fifo?: boolean;
-  rxffil?: number;
-  /** SPIBRR. Default: 99 (500 kHz) in loopback, 49 (1 MHz, the MPU-9250's limit) with a device. */
-  brr?: number;
 }
-const rateNote = (brr: number) => `50 MHz / (${brr} + 1) = ${50 / (brr + 1) >= 1 ? `${50 / (brr + 1)} MHz` : `${50000 / (brr + 1)} kHz`}`;
-/** The register part of the course's SPIB set-up. */
-const spib = (o: SpibOpts = {}) => `    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // hold the SPI in reset while it is set up
+/** SPIB from the library, then this chapter's test settings: 500 kHz and loopback. */
+const spibLoop = (o: LoopOpts = {}) => `    setupSpib();                              // course library: SPIB for the robot's sensors
 
-    SpibRegs.SPICTL.bit.CLK_PHASE = ${o.phase ?? 1};        // with CLKPOLARITY = 0: clock rests low,
-    SpibRegs.SPICCR.bit.CLKPOLARITY = 0;      // data is read on the rising edge
-    SpibRegs.SPICTL.bit.MASTER_SLAVE = 1;     // this chip is the master
-    SpibRegs.SPICCR.bit.SPICHAR = ${o.char ?? "0xF"};        // bits per word, minus 1
-    SpibRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
-    SpibRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
-    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = ${o.brr ?? (o.loopback ? 99 : 49)};    // ${rateNote(o.brr ?? (o.loopback ? 99 : 49))}
-    SpibRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
-${o.loopback ? "    SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip\n" : ""}${
-  o.fifo === false
-    ? ""
-    : `
-    SpibRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
-    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
-    SpibRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
-    SpibRegs.SPIFFRX.bit.RXFFIENA = 1;        // interrupt when RXFFST >= RXFFIL
-    SpibRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
-`
-}
-    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // set-up done: release the SPI
-${
-  o.fifo === false
-    ? ""
-    : `
-    SpibRegs.SPIFFTX.bit.TXFIFO = 1;          // release the FIFOs
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIL = ${o.rxffil ?? 16};${o.rxffil === undefined ? "          // changed before each transfer" : ""}
-`
-}`;
+    // No chip is used here: slow the clock and switch loopback on
+    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // settings change only while the SPI is in reset
+    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 99;    // 50 MHz / (99 + 1) = 500 kHz
+    SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip
+${o.char8 ? "    SpibRegs.SPICCR.bit.SPICHAR = 7;          // 8-bit words: bits per word, minus 1\n" : ""}${
+  o.fifo === false ? "    SpibRegs.SPIFFTX.bit.SPIFFENA = 0;        // FIFOs off\n" : ""
+}    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // release the SPI again
+`;
 
 const PIE_INIT = `    DINT;
     InitPieCtrl();
@@ -97,7 +57,7 @@ const PIE_INIT = `    DINT;
     IFR = 0x0000;
     InitPieVectTable();`;
 
-/** Timer 0 every `us` microseconds and the SPIB receive interrupt (INT6.3), then interrupts on. */
+/** Timer 0 every `us` microseconds and the SPIB receive interrupt, then interrupts on. */
 const VECTORS = (us: number, extra = "") => `    EALLOW;
     PieVectTable.TIMER0_INT = &cpu_timer0_isr;
     PieVectTable.SPIB_RX_INT = &SPIB_isr;
@@ -108,42 +68,122 @@ const VECTORS = (us: number, extra = "") => `    EALLOW;
     CpuTimer0Regs.TCR.all = 0x4000;
 ${extra}
     PieCtrlRegs.PIEIER1.bit.INTx7 = 1;        // timer 0 is INT1.7
-    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;        // SPIB receive is INT6.3
     IER |= M_INT1;
-    IER |= M_INT6;
+    enableSpibInterrupt();                    // course library: SPIB receive, in the PIE and in IER
     EINT;`;
 
 const START = `    InitSysCtrl();
     InitGpio();
 `;
 
+// ---- SPIC: the port the student sets up (spi-loopback, spi-setup-own, spi-x-scratch) ----
+/** Chip select GPIO125 and the three SPIC pins. `notes`: with the comments of a first reading. */
+const spicPins = (notes: boolean) => `    // GPIO125 is the chip select of SPIC: an output, high means "not selected"
+    GPIO_SetupPinMux(125, GPIO_MUX_CPU1, 0);
+    GPIO_SetupPinOptions(125, GPIO_OUTPUT, GPIO_PUSHPULL);
+    GpioDataRegs.GPDSET.bit.GPIO125 = 1;
+
+    GPIO_SetupPinMux(122, GPIO_MUX_CPU1, 6);  // ${notes ? "GPIO122 is " : ""}SPISIMOC
+    GPIO_SetupPinMux(123, GPIO_MUX_CPU1, 6);  // ${notes ? "GPIO123 is " : ""}SPISOMIC
+    GPIO_SetupPinMux(124, GPIO_MUX_CPU1, 6);  // ${notes ? "GPIO124 is " : ""}SPICLKC
+    EALLOW;
+    GpioCtrlRegs.GPDPUD.bit.GPIO122 = 0;${notes ? "      // given: pull-ups on (0 = on), TI's advice for SPI" : ""}
+    GpioCtrlRegs.GPDPUD.bit.GPIO123 = 0;
+    GpioCtrlRegs.GPDPUD.bit.GPIO124 = 0;
+    GpioCtrlRegs.GPDQSEL2.bit.GPIO122 = 3;${notes ? "    // given: 3 = pin goes to the SPI unfiltered" : ""}
+    GpioCtrlRegs.GPDQSEL2.bit.GPIO123 = 3;
+    GpioCtrlRegs.GPDQSEL2.bit.GPIO124 = 3;
+    EDIS;`;
+
+interface SpicOpts {
+  /** Values of the four lines the first level leaves to the student; default: the right ones. */
+  master?: number;
+  char?: string;
+  brr?: number;
+  release?: number;
+  /** Comments of the four lines; default: what the line does. */
+  todo?: boolean;
+  polarity?: number;
+  phase?: number;
+  loopback?: boolean;
+  /** Receive FIFO interrupt on, with this RXFFIL. */
+  rxffil?: number;
+}
+/** One line of C with its comment in the column the other lines use. */
+const L = (code: string, note: string) => `${`    ${code}`.padEnd(46)}// ${note}`;
+const rateNote = (brr: number) => `50 MHz / (${brr} + 1) = ${50000 / (brr + 1)} kHz`;
+/** The register part of an SPIC set-up. */
+const spic = (o: SpicOpts = {}) => `    SpicRegs.SPICCR.bit.SPISWRESET = 0;       // hold the SPI in reset while it is set up
+
+${L(`SpicRegs.SPICTL.bit.CLK_PHASE = ${o.phase ?? 1};`, `with CLKPOLARITY = ${o.polarity ?? 0}: clock rests ${o.polarity ? "high" : "low"},`)}
+${L(`SpicRegs.SPICCR.bit.CLKPOLARITY = ${o.polarity ?? 0};`, "data is read on the rising edge")}
+${L(`SpicRegs.SPICTL.bit.MASTER_SLAVE = ${o.master ?? 1};`, o.todo ? "TODO 1: make this chip the master" : "this chip is the master")}
+${L(`SpicRegs.SPICCR.bit.SPICHAR = ${o.char ?? "0xF"};`, o.todo ? "TODO 2: 16 bits per word" : "16 bits per word")}
+    SpicRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
+    SpicRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
+    SpicRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
+${L(`SpicRegs.SPIBRR.bit.SPI_BIT_RATE = ${o.brr ?? 99};`, o.todo ? "TODO 3: 500 kHz from the 50 MHz LSPCLK" : rateNote(o.brr ?? 99))}
+    SpicRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
+${o.loopback ? "    SpicRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip\n" : ""}
+    SpicRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
+    SpicRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
+    SpicRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
+    SpicRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
+    SpicRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
+    SpicRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
+    SpicRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
+${o.rxffil === undefined ? "" : "    SpicRegs.SPIFFRX.bit.RXFFIENA = 1;        // interrupt when RXFFST >= RXFFIL\n"}    SpicRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
+
+${L(`SpicRegs.SPICCR.bit.SPISWRESET = ${o.release ?? 1};`, o.todo ? "TODO 4: set-up done, release the SPI" : "set-up done: release the SPI")}
+
+    SpicRegs.SPIFFTX.bit.TXFIFO = 1;          // release the FIFOs
+    SpicRegs.SPIFFRX.bit.RXFIFORESET = 1;${o.rxffil === undefined ? "" : `\n${L(`SpicRegs.SPIFFRX.bit.RXFFIL = ${o.rxffil};`, o.rxffil === 16 ? "changed before each transfer" : "one word comes back")}`}`;
+
+const loopback = (o: SpicOpts, body: string) => `uint16_t rx1 = 0;
+uint16_t rx2 = 0;
+uint16_t rx3 = 0;
+
+void main(void)
+{
+${START}
+${spicPins(true)}
+
+${spic({ ...o, loopback: true })}
+
+${body}
+
+    while (1) {
+    }
+}
+`;
+
 // ---- the set-up ladder: spi-setup-own (checklist) and spi-x-scratch (requirements only) ----
-const OWN_ISRS = (us: number) => `// Every ${us / 1000} ms: ask the chip on the bus for its identity number
+// No chip is on SPIC. A jumper wire (input SPIC_JUMPER) joins GPIO122 to GPIO123.
+const JUMPER = [{ at: 0, set: "SPIC_JUMPER", value: 1 }];
+
+const OWN_TIMER_ISR = (us: number, rxffil: boolean) => `// Every ${us / 1000} ms: send the next number over the jumper wire
 __interrupt void cpu_timer0_isr(void)
 {
-    GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;     // chip select low
-    SpibRegs.SPIFFRX.bit.RXFFIL = 1;          // the answer is one word
-    SpibRegs.SPITXBUF = 0xF500;               // "which chip are you?"
+    sent++;
+    GpioDataRegs.GPDCLEAR.bit.GPIO125 = 1;    // chip select low
+${rxffil ? "    SpicRegs.SPIFFRX.bit.RXFFIL = 1;          // one word comes back\n" : ""}    SpicRegs.SPITXBUF = sent;
 
     PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;
 }`;
 
-const OWN_RX_ISR = `// When the answer has arrived
-__interrupt void SPIB_isr(void)
-{
-    answer = SpibRegs.SPIRXBUF;
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;       // chip select high
+const OWN_RX_BODY = `    answer = SpicRegs.SPIRXBUF;
+    GpioDataRegs.GPDSET.bit.GPIO125 = 1;      // chip select high
     numTransfers++;
 
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
-    PieCtrlRegs.PIEACK.all = PIEACK_GROUP6;
-}`;
+    SpicRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
+    SpicRegs.SPIFFRX.bit.RXFFINTCLR = 1;
+    PieCtrlRegs.PIEACK.all = PIEACK_GROUP6;`;
 
 const OWN_HEAD = `__interrupt void cpu_timer0_isr(void);
-__interrupt void SPIB_isr(void);
+__interrupt void SPIC_isr(void);
 
-int16_t answer = 0;           // the word the chip sent back
+uint16_t sent = 0x4B00;       // the last word sent
+uint16_t answer = 0;          // the word that came back
 uint32_t numTransfers = 0;`;
 
 const TIMER_GIVEN = (us: number) => `    InitCpuTimers();
@@ -152,10 +192,14 @@ const TIMER_GIVEN = (us: number) => `    InitCpuTimers();
     PieCtrlRegs.PIEIER1.bit.INTx7 = 1;        // timer 0 is INT1.7
     IER |= M_INT1;`;
 
+const SPIC_VECTOR = "    PieVectTable.SPIC_RX_INT = &SPIC_isr;";
+const SPIC_ENABLE = `    PieCtrlRegs.PIEIER6.bit.INTx9 = 1;        // SPIC receive is INT6.9
+    IER |= M_INT6;`;
+
 const setupOwn = (o: { body: string; vector: string; enable: string }) => `${OWN_HEAD}
 
-// The whole SPIB set-up: pins, chip select, registers, FIFOs
-void setupSpib(void)
+// The whole SPIC set-up: chip select, pins, registers, FIFOs
+void setupSpic(void)
 {
 ${o.body}
 }
@@ -163,7 +207,7 @@ ${o.body}
 void main(void)
 {
 ${START}
-    setupSpib();
+    setupSpic();
 
 ${PIE_INIT}
 
@@ -180,61 +224,21 @@ ${o.enable}
     }
 }
 
-${OWN_ISRS(1000)}
+${OWN_TIMER_ISR(1000, true)}
 
-${OWN_RX_ISR}
+// When the word is back
+__interrupt void SPIC_isr(void)
+{
+${OWN_RX_BODY}
+}
 `;
 
-const SCRATCH_SPIB = `    // chip select: output, high
-    GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0);
-    GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL);
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;
-
-    GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15);  // SPISIMOB
-    GPIO_SetupPinMux(64, GPIO_MUX_CPU1, 15);  // SPISOMIB
-    GPIO_SetupPinMux(65, GPIO_MUX_CPU1, 15);  // SPICLKB
-    EALLOW;
-    GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO64 = 0;
-    GpioCtrlRegs.GPCPUD.bit.GPIO65 = 0;
-    GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3;
-    GpioCtrlRegs.GPCQSEL1.bit.GPIO65 = 3;
-    EDIS;
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // hold the SPI in reset
-    SpibRegs.SPICCR.bit.CLKPOLARITY = 1;      // clock rests high,
-    SpibRegs.SPICTL.bit.CLK_PHASE = 0;        // data is read on the rising edge
-    SpibRegs.SPICTL.bit.MASTER_SLAVE = 1;
-    SpibRegs.SPICCR.bit.SPICHAR = 0xF;        // 16 bits per word
-    SpibRegs.SPICTL.bit.TALK = 1;
-    SpibRegs.SPIPRI.bit.FREE = 1;
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;
-    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 124;   // 50 MHz / (124 + 1) = 400 kHz
-    SpibRegs.SPISTS.all = 0x0000;
-
-    SpibRegs.SPIFFTX.bit.SPIRST = 1;
-    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;
-    SpibRegs.SPIFFTX.bit.TXFIFO = 0;
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIENA = 1;        // interrupt when RXFFST >= RXFFIL
-    SpibRegs.SPIFFCT.bit.TXDLY = 0;
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // release the SPI
-
-    SpibRegs.SPIFFTX.bit.TXFIFO = 1;          // release the FIFOs
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIL = 1;          // the answer is one word`;
-
-const scratch = (o: { spib: string; vector: string; enable: string; isr: string }) => `${OWN_HEAD}
+const scratch = (o: { spic: string; vector: string; enable: string; isr: string }) => `${OWN_HEAD}
 
 void main(void)
 {
 ${START}
-${o.spib}
+${o.spic}
 
 ${PIE_INIT}
 
@@ -251,10 +255,10 @@ ${o.enable}
     }
 }
 
-${OWN_ISRS(2000).replace("    SpibRegs.SPIFFRX.bit.RXFFIL = 1;          // the answer is one word\n", "")}
+${OWN_TIMER_ISR(2000, false)}
 
-// When the answer has arrived
-__interrupt void SPIB_isr(void)
+// When the word is back
+__interrupt void SPIC_isr(void)
 {
 ${o.isr}
 }
@@ -395,29 +399,31 @@ Place the eight wires.
       kind: "code",
       mode: "complete",
       title: "Talking to yourself",
-      goal: "Finish the SPIB set-up, send three words in loopback and read back the three that arrive.",
+      goal: "Finish the set-up of an SPI port, send three words in loopback and read back the three that arrive.",
       refs: [{ course: "L6-7", slide: [43, 44, 52] }, { course: "HW3" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "18.5.2" }],
       brief: `
-This is the course's SPIB set-up with four values left for you. Every other line is **given**: it is the same in every course program, and its comment says what it does. The order never changes:
+The robot's sensors are on **SPIB**. Later levels set that port up with one call to the course library, \`setupSpib()\`. Writing that set-up yourself is part of HW3, so this game does not print it. Here you learn what a set-up contains on **SPIC**, a port the course programs do not use. Every SPI port has the same registers with the same bits. Only the name in front changes: \`SpicRegs\`.
 
-1. Switch the pins to the SPI (\`GPIO_SetupPinMux(..., 15)\`). Already done.
+Four values are left for you. Every other line is **given**, and its comment says what it does. The order never changes:
+
+1. Switch the pins to the SPI with \`GPIO_SetupPinMux\`. Already done. Each port has its own pins and its own mux position, listed in the chip's pin table. For SPIC: GPIO122 to GPIO124, position 6.
 2. **Hold the SPI in reset**: \`SPISWRESET = 0\`. The manual says to change the configuration only while this bit is 0.
-3. Choose master, word length and bit rate. (The two clock mode lines are the course's setting. The next level explains them.)
+3. Choose master, word length and bit rate. (The next level explains the two clock mode lines.)
 4. Set up the FIFOs.
 5. **Release the reset**: \`SPISWRESET = 1\`. Nothing is sent while it is 0.
 
 ## Two numbers
 - \`SPICHAR\` is the number of bits per word **minus 1**. It is 4 bits wide, so a word has at most 16 bits.
-- **bit rate = LSPCLK / (SPIBRR + 1)**, for SPIBRR from 3 to 127. LSPCLK, the low-speed peripheral clock, is 50 MHz in the course projects. Example: for 1 MHz, 50 MHz / 1 MHz = 50, so SPIBRR = 50 - 1 = 49. This level runs at **500 kHz**.
+- **bit rate = LSPCLK / (SPIBRR + 1)**, for SPIBRR from 3 to 127. LSPCLK, the low-speed peripheral clock, is 50 MHz in the course projects. Example: for 2 MHz, 50 MHz / 2 MHz = 25, so SPIBRR = 25 - 1 = 24. This level runs at **500 kHz**.
 
 ## The FIFOs
 A **FIFO** ("first in, first out") is a queue of 16 words. With the FIFOs enabled:
 
-- every write to \`SpibRegs.SPITXBUF\` adds a word to the transmit queue, and the words leave one after the other
-- every word that arrives is added to the receive queue; \`SpibRegs.SPIFFRX.bit.RXFFST\` says how many are waiting
-- every read of \`SpibRegs.SPIRXBUF\` takes the oldest word out
+- every write to \`SpicRegs.SPITXBUF\` adds a word to the transmit queue, and the words leave one after the other
+- every word that arrives is added to the receive queue; \`SpicRegs.SPIFFRX.bit.RXFFST\` says how many are waiting
+- every read of \`SpicRegs.SPIRXBUF\` takes the oldest word out
 
-Try it in the figure: write three words, clock them out, then read them back in order.
+Try it in the figure: write three words, clock them out, then read them back in order. (The figure shows SPIB. The registers work the same.)
 
 {{figure:spi-fifo}}
 
@@ -428,125 +434,49 @@ Try it in the figure: write three words, clock them out, then read them back in 
 Fill in TODO 1 to 4 in the set-up. Then:
 
 - TODO 5: send the three words \`0x00A5\`, \`0x1234\` and \`0xBEEF\`
-- TODO 6: wait until three words have arrived: \`while (SpibRegs.SPIFFRX.bit.RXFFST != 3);\` The semicolon right after the bracket is an empty loop body: the line does nothing but test again until \`RXFFST\` is 3. Read too early and you get old data.
+- TODO 6: wait until three words have arrived: \`while (SpicRegs.SPIFFRX.bit.RXFFST != 3);\` The semicolon right after the bracket is an empty loop body: the line does nothing but test again until \`RXFFST\` is 3. Read too early and you get old data.
 - TODO 7: read them into \`rx1\`, \`rx2\` and \`rx3\`, in the order they were sent
 `,
       kit: "robot",
       durationMs: 2,
-      starter: `uint16_t rx1 = 0;
-uint16_t rx2 = 0;
-uint16_t rx3 = 0;
-
-void main(void)
-{
-${START}
-${PINS}
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // hold the SPI in reset while it is set up
-
-    SpibRegs.SPICTL.bit.CLK_PHASE = 1;        // with CLKPOLARITY = 0: clock rests low,
-    SpibRegs.SPICCR.bit.CLKPOLARITY = 0;      // data is read on the rising edge
-    SpibRegs.SPICTL.bit.MASTER_SLAVE = 0;     // TODO 1: make this chip the master
-    SpibRegs.SPICCR.bit.SPICHAR = 0;          // TODO 2: 16 bits per word
-    SpibRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
-    SpibRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
-    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 0;     // TODO 3: 500 kHz from the 50 MHz LSPCLK
-    SpibRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
-    SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip
-
-    SpibRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
-    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
-    SpibRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
-    SpibRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // TODO 4: set-up done, release the SPI
-
-    SpibRegs.SPIFFTX.bit.TXFIFO = 1;          // release the FIFOs
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;
-
-    // TODO 5: send 0x00A5, 0x1234 and 0xBEEF
+      starter: loopback(
+        { master: 0, char: "0", brr: 0, release: 0, todo: true },
+        `    // TODO 5: send 0x00A5, 0x1234 and 0xBEEF
 
     // TODO 6: wait until three words have been received
 
-    // TODO 7: read them into rx1, rx2, rx3
+    // TODO 7: read them into rx1, rx2, rx3`,
+      ),
+      solution: loopback(
+        {},
+        `    SpicRegs.SPITXBUF = 0x00A5;
+    SpicRegs.SPITXBUF = 0x1234;
+    SpicRegs.SPITXBUF = 0xBEEF;
 
-    while (1) {
-    }
-}
-`,
-      solution: `uint16_t rx1 = 0;
-uint16_t rx2 = 0;
-uint16_t rx3 = 0;
+    while (SpicRegs.SPIFFRX.bit.RXFFST != 3);
 
-void main(void)
-{
-${START}
-${PINS}
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // hold the SPI in reset while it is set up
-
-    SpibRegs.SPICTL.bit.CLK_PHASE = 1;        // with CLKPOLARITY = 0: clock rests low,
-    SpibRegs.SPICCR.bit.CLKPOLARITY = 0;      // data is read on the rising edge
-    SpibRegs.SPICTL.bit.MASTER_SLAVE = 1;     // this chip is the master
-    SpibRegs.SPICCR.bit.SPICHAR = 0xF;        // 16 bits per word
-    SpibRegs.SPICTL.bit.TALK = 1;             // drive the SIMO pin
-    SpibRegs.SPIPRI.bit.FREE = 1;             // keep running when the debugger halts
-    SpibRegs.SPICTL.bit.SPIINTENA = 0;        // the interrupt used without FIFOs: off
-    SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 99;    // 50 MHz / (99 + 1) = 500 kHz
-    SpibRegs.SPISTS.all = 0x0000;             // status register, as the course code writes it
-    SpibRegs.SPICCR.bit.SPILBK = 1;           // loopback: SIMO joined to SOMI inside the chip
-
-    SpibRegs.SPIFFTX.bit.SPIRST = 1;          // FIFOs out of reset
-    SpibRegs.SPIFFTX.bit.SPIFFENA = 1;        // use the FIFOs
-    SpibRegs.SPIFFTX.bit.TXFIFO = 0;          // empty the transmit FIFO and hold it
-    SpibRegs.SPIFFTX.bit.TXFFINTCLR = 1;      // clear old flags: transmit interrupt,
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 0;     // empty the receive FIFO and hold it
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;      // receive overflow (FIFO was full),
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;      // receive interrupt
-    SpibRegs.SPIFFCT.bit.TXDLY = 0;           // no pause between words
-
-    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // set-up done, release the SPI
-
-    SpibRegs.SPIFFTX.bit.TXFIFO = 1;          // release the FIFOs
-    SpibRegs.SPIFFRX.bit.RXFIFORESET = 1;
-
-    SpibRegs.SPITXBUF = 0x00A5;
-    SpibRegs.SPITXBUF = 0x1234;
-    SpibRegs.SPITXBUF = 0xBEEF;
-
-    while (SpibRegs.SPIFFRX.bit.RXFFST != 3);
-
-    rx1 = SpibRegs.SPIRXBUF;
-    rx2 = SpibRegs.SPIRXBUF;
-    rx3 = SpibRegs.SPIRXBUF;
-
-    while (1) {
-    }
-}
-`,
+    rx1 = SpicRegs.SPIRXBUF;
+    rx2 = SpicRegs.SPIRXBUF;
+    rx3 = SpicRegs.SPIRXBUF;`,
+      ),
       checks: [
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "SPIB is the master", hint: "MASTER_SLAVE = 1. A slave waits for somebody else's clock and never sends by itself." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Words are 16 bits long", hint: "SPICHAR is the number of bits minus 1: 0xF." },
-        { kind: "reg", reg: "SpibRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 99, label: "The bit rate is 500 kHz", hint: "50 MHz / (SPIBRR + 1) = 500 kHz." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "The SPI is released from reset", hint: "While SPISWRESET is 0 nothing is sent." },
-        { kind: "signal", name: "SPIB_WORDS", equals: 3, label: "Exactly three words were sent", hint: "Each write to SpibRegs.SPITXBUF sends one word." },
+        { kind: "reg", reg: "SpicRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "SPIC is the master", hint: "MASTER_SLAVE = 1. A slave waits for somebody else's clock and never sends by itself." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Words are 16 bits long", hint: "SPICHAR is the number of bits minus 1." },
+        { kind: "reg", reg: "SpicRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 99, label: "The bit rate is 500 kHz", hint: "50 MHz / (SPIBRR + 1) = 500 kHz." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "The SPI is released from reset", hint: "While SPISWRESET is 0 nothing is sent." },
+        { kind: "signal", name: "SPIC_WORDS", equals: 3, label: "Exactly three words were sent", hint: "Each write to SpicRegs.SPITXBUF sends one word." },
         { kind: "var", name: "rx1", equals: 0x00a5, label: "rx1 is 0x00A5", hint: "The first read of SPIRXBUF gives the word that arrived first." },
         { kind: "var", name: "rx2", equals: 0x1234, label: "rx2 is 0x1234" },
         { kind: "var", name: "rx3", equals: 0xbeef, label: "rx3 is 0xBEEF" },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFFST", equals: 0, label: "The receive FIFO is empty at the end", hint: "Read SPIRXBUF once for every word you sent." },
+        { kind: "reg", reg: "SpicRegs.SPIFFRX", field: "RXFFST", equals: 0, label: "The receive FIFO is empty at the end", hint: "Read SPIRXBUF once for every word you sent." },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
       watch: ["rx1", "rx2", "rx3"],
-      inspect: ["SpibRegs.SPICCR", "SpibRegs.SPICTL", "SpibRegs.SPIBRR", "SpibRegs.SPIFFTX", "SpibRegs.SPIFFRX"],
+      inspect: ["SpicRegs.SPICCR", "SpicRegs.SPICTL", "SpicRegs.SPIBRR", "SpicRegs.SPIFFTX", "SpicRegs.SPIFFRX"],
       hints: [
         "TODO 1 to 4 each change one number. A master is 1. SPICHAR and SPIBRR follow from the two rules under \"Two numbers\". A reset is released with 1.",
-        "SPICHAR = 0xF (16 - 1) and SPI_BIT_RATE = 99 (50 MHz / 100). Sending is three lines of the form `SpibRegs.SPITXBUF = 0x00A5;`.",
-        "Wait with `while (SpibRegs.SPIFFRX.bit.RXFFST != 3);`, then `rx1 = SpibRegs.SPIRXBUF;` and the same for rx2 and rx3.",
+        "SPICHAR = 0xF (16 - 1) and SPI_BIT_RATE = 99 (50 MHz / 100). Sending is three lines of the form `SpicRegs.SPITXBUF = 0x00A5;`.",
+        "Wait with `while (SpicRegs.SPIFFRX.bit.RXFFST != 3);`, then `rx1 = SpicRegs.SPIRXBUF;` and the same for rx2 and rx3.",
       ],
       takeaway: "Reset, configure, release. Three writes to SPITXBUF queue three words, and three words come back, which you must read out.",
     },
@@ -762,7 +692,7 @@ Try it in the figure: set RXFFIL to 3, write three words and clock them out one 
 
 {{figure:spi-fifo}}
 
-\`SPIB_RX\` is interrupt **INT6.3**: PIE group 6, channel 3. The vector and the enables are already written in \`main()\`.
+From here on the programs use **SPIB**, the port the robot's sensors are on. Two calls to the course library are given in \`main()\`. \`setupSpib()\` sets SPIB up: pins, 16-bit words, 1 MHz, FIFOs and the receive FIFO interrupt. Writing that set-up yourself is part of HW3. \`enableSpibInterrupt()\` switches SPIB's receive interrupt on in the PIE and in \`IER\`. Its vector, \`SPIB_RX_INT\`, is written in \`main()\` too. The lines after \`setupSpib()\` slow the clock to 500 kHz and switch loopback on.
 
 ## Write the two functions
 \`cpu_timer0_isr\`:
@@ -795,9 +725,7 @@ uint32_t numTransfers = 0;
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
 ${PIE_INIT}
 
 ${VECTORS(1000)}
@@ -833,9 +761,7 @@ uint32_t numTransfers = 0;
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
 ${PIE_INIT}
 
 ${VECTORS(1000)}
@@ -927,9 +853,7 @@ uint32_t bad = 0;
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
 ${PIE_INIT}
 
 ${VECTORS(1000)}
@@ -981,9 +905,7 @@ uint32_t bad = 0;
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
 ${PIE_INIT}
 
 ${VECTORS(1000)}
@@ -1087,9 +1009,7 @@ ${START}
     GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
     GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
 
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
 ${PIE_INIT}
 
 ${VECTORS(1000, "\n    init_serialSCIA(&SerialA, 115200);\n")}
@@ -1132,9 +1052,7 @@ ${START}
     GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
     GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
 
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
 ${PIE_INIT}
 
 ${VECTORS(1000, "\n    init_serialSCIA(&SerialA, 115200);\n")}
@@ -1354,9 +1272,7 @@ uint32_t send24(uint32_t value)
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true, char: "7  " })}
+${spibLoop({ char8: true })}
     result = send24(0xA5C3F0);
     result2 = send24(0x123456);
 
@@ -1389,9 +1305,7 @@ uint32_t send24(uint32_t value)
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true, char: "7  " })}
+${spibLoop({ char8: true })}
     result = send24(0xA5C3F0);
     result2 = send24(0x123456);
 
@@ -1465,9 +1379,7 @@ uint16_t ask(uint16_t command)
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
     a1 = ask(0x0111);
     a2 = ask(0x0222);
     a3 = ask(0x0333);
@@ -1501,9 +1413,7 @@ uint16_t ask(uint16_t command)
 void main(void)
 {
 ${START}
-${PINS}
-
-${spib({ loopback: true })}
+${spibLoop()}
     a1 = ask(0x0111);
     a2 = ask(0x0222);
     a3 = ask(0x0333);
@@ -1546,7 +1456,7 @@ The MPU-9250 needs:
 - **16 clock cycles** per transfer, with the chip select low the whole time
 - a clock on which data is **read on the rising edge**: the course's mode, \`CLKPOLARITY = 0\`, \`CLK_PHASE = 1\`
 
-This program gets something else back, and LED1 stays off. Read the messages under the editor, then compare the set-up at the top of \`main()\` with those two requirements. Two values are wrong.
+\`setupSpib()\` from the course library sets SPIB up for this chip. Then somebody changed two settings. This program gets something else back, and LED1 stays off. Read the messages under the editor, then compare the lines after \`setupSpib()\` with those two requirements. Both values are wrong.
 `,
       kit: "robot",
       durationMs: 2,
@@ -1560,9 +1470,14 @@ ${START}
     GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
     GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
 
-${PINS}
+    setupSpib();                              // course library: SPIB for the robot's sensors
 
-${spib({ phase: 0, char: "7  " })}
+    // Somebody changed two settings afterwards
+    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // settings change only while the SPI is in reset
+    SpibRegs.SPICTL.bit.CLK_PHASE = 0;
+    SpibRegs.SPICCR.bit.SPICHAR = 7;
+    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // release the SPI again
+
     // Read register 0x75 (WHO_AM_I)
     GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
     SpibRegs.SPITXBUF = 0xF500;
@@ -1588,9 +1503,14 @@ ${START}
     GPIO_SetupPinOptions(22, GPIO_OUTPUT, GPIO_PUSHPULL);
     GpioDataRegs.GPACLEAR.bit.GPIO22 = 1;
 
-${PINS}
+    setupSpib();                              // course library: SPIB for the robot's sensors
 
-${spib({ phase: 1, char: "0xF" })}
+    // Somebody changed two settings afterwards
+    SpibRegs.SPICCR.bit.SPISWRESET = 0;       // settings change only while the SPI is in reset
+    SpibRegs.SPICTL.bit.CLK_PHASE = 1;        // read on the first edge, the rising one
+    SpibRegs.SPICCR.bit.SPICHAR = 0xF;        // 16 bits: address byte and answer byte in one word
+    SpibRegs.SPICCR.bit.SPISWRESET = 1;       // release the SPI again
+
     // Read register 0x75 (WHO_AM_I)
     GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
     SpibRegs.SPITXBUF = 0xF500;
@@ -1610,14 +1530,14 @@ ${spib({ phase: 1, char: "0xF" })}
         { kind: "var", name: "whoami", equals: 0x71, label: "whoami is 0x0071" },
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
         { kind: "no-diagnostic", code: "spi-mode", label: "The clock mode matches the device", hint: "The MPU-9250 reads on the rising edge. With the clock resting low that is the first edge: CLK_PHASE = 1." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Words are 16 bits long", hint: "With SPICHAR = 7 only the byte 0xF5 is sent. The device needs 8 more clock cycles to answer." },
+        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Words are 16 bits long", hint: "With SPICHAR = 7 only the byte 0xF5 is sent. The device needs 8 more clock cycles to answer: 16 bits per word." },
       ],
       watch: ["whoami"],
       inspect: ["SpibRegs.SPICCR", "SpibRegs.SPICTL"],
       hints: [
         "The first message names one of the two settings. The other is the word length.",
         "CLK_PHASE must be 1: read on the first edge, the rising one.",
-        "SPICHAR must be 0xF: 16 bits, so that the address byte and the answer byte are one transfer.",
+        "SPICHAR holds the number of bits minus 1, and the address byte and the answer byte must be one 16-bit word. Deleting the two wrong lines works too: the library's set-up was right for this chip.",
       ],
       takeaway: "A wrong clock mode does not stop the transfer. Clock and data still move, and every bit is read half a cycle off. WHO_AM_I is how you notice.",
     },
@@ -1629,70 +1549,74 @@ ${spib({ phase: 1, char: "0xF" })}
       mode: "write",
       tier: "practice",
       title: "The whole set-up, from an empty function",
-      goal: "Write every line of setupSpib(): pins, chip select, clock mode, bit rate, FIFOs, and the path of the receive interrupt.",
+      goal: "Write every line of an SPI set-up for SPIC: pins, chip select, clock mode, bit rate, FIFOs, and the path of the receive interrupt.",
       refs: [{ course: "L6-7", slide: [43, 44] }, { course: "HW3" }, { trm: "18.4.2" }, { trm: "18.3.5" }, { trm: "18.3.6" }, { trm: "18.3.7" }, { trm: "3.4.5" }],
       brief: `
-Until now the SPIB set-up was given. Here \`setupSpib()\` is empty and you write it, from this list. The two interrupt functions are given: every millisecond the timer sends one word, \`0xF500\`, that asks the chip on the bus (the MPU-9250, next chapter) for its identity number. If your set-up is right, \`answer\` becomes **0x0071**.
+In "Talking to yourself" most of the SPIC set-up was given. Here \`setupSpic()\` is empty and you write all of it, from this list. (The robot's own port, SPIB, stays with the library's \`setupSpib()\`: writing that one is HW3.)
 
-## In setupSpib(), in this order
-1. **Chip select.** GPIO66: plain GPIO (\`GPIO_SetupPinMux(66, GPIO_MUX_CPU1, 0)\`), output (\`GPIO_SetupPinOptions(66, GPIO_OUTPUT, GPIO_PUSHPULL)\`), driven **high** with \`GPCSET\`.
-2. **Pins.** GPIO63, 64 and 65 to mux position 15: SIMO, SOMI and clock of SPIB.
-3. **Pin options**, TI's advice for SPI pins, between \`EALLOW;\` and \`EDIS;\`. Pull-ups on: \`GpioCtrlRegs.GPBPUD.bit.GPIO63 = 0;\`, and \`GPCPUD\` for GPIO64 and GPIO65. No input filter: \`GpioCtrlRegs.GPBQSEL2.bit.GPIO63 = 3;\`, and \`GPCQSEL1\` for GPIO64 and GPIO65.
+No chip is connected to SPIC. A **jumper wire** on the LaunchPad's pin header joins its SIMO pin (GPIO122) to its SOMI pin (GPIO123), so every word that leaves the chip comes straight back in. Unlike loopback, the word really travels through the pins. The two interrupt functions are given: every millisecond the timer sends the next number of a count, starting at 0x4B01. If your set-up is right, \`answer\` follows \`sent\`.
+
+## In setupSpic(), in this order
+1. **Chip select.** GPIO125: plain GPIO (\`GPIO_SetupPinMux(125, GPIO_MUX_CPU1, 0)\`), output (\`GPIO_SetupPinOptions(125, GPIO_OUTPUT, GPIO_PUSHPULL)\`), driven **high** with \`GPDSET\`. No chip listens today. The pin is still set up and used as for a real one.
+2. **Pins.** GPIO122, 123 and 124 to mux position 6: SIMO, SOMI and clock of SPIC.
+3. **Pin options**, TI's advice for SPI pins, between \`EALLOW;\` and \`EDIS;\`. Pull-ups on: \`GpioCtrlRegs.GPDPUD.bit.GPIO122 = 0;\`, and the same for GPIO123 and GPIO124. No input filter: \`GpioCtrlRegs.GPDQSEL2.bit.GPIO122 = 3;\`, and the same for the other two.
 4. **Hold the SPI in reset:** \`SPICCR.bit.SPISWRESET = 0\`.
 5. **Mode:** \`SPICTL.bit.CLK_PHASE = 1\`, \`SPICCR.bit.CLKPOLARITY = 0\`, \`SPICTL.bit.MASTER_SLAVE = 1\`, \`SPICTL.bit.TALK = 1\`, \`SPIPRI.bit.FREE = 1\`, \`SPICTL.bit.SPIINTENA = 0\`.
 6. **Numbers:** \`SPICCR.bit.SPICHAR\` for 16-bit words, \`SPIBRR.bit.SPI_BIT_RATE\` for 500 kHz.
 7. **FIFOs:** in \`SPIFFTX\`: \`SPIRST = 1\`, \`SPIFFENA = 1\`, \`TXFIFO = 0\`, \`TXFFINTCLR = 1\`. In \`SPIFFRX\`: \`RXFIFORESET = 0\`, \`RXFFOVFCLR = 1\`, \`RXFFINTCLR = 1\`, \`RXFFIENA = 1\`. \`SPIFFCT.bit.TXDLY = 0\`.
 8. **Release:** \`SPISWRESET = 1\`, then \`TXFIFO = 1\`, \`RXFIFORESET = 1\`, and \`RXFFIL = 16\`.
 
-Steps 4 to 8 are registers of \`SpibRegs\`.
+Steps 4 to 8 are registers of \`SpicRegs\`.
 
 ## In main()
-The SPIB receive interrupt is **INT6.3**. Add its vector (\`PieVectTable.SPIB_RX_INT = &SPIB_isr;\`) and its two enables (\`PIEIER6\`, \`IER\`) at the two TODOs.
+Each SPI port has its own receive interrupt. For SPIC it is **INT6.9**: PIE group 6, channel 9. Add its vector (\`PieVectTable.SPIC_RX_INT = &SPIC_isr;\`) and its two enables (\`PIEIER6\`, \`IER\`) at the two TODOs.
 `,
       kit: "robot",
       durationMs: 6,
+      stimuli: JUMPER,
       starter: setupOwn({
         body: "    // TODO: steps 1 to 8 of the brief",
-        vector: "    // TODO: the vector of the SPIB receive interrupt",
-        enable: "    // TODO: enable SPIB receive (INT6.3) in the PIE and in IER",
+        vector: "    // TODO: the vector of the SPIC receive interrupt",
+        enable: "    // TODO: enable SPIC receive (INT6.9) in the PIE and in IER",
       }),
       solution: setupOwn({
-        body: `${PINS}
+        body: `${spicPins(false)}
 
-${spib({ brr: 99, rxffil: 16 })}`,
-        vector: "    PieVectTable.SPIB_RX_INT = &SPIB_isr;",
-        enable: `    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;        // SPIB receive is INT6.3
-    IER |= M_INT6;`,
+${spic({ rxffil: 16 })}`,
+        vector: SPIC_VECTOR,
+        enable: SPIC_ENABLE,
       }),
       checks: [
-        { kind: "pin", pin: 66, at: 0.5, level: 1, label: "1. The chip select rests high", hint: "Floating: GPIO66 is not an output yet. Low: the chip is selected all the time. Set it with GpioDataRegs.GPCSET.bit.GPIO66 = 1;" },
-        { kind: "no-diagnostic", code: "spi-mux", label: "2. GPIO63, 64 and 65 are switched to SPIB", hint: "GPIO_SetupPinMux(63, GPIO_MUX_CPU1, 15); and the same for 64 and 65." },
-        { kind: "no-diagnostic", code: "eallow", label: "3. The pin options are written between EALLOW; and EDIS;", hint: "GPxPUD and GPxQSEL are protected. The SpibRegs registers are not." },
-        { kind: "reg", reg: "GpioCtrlRegs.GPCQSEL1", field: "GPIO64", equals: 3, label: "3. The SOMI input goes to the SPI unfiltered", hint: "GpioCtrlRegs.GPCQSEL1.bit.GPIO64 = 3; The input filter would delay the data against the clock." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "CLK_PHASE", equals: 1, label: "5. Clock phase: data is read on the rising edge", hint: "SPICTL.CLK_PHASE = 1 with CLKPOLARITY = 0 is the course's mode." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "CLKPOLARITY", equals: 0, label: "5. Clock polarity: the clock rests low", hint: "SPICCR.CLKPOLARITY = 0." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "5. SPIB is the master", hint: "A slave waits for somebody else's clock and never sends by itself." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "TALK", equals: 1, label: "5. SPIB drives its SIMO pin", hint: "With TALK = 0 the SIMO pin is switched off and the chip receives only 1s." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPICHAR", equals: 15, label: "6. Words are 16 bits long", hint: "SPICHAR holds the number of bits minus 1. It has 4 bits, so writing 16 leaves 0 in it." },
-        { kind: "reg", reg: "SpibRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 99, label: "6. The bit rate is 500 kHz", hint: "bit rate = 50 MHz / (SPIBRR + 1)." },
-        { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "SPIFFENA", equals: 1, label: "7. The FIFOs are in use", hint: "SPIFFTX.SPIFFENA = 1. Without it RXFFST and RXFFIL mean nothing." },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFFIENA", equals: 1, label: "7. The receive FIFO may raise an interrupt", hint: "SPIFFRX.RXFFIENA = 1 lets RXFFST >= RXFFIL reach the PIE." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "8. The SPI is released from reset", hint: "While SPISWRESET is 0 nothing is sent. It is the last line of the configuration." },
-        { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "TXFIFO", equals: 1, label: "8. The transmit FIFO is released", hint: "TXFIFO = 0 empties the FIFO and holds it. Words written to SPITXBUF are dropped until it is 1." },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFIFORESET", equals: 1, label: "8. The receive FIFO is released", hint: "RXFIFORESET = 0 holds the receive FIFO empty: no word is ever counted in RXFFST." },
-        { kind: "reg", reg: "PieCtrlRegs.PIEIER6", field: "INTx3", equals: 1, label: "main(): SPIB receive is enabled in the PIE", hint: "PieCtrlRegs.PIEIER6.bit.INTx3 = 1; and IER |= M_INT6;" },
-        { kind: "isr", fn: "SPIB_isr", min: 5, max: 5, label: "SPIB_isr runs once per transfer (5 times in 6 ms)", hint: "Never, with the checks above green: IER |= M_INT6; is missing." },
-        { kind: "var", name: "answer", equals: 0x71, label: "The chip answers 0x0071", hint: "0 or -1 means the chip did not understand the word. Fix the first red check above: each one is a way to garble it." },
+        { kind: "pin", pin: 125, at: 0.5, level: 1, label: "1. The chip select rests high", hint: "Floating: GPIO125 is not an output yet. Low: a chip would be selected all the time. Set it with GpioDataRegs.GPDSET.bit.GPIO125 = 1;" },
+        { kind: "no-diagnostic", code: "spi-mux", label: "2. GPIO122, 123 and 124 are switched to SPIC", hint: "GPIO_SetupPinMux(122, GPIO_MUX_CPU1, 6); and the same for 123 and 124." },
+        { kind: "no-diagnostic", code: "eallow", label: "3. The pin options are written between EALLOW; and EDIS;", hint: "GPxPUD and GPxQSEL are protected. The SpicRegs registers are not." },
+        { kind: "reg", reg: "GpioCtrlRegs.GPDQSEL2", field: "GPIO123", equals: 3, label: "3. The SOMI input goes to the SPI unfiltered", hint: "GpioCtrlRegs.GPDQSEL2.bit.GPIO123 = 3; The input filter would delay the data against the clock." },
+        { kind: "reg", reg: "SpicRegs.SPICTL", field: "CLK_PHASE", equals: 1, label: "5. Clock phase: data is read on the rising edge", hint: "SPICTL.CLK_PHASE = 1 with CLKPOLARITY = 0 is the course's mode." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "CLKPOLARITY", equals: 0, label: "5. Clock polarity: the clock rests low", hint: "SPICCR.CLKPOLARITY = 0." },
+        { kind: "reg", reg: "SpicRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "5. SPIC is the master", hint: "A slave waits for somebody else's clock and never sends by itself." },
+        { kind: "reg", reg: "SpicRegs.SPICTL", field: "TALK", equals: 1, label: "5. SPIC drives its SIMO pin", hint: "With TALK = 0 the SIMO pin is switched off and only 1s come back over the wire." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPILBK", equals: 0, label: "5. Loopback is off: the word travels through the pins", hint: "Leave SPILBK at 0. The jumper wire brings the word back, and that tests the pins too." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPICHAR", equals: 15, label: "6. Words are 16 bits long", hint: "SPICHAR holds the number of bits minus 1. It has 4 bits, so writing 16 leaves 0 in it." },
+        { kind: "reg", reg: "SpicRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 99, label: "6. The bit rate is 500 kHz", hint: "bit rate = 50 MHz / (SPIBRR + 1)." },
+        { kind: "reg", reg: "SpicRegs.SPIFFTX", field: "SPIFFENA", equals: 1, label: "7. The FIFOs are in use", hint: "SPIFFTX.SPIFFENA = 1. Without it RXFFST and RXFFIL mean nothing." },
+        { kind: "reg", reg: "SpicRegs.SPIFFRX", field: "RXFFIENA", equals: 1, label: "7. The receive FIFO may raise an interrupt", hint: "SPIFFRX.RXFFIENA = 1 lets RXFFST >= RXFFIL reach the PIE." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "8. The SPI is released from reset", hint: "While SPISWRESET is 0 nothing is sent. It is the last line of the configuration." },
+        { kind: "reg", reg: "SpicRegs.SPIFFTX", field: "TXFIFO", equals: 1, label: "8. The transmit FIFO is released", hint: "TXFIFO = 0 empties the FIFO and holds it. Words written to SPITXBUF are dropped until it is 1." },
+        { kind: "reg", reg: "SpicRegs.SPIFFRX", field: "RXFIFORESET", equals: 1, label: "8. The receive FIFO is released", hint: "RXFIFORESET = 0 holds the receive FIFO empty: no word is ever counted in RXFFST." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER6", field: "INTx9", equals: 1, label: "main(): SPIC receive is enabled in the PIE", hint: "PieCtrlRegs.PIEIER6.bit.INTx9 = 1; and IER |= M_INT6;" },
+        { kind: "isr", fn: "SPIC_isr", min: 5, max: 5, label: "SPIC_isr runs once per transfer (5 times in 6 ms)", hint: "Never, with the checks above green: IER |= M_INT6; is missing." },
+        { kind: "var", name: "answer", at: 2.5, equals: 0x4b02, label: "The second word comes back over the wire: 0x4B02", hint: "0 means no word was received. -1 (0xFFFF) means only 1s came back: the word did not leave through SIMO or did not come in through SOMI. Fix the first red check above." },
+        { kind: "var", name: "answer", equals: 0x4b05, label: "So does the fifth: 0x4B05" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported", hint: "The message names the line. A setting changed after SPISWRESET = 1 belongs before it." },
       ],
-      watch: ["answer", "numTransfers"],
-      inspect: ["SpibRegs.SPICCR", "SpibRegs.SPICTL", "SpibRegs.SPIBRR", "SpibRegs.SPIFFTX", "SpibRegs.SPIFFRX"],
+      watch: ["sent", "answer", "numTransfers"],
+      inspect: ["SpicRegs.SPICCR", "SpicRegs.SPICTL", "SpicRegs.SPIBRR", "SpicRegs.SPIFFTX", "SpicRegs.SPIFFRX"],
       hints: [
         "Type the list top to bottom and run after each step. The checks carry the step numbers.",
         "SPICHAR = 0xF (16 - 1). SPI_BIT_RATE = 99 (50 MHz / 100 = 500 kHz). The reset bracket is SPISWRESET = 0 before step 5 and SPISWRESET = 1 after step 7.",
-        "Open \"Talking to yourself\" next to this level: its set-up is the same block without loopback. In main(): `PieVectTable.SPIB_RX_INT = &SPIB_isr;` `PieCtrlRegs.PIEIER6.bit.INTx3 = 1;` `IER |= M_INT6;`",
+        "Open \"Talking to yourself\" next to this level: its set-up is the same block with loopback and without RXFFIENA and RXFFIL. In main(): `PieVectTable.SPIC_RX_INT = &SPIC_isr;` `PieCtrlRegs.PIEIER6.bit.INTx9 = 1;` `IER |= M_INT6;`",
       ],
-      takeaway: "Chip select high, pins, reset, mode and numbers, FIFOs, release. A chip that answers its identity number proves all of it at once.",
+      takeaway: "Chip select high, pins, reset, mode and numbers, FIFOs, release. A word that goes out on one pin and comes back on another proves all of it at once.",
     },
     {
       id: "spi-x-scratch",
@@ -1700,18 +1624,18 @@ ${spib({ brr: 99, rxffil: 16 })}`,
       mode: "write",
       tier: "expert",
       title: "A set-up from its requirements",
-      goal: "Set up SPIB for a different clock mode and bit rate from a list of requirements, with nothing given and no list of lines.",
+      goal: "Set up SPIC for a different clock mode and bit rate from a list of requirements, with nothing given and no list of lines.",
       refs: [{ course: "L6-7", slide: [43, 44] }, { course: "L10", slide: [38, 31] }, { course: "HW3" }, { trm: "18.3.6" }, { trm: "18.3.5" }, { trm: "18.4.2" }, { trm: "18.3.7" }, { trm: "3.4.5" }],
       brief: `
-Same board, same chip on the bus, other settings. This time you get requirements, not lines. The timer part is given: every 2 ms \`cpu_timer0_isr\` pulls the chip select low and sends \`0xF500\`, the question "which chip are you?". The answer is 0x0071.
+Same port, same jumper wire from SIMO to SOMI, other settings. They are the ones a chip needs that will be connected to SPIC later. This time you get requirements, not lines. The timer part is given: every 2 ms \`cpu_timer0_isr\` pulls the chip select low and sends the next number of a count that starts at 0x4B01.
 
 ## Requirements
-- SPIB is the **master**, on GPIO63 (SIMO), GPIO64 (SOMI) and GPIO65 (clock). Chip select: GPIO66, low only during a transfer.
+- SPIC is the **master**, on GPIO122 (SIMO), GPIO123 (SOMI) and GPIO124 (clock), all at mux position 6. Chip select: GPIO125, low only during a transfer.
 - **16-bit** words.
 - Bit rate **400 kHz**. LSPCLK is 50 MHz.
 - The clock **rests high**. The chip reads the data line on the **rising** edge.
-- FIFOs on. The **receive interrupt** (INT6.3) comes as soon as the one-word answer is there, and runs \`SPIB_isr\`.
-- \`SPIB_isr\` stores the word in \`answer\`, raises the chip select, counts in \`numTransfers\`, clears its flags and acknowledges.
+- FIFOs on. The **receive interrupt** of SPIC (INT6.9) comes as soon as the one word is back, and runs \`SPIC_isr\`.
+- \`SPIC_isr\` stores the word in \`answer\`, raises the chip select, counts in \`numTransfers\`, clears its flags and acknowledges.
 
 ## What you need to work out
 - \`SPIBRR\` from the bit rate.
@@ -1722,61 +1646,60 @@ Remember the order: chip select and pins, reset held, settings, FIFOs, reset rel
 `,
       kit: "robot",
       durationMs: 9,
+      stimuli: JUMPER,
       starter: scratch({
-        spib: "    // SPIB: yours",
-        vector: "    // the SPIB receive vector: yours",
-        enable: "    // the SPIB receive enables: yours",
+        spic: "    // SPIC: yours",
+        vector: "    // the SPIC receive vector: yours",
+        enable: "    // the SPIC receive enables: yours",
         isr: "",
       }),
       solution: scratch({
-        spib: SCRATCH_SPIB,
-        vector: "    PieVectTable.SPIB_RX_INT = &SPIB_isr;",
-        enable: `    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;        // SPIB receive is INT6.3
-    IER |= M_INT6;`,
-        isr: `    answer = SpibRegs.SPIRXBUF;
-    GpioDataRegs.GPCSET.bit.GPIO66 = 1;       // chip select high
-    numTransfers++;
+        spic: `${spicPins(false)}
 
-    SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
-    SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
-    PieCtrlRegs.PIEACK.all = PIEACK_GROUP6;`,
+${spic({ polarity: 1, phase: 0, brr: 124, rxffil: 1 })}`,
+        vector: SPIC_VECTOR,
+        enable: SPIC_ENABLE,
+        isr: OWN_RX_BODY,
       }),
       checks: [
-        { kind: "pin", pin: 66, at: 1, level: 1, label: "The chip select rests high", hint: "GPIO66: plain GPIO, output, set high before the first transfer." },
-        { kind: "no-diagnostic", code: "spi-mux", label: "GPIO63, 64 and 65 are switched to SPIB", hint: "Mux position 15 for all three." },
+        { kind: "pin", pin: 125, at: 1, level: 1, label: "The chip select rests high", hint: "GPIO125: plain GPIO, output, set high before the first transfer." },
+        { kind: "no-diagnostic", code: "spi-mux", label: "GPIO122, 123 and 124 are switched to SPIC", hint: "Mux position 6 for all three." },
         { kind: "no-diagnostic", code: "eallow", label: "Every protected write is between EALLOW; and EDIS;", hint: "The pin option registers and the vector table are protected." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "SPIB is the master", hint: "SPICTL.MASTER_SLAVE = 1." },
-        { kind: "reg", reg: "SpibRegs.SPICTL", field: "TALK", equals: 1, label: "SPIB drives its SIMO pin", hint: "SPICTL.TALK = 1." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Words are 16 bits long", hint: "SPICHAR is the number of bits minus 1." },
-        { kind: "reg", reg: "SpibRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 124, label: "The bit rate is 400 kHz", hint: "50 MHz / (SPIBRR + 1) = 400 kHz, so SPIBRR + 1 = 125." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "CLKPOLARITY", equals: 1, label: "The clock rests high", hint: "CLKPOLARITY is the level of the clock between words." },
-        { kind: "pin", pin: 65, at: 1, level: 1, label: "GPIO65, the clock pin, is high between transfers", hint: "Floating: the SPI is still in reset, not the master, or GPIO65 is not switched to it." },
+        { kind: "reg", reg: "SpicRegs.SPICTL", field: "MASTER_SLAVE", equals: 1, label: "SPIC is the master", hint: "SPICTL.MASTER_SLAVE = 1." },
+        { kind: "reg", reg: "SpicRegs.SPICTL", field: "TALK", equals: 1, label: "SPIC drives its SIMO pin", hint: "SPICTL.TALK = 1." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPILBK", equals: 0, label: "Loopback is off: the word travels through the pins", hint: "Leave SPILBK at 0. The jumper wire brings the word back." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPICHAR", equals: 15, label: "Words are 16 bits long", hint: "SPICHAR is the number of bits minus 1." },
+        { kind: "reg", reg: "SpicRegs.SPIBRR", field: "SPI_BIT_RATE", equals: 124, label: "The bit rate is 400 kHz", hint: "50 MHz / (SPIBRR + 1) = 400 kHz, so SPIBRR + 1 = 125." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "CLKPOLARITY", equals: 1, label: "The clock rests high", hint: "CLKPOLARITY is the level of the clock between words." },
+        { kind: "pin", pin: 124, at: 1, level: 1, label: "GPIO124, the clock pin, is high between transfers", hint: "Floating: the SPI is still in reset, not the master, or GPIO124 is not switched to it." },
         {
           kind: "reg",
-          reg: "SpibRegs.SPICTL",
+          reg: "SpicRegs.SPICTL",
           field: "CLK_PHASE",
           equals: 0,
           label: "Data is read on the rising edge, the second edge of each bit",
-          hint: "With CLK_PHASE = 1 the data goes out half a cycle early and is read on the first edge, here the falling one. This chip needs the second: CLK_PHASE = 0.",
+          hint: "With CLK_PHASE = 1 the data goes out half a cycle early and is read on the first edge, here the falling one. The chip needs the second: CLK_PHASE = 0.",
         },
-        { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "SPIFFENA", equals: 1, label: "The FIFOs are in use", hint: "SPIFFTX.SPIFFENA = 1, with SPIRST = 1." },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFFIENA", equals: 1, label: "The receive FIFO may raise an interrupt", hint: "SPIFFRX.RXFFIENA = 1." },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFFIL", equals: 1, label: "The interrupt comes after one word", hint: "RXFFIL is the number of words that make a complete answer. Its reset value, 31, is never reached." },
-        { kind: "reg", reg: "SpibRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "The SPI is released from reset", hint: "SPISWRESET = 1 after the configuration." },
-        { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "TXFIFO", equals: 1, label: "The transmit FIFO is released", hint: "SPIFFTX.TXFIFO = 1, or every word written is dropped." },
-        { kind: "reg", reg: "SpibRegs.SPIFFRX", field: "RXFIFORESET", equals: 1, label: "The receive FIFO is released", hint: "SPIFFRX.RXFIFORESET = 1, or no word is ever counted." },
-        { kind: "reg", reg: "PieCtrlRegs.PIEIER6", field: "INTx3", equals: 1, label: "SPIB receive is enabled in the PIE", hint: "INT6.3: PIEIER6.INTx3, and IER |= M_INT6." },
-        { kind: "isr", fn: "SPIB_isr", min: 4, max: 4, label: "SPIB_isr runs once per transfer (4 times in 9 ms)", hint: "Never: the vector or IER |= M_INT6. Once, or hundreds of times: RXFFINTCLR or the group 6 acknowledge is missing, or the word was not read." },
-        { kind: "var", name: "answer", equals: 0x71, label: "The chip answers 0x0071", hint: "A garbled answer with the checks above green: read SPIRXBUF once per transfer, and raise the chip select after it." },
-        { kind: "pin", pin: 66, at: 5, level: 1, label: "The chip select is high again between transfers", hint: "Raise GPIO66 in SPIB_isr." },
+        { kind: "reg", reg: "SpicRegs.SPIFFTX", field: "SPIFFENA", equals: 1, label: "The FIFOs are in use", hint: "SPIFFTX.SPIFFENA = 1, with SPIRST = 1." },
+        { kind: "reg", reg: "SpicRegs.SPIFFRX", field: "RXFFIENA", equals: 1, label: "The receive FIFO may raise an interrupt", hint: "SPIFFRX.RXFFIENA = 1." },
+        { kind: "reg", reg: "SpicRegs.SPIFFRX", field: "RXFFIL", equals: 1, label: "The interrupt comes after one word", hint: "RXFFIL is the number of words that make a complete answer. Its reset value, 31, is never reached." },
+        { kind: "reg", reg: "SpicRegs.SPICCR", field: "SPISWRESET", equals: 1, label: "The SPI is released from reset", hint: "SPISWRESET = 1 after the configuration." },
+        { kind: "reg", reg: "SpicRegs.SPIFFTX", field: "TXFIFO", equals: 1, label: "The transmit FIFO is released", hint: "SPIFFTX.TXFIFO = 1, or every word written is dropped." },
+        { kind: "reg", reg: "SpicRegs.SPIFFRX", field: "RXFIFORESET", equals: 1, label: "The receive FIFO is released", hint: "SPIFFRX.RXFIFORESET = 1, or no word is ever counted." },
+        { kind: "reg", reg: "PieCtrlRegs.PIEIER6", field: "INTx9", equals: 1, label: "SPIC receive is enabled in the PIE", hint: "INT6.9: PIEIER6.INTx9, and IER |= M_INT6." },
+        { kind: "isr", fn: "SPIC_isr", min: 4, max: 4, label: "SPIC_isr runs once per transfer (4 times in 9 ms)", hint: "Never: the vector or IER |= M_INT6. Once, or hundreds of times: RXFFINTCLR or the group 6 acknowledge is missing, or the word was not read." },
+        { kind: "var", name: "answer", at: 5, equals: 0x4b02, label: "The second word comes back over the wire: 0x4B02", hint: "-1 (0xFFFF) means only 1s came back: check TALK and the three mux lines. Another number: read SPIRXBUF once per transfer." },
+        { kind: "var", name: "answer", equals: 0x4b04, label: "So does the fourth: 0x4B04" },
+        { kind: "var", name: "numTransfers", equals: 4, label: "numTransfers counts 4 transfers" },
+        { kind: "pin", pin: 125, at: 5, level: 1, label: "The chip select is high again between transfers", hint: "Raise GPIO125 in SPIC_isr." },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported", hint: "The message names the cause. A setting changed after SPISWRESET = 1 belongs before it." },
       ],
-      watch: ["answer", "numTransfers"],
-      inspect: ["SpibRegs.SPICCR", "SpibRegs.SPICTL", "SpibRegs.SPIBRR", "SpibRegs.SPIFFTX", "SpibRegs.SPIFFRX"],
+      watch: ["sent", "answer", "numTransfers"],
+      inspect: ["SpicRegs.SPICCR", "SpicRegs.SPICTL", "SpicRegs.SPIBRR", "SpicRegs.SPIFFTX", "SpicRegs.SPIFFRX"],
       hints: [
         "Write it in the order of the last sentence of the brief and run often. The first red check is the next thing to fix.",
         "SPIBRR = 124. Rests high: CLKPOLARITY = 1. Read on the second edge: CLK_PHASE = 0. RXFFIL = 1.",
-        "The block is your setupSpib() from the level before with four numbers changed. SPIB_isr: read SPIRXBUF into answer, GPCSET GPIO66, numTransfers++, RXFFOVFCLR = 1, RXFFINTCLR = 1, PIEACK_GROUP6.",
+        "The block is your setupSpic() from the level before with four numbers changed. SPIC_isr: read SPIRXBUF into answer, GPDSET GPIO125, numTransfers++, RXFFOVFCLR = 1, RXFFINTCLR = 1, PIEACK_GROUP6.",
       ],
       takeaway: "A device's requirements become four decisions: word length, bit rate, where the clock rests, which edge reads. Everything else in the block is the same every time.",
     },
@@ -1957,10 +1880,10 @@ In this mode (manual section 18.3.2 and Table 18-2):
 
 - writing \`SPITXBUF\` while nothing is being sent starts a word at once
 - when the word is complete, the received word is in \`SPIRXBUF\` and \`SPISTS.bit.INT_FLAG\` is set
-- if \`SPICTL.bit.SPIINTENA\` is 1, that flag raises the **same** interrupt as before: SPIB_RX, INT6.3
+- if \`SPICTL.bit.SPIINTENA\` is 1, that flag raises the **same** interrupt as before: SPIB_RX
 - reading \`SPIRXBUF\` clears the flag. If a second word completes before the first was read, the first is lost and \`SPISTS.bit.OVERRUN_FLAG\` is set
 
-SPIB is set up in loopback **without** the FIFOs. \`SPIINTENA\` is still 0.
+SPIB is set up by the library's \`setupSpib()\`. The lines after it switch on loopback and switch the FIFOs **off**. \`SPIINTENA\` is still 0.
 
 ## Your task
 Send the six words of \`message[]\`, in order, and store the replies in \`reply[]\`:
@@ -1984,16 +1907,13 @@ void main(void)
 {
     uint16_t i;
 ${START}
-${PINS}
-
-${spib({ loopback: true, fifo: false })}
+${spibLoop({ fifo: false })}
 ${PIE_INIT}
 
     EALLOW;
     PieVectTable.SPIB_RX_INT = &SPIB_isr;
     EDIS;
-    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;        // SPIB receive is INT6.3
-    IER |= M_INT6;
+    enableSpibInterrupt();                    // course library: SPIB receive, in the PIE and in IER
     EINT;
 
     // TODO: enable the SPI interrupt, select the device, send the first word
@@ -2026,16 +1946,13 @@ void main(void)
 {
     uint16_t i;
 ${START}
-${PINS}
-
-${spib({ loopback: true, fifo: false })}
+${spibLoop({ fifo: false })}
 ${PIE_INIT}
 
     EALLOW;
     PieVectTable.SPIB_RX_INT = &SPIB_isr;
     EDIS;
-    PieCtrlRegs.PIEIER6.bit.INTx3 = 1;        // SPIB receive is INT6.3
-    IER |= M_INT6;
+    enableSpibInterrupt();                    // course library: SPIB receive, in the PIE and in IER
     EINT;
 
     SpibRegs.SPICTL.bit.SPIINTENA = 1;

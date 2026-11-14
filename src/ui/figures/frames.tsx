@@ -21,16 +21,35 @@ const Y_MIN = 1;
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 // Label placement. Every label has a box, and a label takes the first of its
-// candidate places whose box is clear of the boxes placed before it. The boxes
-// are sized for the largest type a drawing gets (labels grow in a narrow
-// column to stay 9 px tall), so labels that are apart here are apart at every width.
+// candidate places whose box is clear of the boxes placed before it and of
+// every drawn line. The boxes are sized for the largest type a drawing gets
+// (labels grow in a narrow column to stay 9 px tall), so what is apart here
+// is apart at every width. A label that must show and finds no such place
+// gets a plate in the background colour, so that a line never cuts its glyphs.
 const VH = 296; // viewBox height
 const F = 10.7; // largest label size, in viewBox units
 const GAP = 3.2; // least distance between two labels
-const ROW1 = OY + 11; // numbers under the world x axis
-const ROW2 = OY + 28.5; // the name of the world x axis
+const ROW1 = OY + 11.8; // numbers under the world x axis
+const ROW2 = OY + 29.7; // the name of the world x axis
 interface Box { x0: number; x1: number; y0: number; y1: number }
-interface Lab { x: number; y: number; anchor: "start" | "middle" | "end" }
+interface Lab { x: number; y: number; anchor: "start" | "middle" | "end"; plate?: Box }
+/** A drawn line from a to b; r is half its width and the room a label keeps from it. */
+interface Seg { ax: number; ay: number; bx: number; by: number; r: number }
+const seg = (ax: number, ay: number, bx: number, by: number, r: number): Seg => ({ ax, ay, bx, by, r });
+/** True when the line passes through the box, or closer to it than r. */
+const cuts = (b: Box, l: Seg) => {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = l.bx - l.ax;
+  const dy = l.by - l.ay;
+  for (const [p, q] of [[-dx, l.ax - b.x0 + l.r], [dx, b.x1 + l.r - l.ax], [-dy, l.ay - b.y0 + l.r], [dy, b.y1 + l.r - l.ay]]) {
+    if (p === 0) {
+      if (q < 0) return false;
+    } else if (p < 0) t0 = Math.max(t0, q / p);
+    else t1 = Math.min(t1, q / p);
+  }
+  return t0 <= t1;
+};
 const monoW = (text: string) => text.length * 0.6 * F + 1;
 const DIGIT_W = 7.3;
 const LETTER_W = 7;
@@ -103,40 +122,64 @@ function Frames() {
   const pY = clamp(wy(pw.y), 8, VH - 8);
   const outside = pX !== wx(pw.x) || pY !== wy(pw.y);
 
+  const rx = wx(pose.x);
+  const ry = wy(pose.y);
+  const kneeAt = { x: wx(knee.x), y: wy(knee.y) };
+  const pAt = { x: wx(pw.x), y: wy(pw.y) };
+
   // ---- labels, placed in this order; each keeps clear of the ones before it ----
   const taken: Box[] = []; // labels
-  const shapes: Box[] = [around(pX, pY, 7)]; // marks a label should not cover
-  const free = (b: Box, withShapes: boolean) => inView(b) && taken.every((t) => !hit(b, t, GAP)) && (!withShapes || shapes.every((o) => !hit(b, o, 0)));
-  /** The first candidate that is free. A label that must show may cover a shape, and at worst takes its first place. */
-  const put = (w: number, cands: Lab[], must: boolean): Lab | null => {
-    for (const withShapes of must ? [true, false] : [true]) {
+  const pMark = around(pX, pY, 7);
+  const shapes: Box[] = [pMark, around(rx, ry, 17)]; // marks a label should not cover: P and the robot's body
+  // Every line of the drawing, as drawn: the world axes, T, the lines from P to the axes, the dashed path, the robot's axes.
+  const lines: Seg[] = [
+    seg(OX, OY, wx(7.9) + 2, OY, 1.05),
+    seg(OX, OY, OX, wy(5.45) - 2, 1.05),
+    seg(OX, OY, rx, ry, 1),
+    seg(pAt.x, pAt.y, pAt.x, OY, 1),
+    seg(pAt.x, pAt.y, OX, pAt.y, 1),
+    seg(rx, ry, kneeAt.x, kneeAt.y, 1.3),
+    seg(kneeAt.x, kneeAt.y, pAt.x, pAt.y, 1.3),
+    seg(rx, ry, rx + 40 * c, ry - 40 * s, 1.2),
+    seg(rx, ry, rx - 36 * s, ry - 36 * c, 1.2),
+  ];
+  const offShapes = (b: Box) => shapes.every((o) => !hit(b, o, 0));
+  /**
+   * The first candidate that is free: clear of the labels, the lines and the marks (`soft`).
+   * A label that must show may then cover a mark, then stand on a line with a plate under it,
+   * and at worst takes its first place.
+   */
+  const put = (w: number, cands: Lab[], must: boolean, soft = offShapes): Lab | null => {
+    for (const pass of must ? [0, 1, 2, 3] : [0]) {
       for (const l of cands) {
         const b = textBox(l, w);
-        if (free(b, withShapes)) {
-          taken.push(b);
-          return l;
-        }
+        if (!inView(b) || taken.some((t) => hit(b, t, GAP))) continue;
+        if (pass < 2 && lines.some((n) => cuts(b, n))) continue;
+        if (pass % 2 === 0 && !soft(b)) continue;
+        taken.push(b);
+        return pass < 2 ? l : { ...l, plate: b };
       }
     }
     if (!must) return null;
-    taken.push(textBox(cands[0], w));
-    return cands[0];
+    const b = textBox(cands[0], w);
+    taken.push(b);
+    return lines.some((n) => cuts(b, n)) ? { ...cands[0], plate: b } : cands[0];
   };
-  // The dashed lines from P to the world axes.
-  shapes.push({ x0: Math.min(OX, pX), x1: Math.max(OX, pX), y0: pY - 1, y1: pY + 1 }, { x0: pX - 1, x1: pX + 1, y0: Math.min(OY, pY), y1: Math.max(OY, pY) });
-  // The axis names make room when P's mark or one of those lines is where they stand.
-  const clear = (b: Box) => !hit(b, shapes[0], 12) && shapes.slice(1).every((o) => !hit(b, o, 1));
-  const nameX = ([
-    { x: wx(7.9), y: ROW2, anchor: "end" },
-    { x: wx(1), y: ROW2, anchor: "start" },
-    { x: wx(1), y: ROW1, anchor: "start" },
-  ] satisfies Lab[]).find((l, i) => i === 2 || clear(textBox(l, 47)))!;
-  const nameY: Lab = { x: OX + 5, y: wy(5.4) + 4, anchor: "start" };
-  const showNameY = clear(textBox(nameY, 34));
-  taken.push(textBox(nameX, 47));
-  if (showNameY) taken.push(textBox(nameY, 34));
+  // The axis names make room when P's mark, the robot or a line is where they stand.
+  const offMarks = (b: Box) => !hit(b, pMark, 12) && !hit(b, shapes[1], 0);
+  const nameX = put(47, [ROW2, ROW1].flatMap((y) => ([
+    { x: wx(7.9), y, anchor: "end" },
+    { x: wx(1), y, anchor: "start" },
+    { x: wx(2.5), y, anchor: "start" },
+    { x: wx(4), y, anchor: "start" },
+    { x: wx(5.5), y, anchor: "start" },
+    { x: 2, y, anchor: "start" },
+  ] satisfies Lab[])), true, offMarks)!;
+  // "world y" stands at the top of its axis, on the right or else the left, or lower down.
+  const nameYAt = (i: number): Lab[] => [{ x: OX + 5, y: wy(5.4) + 4 + 14 * i, anchor: "start" }, { x: OX - 5, y: wy(5.4) + 4 + 14 * i, anchor: "end" }];
+  const nameY = put(34, Array.from({ length: 16 }, (_, i) => nameYAt(i)).flat(), true, offMarks)!;
   // P's world coordinates: y beside the world y axis at P's height, x under the world x axis below P.
-  // Where P's mark or the other number is in the way, the number moves beside it, or along its axis.
+  // Where P's mark, a line or the other number is in the way, the number moves beside it, or along its axis.
   const slide = [16, 24, 32, 40, 48, 56].flatMap((d) => [d, -d]);
   const yText = fmt(pw.y);
   const yLab = put(monoW(yText), [
@@ -145,16 +188,17 @@ function Frames() {
     { x: OX - 5, y: pY + 18.5, anchor: "end" },
     { x: pX + 10, y: pY + 3.5, anchor: "start" },
     ...slide.map((d): Lab => ({ x: OX - 5, y: pY + 3.5 - d, anchor: "end" })),
+    ...[0, -15, 15, ...slide].map((d): Lab => ({ x: OX + 5, y: pY + 3.5 - d, anchor: "start" })),
   ], true)!;
   const xText = fmt(pw.x);
   const xW = monoW(xText);
   const xMid = clamp(wx(pw.x), xW / 2 + 1, 419 - xW / 2);
-  const xLab = put(xW, [
-    { x: xMid, y: ROW1, anchor: "middle" },
-    { x: pX + 10, y: ROW1, anchor: "start" },
-    { x: pX - 10, y: ROW1, anchor: "end" },
-    ...slide.map((d): Lab => ({ x: xMid + d, y: ROW1, anchor: "middle" })),
-  ], true)!;
+  const xLab = put(xW, [ROW1, ROW2].flatMap((y): Lab[] => [
+    { x: xMid, y, anchor: "middle" },
+    { x: pX + 10, y, anchor: "start" },
+    { x: pX - 10, y, anchor: "end" },
+    ...[...slide, 64, -64, 72, -72, 80, -80, 88, -88].map((d): Lab => ({ x: xMid + d, y, anchor: "middle" })),
+  ]), true)!;
   // The letter P: beside its mark, then further out.
   const pLab = put(LETTER_W, [
     [7, -6], [-7, -6], [10, 3.5], [-10, 3.5], [7, 14], [-7, 14], [0, -11], [0, 18.5],
@@ -162,33 +206,22 @@ function Frames() {
     [26, 3.5], [-26, 3.5], [26, -14], [-26, -14], [26, 22], [-26, 22],
     ...P_FAR,
   ].map(([dx, dy]): Lab => ({ x: pX + dx, y: pY + dy, anchor: dx > 0 ? "start" : dx < 0 ? "end" : "middle" })), true)!;
-  // The numbers on the world axes: one is left out where P's labels or mark stand.
+  // The numbers on the world axes: one is left out where P's labels, P's mark or a line stand.
   const xTicks = [2, 4, 6].filter((i) => put(DIGIT_W, [{ x: wx(i), y: ROW1, anchor: "middle" }], false));
   const yTicks = [2, 4].filter((i) => put(DIGIT_W, [{ x: OX - 5, y: wy(i) + 3, anchor: "end" }], false));
   // The robot: the letters at the tips of its axes, on either side of the tip or beyond it.
-  const rx = wx(pose.x);
-  const ry = wy(pose.y);
-  shapes.push(around(rx, ry, 17));
-  // The dashed path, so that no label stands on it.
-  const kneeAt = { x: wx(knee.x), y: wy(knee.y) };
-  for (const part of [clip({ x: rx, y: ry }, kneeAt), clip(kneeAt, { x: wx(pw.x), y: wy(pw.y) })]) {
-    if (!part) continue;
-    const n = Math.ceil(Math.hypot(part[1].x - part[0].x, part[1].y - part[0].y) / 8);
-    for (let i = 0; i <= n; i++) shapes.push(around(part[0].x + ((part[1].x - part[0].x) * i) / (n || 1), part[0].y + ((part[1].y - part[0].y) * i) / (n || 1), 1));
-  }
   /** A point `ahead` px along the robot's x axis and `left` px along its y axis, as the middle of a label. */
   const onRobot = (ahead: number, left: number): Lab => ({ x: rx + ahead * c - left * s, y: ry - ahead * s - left * c + 3.5, anchor: "middle" });
-  const bxLab = put(LETTER_W, [onRobot(36, 9), onRobot(36, -9), onRobot(49, 0), onRobot(25, 10), onRobot(25, -10), onRobot(58, 0)], true)!;
-  const byLab = put(LETTER_W, [onRobot(-9, 32), onRobot(9, 32), onRobot(0, 45), onRobot(-10, 22), onRobot(10, 22), onRobot(0, 54)], true)!;
-  for (const d of [13, 21, 29, 37]) shapes.push(around(rx + d * c, ry - d * s, 1.5), around(rx - d * s, ry - d * c, 1.5));
-  /** Places beside the segment a to b for a label w wide: along it from the middle outwards, the side of (nx, ny) first, then a little further off. */
-  const beside = (a: { x: number; y: number }, b: { x: number; y: number }, w: number, nx: number, ny: number, at: number[]): Lab[] => {
+  const bxLab = put(LETTER_W, [onRobot(36, 9), onRobot(36, -9), onRobot(49, 0), onRobot(25, 10), onRobot(25, -10), onRobot(58, 0), onRobot(36, 15), onRobot(36, -15), onRobot(49, 9), onRobot(49, -9), onRobot(25, 17), onRobot(25, -17), onRobot(36, 22), onRobot(36, -22), onRobot(49, 17), onRobot(49, -17)], true)!;
+  const byLab = put(LETTER_W, [onRobot(-9, 32), onRobot(9, 32), onRobot(0, 45), onRobot(-10, 22), onRobot(10, 22), onRobot(0, 54), onRobot(-15, 32), onRobot(15, 32), onRobot(-9, 45), onRobot(9, 45), onRobot(-17, 22), onRobot(17, 22), onRobot(-22, 32), onRobot(22, 32), onRobot(-17, 45), onRobot(17, 45)], true)!;
+  /** Places beside the segment a to b for a label w wide: along it from the middle outwards, the side of (nx, ny) first, then further off. */
+  const beside = (a: { x: number; y: number }, b: { x: number; y: number }, w: number, nx: number, ny: number, at: number[], far: number[] = [0, 8]): Lab[] => {
     const off = (w / 2) * Math.abs(nx) + 0.68 * F * Math.abs(ny) + 2.5;
-    return [off, off + 8].flatMap((d) => at.flatMap((f) => [1, -1].map((side): Lab => ({ x: a.x + f * (b.x - a.x) + side * d * nx, y: a.y + f * (b.y - a.y) + side * d * ny + 3.5, anchor: "middle" }))));
+    return far.flatMap((d) => at.flatMap((f) => [1, -1].map((side): Lab => ({ x: a.x + f * (b.x - a.x) + side * (off + d) * nx, y: a.y + f * (b.y - a.y) + side * (off + d) * ny + 3.5, anchor: "middle" }))));
   };
   // T, beside the dotted line from the world origin to the robot.
   const tLen = Math.hypot(pose.x, pose.y);
-  const tLab = put(LETTER_W, beside({ x: OX, y: OY }, { x: rx, y: ry }, LETTER_W, pose.y / tLen, pose.x / tLen, [0.5, 0.38, 0.62, 0.26, 0.74, 0.14, 0.86]), true)!;
+  const tLab = put(LETTER_W, beside({ x: OX, y: OY }, { x: rx, y: ry }, LETTER_W, pose.y / tLen, pose.x / tLen, [0.5, 0.38, 0.62, 0.26, 0.74, 0.14, 0.86], [0, 8, 16]), true)!;
   // The two numbers on the dashed path, beside the part of it that is inside the drawing.
   // One is left out where there is no free place for it.
   const pathLab = (from: { x: number; y: number }, to: { x: number; y: number }, text: string, nx: number, ny: number) => {
@@ -197,12 +230,19 @@ function Frames() {
   };
   const turn = Math.sign(pb.x || 1);
   const aheadLab = Math.abs(pb.x) >= 0.45 ? pathLab({ x: rx, y: ry }, kneeAt, fmt(pb.x), s, c) : null;
-  const leftLab = Math.abs(pb.y) >= 0.45 ? pathLab(kneeAt, { x: wx(pw.x), y: wy(pw.y) }, fmt(pb.y), c * turn, -s * turn) : null;
+  const leftLab = Math.abs(pb.y) >= 0.45 ? pathLab(kneeAt, pAt, fmt(pb.y), c * turn, -s * turn) : null;
+  /** A label, on its plate when it has one. */
+  const label = (l: Lab, text: string, cls: string) => (
+    <>
+      {l.plate && <rect className="fr-plate" x={l.plate.x0 - 1} y={l.plate.y0 + 1} width={l.plate.x1 - l.plate.x0 + 2} height={l.plate.y1 - l.plate.y0 - 2} rx={2} />}
+      <text x={l.x} y={l.y} textAnchor={l.anchor} className={cls}>{text}</text>
+    </>
+  );
   const pTurn = (Math.atan2(wy(pw.y) - pY, wx(pw.x) - pX) * 180) / Math.PI;
 
   return (
     <figure className="figure fr-fig" aria-label="Interactive drawing of the world frame, the robot frame and a point in both">
-      <style>{`.fr-fig .fr-range{flex:1;min-width:70px;accent-color:var(--orange)}.fr-fig .fr-lab{flex:1;display:flex;align-items:center;gap:.3rem;color:var(--dim);font-size:.82rem;min-width:110px}.fr-fig .fr-grid{stroke:var(--border);stroke-width:1}.fr-fig .fr-w{stroke:var(--arches);stroke-width:2;fill:none}.fr-fig .fr-b{stroke:var(--orange);stroke-width:2;fill:none}.fr-fig .fr-wd{stroke:var(--arches);stroke-width:1.2;fill:none;stroke-dasharray:3 3}.fr-fig .fr-bd{stroke:var(--orange);stroke-width:1.6;fill:none;stroke-dasharray:5 3}.fr-fig .fr-t{stroke:var(--dim);stroke-width:1.2;fill:none;stroke-dasharray:2 3}.fr-fig .fr-robot{cursor:grab;touch-action:none}.fr-fig .fr-wt{fill:var(--arches)}.fr-fig .fr-bt{fill:var(--orange)}.fr-fig .fr-eq{white-space:pre}.fr-fig .fr-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.fr-fig .fr-num{width:4.6rem;white-space:nowrap;text-align:right;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
+      <style>{`.fr-fig .fr-range{flex:1;min-width:70px;accent-color:var(--orange)}.fr-fig .fr-lab{flex:1;display:flex;align-items:center;gap:.3rem;color:var(--dim);font-size:.82rem;min-width:110px}.fr-fig .fr-grid{stroke:var(--border);stroke-width:1}.fr-fig .fr-w{stroke:var(--arches);stroke-width:2;fill:none}.fr-fig .fr-b{stroke:var(--orange);stroke-width:2;fill:none}.fr-fig .fr-wd{stroke:var(--arches);stroke-width:1.2;fill:none;stroke-dasharray:3 3}.fr-fig .fr-bd{stroke:var(--orange);stroke-width:1.6;fill:none;stroke-dasharray:5 3}.fr-fig .fr-t{stroke:var(--dim);stroke-width:1.2;fill:none;stroke-dasharray:2 3}.fr-fig .fr-robot{cursor:grab;touch-action:none}.fr-fig .fr-wt{fill:var(--arches)}.fr-fig .fr-bt{fill:var(--orange)}.fr-fig .fr-eq{white-space:pre}.fr-fig .fr-plate{fill:var(--inset)}.fr-fig .fr-labels{pointer-events:none}.fr-fig .fr-halo{paint-order:stroke;stroke:var(--inset);stroke-width:3px;stroke-linejoin:round}.fr-fig .fr-num{width:4.6rem;white-space:nowrap;text-align:right;font-family:var(--mono);font-size:.8rem;color:var(--harvest)}`}</style>
       <svg ref={svg} viewBox={`0 0 420 ${VH}`} role="img" aria-label={`Robot at ${fmt(pose.x, 1)}, ${fmt(pose.y, 1)} feet, heading ${pose.deg} degrees. Point: ${fmt(pb.x)} ahead and ${fmt(pb.y)} to the left in the robot frame, ${fmt(pw.x)}, ${fmt(pw.y)} in the world frame.`}>
         <defs>
           {[
@@ -220,33 +260,20 @@ function Frames() {
         {Array.from({ length: 6 }, (_, i) => (
           <line key={`h${i}`} x1={wx(0)} x2={wx(8)} y1={wy(i)} y2={wy(i)} className="fr-grid" />
         ))}
-        {xTicks.map((i) => (
-          <text key={i} x={wx(i)} y={ROW1} textAnchor="middle" className="fig-label dim">{i}</text>
-        ))}
-        {yTicks.map((i) => (
-          <text key={i} x={OX - 5} y={wy(i) + 3} textAnchor="end" className="fig-label dim">{i}</text>
-        ))}
         {/* world frame */}
         {arrow(0, 0, 7.9, 0, "fr-w", "fr-aw")}
         {arrow(0, 0, 0, 5.45, "fr-w", "fr-aw")}
-        <text x={nameX.x} y={nameX.y} textAnchor={nameX.anchor} className="fig-label fr-wt">world x, ft</text>
-        {showNameY && <text x={nameY.x} y={nameY.y} className="fig-label fr-wt">world y</text>}
         {/* T: where the robot is */}
-        <path d={`M${wx(0)},${wy(0)} L${wx(pose.x)},${wy(pose.y)}`} className="fr-t" />
-        <text x={tLab.x} y={tLab.y} textAnchor="middle" className="fig-label dim fr-halo">T</text>
+        <path d={`M${wx(0)},${wy(0)} L${rx},${ry}`} className="fr-t" />
         {/* world coordinates of the point */}
-        <path d={`M${wx(pw.x)},${wy(pw.y)} V${wy(0)}`} className="fr-wd" />
-        <path d={`M${wx(pw.x)},${wy(pw.y)} H${wx(0)}`} className="fr-wd" />
-        <text x={xLab.x} y={xLab.y} textAnchor={xLab.anchor} className="fig-value small fr-halo">{xText}</text>
-        <text x={yLab.x} y={yLab.y} textAnchor={yLab.anchor} className="fig-value small fr-halo">{yText}</text>
+        <path d={`M${pAt.x},${pAt.y} V${wy(0)}`} className="fr-wd" />
+        <path d={`M${pAt.x},${pAt.y} H${wx(0)}`} className="fr-wd" />
         {/* robot coordinates of the point: ahead, then left */}
-        <path d={`M${wx(pose.x)},${wy(pose.y)} L${wx(knee.x)},${wy(knee.y)} L${wx(pw.x)},${wy(pw.y)}`} className="fr-bd" />
-        {aheadLab && <text x={aheadLab.x} y={aheadLab.y} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.x)}</text>}
-        {leftLab && <text x={leftLab.x} y={leftLab.y} textAnchor="middle" className="fig-value small fr-halo">{fmt(pb.y)}</text>}
+        <path d={`M${rx},${ry} L${kneeAt.x},${kneeAt.y} L${pAt.x},${pAt.y}`} className="fr-bd" />
         {/* robot */}
         <g
           className="fr-robot"
-          transform={`translate(${wx(pose.x)},${wy(pose.y)}) rotate(${-pose.deg})`}
+          transform={`translate(${rx},${ry}) rotate(${-pose.deg})`}
           onPointerDown={(e) => {
             const p = at(e);
             drag.current = { dx: pose.x - p.x, dy: pose.y - p.y };
@@ -266,13 +293,29 @@ function Frames() {
           <path d="M0 0 H38" className="fr-b" markerEnd="url(#fr-ab)" />
           <path d="M0 0 V-34" className="fr-b" markerEnd="url(#fr-ab)" />
         </g>
-        <text x={bxLab.x} y={bxLab.y} textAnchor="middle" className="fig-label fr-bt">x</text>
-        <text x={byLab.x} y={byLab.y} textAnchor="middle" className="fig-label fr-bt">y</text>
+        {/* the labels, above every line */}
+        <g className="fr-labels">
+          {xTicks.map((i) => (
+            <text key={i} x={wx(i)} y={ROW1} textAnchor="middle" className="fig-label dim">{i}</text>
+          ))}
+          {yTicks.map((i) => (
+            <text key={i} x={OX - 5} y={wy(i) + 3} textAnchor="end" className="fig-label dim">{i}</text>
+          ))}
+          {label(nameX, "world x, ft", "fig-label fr-wt")}
+          {label(nameY, "world y", "fig-label fr-wt")}
+          {label(tLab, "T", "fig-label dim fr-halo")}
+          {label(xLab, xText, "fig-value small fr-halo")}
+          {label(yLab, yText, "fig-value small fr-halo")}
+          {aheadLab && label(aheadLab, fmt(pb.x), "fig-value small fr-halo")}
+          {leftLab && label(leftLab, fmt(pb.y), "fig-value small fr-halo")}
+          {label(bxLab, "x", "fig-label fr-bt")}
+          {label(byLab, "y", "fig-label fr-bt")}
+        </g>
         {/* the point */}
         {outside
           ? <path d="M6,0 L-5,-5 L-5,5 Z" transform={`translate(${pX},${pY}) rotate(${pTurn})`} fill="var(--harvest)" stroke="var(--inset)" strokeWidth={1} />
           : <circle cx={pX} cy={pY} r={4.5} fill="var(--harvest)" stroke="var(--inset)" strokeWidth={1} />}
-        <text x={pLab.x} y={pLab.y} textAnchor={pLab.anchor} className="fig-label fr-halo">P</text>
+        <g className="fr-labels">{label(pLab, "P", "fig-label fr-halo")}</g>
       </svg>
       <div className="fig-why" role="status">
         {inverse

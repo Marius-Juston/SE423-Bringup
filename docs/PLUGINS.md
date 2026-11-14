@@ -98,6 +98,16 @@ wall and post) all use it. A level or test chooses the world with inputs:
 - `WORLD_SIZE`: maze cells per side, 3 to 8 (2 ft cells). `WORLD_LOOPS`:
   1 takes away extra walls, so the maze has more than one way.
 
+Other world inputs a level or test can set:
+
+- `SPIC_JUMPER`, `SPIA_JUMPER` = 1: a jumper wire on the LaunchPad header
+  from the module's SIMO pin to its SOMI pin (GPIO122 to GPIO123 for SPIC,
+  GPIO58 to GPIO59 for SPIA). The master then receives what it sends, if
+  both pins are switched to the module and TALK is 1. The robot kit has a
+  knob for the SPIC one, fitted by default (`plugins/spi.ts`).
+- `MOTOR_RIGHT_GAIN` (default 1): makes the right motor weaker or stronger
+  than the left one (`plugins/actuators.ts`).
+
 A terrain has its own start pose and goal, used by `robot_world.ts` where
 the `ROBOT_START_*` and `ROBOT_GOAL_*` inputs are not set. Changing an
 input in mid-run changes the world at that moment. `worldOf(board)` is the
@@ -116,6 +126,34 @@ and an entry in `TERRAINS`, and test that its start and goal are free.
   `b.readVar("name")` reads a global by name.
 - Prefer running the real TI or course C source when it only touches
   registers (as `InitCpuTimers` / `GPIO_SetupPinMux` do).
+- A course function that students write for credit is provided by the
+  library and never printed in a level. Where the graded part is a formula
+  (`setEPWM1A`, `setEPWM2A`: Lab 3; `setDACA`, `setDACB`: Lab 4) it is a
+  native, not C source in `prelude`, so the game holds no copy of the
+  answer. Mark it `b.compiler.fns.get(name)!.replaceable = true`: a
+  student's own definition then takes its place, so programs saved before
+  the library had the function still compile. Call `b.tick(line)` once for
+  each C statement the function stands for, so a loop that calls it takes
+  the time it would take with C code.
+
+Library functions that stand in for graded work, all replaceable:
+
+| Function | Plugin | What it does | Graded in |
+| --- | --- | --- | --- |
+| `setEPWM1A(u)`, `setEPWM2A(u)` | `actuators.ts` | control effort -10 to 10 to CMPA of EPWM1 or EPWM2 (0 is 50 % duty) | Lab 3 |
+| `setDACA(volts)`, `setDACB(volts)` | `dac.ts` | limits to 0 V to 3 V, scales to DACVALS (3 V is 4095) | Lab 4 |
+| `enableAdccInterrupt()` | `adc.ts` | PIE and IER enables of ADCC1 | Lab 4 |
+| `setupSpib()` | `spi.ts` | the course's SPIB set-up: chip select GPIO66 high, GPIO63 to 65 to SPIB, 16-bit words, 1 MHz, FIFOs, receive interrupt level 16 | HW3 |
+| `enableSpibInterrupt()` | `spi.ts` | PIE and IER enables of SPIB_RX | HW3 |
+
+A level that calls one says in one sentence that the board's library
+provides it and that writing it is part of that lab or homework. A PIE
+channel that is such a blank is also registered with
+`b.pie.libraryEnable.set("1.3", "enableAdccInterrupt();")`: the PIE's
+"enable is missing" message then names the call and Table 3-2 instead of
+the bit. `tests/actuators.test.ts`, `tests/spi_library.test.ts` and
+`tests/lab_library.test.ts` hold these functions to their behaviour and
+check that no level prints what they hide.
 
 ### Diagnostics
 `b.warn(b.line, "code", "message", "warning" | "error")` shows a message on

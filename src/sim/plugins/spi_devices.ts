@@ -138,7 +138,7 @@ function install(b: Board): void {
         return;
       }
       if (bitNs > 0 && bitNs < 999 && !(reading && addr >= 0x3a && addr <= 0x48))
-        b.warn(b.line, "mpu-too-fast", `The MPU-9250 was clocked at ${(1000 / bitNs).toFixed(1)} MHz. Its limit is 1 MHz (only the sensor registers may be read faster). With LSPCLK = 50 MHz, use SpibRegs.SPIBRR.bit.SPI_BIT_RATE = 49;`);
+        b.warn(b.line, "mpu-too-fast", `The MPU-9250 was clocked at ${(1000 / bitNs).toFixed(1)} MHz. Its limit is 1 MHz (only the sensor registers may be read faster). The bit rate is LSPCLK / (SPIBRR + 1) with LSPCLK = 50 MHz: make SpibRegs.SPIBRR.bit.SPI_BIT_RATE large enough for 1 MHz or less. The library's setupSpib() sets 1 MHz.`);
       if (!reading) {
         state.mpuWrites.push([addr, byte]);
         b.mem.writes++;

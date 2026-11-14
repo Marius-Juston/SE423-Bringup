@@ -134,6 +134,21 @@ Write the text to match the figure and point at it, not to replace it.
   (`sin`, `cos`, `sqrt`, `atan2`, `fabs`...), `printf`, `serial_printf`
   (after `init_serialSCIA`), `DELAY_US`. Not supported: `goto`, 64-bit
   integers, `malloc`.
+- `setEPWM1A(u)` and `setEPWM2A(u)` (control effort -10 to 10) are in the
+  library: a program calls them without defining them. Students write them
+  in Lab 3, so never put their bodies, or the line from effort to counts,
+  in a starter, solution, brief or hint. Say in one sentence where they
+  come from. Chapter 10 teaches the skill with its own `setMotor1(percent)`
+  and, for servos, `setServo5A(position)` on EPWM5 (Homework 4 grades the
+  EPWM8 functions of an angle from the middle).
+- `setDACA(volts)` and `setDACB(volts)` are in the library too: Lab 4 has
+  students fill in their scaling line. Chapter 7 teaches the skill with its
+  own `setDacaMv(millivolts)`. `enableAdccInterrupt()` sets the PIE and IER
+  enables of ADCC1, a table look-up Lab 4 grades: never print that PIE
+  channel. The analog gyro of chapter 8 has its own range (250 deg/s per
+  volt), not the lab robot's, and the wall follower of chapter 17 has its
+  own distances, gains and limit: Lab 6 has students tune theirs. The list
+  of library functions that stand in for graded work is in `PLUGINS.md`.
 - Lines at most 100 characters. Plain ASCII in code (no curly quotes, long
   dashes or ellipsis characters). In TypeScript template strings write C
   escapes as `\\r\\n`.
