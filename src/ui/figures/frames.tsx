@@ -130,7 +130,12 @@ function Frames() {
   // ---- labels, placed in this order; each keeps clear of the ones before it ----
   const taken: Box[] = []; // labels
   const pMark = around(pX, pY, 7);
-  const shapes: Box[] = [pMark, around(rx, ry, 17)]; // marks a label should not cover: P and the robot's body
+  // The robot's body with its wheels is 30 by 34 units, centred 2 units ahead of its origin: the box that
+  // holds it at this heading (a fixed square would miss the corners of a turned robot).
+  const halfW = Math.abs(15 * Math.cos(th)) + Math.abs(17 * Math.sin(th));
+  const halfH = Math.abs(15 * Math.sin(th)) + Math.abs(17 * Math.cos(th));
+  const bodyBox: Box = { x0: rx + 2 * Math.cos(th) - halfW, x1: rx + 2 * Math.cos(th) + halfW, y0: ry - 2 * Math.sin(th) - halfH, y1: ry - 2 * Math.sin(th) + halfH };
+  const shapes: Box[] = [pMark, bodyBox]; // marks a label should not cover: P and the robot's body
   // Every line of the drawing, as drawn: the world axes, T, the lines from P to the axes, the dashed path, the robot's axes.
   const lines: Seg[] = [
     seg(OX, OY, wx(7.9) + 2, OY, 1.05),

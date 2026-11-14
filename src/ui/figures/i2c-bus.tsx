@@ -195,6 +195,10 @@ function I2cBus() {
   const total = items[items.length - 1].t1;
   const wrap = breakAt !== undefined && px > 0 && ((px / 420) * W) / total < HALF_PX;
   const strips: [number, number][] = wrap ? [[0, breakAt], [breakAt, total]] : [[0, total]];
+  // A write fits one strip where a read needs two. The drawing keeps the room of two in that case,
+  // so choosing the other direction does not move what is below.
+  const READ_HALF_CLOCKS = 83;
+  const rows = px > 0 && ((px / 420) * W) / READ_HALF_CLOCKS < HALF_PX ? 2 : strips.length;
   const HW = W / Math.max(...strips.map(([from, to]) => to - from));
   const tEnd = it.t1;
   // Every item holds its levels from its start; SDA moves a little after
@@ -264,7 +268,7 @@ function I2cBus() {
         ))}
       </svg>
       {mode === "xfer" && (
-        <svg viewBox={`0 -21 420 ${STRIP_H * strips.length}`} role="img" aria-label={`Waveforms of SCL and SDA for the transfer, up to step ${s + 1} of ${items.length}: ${it.kind === "bit" ? `a bit, ${it.sda}` : it.kind === "ack" ? (it.sda ? "NACK" : "ACK") : it.kind === "start" ? "START" : it.kind === "stop" ? "STOP" : "idle"}, SCL ${it.scl ? "high" : "low"}.`}>
+        <svg viewBox={`0 -21 420 ${STRIP_H * rows}`} role="img" aria-label={`Waveforms of SCL and SDA for the transfer, up to step ${s + 1} of ${items.length}: ${it.kind === "bit" ? `a bit, ${it.sda}` : it.kind === "ack" ? (it.sda ? "NACK" : "ACK") : it.kind === "start" ? "START" : it.kind === "stop" ? "STOP" : "idle"}, SCL ${it.scl ? "high" : "low"}.`}>
           {strips.map(([from, to], k) => {
             const x = (t: number) => X0 + (t - from) * HW;
             const mid = (q: { t0: number; t1: number }) => (x(q.t0) + x(q.t1)) / 2;

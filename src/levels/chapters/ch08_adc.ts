@@ -1248,6 +1248,20 @@ __interrupt void ADCC_ISR(void)
         {
           kind: "var",
           name: "gyro_offset",
+          at: 60.75,
+          equals: 0,
+          label: "During the first 200 samples the offset is not set yet",
+          hint: "The offset comes out of the calibration: set it once, on call 200, from the sum.",
+        },
+        {
+          kind: "source",
+          mustNotMatch: "gyro_offset\\s*=\\s*[-+]?(?!0(\\.0*)?f?\\s*;)[0-9.]+f?\\s*;",
+          label: "The offset is measured, not typed in as a number",
+          hint: "Another gyro, or the same one on a warmer day, rests at another voltage. Work the offset out from the samples.",
+        },
+        {
+          kind: "var",
+          name: "gyro_offset",
           at: 120.75,
           min: 1.2285,
           max: 1.2325,
