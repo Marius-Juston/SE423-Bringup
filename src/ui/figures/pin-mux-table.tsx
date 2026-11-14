@@ -13,7 +13,7 @@ const CSS = `
 .pmt-doc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.2rem 0.2rem; }
 .pmt-title { text-align: center; font-weight: 700; font-size: 0.78rem; margin: 0.1rem 0 0.3rem; }
 .pmt-scroll { max-height: 17.5rem; overflow-y: auto; position: relative; }
-.pmt-doc table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; line-height: 1.15; }
+.pmt-doc table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--fig-small, 11px); line-height: 1.15; }
 .pmt-doc thead { position: sticky; top: 0; z-index: 1; }
 .pmt-doc thead th { background: var(--surface); font-weight: 700; padding: 2px 1px; text-align: center; overflow-wrap: anywhere; }
 .pmt-doc thead tr:nth-child(2) th { color: var(--dim); }
