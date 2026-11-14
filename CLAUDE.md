@@ -94,6 +94,7 @@ Adding a level, a figure, a bench view, a glossary file or a simulator plugin ne
 - Pushing to `main` runs CI and publishes the web version to GitHub Pages (`.github/workflows/pages.yml`).
 - Installers: bump the version in `package.json`, `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, refresh the lockfiles, push, then push a tag `vX.Y.Z` (`.github/workflows/release.yml`). The install scripts in `public/` fetch the latest release.
 - Workflow actions are pinned by commit SHA with the version in a comment.
+- Dependabot (`.github/dependabot.yml`) opens grouped update pull requests on Mondays for npm, the Rust crates in `src-tauri` and the workflow actions, and security fixes at once. Merge one when CI is green. The npm group `tauri` and the cargo group `tauri` must be merged together: the JavaScript and Rust sides of Tauri share a minor version. A pull request that touches `src-tauri` or the package files also compiles the desktop app (`.github/workflows/desktop.yml`).
 - Commit messages start with a verb and say what changed for the student or the simulator. End with a `Co-Authored-By:` line when an agent wrote the change; nothing else.
 
 ## Skills

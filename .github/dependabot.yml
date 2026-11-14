@@ -1,0 +1,106 @@
+# Dependency updates, once a week, grouped so that one pull request holds
+# the packages that must move together. Security fixes come at once, also
+# grouped. CI (.github/workflows/ci.yml) runs on every one of these pull
+# requests: merge when it is green.
+version: 2
+
+updates:
+  # The game: editor, React, build and test tools.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 6
+    # A release is offered once it has been out for a few days.
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    groups:
+      # The desktop shell's JavaScript side. Its minor version must match the
+      # Rust crates in src-tauri: merge it together with the "tauri" group of
+      # the cargo updates below.
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
+      codemirror:
+        patterns:
+          - "codemirror"
+          - "@codemirror/*"
+          - "@lezer/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@vitejs/plugin-react"
+      # Everything else, as long as it is not a new major version. A major
+      # version (TypeScript, Vite, Vitest) gets a pull request of its own.
+      tools:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@tauri-apps/*"
+          - "codemirror"
+          - "@codemirror/*"
+          - "@lezer/*"
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+          - "@vitejs/plugin-react"
+        update-types:
+          - "minor"
+          - "patch"
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # The desktop app's Rust side.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    open-pull-requests-limit: 4
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    groups:
+      tauri:
+        patterns:
+          - "tauri"
+          - "tauri-*"
+      rust:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "tauri"
+          - "tauri-*"
+        update-types:
+          - "minor"
+          - "patch"
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # The workflow actions. They are pinned by commit SHA with the version in
+  # a comment; Dependabot moves both.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/Chicago"
+    groups:
+      actions:
+        patterns:
+          - "*"
