@@ -1784,38 +1784,40 @@ ${MPU_WRITE}`,
       mode: "write",
       tier: "expert",
       title: "Which way is down?",
-      goal: "Read the three accelerometer axes in one burst and compute the board's roll and pitch angles with atan2.",
+      goal: "Read two accelerometer axes and one gyro axis in one burst, and compute the board's roll angle with atan2 and its roll rate.",
       refs: [{ course: "L12", slide: [38, 30], note: "accelerometer burst read" }, { course: "HW3" }, { trm: "18.3.7" }],
       brief: `
-At rest the accelerometer measures only gravity: a vector of length 1 g that always points down. How that vector is split over the board's X, Y and Z axes tells you how the board is tilted.
+At rest the accelerometer measures only gravity: a vector of length 1 g that always points down. How that vector is split over the board's axes tells you how the board is tilted. This level measures **roll**: tipping sideways, about the X axis.
 
-Lying flat, the reading is (0, 0, 1 g). Define the two tilt angles as:
+Lying flat, the reading is (0, 0, 1 g). When the board rolls, gravity moves from the Z axis to the Y axis:
 
 \`\`\`c
-roll  = atan2(ay, az)                          // tipping sideways, about the X axis
-pitch = atan2(-ax, sqrt(ay * ay + az * az))    // nose up or down, about the Y axis
+roll = atan2(ay, az)      // in radians
 \`\`\`
 
 \`atan2(y, x)\` returns the angle of the point (x, y) in **radians**, in the right quadrant for any signs. Multiply by 180 / PI for degrees.
 
-Notice that only **ratios** of the readings appear. The scale factor cancels, so the raw numbers can be used as they are, converted to \`float\`.
+Notice that only a **ratio** of the readings appears. The scale factor cancels, so the raw numbers can be used as they are, converted to \`float\`.
+
+The accelerometer says how far the board is tipped. The gyro says how fast it is tipping: gyro X is the turn rate about the X axis, the **roll rate**. That one needs its scale factor: \`raw * 250.0 / 32767.0\` is degrees per second.
 
 ## Your task
 Nothing is given but the set-up. Write both interrupt functions:
 
-- \`cpu_timer0_isr\`, every 1 ms: start a burst read that returns the three accelerometer readings, each as one whole word. Decide where the read must start and how many words it needs.
-- \`SPIB_isr\`: take the words, store the readings in \`ax_raw\`, \`ay_raw\`, \`az_raw\`, and compute \`roll\` and \`pitch\` in **degrees**.
+- \`cpu_timer0_isr\`, every 1 ms: start **one** burst read that returns accelerometer Y, accelerometer Z and gyro X, each as one whole word. Decide where the read must start and how many words it needs. The register list is in the chapter's briefing.
+- \`SPIB_isr\`: take the words, store the readings in \`ay_raw\`, \`az_raw\` and \`gx_raw\`, and compute \`roll\` in **degrees** and \`rollrate\` in **degrees per second**.
 
-The test holds the board flat, then rolls it by 30 degrees, then also pitches it up by 20 degrees while it stays rolled.
+The test holds the board flat and still. Then it rolls it to 30 degrees while it turns at 60 degrees per second, then to -45 degrees while it turns the other way at -40.
 `,
       kit: "robot",
       durationMs: 16,
       stimuli: [
         { at: 5.5, set: "IMU_AY_G", value: 0.5 },
         { at: 5.5, set: "IMU_AZ_G", value: 0.8660254 },
-        { at: 10.5, set: "IMU_AX_G", value: -0.3420201 },
-        { at: 10.5, set: "IMU_AY_G", value: 0.4698463 },
-        { at: 10.5, set: "IMU_AZ_G", value: 0.8137977 },
+        { at: 5.5, set: "IMU_GX_DPS", value: 60 },
+        { at: 10.5, set: "IMU_AY_G", value: -0.7071068 },
+        { at: 10.5, set: "IMU_AZ_G", value: 0.7071068 },
+        { at: 10.5, set: "IMU_GX_DPS", value: -40 },
       ],
       starter: `#define PI 3.1415926535897932384626433832795
 
@@ -1823,11 +1825,11 @@ __interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
 void mpu_write(uint16_t reg, uint16_t value);
 
-int16_t ax_raw = 0;
 int16_t ay_raw = 0;
 int16_t az_raw = 0;
+int16_t gx_raw = 0;
 float roll = 0;        // degrees
-float pitch = 0;       // degrees
+float rollrate = 0;    // degrees per second
 
 void main(void)
 {
@@ -1841,7 +1843,6 @@ ${VECTORS()}
     while (1) {
     }
 }
-
 __interrupt void cpu_timer0_isr(void)
 {
     // TODO
@@ -1863,11 +1864,11 @@ __interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
 void mpu_write(uint16_t reg, uint16_t value);
 
-int16_t ax_raw = 0;
 int16_t ay_raw = 0;
 int16_t az_raw = 0;
+int16_t gx_raw = 0;
 float roll = 0;        // degrees
-float pitch = 0;       // degrees
+float rollrate = 0;    // degrees per second
 
 void main(void)
 {
@@ -1881,13 +1882,13 @@ ${VECTORS()}
     while (1) {
     }
 }
-
 __interrupt void cpu_timer0_isr(void)
 {
-    // Start at 0x3A: [address, 0x3A] [0x3B, 0x3C] [0x3D, 0x3E] [0x3F, 0x40]
+    // Start at 0x3C: [address, 0x3C] [0x3D, 0x3E] [0x3F, 0x40] [0x41, 0x42] [0x43, 0x44]
     GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;
-    SpibRegs.SPIFFRX.bit.RXFFIL = 4;
-    SpibRegs.SPITXBUF = (0x8000 | 0x3A00);
+    SpibRegs.SPIFFRX.bit.RXFFIL = 5;
+    SpibRegs.SPITXBUF = (0x8000 | 0x3C00);
+    SpibRegs.SPITXBUF = 0x0000;
     SpibRegs.SPITXBUF = 0x0000;
     SpibRegs.SPITXBUF = 0x0000;
     SpibRegs.SPITXBUF = 0x0000;
@@ -1898,21 +1899,20 @@ __interrupt void cpu_timer0_isr(void)
 __interrupt void SPIB_isr(void)
 {
     int16_t temp;
-    float ax;
     float ay;
     float az;
 
-    temp = SpibRegs.SPIRXBUF;
-    ax_raw = SpibRegs.SPIRXBUF;
+    temp = SpibRegs.SPIRXBUF;       // address byte and 0x3C: nothing useful
     ay_raw = SpibRegs.SPIRXBUF;
     az_raw = SpibRegs.SPIRXBUF;
+    temp = SpibRegs.SPIRXBUF;       // the temperature
+    gx_raw = SpibRegs.SPIRXBUF;
     GpioDataRegs.GPCSET.bit.GPIO66 = 1;
 
-    ax = ax_raw;
     ay = ay_raw;
     az = az_raw;
     roll = atan2(ay, az) * 180.0 / PI;
-    pitch = atan2(-ax, sqrt(ay * ay + az * az)) * 180.0 / PI;
+    rollrate = gx_raw * 250.0 / 32767.0;
 
     SpibRegs.SPIFFRX.bit.RXFFOVFCLR = 1;
     SpibRegs.SPIFFRX.bit.RXFFINTCLR = 1;
@@ -1921,26 +1921,26 @@ __interrupt void SPIB_isr(void)
 
 ${MPU_WRITE}`,
       checks: [
-        { kind: "var", name: "az_raw", at: 4.5, equals: 8192, label: "Flat: az_raw is 8192 (1 g at +-4 g)", hint: "The accelerometer starts at 0x3B. Start the read one register earlier so each axis is one whole word." },
+        { kind: "var", name: "az_raw", at: 4.5, equals: 8192, label: "Flat: az_raw is 8192 (1 g at +-4 g)", hint: "Accelerometer Y is 0x3D and 0x3E. Start the read one register earlier so each reading is one whole word. Accelerometer Z is the word after Y." },
         { kind: "var", name: "roll", at: 4.5, min: -0.1, max: 0.1, label: "Flat: roll is 0 degrees" },
-        { kind: "var", name: "pitch", at: 4.5, min: -0.1, max: 0.1, label: "Flat: pitch is 0 degrees" },
-        { kind: "var", name: "roll", at: 9.5, min: 29.9, max: 30.1, label: "Rolled: roll is 30 degrees", hint: "0.52 would be radians: multiply by 180 / PI." },
-        { kind: "var", name: "pitch", at: 9.5, min: -0.1, max: 0.1, label: "Rolled: pitch is still 0 degrees" },
-        { kind: "var", name: "pitch", min: 19.9, max: 20.1, label: "Rolled and pitched: pitch is 20 degrees", hint: "About 22.8: the second argument must be sqrt(ay * ay + az * az), not az alone." },
-        { kind: "var", name: "roll", min: 29.9, max: 30.1, label: "Rolled and pitched: roll is still 30 degrees" },
+        { kind: "var", name: "rollrate", at: 4.5, min: -0.1, max: 0.1, label: "Still: rollrate is 0 degrees per second" },
+        { kind: "var", name: "roll", at: 9.5, min: 29.9, max: 30.1, label: "Rolled: roll is 30 degrees", hint: "0.52 would be radians: multiply by 180 / PI. 60 would be atan2(az, ay): the Y reading comes first." },
+        { kind: "var", name: "rollrate", at: 9.5, min: 59.9, max: 60.1, label: "Rolling at 60 degrees per second: rollrate is 60", hint: "Still 0: that word is the temperature, which sits between accelerometer Z and gyro X. About 7864: that is the raw count, scale it with * 250.0 / 32767.0." },
+        { kind: "var", name: "roll", min: -45.1, max: -44.9, label: "Rolled the other way: roll is -45 degrees" },
+        { kind: "var", name: "rollrate", min: -40.1, max: -39.9, label: "Rolling the other way: rollrate is -40", hint: "A large positive number: gx_raw must stay an int16_t, so that a negative count keeps its sign." },
         { kind: "isr", fn: "SPIB_isr", min: 15, max: 15, label: "The sensor is read once per millisecond" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
       bonus: [
-        { kind: "signal", name: "SPIB_WORDS", equals: 62, label: "Only four words per read: nothing more than the accelerometer" },
+        { kind: "signal", name: "SPIB_WORDS", equals: 77, label: "Only five words per read: no register before accelerometer Y or after gyro X" },
       ],
-      watch: ["ax_raw", "ay_raw", "az_raw", "roll", "pitch"],
+      watch: ["ay_raw", "az_raw", "gx_raw", "roll", "rollrate"],
       hints: [
-        "Accelerometer X is 0x3B and 0x3C. To get it as one word, the word before must end with 0x3A.",
-        "Four words from 0x3A: one to throw away, then X, Y, Z. RXFFIL = 4.",
-        "Copy the raw values into float variables first, then `roll = atan2(ay, az) * 180.0 / PI;`.",
+        "Accelerometer Y is 0x3D and 0x3E. To get it as one word, the word before must end with 0x3C. Then write down what each later word holds, until you reach gyro X (0x43 and 0x44).",
+        "Five words from 0x3C: one to throw away, accelerometer Y, accelerometer Z, the temperature (throw it away too), gyro X. RXFFIL = 5.",
+        "Copy the two accelerometer counts into float variables first, then `roll = atan2(ay, az) * 180.0 / PI;` and `rollrate = gx_raw * 250.0 / 32767.0;`.",
       ],
-      takeaway: "At rest an accelerometer is a tilt sensor. It stops being one as soon as the robot accelerates, which is why tilt is usually estimated from the accelerometer and the gyro together.",
+      takeaway: "At rest an accelerometer is a tilt sensor. It stops being one as soon as the robot accelerates, which is why tilt is usually estimated from the accelerometer and the gyro together. One burst fetches both.",
     },
     {
       id: "spi-both",

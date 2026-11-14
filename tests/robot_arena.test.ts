@@ -581,3 +581,18 @@ describe("the playground acts through the simulator", () => {
     expect(worldOf(after.board)).toBe(ROOMS[3]);
   });
 });
+
+describe("drawing a wall longer than the picture", () => {
+  it("cuts it along its own line and keeps its slope", async () => {
+    const { clipSegment } = await import("../src/ui/views/robot-arena-model");
+    const c = clipSegment([-100, -52, 100, 48], -6, -6, 18, 8)!;
+    expect((c[3] - c[1]) / (c[2] - c[0])).toBeCloseTo(0.5, 9);
+    expect(c[0]).toBeCloseTo(-6, 9);
+    expect(c[1]).toBeCloseTo(-5, 9);
+    expect(c[2]).toBeCloseTo(18, 9);
+    // A wall that is wholly inside is unchanged; one that misses the picture is not drawn.
+    expect(clipSegment([0, 0, 10, 0], -2, -2, 12, 12)).toEqual([0, 0, 10, 0]);
+    expect(clipSegment([0, 20, 10, 20], -2, -2, 12, 12)).toBeNull();
+    expect(clipSegment([5, -50, 5, 50], -2, -2, 12, 12)).toEqual([5, -2, 5, 12]);
+  });
+});

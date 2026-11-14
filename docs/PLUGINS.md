@@ -133,6 +133,14 @@ student then reads why the function ran once and never again.
 there is one. A forgotten `PIEACK`, `PIEIER` bit, `IER` bit or `EINT` is
 reported by the PIE itself for every peripheral.
 
+The system set-up is not modelled: no watchdog, no PLL, no peripheral clock
+gates (`PCLKCRx`). `InitSysCtrl()` does all of that on the chip, every course
+program calls it first, and the course never gates a clock by hand. A program
+that writes a register before `InitSysCtrl()` gets the warning
+`no-initsysctrl`, which is what the missing set-up would break. Tests of one
+peripheral that run bare programs switch it off with
+`Board.expectInitSysCtrl = false`.
+
 ## Rules
 - Cite the TRM section the model implements in a comment at the top, and
   follow the TRM where course material differs.

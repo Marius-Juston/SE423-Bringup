@@ -35,7 +35,7 @@ function CIntDivision() {
         .cdv-ctl input { flex: 1 1 4rem; min-width: 4rem; width: 4rem; }
         .cdv-ctl output { font-family: var(--mono); width: 2rem; text-align: right; }
       `}</style>
-      <svg viewBox={`0 0 320 ${b * 13 + 46}`} role="img" aria-label={`${a} dots in groups of ${b}: ${q} full group${q === 1 ? "" : "s"} and ${r} left over.`}>
+      <svg viewBox={`0 0 320 ${9 * 13 + 46}`} role="img" aria-label={`${a} dots in groups of ${b}: ${q} full group${q === 1 ? "" : "s"} and ${r} left over.`}>
         {Array.from({ length: q }, (_, g) => {
           const x = 8 + g * colW;
           return (

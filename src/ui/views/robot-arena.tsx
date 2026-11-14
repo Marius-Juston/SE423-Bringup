@@ -36,6 +36,7 @@ import {
   type Scene,
   type SceneKind,
   type SceneSource,
+  clipSegment,
 } from "./robot-arena-model";
 import { ArenaPlayground } from "./robot-arena-play";
 import type { BenchView, ViewProps } from "./types";
@@ -579,7 +580,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
                       <line key={i} x1={px(o.x1)} y1={py(o.y1)} x2={px(o.x2)} y2={py(o.y2)} className="arena-wall" />
                     ),
                   )}
-                  <path d={world.boundary.map((w) => `M${P(Math.max(view.x0 - 2, Math.min(view.x1 + 2, w[0])), w[1])}L${P(Math.max(view.x0 - 2, Math.min(view.x1 + 2, w[2])), w[3])}`).join("")} className="arena-wall" />
+                  <path d={world.boundary.map((w) => clipSegment(w, view.x0 - 2, view.y0 - 2, view.x1 + 2, view.y1 + 2)).map((w) => (w ? `M${P(w[0], w[1])}L${P(w[2], w[3])}` : "")).join("")} className="arena-wall" />
                 </>
               )}
               {s.trail.map((t, i) => t.length > 1 && <path key={i} d={line(t)} className="arena-trail" />)}

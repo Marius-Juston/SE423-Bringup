@@ -43,10 +43,13 @@ interface Item {
   unitEnd: number;
 }
 
-function build(addr: number, read: boolean): { items: Item[]; groups: { t0: number; t1: number; label: string }[]; slave: number } {
+/** A bracket over the waveform. `up` puts its label on the row above, on a leader: the one-clock R/W bracket has no room beside the ACK's. */
+interface Group { t0: number; t1: number; label: string; up?: boolean }
+
+function build(addr: number, read: boolean): { items: Item[]; groups: Group[]; slave: number } {
   const slave = addr === 0x48 ? 1 : addr === 0x68 ? 2 : 0;
   const items: Item[] = [];
-  const groups: { t0: number; t1: number; label: string }[] = [];
+  const groups: Group[] = [];
   let t = 0;
   let unitFrom = 0;
   const push = (kind: Item["kind"], label: string, len: number, sda: 0 | 1, scl: 0 | 1, who: Item["who"], text: string) => {
@@ -76,7 +79,7 @@ function build(addr: number, read: boolean): { items: Item[]; groups: { t0: numb
     byte((addr << 1) | (rd ? 1 : 0), "M",
       (i) => (i ? `address bit ${i - 1}` : "the R/W bit"),
       (i, b) => (i ? `It reads ${b}.` : `R/W = ${b}: ${rd ? "the master wants to read. After the ACK the device will set SDA." : "the master wants to write. It keeps setting SDA after the ACK."} The whole byte was (0x${h2(addr)} << 1) | ${b} = 0x${h2(((addr << 1) | b) & 0xff)}.`));
-    groups.push({ t0: g0, t1: t - 2, label: `addr 0x${h2(addr)}` }, { t0: t - 2, t1: t, label: rd ? "R" : "W" });
+    groups.push({ t0: g0, t1: t - 2, label: `addr 0x${h2(addr)}` }, { t0: t - 2, t1: t, label: rd ? "R" : "W", up: true });
     groups.push({ t0: t, t1: t + 2, label: slave ? "A" : "N" });
     if (!slave) {
       push("ack", "", 1, 1, 0, "-", "Ninth clock, SCL low: the master lets go of SDA and listens for an answer.");
@@ -110,7 +113,8 @@ function build(addr: number, read: boolean): { items: Item[]; groups: { t0: numb
     if (!read) stop("");
     else {
       push("start", "", 1, 1, 0, "-", "SCL low: the master lets SDA rise. It sends no STOP, so no other master can take the bus in between.");
-      push("start", "Sr", 1, 0, 1, "M", "Repeated START: SCL is high and the master pulls SDA low again. A new transfer begins on a bus that was never released.");
+      // Drawn three half-clocks long, so that the two letters "Sr" clear the ACK before and the bit after.
+      push("start", "Sr", 3, 0, 1, "M", "Repeated START: SCL is high and the master pulls SDA low again. A new transfer begins on a bus that was never released.");
       endUnit();
       address(true);
       const data = slave === 1 ? 0x19 : 0x56;
@@ -123,7 +127,7 @@ function build(addr: number, read: boolean): { items: Item[]; groups: { t0: numb
       stop("");
     }
   }
-  push("end", "", 1.5, 1, 1, "-", "Idle again: both lines high, nobody pulling.");
+  push("end", "", 1, 1, 1, "-", "Idle again: both lines high, nobody pulling.");
   endUnit();
   return { items, groups, slave };
 }
@@ -160,8 +164,9 @@ function I2cBus() {
   const SDA_Y = 40;
   const SCL_Y = 56;
   // ---- waveforms ----
-  const HW = 360 / items[items.length - 1].t1;
-  const X0 = 44;
+  // A read is 83 half-clocks: the strip is as wide as the row names on its left allow.
+  const X0 = 32;
+  const HW = (417 - X0) / items[items.length - 1].t1;
   const x = (t: number) => X0 + t * HW;
   const tEnd = it.t1;
   // Every item holds its levels from its start; SDA moves a little after
@@ -191,7 +196,7 @@ function I2cBus() {
       <svg viewBox="0 0 420 126" role="img" aria-label={`SDA is ${sda ? "high" : "low"}${sda ? "" : `, pulled by ${pullers(0).join(" and ")}`}. SCL is ${scl ? "high" : "low"}${scl ? "" : `, pulled by ${pullers(1).join(" and ")}`}.`}>
         <line x1="14" x2="54" y1="8" y2="8" className="fig-wire" style={{ stroke: "var(--hi)" }} />
         <text x="58" y="11" className="fig-label">3.3 V</text>
-        <text x="58" y="24" className="fig-label dim">two pull-up resistors, for the whole bus</text>
+        <text x="58" y="28" className="fig-label dim">two pull-up resistors, for the whole bus</text>
         <line x1="24" x2="24" y1="8" y2={SDA_Y} className="fig-wire" />
         <rect x="20" y="14" width="8" height="16" className="ib-res" />
         <line x1="44" x2="44" y1="8" y2={SCL_Y} className="fig-wire" />
@@ -200,7 +205,7 @@ function I2cBus() {
         <line x1="14" x2="410" y1={SCL_Y} y2={SCL_Y} className="fig-wire thick" style={{ stroke: col(scl) }} />
         <circle cx="24" cy={SDA_Y} r="2.2" className="fig-dot" />
         <circle cx="44" cy={SCL_Y} r="2.2" className="fig-dot" />
-        <text x="410" y={SDA_Y - 4} textAnchor="end" className="fig-label">SDA (data): {sda ? "high, 1" : "low, 0"}</text>
+        <text x="410" y={SDA_Y - 5} textAnchor="end" className="fig-label">SDA (data): {sda ? "high, 1" : "low, 0"}</text>
         <text x="410" y={SCL_Y - 4} textAnchor="end" className="fig-label">SCL (clock): {scl ? "high, 1" : "low, 0"}</text>
         {DEVS.map((d, i) => (
           <g key={d.name}>
@@ -226,22 +231,24 @@ function I2cBus() {
         ))}
       </svg>
       {mode === "xfer" && (
-        <svg viewBox="0 -5 420 99" role="img" aria-label={`Waveforms of SCL and SDA for the transfer, up to step ${s + 1} of ${items.length}: ${it.kind === "bit" ? `a bit, ${it.sda}` : it.kind === "ack" ? (it.sda ? "NACK" : "ACK") : it.kind === "start" ? "START" : it.kind === "stop" ? "STOP" : "idle"}, SCL ${it.scl ? "high" : "low"}.`}>
-          <rect x={x(it.t0)} y="14" width={x(it.t1) - x(it.t0)} height="78" className="ib-now" />
+        <svg viewBox="0 -21 420 115" role="img" aria-label={`Waveforms of SCL and SDA for the transfer, up to step ${s + 1} of ${items.length}: ${it.kind === "bit" ? `a bit, ${it.sda}` : it.kind === "ack" ? (it.sda ? "NACK" : "ACK") : it.kind === "start" ? "START" : it.kind === "stop" ? "STOP" : "idle"}, SCL ${it.scl ? "high" : "low"}.`}>
+          <rect x={x(it.t0)} y="15" width={x(it.t1) - x(it.t0)} height="77" className="ib-now" />
           {groups.filter((g) => g.t0 < tEnd).map((g, i) => (
             <g key={i}>
-              <path d={`M${x(g.t0) + 1.5},12 v-3 H${x(Math.min(g.t1, tEnd)) - 1.5}${g.t1 <= tEnd ? " v3" : ""}`} className="fig-wire" style={{ strokeWidth: 1 }} />
-              <text x={(x(g.t0) + x(g.t1)) / 2} y="7" textAnchor="middle" className="fig-label">{g.label}</text>
+              <path d={`M${x(g.t0) + 1.5},13.5 v-3 H${x(Math.min(g.t1, tEnd)) - 1.5}${g.t1 <= tEnd ? " v3" : ""}`} className="fig-wire" style={{ strokeWidth: 1 }} />
+              {g.up && <line x1={(x(g.t0) + x(g.t1)) / 2} x2={(x(g.t0) + x(g.t1)) / 2} y1="10.5" y2="-5.5" className="fig-wire" style={{ strokeWidth: 1 }} />}
+              <text x={(x(g.t0) + x(g.t1)) / 2} y={g.up ? -10 : 7} textAnchor="middle" className="fig-label">{g.label}</text>
             </g>
           ))}
-          <text x="4" y="38" className="fig-label">SCL</text>
-          <text x="4" y="66" className="fig-label">SDA</text>
-          <text x="4" y="86" className="fig-label dim">sent by</text>
+          <text x="3" y="38" className="fig-label">SCL</text>
+          <text x="3" y="66" className="fig-label">SDA</text>
+          <text x="3" y="86" className="fig-label dim">sent by</text>
           <path d={trace(sclPts, 28)} className="fig-trace" />
           <path d={trace(sdaPts, 56)} className="fig-trace data" />
           {items.slice(0, s + 1).map((q, i) => (q.label ? (
             <g key={i}>
-              <text x={(x(q.t0) + x(q.t1)) / 2} y="23" textAnchor="middle" className="fig-value small">{q.label}</text>
+              {/* A bold A is drawn a little wider than its cell, to the right. */}
+              <text x={(x(q.t0) + x(q.t1)) / 2 - (q.label === "A" ? 0.4 : 0)} y="24" textAnchor="middle" className="fig-value small">{q.label}</text>
               <text x={(x(q.t0) + x(q.t1)) / 2} y="86" textAnchor="middle" className="ib-who" style={{ fill: whoColor(q.who) }}>{q.who === "S" ? "D" : q.who}</text>
             </g>
           ) : null))}

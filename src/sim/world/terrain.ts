@@ -400,7 +400,7 @@ export function slantedWall(): World {
   const x0 = -100;
   const x1 = 100;
   return makeWorld({
-    name: "slanted wall",
+    name: "open space with one slanted wall",
     boundary: [[x0, SLANT_M * x0 + SLANT_C, x1, SLANT_M * x1 + SLANT_C]],
     start: [0, 0, 0],
     bounds: [-4, -4, 16, 6],

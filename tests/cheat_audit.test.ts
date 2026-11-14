@@ -231,7 +231,7 @@ describe("the slanted wall (WORLD_KIND 6)", () => {
   it("is the world of a run whose stimuli set WORLD_KIND to 6, from that moment", () => {
     const idle = "void main(void) { InitSysCtrl(); while (1) {} }";
     const r = run(idle, 20, [], [{ at: 10, set: "WORLD_KIND", value: KIND_SLANT }]);
-    expect(worldOf(r.board).name).toBe("slanted wall");
+    expect(worldOf(r.board).name).toBe("open space with one slanted wall");
     const before = run(idle, 5, [], [{ at: 10, set: "WORLD_KIND", value: KIND_SLANT }]);
     expect(worldOf(before.board).name).toBe("empty box");
   });
