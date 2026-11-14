@@ -44,7 +44,7 @@ const TRANSITIONS: Transition[] = [
     to: "FOLLOW",
     d: "M120 40 H298",
     test: (_f, r) => r < WALL_NEAR,
-    code: () => "else if (right_ft < WALL_NEAR) { state = FOLLOW; }",
+    code: () => "if (front_ft < FRONT_BLOCKED) { state = TURN_LEFT; }\n    else if (right_ft < WALL_NEAR) { state = FOLLOW; }",
     say: (_f, r) => `right ${r.toFixed(1)} ft is below ${WALL_NEAR.toFixed(1)}: there is a wall to follow`,
   },
   {
@@ -71,7 +71,7 @@ const TRANSITIONS: Transition[] = [
     to: "STRAIGHT",
     d: "M298 56 H120",
     test: (_f, r) => r > WALL_LOST,
-    code: () => "else if (right_ft > WALL_LOST) { state = STRAIGHT; }",
+    code: () => "if (front_ft < FRONT_BLOCKED) { state = TURN_LEFT; }\n    else if (right_ft > WALL_LOST) { state = STRAIGHT; }",
     say: (_f, r) => `right ${r.toFixed(1)} ft is above ${WALL_LOST.toFixed(1)}: the wall is gone`,
   },
 ];
@@ -190,7 +190,7 @@ function StateMachine() {
         .fsm-fig .fsm-hot { fill: var(--orange); }
         .fsm-fig .fsm-note { color: var(--dim); font-size: 0.82rem; }
       `}</style>
-      <svg viewBox="0 0 420 290" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} times.`}>
+      <svg viewBox="0 0 420 290" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} time${m.changes === 1 ? "" : "s"}.`}>
         <defs>
           <marker id="fsm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />
@@ -258,7 +258,7 @@ function StateMachine() {
           <strong>Scan {m.n}.</strong> {why}
           {verdict}
         </p>
-        <CodePre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(" { ", " {\n        ").replace(" }", "\n    }")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></CodePre>
+        <CodePre><code>{fired ? `case ${fired.from}:\n    ${fired.code(m.hyst).replace(/ \{ /g, " {\n        ").replace(/ \}/g, "\n    }").replace("}\n    else", "} else")}` : `case ${state}:\n    // no condition is true: state stays ${state}`}</code></CodePre>
       </div>
       <div className="fig-controls">
         <div>

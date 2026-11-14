@@ -3,6 +3,10 @@ import { runProgram, type Stimulus } from "../src/sim/runner";
 import type { SpiDevicesState } from "../src/sim/plugins/spi_devices";
 import { codes } from "./helpers";
 
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 // setupSpib() exactly as in the course's SE423Lib.c (final project starter).
 const SETUP_SPIB = `uint16_t dummyread = 0;
 void setupSpib(void)        //for mpu9250

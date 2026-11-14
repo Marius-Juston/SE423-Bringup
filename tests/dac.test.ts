@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { runProgram } from "../src/sim/runner";
 
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 describe("DAC plugin", () => {
   it("outputs DACVALA * 3.0 / 4096 once enabled, and needs EALLOW", () => {
     const r = runProgram({

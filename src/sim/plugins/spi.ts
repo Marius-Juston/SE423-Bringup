@@ -164,6 +164,8 @@ interface Bus {
   devices: SpiDevice[];
   ports: Map<string, Port>;
   log: SpiWord[];
+  /** Words removed from the start of the log (live runs keep the recent ones only). */
+  dropped: number;
   /** Number of chip-select falling edges so far, and the chip-select pins that are low now. */
   frame: number;
   csLow: Set<number>;
@@ -174,7 +176,7 @@ interface Bus {
 /** The SPI bus state of a board (created on first use, so plugin load order does not matter). */
 export function spiBus(b: Board): Bus {
   let bus = b.plugins.get("spi") as Bus | undefined;
-  if (!bus) b.plugins.set("spi", (bus = { devices: [], ports: new Map(), log: [], frame: 0, csLow: new Set(), selected: new Set(), bang: new Map() }));
+  if (!bus) b.plugins.set("spi", (bus = { devices: [], ports: new Map(), log: [], dropped: 0, frame: 0, csLow: new Set(), selected: new Set(), bang: new Map() }));
   return bus;
 }
 
@@ -230,11 +232,13 @@ function install(b: Board): void {
     };
 
     // ---- interrupts ----
-    const evalRx = () => {
+    const evalRx = (arrived = false) => {
       if (!fifoOn()) return;
       if (get("SPIFFRX", "RXFFST") >= get("SPIFFRX", "RXFFIL")) set("SPIFFRX", 1, "RXFFINT");
       const line = get("SPIFFRX", "RXFFINT") === 1 && get("SPIFFRX", "RXFFIENA") === 1;
       if (line && !p.rxLine) b.pie.raise(6, PIE_CH[id][0]);
+      // A word arrived with the flag still set from the last interrupt.
+      else if (line && arrived) b.pie.uncleared(6, PIE_CH[id][0], `${pre}.SPIFFRX.bit.RXFFINT`, `${pre}.SPIFFRX.bit.RXFFINTCLR = 1;`);
       p.rxLine = line;
     };
     const evalTx = () => {
@@ -269,6 +273,9 @@ function install(b: Board): void {
       const somi = pin("somi");
       const talk = get("SPICTL", "TALK") === 1;
 
+      // The bits below the top n are never sent: a value that only has those is right-justified.
+      if (n < 16 && out === 0 && v & 0xffff)
+        b.warn(line, `spi-left-justify-${id}`, `SPITXBUF was written with 0x${(v & 0xffff).toString(16).toUpperCase()}, but with ${n}-bit words only the top ${n} bits of SPITXBUF are sent, so the word that went out is 0. Shift the value up: ${pre}.SPITXBUF = value << ${16 - n};`);
       if (get("SPICCR", "SPILBK")) input = out; // SIMO and SOMI joined inside the chip
       else {
         const missing = [clk === null && "clk", simo === null && "simo", somi === null && "somi"].filter(Boolean) as Sig[];
@@ -282,6 +289,11 @@ function install(b: Board): void {
           const dp = pinsOf(d);
           return clk === dp.clk && simo === dp.simo && muxFor("clk", dp.clk) !== undefined;
         });
+        if (!here.length && clk !== null && simo !== null) {
+          const wired = bus.devices.filter((d) => portOf(d) === id && pinsOf(d).clk === clk && pinsOf(d).simo === simo);
+          if (wired.length)
+            b.warn(line, `spi-no-cs-${id}`, `${NAME} sent a word, but no chip select is low, so no device listened and the word read back is all 1s. Pull the chip select of the device low before writing SPITXBUF (${wired.map((d) => `${d.name}: GPIO${d.csPin}`).join(", ")}).`);
+        }
         if (here.length > 1) {
           b.warn(line, `spi-bus-conflict-${id}`, `Bus conflict: ${here.map((d) => `${d.name} (GPIO${d.csPin})`).join(" and ")} are selected at the same time, so both drive the SOMI line and the word read is garbage. Only one chip select may be low at a time: raise the other one first.`, "error");
           let both = mask;
@@ -346,6 +358,7 @@ function install(b: Board): void {
       set("SPIDAT", rx);
       p.words++;
       bus.log.push({ t, port: id, bits: n, out, in: input, device: p.cur?.name ?? null, frame: bus.frame });
+      trimLog(b, bus);
       b.publish(`${NAME}_TX`, out, t);
       b.publish(`${NAME}_RX`, input, t);
       b.publish(`${NAME}_WORDS`, p.words, t);
@@ -362,7 +375,7 @@ function install(b: Board): void {
           p.rxq.push(rx);
           set("SPIFFRX", p.rxq.length, "RXFFST");
           set("SPIRXBUF", p.rxq[0]);
-          evalRx();
+          evalRx(true);
         }
       } else {
         if (get("SPISTS", "INT_FLAG")) {
@@ -573,6 +586,7 @@ function install(b: Board): void {
             const out = s.acc;
             d.transfer(out, n, s.t0, t);
             bus.log.push({ t, port: portOf(d), bits: n, out, in: s.reply, device: d.name, frame: bus.frame });
+            trimLog(b, bus);
             s.count = 0;
             s.acc = 0;
             s.reply = d.peek(t);
@@ -587,3 +601,12 @@ export const plugin: SimPlugin = {
   name: "spi",
   install,
 };
+
+/** A live run keeps the recent words only: an IMU read every millisecond adds millions of words an hour. */
+function trimLog(b: Board, bus: { log: SpiWord[]; dropped: number }): void {
+  const limit = b.historyLimit;
+  if (!limit || bus.log.length <= limit) return;
+  const cut = bus.log.length - (limit >> 1);
+  bus.log.splice(0, cut);
+  bus.dropped += cut;
+}

@@ -1052,7 +1052,7 @@ __interrupt void SPIB_isr(void)
       brief: `
 A link test sends known data and checks what comes back. Build one for SPIB in loopback. It uses the timer, two interrupts, the serial port and an LED from the earlier chapters.
 
-The set-up in \`main()\` is complete: SPIB (16-bit words, 1 MHz, loopback), timer 0 every 1 ms, the SPIB receive interrupt, the serial port and LED1 (GPIO22).
+The set-up in \`main()\` is complete: SPIB (16-bit words, 500 kHz, loopback), timer 0 every 1 ms, the SPIB receive interrupt, the serial port and LED1 (GPIO22).
 
 ## What to write
 **\`cpu_timer0_isr\`**, every 1 ms: count the call in \`count\`. Start a transfer of **two** words: \`count\` and its bitwise inverse \`~count\`. Remember the chip select (GPIO66), \`RXFFIL\` and the acknowledge for group 1.
@@ -1184,6 +1184,7 @@ __interrupt void SPIB_isr(void)
         { kind: "serial-period", periodMs: 250, label: "A line is printed every 250 ms" },
         { kind: "blink", led: "LED1", periodMs: 500, label: "LED1 changes every 250 ms" },
         { kind: "var", name: "bad", equals: 0, label: "No transfer failed" },
+        { kind: "signal", name: "SPIB_TX", at: 500.5, equals: 0xfe0b, label: "The second word of transfer 500 is ~500 (0xFE0B)", hint: "The two words on the wire are count and ~count, in that order. count is 1 in the first transfer: add one to it before you send." },
         { kind: "isr", fn: "SPIB_isr", min: 1095, max: 1100, label: "SPIB_isr runs once per millisecond", hint: "Ran 0 times or a few times too few: set RXFFIL = 2 in the timer function (the set-up leaves it at 16, so the first interrupt waits for 16 words). Ran once: clear RXFFINT with RXFFINTCLR = 1 at the end of SPIB_isr. Ran twice as often: read both words before clearing the flag." },
         { kind: "pin", pin: 66, at: 500.5, level: 1, label: "The chip select is high between transfers" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
@@ -1276,7 +1277,7 @@ With the FIFO in use you may write several words to \`SPITXBUF\` one after the o
         },
         {
           id: "burst",
-          label: "Time for eight 16-bit words back to back at 1 MHz (the course's sensor read)",
+          label: "Time for eight 16-bit words back to back at 1 MHz",
           unit: "us",
           answer: 128,
           why: "8 x 16 bits = 128 clock cycles of 1 us. The interrupt that starts the read returns long before the data is there.",
@@ -2068,6 +2069,8 @@ __interrupt void SPIB_isr(void)
         { kind: "signal", name: "SPIB_WORDS", equals: 6, label: "Six words are sent" },
         { kind: "isr", fn: "SPIB_isr", min: 6, max: 6, label: "SPIB_isr runs once per word", hint: "It needs SPICTL.bit.SPIINTENA = 1, and it must read SPIRXBUF each time: that clears INT_FLAG." },
         { kind: "var", name: "checksum", equals: (0x00a5 + 0x1111 + 0x2222 + 0x4444 + 0x8888 + 0xf00d) & 0xffff, label: "The six replies add up to the right checksum" },
+        { kind: "var", name: "reply[1]", equals: 0x1111, label: "reply[1] holds the second word that came back, 0x1111", hint: "Store each received word in the interrupt function: reply[index] = SpibRegs.SPIRXBUF;" },
+        { kind: "var", name: "reply[5]", equals: 0xf00d, label: "reply[5] holds the last word that came back, 0xF00D" },
         { kind: "var", name: "done", equals: 1, label: "done is 1" },
         { kind: "reg", reg: "SpibRegs.SPISTS", field: "OVERRUN_FLAG", equals: 0, label: "No received word was overwritten" },
         { kind: "reg", reg: "SpibRegs.SPIFFTX", field: "SPIFFENA", equals: 0, label: "The FIFOs are still off" },

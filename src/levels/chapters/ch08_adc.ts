@@ -196,6 +196,11 @@ const gyroStimuli: Stimulus[] = [
   { at: 1050.25, set: "ADCINC5", value: 1.23 },
 ];
 
+// adc-gyro: samples 2 to 200 (taken at 2.0, 2.5 ... 101.0 ms) carry +/- 0.02 V of noise around the
+// rest voltage, so that one sample alone is not a usable offset. Only the average is.
+const gyroNoise: Stimulus[] = Array.from({ length: 199 }, (_, i) => ({ at: 1.75 + 0.5 * i, set: "ADCINC5", value: 1.23 + (i % 2 ? 0.02 : -0.02) }));
+const gyroCalStimuli: Stimulus[] = [gyroStimuli[0], ...gyroNoise, { at: 101.25, set: "ADCINC5", value: 1.23 }, ...gyroStimuli.slice(2)];
+
 // ---- adc-joystick ----
 const JOY_HEAD = `void setupLED(uint16_t pin)
 {
@@ -1162,10 +1167,12 @@ gyroangle = gyroangle + gyrorate * 0.0005;            // deg
 \`\`\`
 
 \`numADCCcalls\` already counts the calls. The robot's real code waits 2 s, then averages for 2 s.
+
+In the test the robot stands still during the calibration, and its samples jump between 1.21 V and 1.25 V: that is the noise.
 `,
       kit: "robot",
       durationMs: 1200,
-      stimuli: gyroStimuli,
+      stimuli: gyroCalStimuli,
       starter: `${GYRO_GLOBALS}
 
 ${GYRO_MAIN}
@@ -1223,7 +1230,7 @@ __interrupt void ADCC_ISR(void)
         {
           kind: "var",
           name: "adcC5Volt",
-          at: 50.75,
+          at: 110.75,
           min: 1.228,
           max: 1.232,
           label: "adcC5Volt shows the gyro's 1.23 V at rest",
@@ -1236,7 +1243,7 @@ __interrupt void ADCC_ISR(void)
           min: 1.2285,
           max: 1.2325,
           label: "The offset is the average of the first 200 samples",
-          hint: "Still 0: set it on call 200. Exactly 1: the sum is an integer, make it a float. 1.33: that is the first sample alone, taken while the gyro settles. Add up 200 and divide by 200.0.",
+          hint: "Still 0: set it on call 200. Exactly 1: the sum is an integer, make it a float. 1.33: that is the first sample alone, taken while the gyro settles. 1.21 or 1.25: that is one noisy sample, not the average. Add up 200 and divide by 200.0.",
         },
         {
           kind: "var",
@@ -1965,6 +1972,12 @@ void setupADCA(void)
         },
         { kind: "reg", reg: "AdcaRegs.ADCCTL2", field: "PRESCALE", equals: 6, label: "2. The converter's clock is SYSCLK / 4", hint: "PRESCALE is a code, not the divisor: 6 means divide by 4." },
         {
+          kind: "source",
+          mustMatch: "AdcSetMode\\s*\\(\\s*ADC_ADCA\\s*,\\s*ADC_RESOLUTION_12BIT\\s*,\\s*ADC_SIGNALMODE_SINGLE\\s*\\)",
+          label: "3. AdcSetMode chooses 12-bit results, single-ended, for ADCA",
+          hint: "AdcSetMode(ADC_ADCA, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE); It also loads the converter's factory calibration for that mode.",
+        },
+        {
           kind: "reg",
           reg: "AdcaRegs.ADCCTL1",
           field: "INTPULSEPOS",
@@ -2169,6 +2182,12 @@ Each check names one decision. The joystick is at 0.9 V, then at 2.1 V.
         { kind: "reg", reg: "EPwm2Regs.TBPRD", equals: 12499, label: "EPWM2: one round is exactly 0.25 ms", hint: "0.25 ms / 20 ns counts, and a round is TBPRD + 1 counts." },
         { kind: "reg", reg: "EPwm2Regs.TBCTL", field: "CTRMODE", equals: 0, label: "EPWM2: the counter counts up", hint: "CTRMODE resets to 3, frozen." },
         { kind: "reg", reg: "AdcaRegs.ADCCTL2", field: "PRESCALE", equals: 6, label: "ADCA: converter clock SYSCLK / 4", hint: "ADCCTL2.PRESCALE = 6 is the code for divide by 4." },
+        {
+          kind: "source",
+          mustMatch: "AdcSetMode\\s*\\(\\s*ADC_ADCA\\s*,\\s*ADC_RESOLUTION_12BIT\\s*,\\s*ADC_SIGNALMODE_SINGLE\\s*\\)",
+          label: "ADCA: 12 bit, single-ended",
+          hint: "AdcSetMode(ADC_ADCA, ADC_RESOLUTION_12BIT, ADC_SIGNALMODE_SINGLE); before the power-up line.",
+        },
         { kind: "reg", reg: "AdcaRegs.ADCCTL1", field: "INTPULSEPOS", equals: 1, label: "ADCA: flag at the end of the conversion", hint: "ADCCTL1.INTPULSEPOS = 1. With 0 the flag comes before the result." },
         { kind: "reg", reg: "AdcaRegs.ADCCTL1", field: "ADCPWDNZ", equals: 1, label: "ADCA: powered up", hint: "ADCCTL1.ADCPWDNZ = 1, inside EALLOW." },
         {
@@ -2659,6 +2678,15 @@ ${ISR_END}
           max: 2.01,
           label: "readback measures those 2.0 V",
           hint: "A SOC with CHSEL = 0 measures ADCINA0, the DACA pin. Its result is in the register with its SOC number.",
+        },
+        {
+          kind: "var",
+          name: "readback",
+          at: 8.75,
+          min: 1.99,
+          max: 2.01,
+          label: "On the first sample after the light changes, readback still shows the old 2.0 V",
+          hint: "readback must be the measured pin: the result of the SOC with CHSEL = 0, not a value computed from adcina4volts. That SOC sampled the pin before this interrupt changed the DAC.",
         },
         { kind: "signal", name: "DACA", at: 14.75, equals: 0.4, tol: 0.005, label: "2.6 V in: DACA at 0.4 V" },
         { kind: "var", name: "readback", at: 14.75, min: 0.39, max: 0.41, label: "readback follows to 0.4 V" },

@@ -122,6 +122,15 @@ conversion triggered with the ADC powered down, a PWM output on a pin whose
 mux was never set). An `error` fails the level. Messages: say what happened,
 why, and what to write instead.
 
+A peripheral whose interrupt flag must be cleared by the student's function
+(ADCINTFLG, ETFLG.INT, a FIFO flag) calls
+`b.pie.uncleared(group, channel, "the flag", "the statement that clears it")`
+when it cannot request the interrupt because that flag is still set: the
+student then reads why the function ran once and never again.
+`b.isrFor(vectorName)` gives the student's function behind a vector, when
+there is one. A forgotten `PIEACK`, `PIEIER` bit, `IER` bit or `EINT` is
+reported by the PIE itself for every peripheral.
+
 ## Rules
 - Cite the TRM section the model implements in a comment at the top, and
   follow the TRM where course material differs.

@@ -118,7 +118,10 @@ export function CodeLevelView({
   const opened = useRef(code);
   const unsaved = useRef<string | null>(null);
   useEffect(() => {
-    if (code === opened.current && store.get().code[level.id] === undefined) return;
+    if (code === opened.current && store.get().code[level.id] === undefined) {
+      unsaved.current = null;
+      return;
+    }
     unsaved.current = code;
     const t = setTimeout(() => {
       store.setCode(level.id, code);
@@ -173,8 +176,12 @@ export function CodeLevelView({
   useEffect(() => {
     world.current = undefined;
   }, [level]);
+  /** The code the live run was started with: an edit made while it runs takes effect at the next Run. */
+  const [ran, setRan] = useState(code);
+  const edited = running && ran !== code;
   const fresh = () => {
     if (live) world.current = live.worldState;
+    setRan(code);
     return new LiveSession(level.kit, code, setup, script, world.current);
   };
   const start = () => setLive(fresh());
@@ -198,8 +205,21 @@ export function CodeLevelView({
     session().stepToWrite();
     bump();
   };
+  // A long test run (the capstone drives for many simulated seconds) keeps the page busy for a moment:
+  // the button says so first, and the run starts once that is on the screen.
+  const [testing, setTesting] = useState(false);
+  const testTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(testTimer.current), []);
   const test = () => {
+    if (testing) return;
     stop();
+    setTesting(true);
+    testTimer.current = window.setTimeout(() => {
+      setTesting(false);
+      runTests();
+    }, 30);
+  };
+  const runTests = () => {
     const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
     setResult(r);
     setTested(code);
@@ -224,14 +244,16 @@ export function CodeLevelView({
   const board = live?.board ?? result?.board ?? null;
   const stale = !!result && !live && tested !== code;
   // One always-visible statement of what the program is doing.
-  const state: { kind: string; text: string } = live
+  const state: { kind: string; text: string } = testing
+    ? { kind: "running", text: "Running the tests" }
+    : live
     ? live.error
       ? { kind: "bad", text: live.error.kind === "compile" ? "Does not compile" : "Stopped: error" }
       : !live.running
         ? { kind: "idle", text: "Program ended" }
         : live.paused
           ? { kind: "paused", text: `Paused at line ${live.board.line}` }
-          : { kind: "running", text: "Running" }
+          : { kind: "running", text: edited ? "Running the code before your edit" : "Running" }
     : result
       ? result.passed
         ? { kind: "ok", text: "All tests passed" }
@@ -239,7 +261,9 @@ export function CodeLevelView({
           ? { kind: "bad", text: "Does not compile" }
           : { kind: "bad", text: `${result.checks.filter((c) => c.pass).length} of ${result.checks.length} tests passed` }
       : { kind: "idle", text: "Not running" };
-  const tip = running
+  const tip = edited
+    ? "This run uses the code from before your last edit. Stop, then Run, to try the new code."
+    : running
     ? live!.paused
       ? "Step line runs one line. Next write runs to the next register write."
       : "The board is powered: use its buttons, or pause to step."
@@ -372,7 +396,7 @@ export function CodeLevelView({
         <div className="toolbar">
           <div className="tool-row">
             {!sandbox && (
-              <button className="btn primary" onClick={test} title="Check your program against the level's tests (Ctrl+Enter)">
+              <button className="btn primary" onClick={test} aria-disabled={testing} title="Check your program against the level's tests (Ctrl+Enter)">
                 <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
               </button>
             )}
@@ -423,7 +447,7 @@ export function CodeLevelView({
             </div>
           )}
         </div>
-        <Editor value={code} onChange={setCode} marks={marks} handle={editor} />
+        <Editor value={code} onChange={setCode} marks={marks} handle={editor} kit={level.kit} />
         <div className="problems" aria-live="polite">
           {problems.length === 0 ? (
             <span className="hint-text">{live || result ? "No problems reported." : "Compiler messages and warnings about your program appear here."}</span>
@@ -451,7 +475,9 @@ export function CodeLevelView({
         <div className="bench-panels">
           {!sandbox && (
             <Panel id="tests" title="Tests" note={result ? `${nPass} of ${result.checks.length} passed${stale ? ", before your last edit" : ""}` : undefined}>
-              {!result ? (
+              {testing ? (
+                <p className="hint-text" role="status">Running the tests: {level.durationMs} ms of simulated time.</p>
+              ) : !result ? (
                 <p className="hint-text">Press <strong>Run tests</strong>. The tests run your program for {level.durationMs} ms of simulated time{level.stimuli?.length ? ", pressing buttons, turning knobs or typing at fixed times," : ""} and check the points below.</p>
               ) : (
                 <div className={`result ${result.passed ? "ok" : "bad"}`}>

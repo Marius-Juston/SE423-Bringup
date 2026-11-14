@@ -12,8 +12,9 @@ import { usePref } from "./prefs";
 import { tierOf } from "../levels/types";
 import { store } from "./store";
 import { sessionSummary } from "./review";
+import { hashOf, viewOf, type View } from "./route";
 
-export type View = { name: "map" } | { name: "level"; id: string } | { name: "handbook"; reg?: string } | { name: "sandbox" } | { name: "settings" };
+export type { View } from "./route";
 
 /** Shows a message instead of a blank window if a screen fails to draw. */
 class Boundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
@@ -56,7 +57,7 @@ export function App() {
 }
 
 function Game() {
-  const [view, show] = useState<View>({ name: "map" });
+  const [view, show] = useState<View>(() => viewOf(window.location.hash));
   /** A warm-up in progress: its levels, the one showing, and how many were right at the first try. */
   const [warm, setWarm] = useState<{ ids: string[]; i: number; right: number } | null>(null);
   /** The result of the warm-up just finished, shown on the map until another screen is opened. */
@@ -85,6 +86,32 @@ function Game() {
       show({ name: "map" });
     }
   };
+  // The address follows the screen, and the Back and Forward buttons move between screens.
+  useEffect(() => {
+    const want = hashOf(view);
+    if (hashOf(viewOf(window.location.hash)) === want) return;
+    try {
+      window.history.pushState(null, "", want || window.location.pathname + window.location.search);
+    } catch {
+      /* the address is a convenience: the game works without it */
+    }
+  }, [view]);
+  useEffect(() => {
+    const on = () => {
+      setWarm(null);
+      setWarmNote("");
+      show((v) => {
+        const to = viewOf(window.location.hash);
+        return hashOf(to) === hashOf(v) ? v : to;
+      });
+    };
+    window.addEventListener("popstate", on);
+    window.addEventListener("hashchange", on);
+    return () => {
+      window.removeEventListener("popstate", on);
+      window.removeEventListener("hashchange", on);
+    };
+  }, []);
   const save = useSave();
   const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
   const [scale] = usePref<number>("text-scale", 1);

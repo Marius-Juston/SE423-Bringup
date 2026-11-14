@@ -14,7 +14,7 @@ const fmt = (v: number, d = 2) => {
   const s = v.toFixed(d);
   return /^-0\.?0*$/.test(s) ? s.slice(1) : s;
 };
-const par = (v: number) => (fmt(v).startsWith("-") ? `(${fmt(v)})` : fmt(v));
+const par = (v: number, d = 2) => (fmt(v, d).startsWith("-") ? `(${fmt(v, d)})` : fmt(v, d));
 // The robot stays one foot inside the drawing, so its axes are never cut off.
 const X_MIN = 1;
 const Y_MIN = 1;
@@ -46,7 +46,8 @@ function Frames() {
     const k = 420 / r.width;
     return { x: ((e.clientX - r.left) * k - OX) / S, y: (OY - (e.clientY - r.top) * k) / S };
   };
-  const round = (v: number) => Math.round(v * 10) / 10;
+  // To one decimal and into a slider's range, so the thumb and the read-out agree after a switch.
+  const round = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(v * 10) / 10));
 
   // corner of the path "xb ahead, then yb to the left"
   const knee = { x: pose.x + pb.x * c, y: pose.y + pb.x * s };
@@ -113,7 +114,7 @@ function Frames() {
           onPointerMove={(e) => {
             if (!drag.current) return;
             const p = at(e);
-            setPose({ ...pose, x: clamp(round(p.x + drag.current.dx), X_MIN, 6), y: clamp(round(p.y + drag.current.dy), Y_MIN, 4) });
+            setPose({ ...pose, x: round(p.x + drag.current.dx, X_MIN, 6), y: round(p.y + drag.current.dy, Y_MIN, 4) });
           }}
           onPointerUp={() => (drag.current = null)}
           onPointerCancel={() => (drag.current = null)}
@@ -153,13 +154,13 @@ function Frames() {
             className="fig-opt"
             aria-pressed={!inverse}
             onClick={() => {
-              if (inverse) setBody({ x: round(pb.x), y: round(pb.y) });
+              if (inverse) setBody({ x: round(pb.x, -1, 3), y: round(pb.y, -2, 2) });
               setWorld(null);
             }}
           >
             rides on the robot
           </button>
-          <button className="fig-opt" aria-pressed={inverse} onClick={() => setWorld({ x: round(pw.x), y: round(pw.y) })}>stays in the room</button>
+          <button className="fig-opt" aria-pressed={inverse} onClick={() => setWorld({ x: round(pw.x, 0, 7.5), y: round(pw.y, 0, 5) })}>stays in the room</button>
         </div>
         {inverse ? (
           <div>
@@ -180,8 +181,8 @@ function Frames() {
       <div className="fig-step">
         <strong>{inverse ? "World to robot: subtract T, then rotate back" : "Robot to world: rotate by the heading, then add T"}</strong>
         <pre><code className="fr-eq">{inverse
-          ? `dx = ${fmt(pw.x)} - ${fmt(pose.x)} = ${fmt(dx)}\ndy = ${fmt(pw.y)} - ${fmt(pose.y)} = ${fmt(dy)}\nx_robot = dx cos(${pose.deg}°) + dy sin(${pose.deg}°)\n  = ${par(dx)}*${par(c)} + ${par(dy)}*${par(s)} = ${fmt(pb.x)}\ny_robot = -dx sin(${pose.deg}°) + dy cos(${pose.deg}°)\n  = -${par(dx)}*${par(s)} + ${par(dy)}*${par(c)} = ${fmt(pb.y)}`
-          : `x_world = x cos(${pose.deg}°) - y sin(${pose.deg}°) + Tx\n  = ${par(pb.x)}*${par(c)} - ${par(pb.y)}*${par(s)} + ${fmt(pose.x)} = ${fmt(pw.x)}\ny_world = x sin(${pose.deg}°) + y cos(${pose.deg}°) + Ty\n  = ${par(pb.x)}*${par(s)} + ${par(pb.y)}*${par(c)} + ${fmt(pose.y)} = ${fmt(pw.y)}`}</code></pre>
+          ? `dx = ${fmt(pw.x)} - ${fmt(pose.x)} = ${fmt(dx)}\ndy = ${fmt(pw.y)} - ${fmt(pose.y)} = ${fmt(dy)}\nx_robot = dx cos(${pose.deg}°) + dy sin(${pose.deg}°)\n  = ${par(dx)}*${par(c, 3)} + ${par(dy)}*${par(s, 3)} = ${fmt(pb.x)}\ny_robot = -dx sin(${pose.deg}°) + dy cos(${pose.deg}°)\n  = -${par(dx)}*${par(s, 3)} + ${par(dy)}*${par(c, 3)} = ${fmt(pb.y)}`
+          : `x_world = x cos(${pose.deg}°) - y sin(${pose.deg}°) + Tx\n  = ${par(pb.x)}*${par(c, 3)} - ${par(pb.y)}*${par(s, 3)} + ${fmt(pose.x)} = ${fmt(pw.x)}\ny_world = x sin(${pose.deg}°) + y cos(${pose.deg}°) + Ty\n  = ${par(pb.x)}*${par(s, 3)} + ${par(pb.y)}*${par(c, 3)} + ${fmt(pose.y)} = ${fmt(pw.y)}`}</code></pre>
       </div>
       <figcaption>The same point P in two frames. Blue is the world frame. Orange is the robot frame: x straight ahead, y to the robot's left, and the dashed orange path is P's robot coordinates (ahead, then left). T is the robot's position. Move the robot and P with the sliders (with the keyboard: Tab to one, then the arrow keys); the robot can also be dragged in the picture.</figcaption>
     </figure>

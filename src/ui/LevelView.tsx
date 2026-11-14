@@ -130,7 +130,8 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
   const assisted = passed && !!save.assisted[id];
   const [justPassed, setJustPassed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-  const [solutionOpened, setSolutionOpened] = useState(false);
+  // Remembered with the progress: opening the solution, reloading and pasting it must not earn stars.
+  const solutionOpened = !!save.peeked[id];
   const shown = save.hints[id] ?? 0;
   const hints = level.hints ?? [];
   const next = nextLevel(id);
@@ -191,13 +192,15 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
     setConfirming(false);
     store.clearHints(id);
     store.resetCode(id);
-    setSolutionOpened(false);
     setJustPassed(false);
     setBests([]);
     setAttempt((a) => a + 1);
     setTab("code");
   };
   const improved = bests.filter((b) => b.improved).slice(0, 3);
+  // A level passed without help whose solution was opened afterwards: its remaining stars need a fresh start too.
+  const starsLeft = level.kind === "code" && (level.bonus?.length ?? 0) > (save.stars[id]?.length ?? 0);
+  const canRetry = assisted || (helped && starsLeft);
 
   const done = warmup ? (
     justPassed && (
@@ -236,9 +239,9 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
           ) : (
             <button className="btn primary" onClick={() => go({ name: "map" })}>Back to the map</button>
           )}
-          {assisted && !confirming && <button className="btn ghost" onClick={() => setConfirming(true)}>Try again without help</button>}
+          {canRetry && !confirming && <button className="btn ghost" onClick={() => setConfirming(true)}>{assisted ? "Try again without help" : "Try for the stars without help"}</button>}
         </div>
-        {assisted && confirming && (
+        {canRetry && confirming && (
           <div className="confirm" role="group" aria-label="Try again without help">
             <p>The hints are hidden again and the editor goes back to the starting code. Your pass is kept.</p>
             <div className="actions">
@@ -290,7 +293,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
         </div>
       )}
       {level.kind === "code" && (passed || shown >= hints.length) && hints.length > 0 && (
-        <details className="solution" onToggle={(e) => e.currentTarget.open && setSolutionOpened(true)}>
+        <details className="solution" onToggle={(e) => e.currentTarget.open && store.peek(id)}>
           <summary>Reference solution</summary>
           <CodeBlock code={level.solution} />
         </details>

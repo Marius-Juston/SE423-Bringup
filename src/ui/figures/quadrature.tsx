@@ -86,12 +86,12 @@ function Quadrature() {
     ? `Sensor B is covered. Channel A gives the same square wave whichever way you turn, so all a counter can do is add: ${st.aEdges} edge${st.aEdges === 1 ? "" : "s"} of A counted so far. Counted forward minus backward, the shaft is really ${netA} edge${Math.abs(netA) === 1 ? "" : "s"} from the start. ${st.aEdges === Math.abs(netA) ? "Turn back and forth and watch the two numbers part." : "The two numbers differ: the direction is lost, so the position is lost."}`
     : dir === 0
       ? "Light through a slit makes a sensor's output high. The two sensors are a quarter of a slit period apart, so A and B never change at the same moment. Turn the disc: drag it, step it or move the slider."
-      : `Turning ${dir > 0 ? "forward" : "backward"}: ${dir > 0 ? "A changes first and B follows (A leads B)" : "B changes first and A follows (B leads A)"}, so the state walks ${dir > 0 ? "clockwise" : "counter-clockwise"} round the circle and every step counts ${dir > 0 ? "+1" : "-1"}. Now A B = ${STATES[q]}.`;
+      : `Turning ${dir > 0 ? "forward" : "backward"}: ${dir > 0 ? "A changes first and B follows (A leads B)" : "B changes first and A follows (B leads A)"}, so the state walks ${dir > 0 ? "clockwise" : "counter-clockwise"} round the circle and ${mode === 4 ? "every step" : mode === 2 ? "every edge of A" : "one edge of A in each slit period"} counts ${dir > 0 ? "+1" : "-1"}. Now A B = ${STATES[q]}.`;
 
   return (
     <figure className="figure qd-fig" aria-label="Interactive quadrature encoder: disc, channels A and B, state sequence and count">
       <style>{`.qd-fig .qd-disc{cursor:grab;touch-action:none}.qd-fig .qd-range{flex:1;min-width:120px;accent-color:var(--orange)}.qd-fig .qd-hole{fill:var(--inset);stroke:var(--dim);stroke-width:.6}.qd-fig .qd-off{stroke-dasharray:3 3;opacity:.55}`}</style>
-      <svg ref={svg} viewBox="0 0 420 200" role="img" aria-label={`Channel A is ${a ? "high" : "low"}, channel B is ${oneChannel ? "covered" : b ? "high" : "low"}. ${dir > 0 ? "Last turned forward. " : dir < 0 ? "Last turned backward. " : ""}${oneChannel ? `${st.aEdges} edges of A counted, true position ${netA} edges` : `Count ${count} with x${mode} decoding`}.`}>
+      <svg ref={svg} viewBox="0 0 420 200" role="img" aria-label={`Channel A is ${a ? "high" : "low"}, channel B is ${oneChannel ? "covered" : b ? "high" : "low"}. ${dir > 0 ? "Last turned forward. " : dir < 0 ? "Last turned backward. " : ""}${oneChannel ? `${st.aEdges} edge${st.aEdges === 1 ? "" : "s"} of A counted, true position ${netA} edge${Math.abs(netA) === 1 ? "" : "s"}` : `Count ${count} with x${mode} decoding`}.`}>
         {/* disc */}
         <g
           className="qd-disc"
@@ -134,7 +134,7 @@ function Quadrature() {
           );
         })}
         <text x={CX} y={160} textAnchor="middle" className="fig-label dim">drag the disc to turn it</text>
-        <text x={CX} y={172} textAnchor="middle" className="fig-label dim">{SLITS} slits here, 500 on the robot</text>
+        <text x={CX} y={172} textAnchor="middle" className="fig-label dim">{SLITS} slits (the robot: 500)</text>
 
         {/* waveforms */}
         <text x={150} y={36} textAnchor="end" className="fig-label">A</text>
@@ -177,7 +177,7 @@ function Quadrature() {
           <g>
             <text x={262} y={128} className="fig-label">A alone: edges counted</text>
             <text x={262} y={148} className="fig-value" style={{ fontSize: 16 }}>{st.aEdges}</text>
-            <text x={262} y={166} className="fig-label dim">true position: forward minus backward</text>
+            <text x={262} y={166} className="fig-label dim">forward minus backward</text>
             <text x={262} y={180} className="fig-value">{netA}</text>
             <text x={262 + 8 * String(netA).length + 4} y={180} className="fig-label dim">edges of A</text>
           </g>

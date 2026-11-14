@@ -116,10 +116,10 @@ function DeadReckoning() {
   const errTop = Math.max(0.02, ...full.err, ...sim.err) * 1.1;
   const errPath = sim.err.map((e, i) => `${i ? "L" : "M"}${(40 + (i / (sim.err.length - 1 || 1)) * (T / 10) * 372).toFixed(1)},${(262 - (e / errTop) * 34).toFixed(1)}`).filter((_, i, a) => i % Math.max(1, Math.floor(a.length / 300)) === 0 || i === a.length - 1).join(" ");
 
-  const turnText = Math.abs(omega) < 1e-9 ? "Both wheels run at the same speed: the robot drives straight." : `The ${omega > 0 ? "right" : "left"} wheel is faster, so the robot turns ${omega > 0 ? "left (omega positive)" : "right (omega negative)"}${Math.abs(V) > 1e-9 ? ` on a circle of radius v / omega = ${fmt(Math.abs(V / omega))} ft` : " on the spot"}.`;
+  const turnText = Math.abs(omega) < 1e-9 && Math.abs(V) < 1e-9 ? "Both wheels stand still: the robot does not move." : Math.abs(omega) < 1e-9 ? "Both wheels run at the same speed: the robot drives straight." : `The ${omega > 0 ? "right" : "left"} wheel is faster, so the robot turns ${omega > 0 ? "left (omega positive)" : "right (omega negative)"}${Math.abs(V) > 1e-9 ? ` on a circle of radius v / omega = ${fmt(Math.abs(V / omega))} ft` : " on the spot"}.`;
   const why =
     error < 0.005
-      ? `${turnText} The estimate (dashed) lies on the true path: after ${fmt(sim.dist, 1)} ft it is off by ${fmt(error, 3)} ft. Let one encoder read 1 % too much to see the two paths separate.`
+      ? `${turnText} The estimate (dashed) lies on the true path: after ${fmt(sim.dist, 1)} ft it is off by ${fmt(error, 3)} ft. ${bias ? "The 1 % mistake has had no room to show yet: drive faster or longer." : "Let one encoder read 1 % too much to see the two paths separate."}`
       : bias
         ? `${turnText} The right encoder reads 1 % too much (a wheel 1 % smaller than the code thinks). The same small mistake is added on every pass, so the heading drifts and the error grows with the distance: ${fmt(error, 2)} ft after ${fmt(sim.dist, 1)} ft. Dead reckoning cannot notice this: it has nothing to compare with.`
         : `${turnText} With a ${dtMs} ms step the ${rule === "rect" ? "rectangle rule pretends the speed and heading measured now held for the whole step: the estimate is off by" : "trapezoid rule averages this step's and the last step's values: the estimate is off by only"} ${fmt(error, 3)} ft after ${fmt(sim.dist, 1)} ft.${rule === "rect" ? " Try the trapezoid rule." : ""}`;

@@ -135,7 +135,11 @@ function installAdc(b: Board, letter: string): void {
       if (flags & bit) {
         // Flag still set from the last time: overflow. A new pulse only in continuous mode.
         dev.set(r("ADCINTOVF"), dev.get(r("ADCINTOVF")) | bit);
-        if (!dev.get(sel, `INT${n}CONT`)) continue;
+        if (!dev.get(sel, `INT${n}CONT`)) {
+          const [g, c] = PIE[letter][n - 1];
+          b.pie.uncleared(g, c, `${pre}.ADCINTFLG.bit.ADCINT${n}`, `${pre}.ADCINTFLGCLR.bit.ADCINT${n} = 1;`);
+          continue;
+        }
       } else dev.set(r("ADCINTFLG"), flags | bit);
       const [group, channel] = PIE[letter][n - 1];
       b.pie.raise(group, channel);

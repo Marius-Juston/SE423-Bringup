@@ -342,7 +342,7 @@ function PwmPlayground() {
       <button className="fig-opt" aria-pressed={s[en]} aria-label={`${name} enabled`} onClick={() => patch({ [en]: !s[en] })}>{s[en] ? "on" : "off"}</button>
       {pick(`${name}: which event`, s[selKey], ET_SEL_NAMES.map((n, i) => `${i}: ${i ? n : name === "INT" ? "reserved" : n}`), (v) => patch({ [selKey]: v }))}
       {pick(`${name}: how often`, s[prdKey], ["0: never", "1: every event", "2: every 2nd", "3: every 3rd"], (v) => patch({ [prdKey]: v }))}
-      <code>ETSEL.{name}EN = {s[en] ? 1 : 0}; ETSEL.{name}SEL = {s[selKey]}; ETPS.{name}PRD = {s[prdKey]};</code>
+      <code>ETSEL.bit.{name}EN = {s[en] ? 1 : 0}; ETSEL.bit.{name}SEL = {s[selKey]}; ETPS.bit.{name}PRD = {s[prdKey]};</code>
     </div>
   );
   const when = (label: string, value: number, set: (v: number) => void) => (
@@ -368,7 +368,7 @@ function PwmPlayground() {
         <path d={ctr} className="fig-trace dim" style={{ stroke: "var(--text)" }} />
         {/* TBPRD, CMPB, CMPA */}
         <line x1={X0} x2={X1} y1={y(s.tbprd)} y2={y(s.tbprd)} stroke="var(--info)" strokeWidth="1.3" strokeDasharray="6 3" />
-        <text x={X1 - 2} y={lineLabel(s.tbprd)} textAnchor="end" className="fig-value small pwmp-halo" style={{ fill: "var(--info)" }}>TBPRD = {s.tbprd}</text>
+        <text x={X1 - 2} y={y(s.cmpa) < y(s.tbprd) && Math.abs(lineLabel(s.cmpa) - lineLabel(s.tbprd)) < 11 ? Math.max(lineLabel(s.cmpa), y(s.tbprd)) + 11 : lineLabel(s.tbprd)} textAnchor="end" className="fig-value small pwmp-halo" style={{ fill: "var(--info)" }}>TBPRD = {s.tbprd}</text>
         <line x1={X0} x2={X1} y1={y(s.cmpb)} y2={y(s.cmpb)} stroke="var(--value)" strokeWidth="1.3" strokeDasharray="2 3" opacity={cmpbUsed ? 1 : 0.5} />
         {(cmpbUsed || (Math.abs(y(s.cmpb) - y(s.cmpa)) >= 12 && Math.abs(y(s.cmpb) - y(s.tbprd)) >= 12)) && (
           <text x={X1 - 96} y={!cmpbUsed || y(s.cmpa) >= y(s.cmpb) || y(s.cmpb) - y(s.cmpa) >= 12 ? lineLabel(s.cmpb) : y(s.cmpb) + 11} textAnchor="end" className="fig-value small pwmp-halo">CMPB = {s.cmpb}{over(s.cmpb)}</text>
@@ -523,7 +523,7 @@ function PwmPlayground() {
                 const mode = s.ctrmode === 3 ? 0 : s.ctrmode;
                 const p = propose(+target, mode);
                 patch({ ctrmode: mode, hspclkdiv: p.hspclkdiv, clkdiv: p.clkdiv, tbprd: p.tbprd });
-                setProposal(`CLKDIV = ${p.clkdiv}, TBPRD = ${p.tbprd}: ${fmtHz(p.actualHz)}`);
+                setProposal(`${p.hspclkdiv !== s.hspclkdiv ? `HSPCLKDIV = ${p.hspclkdiv}, ` : ""}CLKDIV = ${p.clkdiv}, TBPRD = ${p.tbprd}: ${fmtHz(p.actualHz)}`);
               }}
             >
               Propose TBPRD and CLKDIV

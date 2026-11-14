@@ -3,6 +3,9 @@ import { Board } from "../src/sim/board";
 import { runProgram, type Check, type RunResult } from "../src/sim/runner";
 import { codes } from "./helpers";
 
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 // TRM chapter 15. TBCLK = EPWMCLK / (HSPCLKDIV x CLKDIV) = 50 MHz at reset
 // (EPWMCLK 100 MHz, HSPCLKDIV /2), so one count is 20 ns.
 

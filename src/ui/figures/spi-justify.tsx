@@ -49,6 +49,13 @@ function SpiJustify() {
   const [reply, setReply] = useState(0x71);
   const [shiftUp, setShiftUp] = useState(false);
   const mask = n === 16 ? 0xffff : (1 << n) - 1;
+  // A shorter word cannot hold the old values: cut them down, so the boxes show what is used.
+  const setBits = (b: number) => {
+    const m = b === 16 ? 0xffff : (1 << b) - 1;
+    setN(b);
+    setData(data & m);
+    setReply(reply & m);
+  };
   const value = data & mask;
   const written = (shiftUp ? value << (16 - n) : value) & 0xffff;
   const sent = (written >>> (16 - n)) & mask;
@@ -96,7 +103,7 @@ function SpiJustify() {
         {Array.from({ length: n }, (_, i) => (
           <text key={i} x={X0 + (16 - n + i) * W + (W - 1.5) / 2} y={98} textAnchor="middle" className="sj-bit">{(input >> (n - 1 - i)) & 1}</text>
         ))}
-        {n <= 12 && <text x={X0 + (16 - n) * W - 4} y={100} textAnchor="end" className="fig-value small">{n <= 10 ? "the device answers " : ""}0x{hex(input, digits)} =</text>}
+        {n <= 12 && <text x={X0 + (16 - n) * W - 4} y={100} textAnchor="end" className="fig-value small">{n <= 8 ? "the device answers " : ""}0x{hex(input, digits)} =</text>}
         <text x={4} y={127} className="fig-label">SPIRXBUF</text>
         <text x={4} y={138} className="fig-value small">0x{hex(rxbuf, 4)}</text>
         {row(rxbuf, 114, (i) => (i >= 16 - n ? "got" : "junk"))}
@@ -111,14 +118,14 @@ function SpiJustify() {
       <div className="fig-controls">
         <div>
           <span>Word length</span>
-          <input type="range" min={1} max={16} value={n} aria-label="Bits per word" onChange={(e) => setN(+e.target.value)} />
-          <button className="fig-opt" aria-pressed={n === 8} onClick={() => setN(8)}>8 bits</button>
-          <button className="fig-opt" aria-pressed={n === 16} onClick={() => setN(16)}>16 bits</button>
+          <input type="range" min={1} max={16} value={n} aria-label="Bits per word" onChange={(e) => setBits(+e.target.value)} />
+          <button className="fig-opt" aria-pressed={n === 8} onClick={() => setBits(8)}>8 bits</button>
+          <button className="fig-opt" aria-pressed={n === 16} onClick={() => setBits(16)}>16 bits</button>
           <code>SpibRegs.SPICCR.bit.SPICHAR = {n - 1};  // {bitsN}</code>
         </div>
         <div>
           <span>You write</span>
-          <HexIn label="Value to send, hexadecimal" value={data} digits={4} set={setData} />
+          <HexIn label="Value to send, hexadecimal" value={value} digits={digits} set={(v) => setData(v & mask)} />
           <button className="fig-opt" aria-pressed={!shiftUp} onClick={() => setShiftUp(false)}>as it is</button>
           <button className="fig-opt" aria-pressed={shiftUp} disabled={n === 16} onClick={() => setShiftUp(true)}>shifted to the top</button>
           <code>SpibRegs.SPITXBUF = 0x{hex(value, digits)}{shiftUp ? shiftText : ""};</code>
@@ -126,7 +133,7 @@ function SpiJustify() {
         <div>
           <span>Device</span>
           <span className="sj-lbl">answers</span>
-          <HexIn label="Value the device answers, hexadecimal" value={reply} digits={4} set={setReply} />
+          <HexIn label="Value the device answers, hexadecimal" value={input} digits={digits} set={(v) => setReply(v & mask)} />
         </div>
       </div>
       <figcaption>SPICHAR sets how many bits one word has. Out: the top bits of SPITXBUF (left-justified), top bit first. In: the bits arrive at the bottom of SPIRXBUF (right-justified). Orange cells are the bits that travel; dashed cells do not.</figcaption>

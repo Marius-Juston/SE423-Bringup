@@ -447,6 +447,12 @@ Perimeter: 20
           label: "The area is calculated from width and height",
           hint: "Do not type 21 yourself. Write the calculation with the two names, so it stays right when the numbers change.",
         },
+        {
+          kind: "source",
+          mustMatch: "perimeter\\s*=[^;]*(width[^;]*height|height[^;]*width)",
+          label: "The perimeter is calculated from width and height",
+          hint: "Do not type 20 yourself. Write `2 * (width + height)`.",
+        },
       ],
       hints: [
         "Replace each 0 with a calculation that uses the names `width` and `height`.",
@@ -948,8 +954,6 @@ printf("Done\\n");
 
 It looks like an \`if\`, with one difference. After the block has run, the program jumps **back up** and asks the condition again. As long as the answer is true, the block runs once more. When it is false, the program carries on after the block. This prints 1, 2, 3, Done.
 
-In the figure, choose **while**.
-
 {{figure:c-flow}}
 
 Try it in the figure: choose "while" and step through it. Count how many times the condition is asked.
@@ -1040,8 +1044,6 @@ Between the round brackets are three parts, separated by semicolons:
 3. \`i++\` is the **step**. It runs after every pass.
 
 This prints 1, 2, 3. The counting variable is very often called \`i\`.
-
-In the figure, choose **for**.
 
 {{figure:c-flow}}
 
@@ -2220,7 +2222,7 @@ void main(void)
     p2 = isPrime(2);
     p91 = isPrime(91);
     p97 = isPrime(97);
-    primes = countPrimes(100);
+    primes = countPrimes(97);
     while (1) {}
 }
 `,
@@ -2267,7 +2269,7 @@ void main(void)
     p2 = isPrime(2);
     p91 = isPrime(91);
     p97 = isPrime(97);
-    primes = countPrimes(100);
+    primes = countPrimes(97);
     while (1) {}
 }
 `,
@@ -2276,7 +2278,7 @@ void main(void)
         { kind: "var", name: "p2", equals: 1, label: "isPrime(2) returns 1", hint: "For n = 2 the divider loop must not run at all, or must not try 2 itself. Check your loop's test." },
         { kind: "var", name: "p91", equals: 0, label: "isPrime(91) returns 0", hint: "91 is 7 * 13. Every divider from 2 up must be tried, not only 2 and 3." },
         { kind: "var", name: "p97", equals: 1, label: "isPrime(97) returns 1", hint: "Return 1 only after the whole loop has found no divider, so after the loop, not inside it." },
-        { kind: "var", name: "primes", equals: 25, label: "countPrimes(100) returns 25", hint: "Count the numbers from 1 to limit, limit included, for which isPrime returns 1." },
+        { kind: "var", name: "primes", equals: 25, label: "countPrimes(97) returns 25", hint: "Count the numbers from 1 to limit for which isPrime returns 1. 24 means the loop stops before limit: 97 is prime itself, so use `<=`." },
         { kind: "source", mustMatch: "countPrimes[\\s\\S]*\\{[\\s\\S]*isPrime\\s*\\(", label: "countPrimes calls isPrime", hint: "Do not repeat the prime test inside countPrimes: call the function you already wrote." },
       ],
       hints: [

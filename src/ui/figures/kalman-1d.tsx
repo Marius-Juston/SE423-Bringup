@@ -85,7 +85,7 @@ function Kalman1d() {
     else {
       // Next round: the updated belief is the new starting point.
       setPrior({ m: post.m, p: post.p });
-      setOff(-off * 0.7);
+      setOff(Math.round(-off * 7) / 10 + 0);
       setRound(round + 1);
       setStep(1);
     }
@@ -117,7 +117,7 @@ function Kalman1d() {
             <path d={`M${sx(prior.m)},${BASE + 26} H${sx(pred.m) - 1}`} className="fig-wire" markerEnd="url(#kf-arrow)" />
             <line x1={sx(prior.m)} x2={sx(prior.m)} y1={BASE + 21} y2={BASE + 31} className="fig-wire" />
             <text x={sx(pred.m) + 8} y={BASE + 29} className="fig-label">the robot moved {U} ft</text>
-            <text x={sx(prior.m)} y={Math.max(10, peak(prior.m, prior.p) - 5)} textAnchor="end" className="fig-label dim kf-halo">before</text>
+            <text x={sx(prior.m) - 3} y={peak(prior.m, prior.p) - 5 > 44 ? peak(prior.m, prior.p) - 5 : 18} textAnchor="end" className="fig-label dim kf-halo">before</text>
           </g>
         )}
         {step === 3 && <path d={bell(post.m, post.p)} className="kf-post" />}

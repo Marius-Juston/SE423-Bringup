@@ -297,14 +297,16 @@ export function runProgram(spec: RunSpec): RunResult {
         break;
       }
       case "reg": {
-        const v = c.at !== undefined ? samples.get(c) : b.dev.get(c.reg, c.field);
-        pass = v === c.equals >>> 0;
         const name = c.field ? `${c.reg}.bit.${c.field}` : c.reg;
+        // A reading asked for at the very end of the run is the final value.
+        const v = c.at !== undefined && samples.has(c) ? samples.get(c) : b.dev.get(c.reg, c.field);
+        pass = v === c.equals >>> 0;
         detail = `${name} is ${fmtVal(v)}${pass ? "" : `, expected ${fmtVal(c.equals >>> 0)}`}.`;
         break;
       }
       case "var": {
-        const v = c.at !== undefined ? samples.get(c) : b.readVar(c.name);
+        // A reading asked for at the very end of the run is the final value.
+        const v = c.at !== undefined && samples.has(c) ? samples.get(c) : b.readVar(c.name);
         if (v === undefined) {
           detail = `There is no global variable named ${c.name}.`;
           break;
@@ -348,7 +350,7 @@ export function runProgram(spec: RunSpec): RunResult {
           lv = x.level;
         }
         if (lv >= 0 && (p.activeLow ? lv === 0 : lv === 1)) on += to - last;
-        const pct = (100 * on) / (to - from);
+        const pct = to > from ? (100 * on) / (to - from) : 0;
         pass = Math.abs(pct - c.pct) <= (c.tolPct ?? 2);
         detail = `${p.name} was ${c.led ? "on" : "high"} ${pct.toFixed(1)}% of the time${pass ? "" : `, expected ${c.pct}%`}.`;
         break;

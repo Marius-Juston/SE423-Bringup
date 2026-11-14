@@ -4,7 +4,7 @@
 
 import type { Board } from "../board";
 import { RuntimeError, floatBits } from "../cc/compile";
-import type { CType } from "../cc/types";
+import { sizeOf, type CType } from "../cc/types";
 import { TI_SOURCE } from "./ti_source";
 import { formatPrintf, type PrintfArg } from "./printf";
 
@@ -295,6 +295,22 @@ export function installLibrary(b: Board): void {
     }
     throw new RuntimeError(line, "This string has no terminating 0, so the function ran off its end. Make the char array one element longer than the text.");
   };
+  // A library write of n words that starts inside one of the student's global
+  // variables and runs past its end overwrites the neighbours, silently on the chip.
+  const guard = (addr: number, n: number, fn: string): void => {
+    for (const g of c.globals.values()) {
+      if (g.file !== "user") continue;
+      const end = g.addr + sizeOf(g.t);
+      if (addr < g.addr || addr >= end) continue;
+      if (addr + n > end)
+        b.warn(
+          b.line,
+          "buffer-overflow",
+          `${fn} wrote ${n} elements into '${g.name}', which has room for only ${end - addr} there. The rest overwrote the variables stored after it. Make '${g.name}' larger (a string needs one element per character plus one for the final 0).`,
+        );
+      return;
+    }
+  };
   const varargs = (args: number[], types: CType[], from: number): PrintfArg[] =>
     args.slice(from).map((v, i) => {
       const t = types[from + i];
@@ -323,12 +339,14 @@ export function installLibrary(b: Board): void {
   c.defineNative("__nop", () => 0);
   c.defineNative("asm", () => 0);
   c.defineNative("__asm", () => 0);
-  c.defineNative("InitSysCtrl", () => 0);
+  c.defineNative("InitSysCtrl", () => ((b.sysInit = true), 0));
   c.defineNative("DELAY_US", (a) => {
     b.delay(Math.max(0, a[0]) * 1000);
     mem.liveReads++;
     return 0;
   });
+  // The program can be paused in the middle of a DELAY_US (a live run advances in short slices).
+  c.fns.get("DELAY_US")!.waits = true;
 
   // Default handler every vector points to after InitPieVectTable().
   const proto = c.fns.get("__nop")!.t;
@@ -398,6 +416,7 @@ export function installLibrary(b: Board): void {
   });
   c.defineNative("sprintf", (a, t, line) => {
     const text = format(a, t, 1, line);
+    guard(a[0], text.length + 1, "sprintf");
     for (let i = 0; i < text.length; i++) mem.write(a[0] + i, 1, text.charCodeAt(i));
     mem.write(a[0] + text.length, 1, 0);
     return text.length;
@@ -433,6 +452,7 @@ export function installLibrary(b: Board): void {
   c.defineNative("strlen", (a, _t, line) => cstr(a[0], line).length);
   c.defineNative("strcpy", (a, _t, line) => {
     const s = cstr(a[1], line);
+    guard(a[0], s.length + 1, "strcpy");
     for (let i = 0; i < s.length; i++) mem.write(a[0] + i, 1, s.charCodeAt(i));
     mem.write(a[0] + s.length, 1, 0);
     return a[0];
@@ -443,10 +463,12 @@ export function installLibrary(b: Board): void {
     return x < y ? -1 : x > y ? 1 : 0;
   });
   c.defineNative("memset", (a) => {
+    guard(a[0], a[2], "memset");
     for (let i = 0; i < a[2]; i++) mem.write(a[0] + i, 1, a[1] & 0xffff);
     return a[0];
   });
   c.defineNative("memcpy", (a) => {
+    guard(a[0], a[2], "memcpy");
     for (let i = 0; i < a[2]; i++) mem.write(a[0] + i, 1, mem.read(a[1] + i, 1));
     return a[0];
   });

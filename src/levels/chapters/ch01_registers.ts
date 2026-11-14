@@ -468,7 +468,6 @@ The **Registers** tab shows \`GpioCtrlRegs.GPBMUX1\` and \`GpioCtrlRegs.GPBDIR\`
           label: "The harmless `.all` write is left exactly as it was",
           hint: "SET, CLEAR and TOGGLE registers ignore every bit written as 0. A whole-register write to them touches only the pins you name.",
         },
-        { kind: "max-lines", max: 16, label: "No lines added: 16 lines or fewer" },
       ],
       hints: [
         "`.all = value` writes all 32 bits. Every pin of port B that is not GPIO34 gets a 0 in that register.",
@@ -588,6 +587,7 @@ void main(void)
         { kind: "var", name: "periodLow", equals: 3391, label: "The low 16 bits of the period read 3391 (0x0D3F)" },
         { kind: "led", led: "LED1", at: 1.5, on: true, label: "LED1 is on" },
         { kind: "no-diagnostic", code: "shift-16", label: "No shift that overflows a 16-bit int" },
+        { kind: "no-diagnostic", code: "shift-width", label: "No shift by 32 or more", hint: "For a 32-bit wide field `1UL << width` is a shift by 32, which C does not define. Build the ones with `0xFFFFFFFFUL >> (32 - width)`." },
       ],
       bonus: [
         { kind: "source", mustNotMatch: "\\bif\\b|\\?|\\bswitch\\b", label: "No `if`, `?:` or `switch`: one formula for every width and register" },

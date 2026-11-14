@@ -87,14 +87,15 @@ function PwmClockTree() {
   if (!fits) {
     const need = [0, 1, 2, 3, 4, 5, 6, 7].find((k) => Math.round(mid / (1 << k) / f) <= 65535);
     why = `${fname} at ${hz(tbclk)} would need ${group(prd)} counts in one period, but TBPRD is a 16-bit register: 65 535 at most. Slow the counter down. ${need !== undefined ? `CLKDIV = ${need} (/${1 << need}) leaves ${group(mid / (1 << need) / f)} counts, which fits.` : "Even /128 is not enough with this HSPCLKDIV."}`;
-  } else if (!useful) why = `The counter now ticks only every ${time(tickNs)}, slower than the ${fname} you want. There is no TBPRD for that: divide the clock less.`;
+  } else if (!useful && counts >= 1) why = `Only one count of ${time(tickNs)} fits in a period of ${time(1e9 / f)} (${fname}). That leaves no room for a duty cycle: divide the clock less.`;
+  else if (!useful) why = `The counter now ticks only every ${time(tickNs)}, slower than the ${fname} you want. There is no TBPRD for that: divide the clock less.`;
   else
     why = `One count lasts ${time(tickNs)}. A period of ${time(1e9 / f)} (${fname}) is ${hz(tbclk)} / ${fname} = ${group(prd)} counts, so TBPRD = ${prd}${Number.isInteger(counts) ? " (strictly a period is TBPRD + 1 counts; the course writes the round number)" : ""}. CMPA is a whole number of counts: the duty cycle moves in ${group(prd)} steps of ${trim(stepPct, stepPct < 0.01 ? 4 : 2)} %.${prd < 500 ? " That is coarse: a faster carrier costs resolution." : ""}${hsp !== 1 ? " The course never touches HSPCLKDIV: it stays /2 from reset." : ""}`;
 
   return (
     <figure className="figure pwmc" aria-label="Interactive ePWM clock tree: from the system clock to the counter clock, the period register and the duty resolution">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 168" role="img" aria-label={`System clock 200 megahertz, divided by 2, by ${HSP[hsp]} and by ${1 << clk}: counter clock ${hz(tbclk)}, one count every ${time(tickNs)}. ${fname} needs ${group(prd)} counts per period${fits ? "" : ", which does not fit in the 16-bit period register"}.`}>
+      <svg viewBox="0 0 420 168" role="img" aria-label={`System clock 200 megahertz, divided by 2, by ${HSP[hsp]} and by ${1 << clk}: counter clock ${hz(tbclk)}, one count every ${time(tickNs)}. ${fname} needs ${group(prd)} count${prd === 1 ? "" : "s"} per period${fits ? "" : ", which does not fit in the 16-bit period register"}.`}>
         <defs>
           <marker id="pwmc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />

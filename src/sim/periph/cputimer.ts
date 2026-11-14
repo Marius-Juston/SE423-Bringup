@@ -2,9 +2,14 @@
 // prescaler (TDDRH:TDDR) divides SYSCLK, the 32-bit counter TIM counts down
 // from PRD, and reaching zero sets TIF and reloads.
 //   period = (PRD + 1) * (TDDRH:TDDR + 1) SYSCLK cycles
+// Not modelled: a period below 50 SYSCLK cycles (250 ns, less than an
+// interrupt takes). Such a timer gets a diagnostic and stops expiring.
 
 import { SYSCLK_NS } from "../consts";
 import type { Board } from "../board";
+
+/** Shortest period that is simulated, ns. */
+const MIN_PERIOD_NS = 250;
 
 interface Timer {
   n: number;
@@ -12,6 +17,8 @@ interface Timer {
   running: boolean;
   /** Time at which TIM held `count` (ns). */
   t0: number;
+  /** Prescale divider in force since t0 (TDDRH:TDDR + 1). */
+  div: number;
   count: number;
   ev: ReturnType<Board["at"]> | null;
 }
@@ -24,7 +31,7 @@ export class CpuTimers {
   constructor(private b: Board) {
     for (let n = 0; n < 3; n++) {
       const prefix = `CpuTimer${n}Regs`;
-      const t: Timer = { n, prefix, running: true, t0: 0, count: 0xffffffff, ev: null };
+      const t: Timer = { n, prefix, running: true, t0: 0, div: 1, count: 0xffffffff, ev: null };
       this.timers.push(t);
       const dev = b.dev;
       // Reset state (TRM register tables): PRD = TIM = FFFFFFFFh, timer running.
@@ -57,8 +64,10 @@ export class CpuTimers {
         this.schedule(t);
       };
       const tpr = () => {
+        // The time so far was counted with the old divider.
         t.count = this.current(t);
         t.t0 = b.now;
+        t.div = this.divider(t);
         this.schedule(t);
       };
       dev.reg(`${prefix}.TPR`).hook.after = tpr;
@@ -74,7 +83,7 @@ export class CpuTimers {
 
   private current(t: Timer): number {
     if (!t.running) return t.count;
-    const ticks = Math.floor((this.b.now - t.t0) / (SYSCLK_NS * this.divider(t)));
+    const ticks = Math.floor((this.b.now - t.t0) / (SYSCLK_NS * t.div));
     return Math.max(0, t.count - ticks);
   }
 
@@ -83,7 +92,19 @@ export class CpuTimers {
     b.cancel(t.ev);
     t.ev = null;
     if (!t.running) return;
-    const tickNs = SYSCLK_NS * this.divider(t);
+    const tickNs = SYSCLK_NS * t.div;
+    // Expiring every few clock cycles would only flood the event queue.
+    const period = (b.dev.get(`${t.prefix}.PRD`) + 1) * tickNs;
+    if (period < MIN_PERIOD_NS) {
+      b.warn(
+        b.line,
+        `timer-too-fast-${t.n}`,
+        `CpuTimer${t.n} is set to a period of ${period} ns (PRD = ${b.dev.get(`${t.prefix}.PRD`)}). That is shorter than one interrupt takes, so it is not simulated and the timer does not expire. ` +
+          `Check the period: ConfigCpuTimer(&CpuTimer${t.n}, 200, 1000); gives 1000 microseconds.`,
+        "error",
+      );
+      return;
+    }
     // TIM reaches 0 after `count` ticks; the interrupt and reload happen on the next one.
     t.ev = b.at(t.t0 + (t.count + 1) * tickNs, (at) => this.expire(t, at));
   }
@@ -91,7 +112,10 @@ export class CpuTimers {
   private expire(t: Timer, at: number): void {
     const b = this.b;
     const dev = b.dev;
-    this.expiries[t.n].push(at);
+    const log = this.expiries[t.n];
+    log.push(at);
+    // A live run can go on for minutes: keep the recent expiries only.
+    if (b.historyLimit && log.length > b.historyLimit) log.splice(0, log.length - (b.historyLimit >> 1));
     b.fireTrigger(`TINT${t.n}`, at);
     dev.set(`${t.prefix}.TCR`, 1, "TIF");
     t.count = dev.get(`${t.prefix}.PRD`);

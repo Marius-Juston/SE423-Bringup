@@ -301,6 +301,13 @@ describe("the world a board is in", () => {
     expect(worldOf(b)).toBe(ROOMS[0]);
   });
 
+  it("leaves out a placed object with a coordinate that is not a number", () => {
+    const b = new Board("robot");
+    setWorldObjects(b, [{ kind: "post", x: NaN, y: 1, r: 0.25 }, { kind: "box", x0: 1, y0: 1, x1: Infinity, y1: 2 }, { kind: "post", x: 3, y: 3, r: 0.25 }]);
+    expect(worldOf(b).posts).toEqual([{ x: 3, y: 3, r: 0.25 }]);
+    expect(worldOf(b).walls).toEqual(ROOMS[0].walls);
+  });
+
   const idle = "void main(void) { while (1) {} }";
   it("starts the robot at a terrain's own start and measures the distance to its goal", () => {
     const r = runProgram({ kit: "robot", durationMs: 20, source: idle, stimuli: [{ at: 0, set: "WORLD_KIND", value: KIND_MAZE }, { at: 0, set: "WORLD_SIZE", value: 4 }, { at: 0, set: "WORLD_SEED", value: 3 }, { at: 0.01, set: "ROBOT_WORLD", value: 1 }] });

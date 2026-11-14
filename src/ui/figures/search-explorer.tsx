@@ -202,15 +202,17 @@ function SearchExplorer() {
   let status: string;
   if (s.done === "found") {
     const len = s.path.length - 1;
-    status = `The goal ${rc(goal)} came off the frontier: path found, ${len} steps, after ${s.expanded} expansions. ${shortest >= 0 && len > shortest ? `That is ${len - shortest} more than the shortest path (${shortest}): ${name.name} does not look at the cost so far.` : "It is a shortest path."}`;
+    status = `The goal ${rc(goal)} came off the frontier: path found, ${len} step${len === 1 ? "" : "s"}, after ${s.expanded} expansion${s.expanded === 1 ? "" : "s"}. ${shortest >= 0 && len > shortest ? `That is ${len - shortest} more than the shortest path (${shortest}): ${name.name} does not look at the cost so far.` : "It is a shortest path."}`;
   } else if (s.done === "none") {
     status = `The frontier is empty and the goal was never taken out: there is no path. ${s.expanded} cells were expanded, every cell that can be reached from the start. In the A* level this is where the function returns 0.`;
   } else if (s.cur === -1) {
     status = `${name.name} ${name.rule}. The frontier holds only the start ${rc(start)}. Press Step to expand it.`;
+  } else if (next === -1) {
+    status = `Expanded ${rc(s.cur)}: no new neighbour, and the frontier is now empty. Press Step.`;
   } else {
     status = `Expanded ${rc(s.cur)}${s.added.length ? `, which put ${s.added.map(rc).join(", ")} on the frontier` : ": no new neighbour, a dead end"}. Next comes ${rc(next)}, ${algo === "bfs" ? "the oldest cell in the queue" : `the smallest on the frontier with ${keyOf(next)}`}${next === goal ? ": the goal" : ""}.`;
   }
-  const label = `${name.name} on a ${ROWS} by ${COLS} grid from ${rc(start)} to ${rc(goal)}. ${s.expanded} cells expanded, ${frontier.length} on the frontier. ${s.done === "found" ? `Path found with ${s.path.length - 1} steps.` : s.done === "none" ? "No path." : ""}`;
+  const label = `${name.name} on a ${ROWS} by ${COLS} grid from ${rc(start)} to ${rc(goal)}. ${s.expanded} cell${s.expanded === 1 ? "" : "s"} expanded, ${frontier.length} on the frontier. ${s.done === "found" ? `Path found with ${s.path.length - 1} step${s.path.length === 2 ? "" : "s"}.` : s.done === "none" ? "No path." : ""}`;
 
   return (
     <figure className="figure" aria-label="Interactive grid search: breadth-first, greedy best-first and A star, one expansion at a time">
@@ -354,7 +356,7 @@ function SearchExplorer() {
                 <th scope="row">{a.id === algo ? "▸ " : ""}{a.name}</th>
                 <td>{a.id === "bfs" ? "oldest" : a.id === "greedy" ? "smallest h" : "smallest f"}</td>
                 <td>{r.expanded}</td>
-                <td className={r.done === "none" || len > shortest ? "sx-bad" : ""}>{r.done === "none" ? "none" : `${len} steps${len > shortest ? ` (shortest is ${shortest})` : ""}`}</td>
+                <td className={r.done === "none" || len > shortest ? "sx-bad" : ""}>{r.done === "none" ? "none" : `${len} step${len === 1 ? "" : "s"}${len > shortest ? ` (shortest is ${shortest})` : ""}`}</td>
               </tr>
             );
           })}

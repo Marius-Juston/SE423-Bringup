@@ -28,7 +28,7 @@ function MathRotate() {
   const why =
     deg === 0
       ? "Angle 0: nothing turns. cos 0 = 1 and sin 0 = 0, so the formulas give back x and y unchanged. Move the angle slider."
-      : `Turn the two legs by ${deg} degrees, then walk them one after the other. The blue leg (${fmt(x, 1)} long) now reaches ${fmt(ax.x)} across and ${fmt(ax.y)} up. The orange leg (${fmt(y, 1)} long) points a quarter turn further left, so it reaches ${fmt(ly.x)} across and ${fmt(ly.y)} up. Add them: (${fmt(p.x)}, ${fmt(p.y)}).`;
+      : `Turn the two legs by ${deg} degrees, then walk them one after the other. The blue leg (${fmt(x, 1)} long) now reaches ${fmt(ax.x)} across and ${fmt(ax.y)} up. The orange leg (${fmt(Math.abs(y), 1)} long) points a quarter turn further ${y < 0 ? "right" : "left"}, so it reaches ${fmt(ly.x)} across and ${fmt(ly.y)} up. Add them: (${fmt(p.x)}, ${fmt(p.y)}).`;
 
   return (
     <figure className="figure mr-fig" aria-label="Interactive figure: rotating a point by turning its two legs">
@@ -42,32 +42,33 @@ function MathRotate() {
         ))}
         <line x1={px(-2.9)} x2={px(2.9)} y1={CY} y2={CY} className="mr-axis" />
         <line x1={CX} x2={CX} y1={py(2.6)} y2={py(-2.6)} className="mr-axis" />
-        <text x={px(2.9) + 2} y={CY + 3} className="fig-label dim">x</text>
+        <text x={px(2.9)} y={CY + 11} textAnchor="end" className="fig-label dim">x</text>
         <text x={CX + 4} y={py(2.6) + 8} className="fig-label dim">y</text>
         {/* before the turn */}
         <path d={`M${CX},${CY} L${px(x)},${CY} L${px(x)},${py(y)}`} className="mr-old" />
         <circle cx={px(x)} cy={py(y)} r={3.5} style={{ fill: "var(--dim)" }} />
-        <text x={px(x) + 6} y={py(y) + (y >= 0 ? -5 : 12)} className="fig-label dim">before</text>
+        {deg !== 0 && <text x={px(x) + 6} y={py(y) + (y >= 0 ? -5 : 12)} className="fig-label dim">before</text>}
         {/* after the turn */}
         <line x1={CX} y1={CY} x2={px(ax.x)} y2={py(ax.y)} className="mr-a" />
         <line x1={px(ax.x)} y1={py(ax.y)} x2={px(p.x)} y2={py(p.y)} className="mr-l" />
         {deg !== 0 && <path d={`M${CX + 18},${CY} A18,18 0 0 ${deg > 0 ? 0 : 1} ${(CX + 18 * c).toFixed(1)},${(CY - 18 * s).toFixed(1)}`} className="mr-arc" />}
         <circle cx={px(p.x)} cy={py(p.y)} r={4.5} style={{ fill: "var(--text)" }} />
-        <text x={px(p.x) + 7} y={py(p.y) - 6} className="fig-label">after</text>
+        <text x={px(p.x) > 222 ? px(p.x) - 7 : px(p.x) + 7} y={py(p.y) - 6} textAnchor={px(p.x) > 222 ? "end" : "start"} className="fig-label">{deg === 0 ? "before = after" : "after"}</text>
         <circle cx={CX} cy={CY} r={2.5} className="fig-dot" />
 
-        <text x={282} y={20} className="fig-label">cos = <tspan className="fig-value small">{fmt(c, 3)}</tspan>  sin = <tspan className="fig-value small">{fmt(s, 3)}</tspan></text>
-        <text x={282} y={48} className="fig-label">new x = x cos - y sin</text>
-        <text x={282} y={62} className="fig-value small">{fmt(x, 1)} x {fmt(c, 3)}</text>
-        <text x={282} y={75} className="fig-value small">- {fmt(y, 1)} x {fmt(s, 3)}</text>
-        <text x={282} y={91} className="fig-value">= {fmt(p.x)}</text>
-        <text x={282} y={122} className="fig-label">new y = x sin + y cos</text>
-        <text x={282} y={136} className="fig-value small">{fmt(x, 1)} x {fmt(s, 3)}</text>
-        <text x={282} y={149} className="fig-value small">+ {fmt(y, 1)} x {fmt(c, 3)}</text>
-        <text x={282} y={165} className="fig-value">= {fmt(p.y)}</text>
-        <text x={282} y={196} className="fig-label dim">blue: the x leg, turned</text>
-        <text x={282} y={210} className="fig-label dim">orange: the y leg, turned</text>
-        <text x={282} y={224} className="fig-label dim">dashed: before the turn</text>
+        <text x={272} y={14} className="fig-label">cos = <tspan className="fig-value small">{fmt(c, 3)}</tspan></text>
+        <text x={272} y={27} className="fig-label">sin = <tspan className="fig-value small">{fmt(s, 3)}</tspan></text>
+        <text x={272} y={48} className="fig-label">new x = x cos - y sin</text>
+        <text x={272} y={62} className="fig-value small">{fmt(x, 1)} x {c < 0 ? `(${fmt(c, 3)})` : fmt(c, 3)}</text>
+        <text x={272} y={75} className="fig-value small">- {y < 0 ? `(${fmt(y, 1)})` : fmt(y, 1)} x {s < 0 ? `(${fmt(s, 3)})` : fmt(s, 3)}</text>
+        <text x={272} y={91} className="fig-value">= {fmt(p.x)}</text>
+        <text x={272} y={122} className="fig-label">new y = x sin + y cos</text>
+        <text x={272} y={136} className="fig-value small">{fmt(x, 1)} x {s < 0 ? `(${fmt(s, 3)})` : fmt(s, 3)}</text>
+        <text x={272} y={149} className="fig-value small">+ {y < 0 ? `(${fmt(y, 1)})` : fmt(y, 1)} x {c < 0 ? `(${fmt(c, 3)})` : fmt(c, 3)}</text>
+        <text x={272} y={165} className="fig-value">= {fmt(p.y)}</text>
+        <text x={272} y={196} className="fig-label dim">blue: the x leg, turned</text>
+        <text x={272} y={210} className="fig-label dim">orange: the y leg, turned</text>
+        <text x={272} y={224} className="fig-label dim">dashed: before the turn</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">

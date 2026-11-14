@@ -16,6 +16,8 @@ export interface Save {
   stars: Record<string, number[]>;
   /** Hints revealed per level. */
   hints: Record<string, number>;
+  /** Code levels whose reference solution was opened since the last start without help: a pass then counts as helped, also after a reload. */
+  peeked: Record<string, true>;
   /** Failed test runs per code level (check hints appear from the second one). */
   fails: Record<string, number>;
   /** The student's code per code level. */
@@ -33,7 +35,7 @@ export interface Save {
 }
 
 const KEY = "bringup-save-v1";
-const empty = (): Save => ({ version: 1, passed: {}, assisted: {}, stars: {}, hints: {}, fails: {}, code: {}, unlockAll: false, passedAt: {}, reviews: {}, warmupDay: "", bests: {} });
+const empty = (): Save => ({ version: 1, passed: {}, assisted: {}, stars: {}, hints: {}, peeked: {}, fails: {}, code: {}, unlockAll: false, passedAt: {}, reviews: {}, warmupDay: "", bests: {} });
 
 const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
@@ -50,6 +52,7 @@ export function clean(s: unknown, now = Date.now()): Save | null {
   keep(s.assisted, out.assisted, isTrue);
   keep(s.stars, out.stars, (v): v is number[] => Array.isArray(v) && v.every(isCount));
   keep(s.hints, out.hints, isCount);
+  keep(s.peeked, out.peeked, isTrue);
   keep(s.fails, out.fails, isCount);
   keep(s.code, out.code, (v): v is string => typeof v === "string");
   for (const id of Object.keys(out.assisted)) if (!out.passed[id]) delete out.assisted[id];
@@ -150,12 +153,18 @@ export const store = {
   hint(id: string, n: number) {
     if ((state.hints[id] ?? 0) < n) commit({ ...state, hints: { ...state.hints, [id]: n } });
   },
-  /** Hides the hints of a level again (for another try without help). */
+  /** The reference solution of a level was opened. */
+  peek(id: string) {
+    if (!state.peeked[id]) commit({ ...state, peeked: { ...state.peeked, [id]: true } });
+  },
+  /** Hides the hints of a level again and forgets that its solution was opened (for another try without help). */
   clearHints(id: string) {
-    if (!state.hints[id]) return;
+    if (!state.hints[id] && !state.peeked[id]) return;
     const hints = { ...state.hints };
+    const peeked = { ...state.peeked };
     delete hints[id];
-    commit({ ...state, hints });
+    delete peeked[id];
+    commit({ ...state, hints, peeked });
   },
   /** Counts a failed test run and returns the new count. */
   fail(id: string): number {

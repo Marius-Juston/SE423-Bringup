@@ -999,7 +999,6 @@ ${out(31)}
       ],
       bonus: [
         { kind: "source", mustNotMatch: "PULLUP|GPAPUD", label: "No pull-up needed: the latch alone holds the line" },
-        { kind: "max-lines", max: 11, label: "No lines added: 11 lines or fewer" },
       ],
       hints: [
         "Step through the first lines and ask after each one: is the pin an output now, and what is in its output latch?",

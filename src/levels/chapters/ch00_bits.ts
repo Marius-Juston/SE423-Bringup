@@ -278,7 +278,7 @@ void main(void)
     s1 = setBit(0x00A5, 9);
     s2 = setBit(0x00A5, 0);     // bit 0 is already 1: nothing changes
     c1 = clearBit(0x00A5, 2);
-    c2 = clearBit(0xFFFF, 4);
+    c2 = clearBit(0x00A5, 3);   // bit 3 is already 0: nothing changes
     t1 = isSet(0x00A5, 7);
     t2 = isSet(0x00A5, 6);
     while (1) {}
@@ -309,7 +309,7 @@ void main(void)
     s1 = setBit(0x00A5, 9);
     s2 = setBit(0x00A5, 0);     // bit 0 is already 1: nothing changes
     c1 = clearBit(0x00A5, 2);
-    c2 = clearBit(0xFFFF, 4);
+    c2 = clearBit(0x00A5, 3);   // bit 3 is already 0: nothing changes
     t1 = isSet(0x00A5, 7);
     t2 = isSet(0x00A5, 6);
     while (1) {}
@@ -319,7 +319,7 @@ void main(void)
         { kind: "var", name: "s1", equals: 0x02a5, label: "setBit(0x00A5, 9) returns 0x02A5 (677)", hint: "`return v | (1 << n);`. If you got 512 (0x0200), you returned the mask alone: OR it with v. If you got 1, you wrote `||` (true or false) where `|` (bit by bit) is meant." },
         { kind: "var", name: "s2", equals: 0x00a5, label: "setBit(0x00A5, 0) returns 0x00A5 (165)", hint: "Setting a bit that is already 1 changes nothing. Adding the mask (`v + (1 << n)`) gets this case wrong: use `|`." },
         { kind: "var", name: "c1", equals: 0x00a1, label: "clearBit(0x00A5, 2) returns 0x00A1 (161)", hint: "`v & (1 << n)` keeps only bit n. You want everything except bit n: `v & ~(1 << n)`." },
-        { kind: "var", name: "c2", equals: 0xffef, label: "clearBit(0xFFFF, 4) returns 0xFFEF (65519)" },
+        { kind: "var", name: "c2", equals: 0x00a5, label: "clearBit(0x00A5, 3) returns 0x00A5 (165)", hint: "Clearing a bit that is already 0 changes nothing. Flipping the bit (`v ^ (1 << n)`) or subtracting the mask gets this case wrong: use `v & ~(1 << n)`. `main` must call `clearBit(0x00A5, 3)` for this test." },
         { kind: "var", name: "t1", equals: 1, label: "isSet(0x00A5, 7) returns 1", hint: "`v & (1 << n)` is not 0 when the bit is set, but it is 128 here, not 1. Shift first: `(v >> n) & 1`." },
         { kind: "var", name: "t2", equals: 0, label: "isSet(0x00A5, 6) returns 0" },
       ],
@@ -840,6 +840,7 @@ void main(void)
         { kind: "var", name: "m4", equals: 0xffff0000, label: "fieldMask(31, 16) is 0xFFFF0000" },
         { kind: "var", name: "m5", equals: 0xffffffff, label: "fieldMask(31, 0) is 0xFFFFFFFF" },
         { kind: "no-diagnostic", code: "shift-16", label: "No shift that overflows a 16-bit int" },
+        { kind: "no-diagnostic", code: "shift-width", label: "No shift by 32 or more", hint: "For the whole register `1UL << (hi - lo + 1)` is a shift by 32, which C does not define. Shift 0xFFFFFFFFUL right instead." },
       ],
       bonus: [
         { kind: "source", mustNotMatch: "\\bif\\b|\\?", label: "One expression: no special case for the full register" },

@@ -79,14 +79,14 @@ function MathPolar() {
         {Math.abs(x) > 0.4 && <text x={(OX + px) / 2} y={OY + (x < 0 ? (y >= 0 ? 22 : -15) : y >= 0 ? 12 : -5)} textAnchor="middle" className="fig-label">x</text>}
         {Math.abs(y) > 0.4 && <text x={px + (x >= 0 ? 5 : -5)} y={(OY + py) / 2 + 3} textAnchor={x >= 0 ? "start" : "end"} className="fig-label">y</text>}
         {/* the numbers */}
-        <text x="306" y="16" className="fig-label dim">distance d</text>
-        <text x="306" y="29" className="fig-value small">{d.toFixed(1)} ft</text>
-        <text x="306" y="48" className="fig-label dim">angle</text>
-        <text x="306" y="61" className="fig-value small">{deg}° = {rad.toFixed(3)} rad</text>
-        <text x="306" y="80" className="fig-label dim">x = d cos(angle)</text>
-        <text x="306" y="93" className="fig-value small">{f2(x)} ft</text>
-        <text x="306" y="112" className="fig-label dim">y = d sin(angle)</text>
-        <text x="306" y="125" className="fig-value small">{f2(y)} ft</text>
+        <text x="298" y="16" className="fig-label dim">distance d</text>
+        <text x="298" y="29" className="fig-value small">{d.toFixed(1)} ft</text>
+        <text x="298" y="48" className="fig-label dim">angle</text>
+        <text x="298" y="61" className="fig-value small">{deg}° = {rad.toFixed(3)} rad</text>
+        <text x="298" y="80" className="fig-label dim">x = d cos(angle)</text>
+        <text x="298" y="93" className="fig-value small">{f2(x)} ft</text>
+        <text x="298" y="112" className="fig-label dim">y = d sin(angle)</text>
+        <text x="298" y="125" className="fig-value small">{f2(y)} ft</text>
       </svg>
       <div className="fig-step" role="status">
         <p>{why}</p>

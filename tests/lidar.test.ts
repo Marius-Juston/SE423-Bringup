@@ -274,3 +274,30 @@ describe("LIDAR plugin: the device on SCIC", () => {
     expect(out.runtimeError?.msg).toContain("points 0 to 227");
   });
 });
+
+describe("LIDAR plugin: rays aimed at corners", () => {
+  it("never slip out between two walls that meet (rounding at the very end of a wall)", () => {
+    // From these points the ray to the corner missed both walls by one rounding step.
+    const cases: [number, number, number, number, number][] = [
+      [0, 0.6953802300600344, 1.521891429559942, 0, 0],
+      [0, 2.591636157500011, 3.6251410949998872, 0, 10],
+      [0, 3.8128317641800806, 9.385561412680014, 10, 10],
+      [1, 17.859129706879997, 1.2906304765199808, 30, 1.5],
+      [1, -0.6972959557758167, 0.046433164595973214, -2, 1.5],
+    ];
+    for (const [room, x, y, cx, cy] of cases) expect(castRay(ROOMS[room], x, y, Math.atan2(cy - y, cx - x))).toBeCloseTo(Math.hypot(cx - x, cy - y), 9);
+    // And on a sweep: in a closed room every ray ends on a wall, no farther than the corner it is aimed at.
+    for (const room of [ROOMS[0], ROOMS[1], ROOMS[3]]) {
+      const [x0, y0, x1, y1] = room.bounds;
+      const corners = room.walls.flatMap((s) => [[s[0], s[1]], [s[2], s[3]]]);
+      for (let i = 0; i < 300; i++) {
+        const x = x0 + (x1 - x0) * (0.01 + 0.98 * ((i * 0.6180339887) % 1));
+        const y = y0 + (y1 - y0) * (0.01 + 0.98 * ((i * 0.7548776662) % 1));
+        for (const [cx, cy] of corners) {
+          const d = castRay(room, x, y, Math.atan2(cy - y, cx - x));
+          if (!(d <= Math.hypot(cx - x, cy - y) + 1e-9)) throw new Error(`${room.name}: the ray from (${x}, ${y}) to the corner (${cx}, ${cy}) went ${d} ft`);
+        }
+      }
+    }
+  });
+});

@@ -61,14 +61,14 @@ function RcCharge() {
         ))}
         {/* what the switch asks for: an instant jump */}
         <path d={`M${X0},${charge ? LO : HI} V${charge ? HI : LO} H${X1}`} className="rc-step" />
-        <text x={X1} y={charge ? HI - 5 : LO - 20} textAnchor="end" className="fig-label dim">what the switch asks for</text>
+        <text x={tauMs > 5 ? X0 + 4 : X1} y={charge ? HI - 5 : LO - 20} textAnchor={tauMs > 5 ? "start" : "end"} className="fig-label dim">what the switch asks for</text>
         <path d={curve} className="fig-trace" style={{ stroke: "var(--hi)" }} strokeLinejoin="round" />
         <text x={X1} y={charge ? HI + 14 : LO - 7} textAnchor="end" className="fig-label">the capacitor's voltage</text>
         {/* one time constant */}
         <line x1={x(tauMs)} y1={HI - 8} x2={x(tauMs)} y2={LO + 4} className="rc-tau" />
         <circle cx={x(tauMs)} cy={y(vTau)} r="3" className="rc-pt" />
-        <text x={labelRight ? x(tauMs) + 5 : x(tauMs) - 5} y={charge ? y(vTau) + 12 : y(vTau) - 6} textAnchor={labelRight ? "start" : "end"} className="fig-value small">{vTau.toFixed(2)} V at t = tau</text>
-        <text x={x(tauMs)} y={HI - 11} textAnchor="middle" className="fig-value small">tau = {ms(tauMs)}</text>
+        <text x={labelRight ? x(tauMs) + 5 : x(tauMs) - 5} y={charge ? y(vTau) + (labelRight ? 12 : 20) : y(vTau) - (labelRight ? 6 : 14)} textAnchor={labelRight ? "start" : "end"} className="fig-value small">{vTau.toFixed(2)} V at t = tau</text>
+        <text x={x(tauMs) > X1 - 34 ? X1 : x(tauMs)} y={HI - 11} textAnchor={x(tauMs) > X1 - 34 ? "end" : "middle"} className="fig-value small">tau = {ms(tauMs)}</text>
         {[0, 5, 10].map((t) => (
           <text key={t} x={x(t)} y="128" textAnchor={t === 0 ? "start" : t === 10 ? "end" : "middle"} className="fig-label dim">{t} ms</text>
         ))}

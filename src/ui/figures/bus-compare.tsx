@@ -38,7 +38,7 @@ const BUSES: Bus[] = [
   },
   {
     id: "spi", name: "SPI", role: "master",
-    wires: (n) => 3 + n, wiresText: (n) => `${3 + n}: 3 shared + ${n} chip selects`,
+    wires: (n) => 3 + n, wiresText: (n) => `${3 + n}: 3 shared + ${n} chip select${n === 1 ? "" : "s"}`,
     clock: "a clock wire, from the master",
     select: "one chip select per device",
     speed: "1 MHz here, up to tens of MHz",

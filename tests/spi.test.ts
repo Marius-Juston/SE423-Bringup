@@ -4,6 +4,9 @@ import { runProgram } from "../src/sim/runner";
 import { clockScheme, registerSpiDevice, spiBus, type SpiMode } from "../src/sim/plugins/spi";
 import { codes } from "./helpers";
 
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 // SPIB set up as the course does (setupSpib in SE423Lib.c / HW3), with the
 // values a test wants to vary as parameters.
 const setup = (o: { brr?: number; char?: number; pol?: number; phase?: number; lbk?: number; rxffil?: number } = {}) => `
@@ -196,7 +199,8 @@ ${setup({ brr: 127, char: 7, pol: m.polarity, phase: m.phase })}
     SpibRegs.SPITXBUF = 0x${byte.toString(16)}00;
     while (1) {}
 }`, 1);
-      expect(r.diagnostics).toEqual([]);
+      // No chip select is low: the word goes out to nobody, and the model says so.
+      expect(codes(r)).toEqual(["spi-no-cs-b"]);
       const g = r.board.gpio;
       const s = clockScheme(m);
       const clk = (g.trace.get(65) ?? []).filter((x) => x.t > 50000);
@@ -243,7 +247,8 @@ ${setup()}
     while (1) {}
 }`);
     expect(v(r, "a")).toBe(0xffff);
-    expect(r.diagnostics).toEqual([]);
+    expect(codes(r)).toEqual(["spi-no-cs-b"]);
+    expect(r.diagnostics[0].msg).toContain("GPIO66");
     const nomux = run(`void main(void) {
 ${setup().replace(/GPIO_SetupPinMux\(6[345], GPIO_MUX_CPU1, 15\);/g, "")}
     SpibRegs.SPITXBUF = 0x1234;
@@ -330,12 +335,13 @@ ${setup({ pol, phase })}
       return { b, seen, events, diag: [...b.diagnostics.values()] };
     };
     const ok = go(0, 1);
-    expect(ok.diag).toEqual([]);
+    // The third word is sent with the chip select high again.
+    expect(ok.diag.map((d) => d.code)).toEqual(["spi-no-cs-b"]);
     expect(ok.seen).toEqual([0x1111, 0x2222]);
     expect([ok.b.readVar("a"), ok.b.readVar("b2"), ok.b.readVar("c")]).toEqual([0xeeee, 0xdddd, 0xffff]);
     expect(ok.events.slice(-2)).toEqual(["select", "deselect"]);
     const bad = go(0, 0);
-    expect([...new Set(bad.diag.map((d) => d.code))]).toEqual(["spi-mode-b"]);
+    expect([...new Set(bad.diag.map((d) => d.code))]).toEqual(["spi-mode-b", "spi-no-cs-b"]);
     expect(bad.diag[0].severity).toBe("error");
     expect(bad.seen).toEqual([0x1111 >> 1, (0x2222 >> 1) | 0x8000]);
     expect(bad.b.readVar("a")).not.toBe(0xeeee);

@@ -37,7 +37,7 @@ export function CopyButton({ text, label = "Copy", what = "this code", className
     timer.current = window.setTimeout(() => setState(""), 1600);
   };
   return (
-    <button type="button" className={className} onClick={copy} aria-label={`Copy ${what}`} title={`Copy ${what}`}>
+    <button type="button" className={className} onClick={copy} title={`Copy ${what}`}>
       <span aria-live="polite">{state === "ok" ? "Copied" : state === "bad" ? "Could not copy" : label}</span>
     </button>
   );

@@ -39,7 +39,7 @@ export const eventWords = (e: Ev) => EVENT_WORDS[e];
 
 function whyNever(e: Ev, s: PwmSettings): string {
   if (s.ctrmode === 0 && (e === "CAD" || e === "CBD")) return "the counter never counts down in up count";
-  if (s.ctrmode === 1) return "the counter never counts up in down count";
+  if (s.ctrmode === 1 && (e === "CAU" || e === "CBU")) return "the counter never counts up in down count";
   const reg = e[1] === "A" ? "CMPA" : "CMPB";
   return `${reg} = ${reg === "CMPA" ? s.cmpa : s.cmpb} is above TBPRD = ${s.tbprd}, and the counter turns back before it gets there`;
 }
@@ -141,7 +141,10 @@ export function describe(s: PwmSettings, r: PwmResult, n: number): { why: string
     const what = x === "INT" ? "The interrupt" : `The ${x} pulse`;
     if (!every) why.push(`${what} is enabled, but ${x}PRD = 0 passes no event: nothing is sent.`);
     else if (!sel) why.push(`${x}SEL = 0 does not select a counter event, so ${what.toLowerCase()} never comes here.`);
-    else if (!hz) why.push(`${what} waits for ${ET_SEL_NAMES[sel]}, which never happens in ${MODE_NAMES[s.ctrmode]}.`);
+    else if (!hz) {
+      const ev = ["CAU", "CAD", "CBU", "CBD"].includes(ET_SEL_NAMES[sel]) ? (ET_SEL_NAMES[sel] as Ev) : null;
+      why.push(ev ? `${what} waits for ${ev}, which never happens here: ${whyNever(ev, s)}.` : `${what} waits for ${ET_SEL_NAMES[sel]}, which never happens in ${MODE_NAMES[s.ctrmode]}.`);
+    }
     else {
       const mid = times.length > 0 && sel === 2 && s.ctrmode === 2 && midPulse(r.a, times[times.length - 1]);
       why.push(`${what} comes at ${ET_SEL_NAMES[sel]}, ${EVERY[every]}: ${fmtHz(hz)}.${mid ? ` That is the middle of ${A}'s pulse.` : ""}`);

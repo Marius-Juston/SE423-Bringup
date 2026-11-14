@@ -4,6 +4,10 @@ import { RECEIVED_MAX, type CanState } from "../src/sim/plugins/can";
 import { spiBus } from "../src/sim/plugins/spi";
 import { groupSpi } from "../src/ui/views/bus-log";
 
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 // What the bus traffic view (src/ui/views/bus-log.tsx) reads from the
 // plugins: the frames a CAN module stored (can.ts `received`) and the
 // chip-select frame number of every SPI word (spi.ts `frame`).

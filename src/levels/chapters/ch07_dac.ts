@@ -378,10 +378,10 @@ The course library scales with \`volts * 4095.0 / 3.0\`, so that 3.0 V lands exa
 
 ${VALS_NOTE}
 
-\`main()\` switches the DAC on, then asks for 2.25 V, 5 V and -1 V, one millisecond apart.
+\`main()\` switches the DAC on, then asks for 0.75 V, 2.25 V, 5 V and -1 V, one millisecond apart.
 `,
       kit: "robot",
-      durationMs: 4,
+      durationMs: 5,
       starter: `void setDACA(float dacouta0)
 {
     // 1. limit dacouta0 to 0.0 ... 3.0
@@ -396,6 +396,8 @@ void main(void)
 
 ${DAC_ON}
 
+    setDACA(0.75);
+    DELAY_US(1000);
     setDACA(2.25);
     DELAY_US(1000);
     setDACA(5.0);
@@ -413,6 +415,8 @@ void main(void)
 
 ${DAC_ON}
 
+    setDACA(0.75);
+    DELAY_US(1000);
     setDACA(2.25);
     DELAY_US(1000);
     setDACA(5.0);
@@ -427,15 +431,24 @@ ${DAC_ON}
           kind: "signal",
           name: "DACA",
           at: 1.0,
-          equals: 2.25,
+          equals: 0.75,
           tol: 0.002,
-          label: "setDACA(2.25) gives 2.25 V",
+          label: "setDACA(0.75) gives 0.75 V",
           hint: "At 0 V nothing useful reached DACVALS. Multiply first, then divide: dacouta0 * 4095.0 / 3.0, stored in DacaRegs.DACVALS.bit.DACVALS.",
         },
         {
           kind: "signal",
           name: "DACA",
           at: 2.0,
+          equals: 2.25,
+          tol: 0.002,
+          label: "setDACA(2.25) gives 2.25 V",
+          hint: "The number must come from the parameter: dacouta0 * 4095.0 / 3.0.",
+        },
+        {
+          kind: "signal",
+          name: "DACA",
+          at: 3.0,
           min: 2.997,
           max: 3.0,
           label: "setDACA(5.0) is limited to the top of the range",
@@ -444,7 +457,7 @@ ${DAC_ON}
         {
           kind: "signal",
           name: "DACA",
-          at: 3.5,
+          at: 4.5,
           equals: 0,
           tol: 0.001,
           label: "setDACA(-1.0) is limited to 0 V",
@@ -717,9 +730,7 @@ int16_t n = 0;
 
 void setDACA(float dacouta0)
 {
-    EALLOW;
     DacaRegs.DACVALS.bit.DACVALS = dacouta0 * 4095.0 / 3.0;
-    EDIS;
 }
 
 void main(void)
@@ -823,12 +834,14 @@ This time nothing is given for DACB.
 
 1. In \`main()\`, bring up **DACB** the same way DACA is brought up: reference VREFHI, output enabled, value 0. The given wait after it covers the power-up time.
 2. Write \`setDACB(float volts)\`, with the same limits and scaling as \`setDACA\`.
-3. \`main()\` already steps a voltage \`v\` through 0.5 V, 1.25 V and 2.75 V, one millisecond apart. After each step, DACA must output \`v\` and DACB must output **3.0 - v**, so that the two always add up to 3 V.
+3. \`main()\` already steps a voltage \`v\` through 0.5 V, 1.25 V, 2.75 V and 3.5 V, one millisecond apart. After each step, DACA must output \`v\` and DACB must output **3.0 - v**, so that the two add up to 3 V.
+
+The last step asks for more than a DAC can do: 3.5 V and -0.5 V. The limits must hold DACA at the top and DACB at 0 V.
 
 Two voltages that move in opposite directions around a middle are how many motor drivers and audio amplifiers want their input.
 `,
       kit: "robot",
-      durationMs: 4.5,
+      durationMs: 5.5,
       starter: `${SETDACA}
 
 void setDACB(float dacouta1)
@@ -838,7 +851,7 @@ void setDACB(float dacouta1)
 
 void main(void)
 {
-    float v[3] = {0.5, 1.25, 2.75};
+    float v[4] = {0.5, 1.25, 2.75, 3.5};
     int16_t i = 0;
 
     InitSysCtrl();
@@ -849,7 +862,7 @@ ${DAC_ON}
 
 ${SYNC}
 
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < 4; i++) {
         // TODO: DACA = v[i], DACB = 3.0 - v[i]
 
         DELAY_US(1000);
@@ -865,14 +878,12 @@ void setDACB(float dacouta1)
     if (dacouta1 > 3.0) dacouta1 = 3.0;
     if (dacouta1 < 0.0) dacouta1 = 0.0;
 
-    EALLOW;
     DacbRegs.DACVALS.bit.DACVALS = dacouta1 * 4095.0 / 3.0;
-    EDIS;
 }
 
 void main(void)
 {
-    float v[3] = {0.5, 1.25, 2.75};
+    float v[4] = {0.5, 1.25, 2.75, 3.5};
     int16_t i = 0;
 
     InitSysCtrl();
@@ -887,7 +898,7 @@ ${DAC_ON}
 
 ${SYNC}
 
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < 4; i++) {
         setDACA(v[i]);
         setDACB(3.0 - v[i]);
         DELAY_US(1000);
@@ -934,6 +945,16 @@ ${SYNC}
         { kind: "signal", name: "DACB", at: 2.5, equals: 1.75, tol: 0.003, label: "Step 2: DACB at 1.75 V" },
         { kind: "signal", name: "DACA", at: 3.5, equals: 2.75, tol: 0.003, label: "Step 3: DACA at 2.75 V" },
         { kind: "signal", name: "DACB", at: 3.5, equals: 0.25, tol: 0.003, label: "Step 3: DACB at 0.25 V" },
+        { kind: "signal", name: "DACA", at: 4.5, min: 2.995, max: 3.0, label: "Step 4: 3.5 V asked, DACA stays at the top" },
+        {
+          kind: "signal",
+          name: "DACB",
+          at: 4.5,
+          equals: 0,
+          tol: 0.003,
+          label: "Step 4: -0.5 V asked, DACB stays at 0 V",
+          hint: "setDACB needs the same two limit lines as setDACA. Without them a negative voltage becomes a large number in the register.",
+        },
       ],
       inspect: ["DacbRegs.DACCTL", "DacbRegs.DACOUTEN", "DacbRegs.DACVALS"],
       hints: [
@@ -1061,9 +1082,10 @@ __interrupt void cpu_timer0_isr(void)
         },
         { kind: "signal", name: "DACA", at: 18.55, equals: 0.5, tol: 0.01, label: "The second period has its trough too" },
         { kind: "isr", fn: "cpu_timer0_isr", min: 200, max: 214, label: "A new value every 100 us" },
+        { kind: "reg", reg: "DacaRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "The reference is VREFHI", hint: "DacaRegs.DACCTL.bit.DACREFSEL = 1; between EALLOW; and EDIS;." },
         {
           kind: "source",
-          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{[^}]*sin",
+          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{(?:[^{}]|\\{[^{}]*\\})*\\bsin\\s*\\(",
           label: "The interrupt function does not call sin()",
           hint: "Fill an array in main() and index it in the interrupt function.",
         },
@@ -1071,7 +1093,7 @@ __interrupt void cpu_timer0_isr(void)
       bonus: [
         {
           kind: "source",
-          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{[^}]*(\\d\\.\\d|float|setDAC)",
+          mustNotMatch: "cpu_timer0_isr\\s*\\(\\s*void\\s*\\)\\s*\\{(?:[^{}]|\\{[^{}]*\\})*(\\d\\.\\d|float|setDAC)",
           label: "The interrupt function only looks up and writes: no float arithmetic, no helper call",
           hint: "Store 12-bit numbers in a uint16_t table and write DacaRegs.DACVALS.bit.DACVALS = table[k]; directly.",
         },
@@ -1218,6 +1240,7 @@ __interrupt void cpu_timer0_isr(void)
         },
         { kind: "signal", name: "DACB", at: 7.375, equals: (64 * 3) / 4096, tol: 0.001, label: "Then up again" },
         { kind: "signal", name: "DACB", at: 10.475, equals: (4032 * 3) / 4096, tol: 0.001, label: "The second peak comes 6.3 ms after the first" },
+        { kind: "reg", reg: "DacbRegs.DACCTL", field: "DACREFSEL", equals: 1, label: "DACB uses VREFHI", hint: "DacbRegs.DACCTL.bit.DACREFSEL = 1; between EALLOW; and EDIS;." },
         { kind: "source", mustNotMatch: "float|setDAC|\\d\\.\\d", label: "No float and no helper function" },
       ],
       inspect: ["DacbRegs.DACVALS", "DacbRegs.DACVALA"],

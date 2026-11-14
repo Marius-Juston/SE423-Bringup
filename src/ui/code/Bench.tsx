@@ -43,6 +43,9 @@ export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: K
               onPointerDown={() => onButton?.(p.id, true)}
               onPointerUp={() => onButton?.(p.id, false)}
               onPointerLeave={() => pressed?.(p.id) && onButton?.(p.id, false)}
+              onPointerCancel={() => pressed?.(p.id) && onButton?.(p.id, false)}
+              // Tabbing away with the key still down would leave the button held for good.
+              onBlur={() => pressed?.(p.id) && onButton?.(p.id, false)}
               onKeyDown={(e) => (e.key === " " || e.key === "Enter") && !e.repeat && onButton?.(p.id, true)}
               onKeyUp={(e) => (e.key === " " || e.key === "Enter") && onButton?.(p.id, false)}
             />

@@ -216,6 +216,7 @@ char tail[] = "${DEC_TAIL}\\n\\n";
 int dist[32];
 int rest[32];
 int single_mm = 0;
+int other_mm = 0;
 int count = 0;
 int first_mm = 0;
 int last_mm = 0;
@@ -242,6 +243,7 @@ void main(void)
     int i;
 
     single_mm = decode('M', 'c');
+    other_mm = decode('1', 'o');
     count = decode_line(line, dist);
     first_mm = dist[0];
     last_mm = dist[31];
@@ -525,7 +527,9 @@ const FOLLOW_SCRIPT: { pose: Partial<Pose>; state: number; why: string }[] = [
 const LED_OF: Record<number, string> = { 1: "LED1", 2: "LED2", 3: "LED3" };
 
 // Script for the chattering level: the front distance hovers around 1.5 ft.
-const CHATTER_FRONT = [4, 1.47, 1.53, 1.46, 1.52, 1.48, 3.5, 1.58];
+// The last two readings are a second turn seen part way through (2.6 ft): an
+// exit threshold only just above the noise ends that turn too early.
+const CHATTER_FRONT = [4, 1.47, 1.53, 1.46, 1.52, 1.48, 3.5, 1.58, 1.4, 2.6];
 
 // ---------- designing a state machine: the patrol robot (table) ----------
 
@@ -1133,6 +1137,31 @@ const doorOf = (p: Pose) => {
   return best;
 };
 const DOORS = DOOR_POSES.map(doorOf);
+// Scans that must NOT give a doorway: the gap touches an edge of the scan, or
+// it is a few points of a far corner that is out of range.
+const DOOR_EDGE_RIGHT: Pose = { room: 4, x: 5, y: 7.25, theta: -2.0 };
+const DOOR_EDGE_LEFT: Pose = { room: 4, x: 5, y: 7.25, theta: 2.0 };
+const DOOR_CORNER: Pose = { room: 0, x: 0.25, y: 0.25, theta: 0.6 };
+/** Runs of points without an echo, as [first, last]. */
+const gapsOf = (p: Pose) => {
+  const s = scan(p).map(ft);
+  const out: [number, number][] = [];
+  for (let i = 0; i < 228; i++) {
+    if (s[i] <= 18) continue;
+    let j = i;
+    while (j < 227 && s[j + 1] > 18) j++;
+    out.push([i, j]);
+    i = j;
+  }
+  return out;
+};
+const one = (g: [number, number][]) => {
+  if (g.length !== 1) throw new Error("the doorway test scans need exactly one gap each");
+  return g[0];
+};
+if (one(gapsOf(DOOR_EDGE_RIGHT))[1] !== 227 || one(gapsOf(DOOR_EDGE_LEFT))[0] !== 0) throw new Error("the edge poses must cut the doorway at the edge of the scan");
+const DOOR_CORNER_RUN = one(gapsOf(DOOR_CORNER))[1] - one(gapsOf(DOOR_CORNER))[0] + 1;
+if (DOOR_CORNER_RUN < 2 || DOOR_CORNER_RUN > 4 || one(gapsOf(DOOR_CORNER))[0] === 0) throw new Error("the corner pose needs a short gap inside the scan");
 
 const doorProgram = (body: string) => `${FREQ}
 
@@ -1862,11 +1891,11 @@ case FOLLOW:        // runs when state == FOLLOW
 It does the same as \`if (state == TURN_LEFT) { ... } else if (state == FOLLOW) { ... }\`. \`default:\` catches every other value. The state names are numbers, given by the \`#define\` lines at the top. The LED lines after the switch are given: they show the state.
 
 ## The run
-The tests hold the robot about 1.5 ft from a wall. The reading is never exactly the same twice: 1.47, 1.53, 1.46, 1.52, 1.48 ft. Then the turn is completed and the front opens up to 3.5 ft. Last, the robot follows the new wall with 1.58 ft in front, which is not blocked.
+The tests hold the robot about 1.5 ft from a wall. The reading is never exactly the same twice: 1.47, 1.53, 1.46, 1.52, 1.48 ft. Then the turn is completed and the front opens up to 3.5 ft. The robot follows the new wall with 1.58 ft in front, which is not blocked. Last, the next wall comes close (1.40 ft) and the run ends part way through that turn, with 2.60 ft in front: not open yet.
 
-\`transitions\` counts how often the state changed. It should be **2**: into TURN_LEFT when the wall comes close, and to FOLLOW when the turn is finished. Run the code and see what it does instead.
+\`transitions\` counts how often the state changed. It should be **3**: into TURN_LEFT when the wall comes close, to FOLLOW when the turn is finished, and into TURN_LEFT again at the next wall. Run the code and see what it does instead.
 
-The figure replays the first seven readings: choose "one threshold", press Next seven times and count the state changes. Then do the same with two thresholds.
+The figure replays the first seven readings, which hold the first two of those changes: choose "one threshold", press Next seven times and count the state changes. Then do the same with two thresholds.
 
 {{figure:state-machine}}
 
@@ -1874,7 +1903,7 @@ The figure replays the first seven readings: choose "one threshold", press Next 
 Fix the state machine with **hysteresis** (lecture 14 also says deadband): leave a state at a different threshold than the one that got you into it. A turn is finished when the front is more than **3.0 ft** away.
 `,
       kit: "robot",
-      durationMs: 860,
+      durationMs: 60 + 100 * CHATTER_FRONT.length,
       stimuli: CHATTER_FRONT.flatMap((d, i) => poseStimuli(50 + 100 * i, { x: 10 - d, y: 2, theta: 0 })),
       starter: followProgram(
         `${SWITCH.replace("front_ft > FRONT_CLEAR", "front_ft > FRONT_BLOCKED")}
@@ -1894,8 +1923,10 @@ ${SHOW}`,
         { kind: "var", name: "state", at: 560, equals: 2, label: "At 1.52 ft it is still turning", hint: "The threshold that ends the turn must be well above the noise: 3.0 ft." },
         { kind: "steady", led: "LED2", from: 210, to: 690, on: true, label: "LED2 (turning left) stays on without flicker while the front hovers around 1.5 ft", hint: "Each flicker is one trip from TURN_LEFT to FOLLOW and back. Look at the condition in case TURN_LEFT." },
         { kind: "var", name: "state", at: 760, equals: 3, label: "With 3.5 ft in front the turn is finished: FOLLOW", hint: "The turn must still end: in case TURN_LEFT, go to FOLLOW when front_ft is above the new, higher threshold." },
-        { kind: "var", name: "state", equals: 3, label: "Following with 1.58 ft in front: not blocked, still FOLLOW", hint: "Do not raise FRONT_BLOCKED to hide the noise: the robot would then turn away from walls it should follow. Keep 1.5 for starting a turn and add a second threshold for ending it." },
-        { kind: "var", name: "transitions", equals: 2, label: "The state changed exactly twice", hint: "More than 2: the robot still flips between TURN_LEFT and FOLLOW." },
+        { kind: "var", name: "state", at: 860, equals: 3, label: "Following with 1.58 ft in front: not blocked, still FOLLOW", hint: "Do not raise FRONT_BLOCKED to hide the noise: the robot would then turn away from walls it should follow. Keep 1.5 for starting a turn and add a second threshold for ending it." },
+        { kind: "var", name: "state", at: 960, equals: 2, label: "The next wall is 1.40 ft ahead: turning again" },
+        { kind: "var", name: "state", equals: 2, label: "Part way through that turn, with 2.60 ft in front: still turning", hint: "The turn ended too early. A threshold only just above the noise is not enough: the turn is finished when the front is more than 3.0 ft away." },
+        { kind: "var", name: "transitions", equals: 3, label: "The state changed exactly three times", hint: "More than 3: the robot still flips between TURN_LEFT and FOLLOW, or the second turn ended before the front was 3.0 ft open." },
       ],
       watch: ["state", "front_ft", "transitions", "numScans"],
       hints: [
@@ -2292,6 +2323,7 @@ The program calls your functions on two pieces of a real reply: a full line of 6
       ),
       checks: [
         { kind: "var", name: "single_mm", equals: 1907, label: "decode('M', 'c') is 1907", hint: "(0x4D - 0x30) * 64 + (0x63 - 0x30). The first character is the upper half." },
+        { kind: "var", name: "other_mm", equals: 127, label: "decode('1', 'o') is 127", hint: "'1' is 0x31 and 'o' is 0x6F: (0x31 - 0x30) * 64 + (0x6F - 0x30) = 64 + 63." },
         { kind: "var", name: "count", equals: 32, label: "The full line holds 32 readings", hint: "Two characters per reading: advance by 2 each time, and stop at the 0 that ends the string." },
         { kind: "var", name: "first_mm", equals: DEC_MM[0], label: `The first reading of the line is ${DEC_MM[0]} mm` },
         { kind: "var", name: "last_mm", equals: DEC_MM[31], label: `The last reading of the line is ${DEC_MM[31]} mm` },
@@ -2299,7 +2331,7 @@ The program calls your functions on two pieces of a real reply: a full line of 6
         { kind: "var", name: "tail_count", equals: 4, label: "The short line holds 4 readings", hint: "Do not assume 32 readings, and do not decode a line feed: stop at '\\n' as well as at 0." },
         { kind: "var", name: "tail_mm", equals: DEC_SCAN[227], label: `The last reading of the scan is ${DEC_SCAN[227]} mm` },
       ],
-      watch: ["single_mm", "count", "first_mm", "last_mm", "tail_count"],
+      watch: ["single_mm", "other_mm", "count", "first_mm", "last_mm", "tail_count"],
       hints: [
         "A char is a small number. `hi - 0x30` is a value from 0 to 63.",
         "Reading n uses text[2*n] and text[2*n + 1]. Loop while text[2*n] is neither 0 nor '\\n'.",
@@ -2536,6 +2568,7 @@ ${SHOW}`),
         ...FOLLOW_SCRIPT.slice(0, 5).map((s, i) => ({ kind: "led" as const, led: LED_OF[s.state], at: 160 + 100 * i, on: true, label: `Scan ${i + 1}: ${LED_OF[s.state]} is on` })),
         { kind: "led", led: "LED1", at: 360, on: false, label: "LED1 is off while turning left" },
         { kind: "led", led: "LED3", at: 360, on: false, label: "LED3 is off while turning left", hint: "Switch the other two LEDs off when the state changes." },
+        { kind: "led", led: "LED2", at: 560, on: false, label: "LED2 is off again once the turn is finished", hint: "Each LED needs a CLEAR for the states it does not show, not only a SET for its own." },
         { kind: "source", mustMatch: "switch\\s*\\(\\s*state\\s*\\)", label: "The state machine is a switch on state" },
         { kind: "no-dat-write", label: "The LEDs are changed through SET and CLEAR" },
       ],
@@ -2894,11 +2927,19 @@ Write \`find_door()\`. It is called once per scan and sets:
 
 A run that touches the edge of the scan (point 0 or point 227) has only one post and does not count. When no doorway is found, leave \`door_deg\` and \`door_width_ft\` at 0.
 
-The tests look from two poses in the room with the doorway, then put the robot in a room without one. \`cos\` takes radians (see "From a beam to a point"): multiply degrees by 0.01745329.
+Why at least 5 points: seen from a corner of the room, the far corner is further away than the sensor reaches, so a few points in a row have no echo. That is not a doorway.
+
+The tests look from two poses in the room with the doorway. Then they turn the robot so that the doorway runs off the right edge of the scan, and then off the left edge. Last, they put the robot in a corner of a room without a doorway. \`cos\` takes radians (see "From a beam to a point"): multiply degrees by 0.01745329.
 `,
       kit: "robot",
-      durationMs: 360,
-      stimuli: [...poseStimuli(0, DOOR_POSES[0]), ...poseStimuli(150, DOOR_POSES[1]), ...poseStimuli(250, { room: 0 })],
+      durationMs: 560,
+      stimuli: [
+        ...poseStimuli(0, DOOR_POSES[0]),
+        ...poseStimuli(150, DOOR_POSES[1]),
+        ...poseStimuli(250, DOOR_EDGE_RIGHT),
+        ...poseStimuli(350, DOOR_EDGE_LEFT),
+        ...poseStimuli(450, DOOR_CORNER),
+      ],
       starter: doorProgram(`    // TODO`),
       solution: doorProgram(`    int i = 1;
     int j;
@@ -2935,7 +2976,9 @@ The tests look from two poses in the room with the doorway, then put the robot i
         { kind: "var", name: "door_found", at: 260, equals: 1, label: "Second pose: a doorway is found" },
         near("door_deg", DOORS[1].deg, 0.6, 260, `Second pose: it is at ${DOORS[1].deg.toFixed(1)} degrees`),
         near("door_width_ft", DOORS[1].width, 0.05, 260, `Second pose: about ${DOORS[1].width.toFixed(1)} ft wide`),
-        { kind: "var", name: "door_found", equals: 0, label: "In the room without a doorway nothing is found", hint: "Set door_found back to 0 at the start of every scan." },
+        { kind: "var", name: "door_found", at: 360, equals: 0, label: "The doorway runs off the right edge of the scan (it ends at point 227): one post only, not found", hint: "The run must end before point 227, so that the point after it exists and has an echo. Also set door_found back to 0 at the start of every scan." },
+        { kind: "var", name: "door_found", at: 460, equals: 0, label: "The doorway runs off the left edge of the scan (it starts at point 0): not found", hint: "The run must start after point 0, so that the point before it exists and has an echo." },
+        { kind: "var", name: "door_found", equals: 0, label: `From a corner of the room without a doorway: the ${DOOR_CORNER_RUN} points without an echo towards the far corner are not a doorway`, hint: "A doorway is a run of at least 5 points without an echo. Count the run before you accept it." },
         { kind: "var", name: "door_width_ft", equals: 0, label: "Without a doorway the width is 0" },
       ],
       watch: ["door_found", "door_deg", "door_width_ft", "numScans"],

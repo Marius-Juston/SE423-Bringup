@@ -89,6 +89,8 @@ function ButtonBounce() {
   const why =
     nNaive === 0
       ? `Too slow: the pin is read only every ${fmt(N)}, and this press (${RELEASE - PRESS} ms long) fits between two reads. Nobody notices it. The reads must come more often than the shortest press lasts.`
+      : naive.length === 0
+        ? `Too slow: the pin is read only every ${fmt(N)}, and this press (${RELEASE - PRESS} ms long) fits between two reads. The ${nNaive === 1 ? "edge" : `${nNaive} edges`} the plain detector counts ${nNaive === 1 ? "is a bounce" : "are bounces"} of the release, not the press. The reads must come more often than the shortest press lasts.`
       : nNaive > 1
         ? `The pin is read every ${fmt(N)}, but the contacts take about ${bounce.toFixed(1)} ms to settle. The plain edge detector sees ${nNaive} falling edges${naiveRelease.length ? ` (${naiveRelease.length} of them while the button is being released)` : ""} and counts ${nNaive} presses for one. The debounced counter only accepts a level that has read the same for ${STABLE_MS} ms (${need} reads in a row), and counts ${nDeb}.`
         : N < bounce
@@ -172,7 +174,7 @@ function ButtonBounce() {
       </svg>
       <div className="bb-counts">
         <div>Real presses<b>1</b></div>
-        <div className={nNaive === 1 ? "ok" : "wrong"}>Plain detector ▲<b>{nNaive}</b><small>{verdict(nNaive)}</small></div>
+        <div className={nNaive === 1 && naive.length ? "ok" : "wrong"}>Plain detector ▲<b>{nNaive}</b><small>{nNaive === 1 && !naive.length ? "wrong: a release bounce" : verdict(nNaive)}</small></div>
         <div className={nDeb === 1 ? "ok" : "wrong"}>Debounced ◆<b>{nDeb}</b><small>{verdict(nDeb)}</small></div>
       </div>
       <p className="fig-why" role="status">{why}</p>

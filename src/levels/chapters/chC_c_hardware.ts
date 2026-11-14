@@ -124,6 +124,7 @@ void main(void)
     }
 
     printf("total %d, biggest %d\\n", total, biggest);
+    while (1) {}
 }
 `,
       solution: `int reading[5] = {12, 7, 30, 18, 3};
@@ -143,6 +144,7 @@ void main(void)
     }
 
     printf("total %d, biggest %d\\n", total, biggest);
+    while (1) {}
 }
 `,
       checks: [
@@ -213,6 +215,7 @@ void main(void)
     }
 
     printf("sum %d, limit %d\\n", sum, limit);
+    while (1) {}
 }
 `,
       solution: `int mark[4] = {0, 0, 0, 0};
@@ -234,6 +237,7 @@ void main(void)
     }
 
     printf("sum %d, limit %d\\n", sum, limit);
+    while (1) {}
 }
 `,
       checks: [
@@ -308,6 +312,7 @@ void main(void)
     }
 
     printf("%s: %d characters, %d times c\\n", word, length, letterC);
+    while (1) {}
 }
 `,
       solution: `char word[] = "mechatronics";
@@ -325,6 +330,7 @@ void main(void)
     }
 
     printf("%s: %d characters, %d times c\\n", word, length, letterC);
+    while (1) {}
 }
 `,
       checks: [
@@ -529,6 +535,7 @@ void main(void)
     addBonus(&red, 1);
 
     printf("red %d, blue %d\\n", red, blue);
+    while (1) {}
 }
 `,
       solution: `int red = 10;
@@ -547,6 +554,7 @@ void main(void)
     addBonus(&red, 1);
 
     printf("red %d, blue %d\\n", red, blue);
+    while (1) {}
 }
 `,
       checks: [
@@ -619,6 +627,7 @@ void main(void)
     bigNight = largest(night, 3);
 
     printf("day %d, night %d\\n", bigDay, bigNight);
+    while (1) {}
 }
 `,
       solution: `int day[5] = {21, 19, 30, 24, 26};
@@ -646,6 +655,7 @@ void main(void)
     bigNight = largest(night, 3);
 
     printf("day %d, night %d\\n", bigDay, bigNight);
+    while (1) {}
 }
 `,
       checks: [
@@ -727,6 +737,7 @@ void main(void)
 
     printf("room: fuel %d, water %d\\n", fuelRoom, waterRoom);
     printf("water is at %d of %d\\n", water.level, water.capacity);
+    while (1) {}
 }
 `,
       solution: `struct Tank {
@@ -749,6 +760,7 @@ void main(void)
 
     printf("room: fuel %d, water %d\\n", fuelRoom, waterRoom);
     printf("water is at %d of %d\\n", water.level, water.capacity);
+    while (1) {}
 }
 `,
       checks: [
@@ -828,12 +840,13 @@ void fill(struct Tank *t, int amount)
 
 void main(void)
 {
-    fill(&fuel, 25);     // 30 + 25 fits
+    fill(&fuel, 40);     // 30 + 40 fits
     fill(&water, 25);    // 55 + 25 does not fit: stops at 60
 
     fuelLevel = fuel.level;
     waterLevel = water.level;
     printf("fuel %d, water %d\\n", fuelLevel, waterLevel);
+    while (1) {}
 }
 `,
       solution: `struct Tank {
@@ -857,18 +870,19 @@ void fill(struct Tank *t, int amount)
 
 void main(void)
 {
-    fill(&fuel, 25);     // 30 + 25 fits
+    fill(&fuel, 40);     // 30 + 40 fits
     fill(&water, 25);    // 55 + 25 does not fit: stops at 60
 
     fuelLevel = fuel.level;
     waterLevel = water.level;
     printf("fuel %d, water %d\\n", fuelLevel, waterLevel);
+    while (1) {}
 }
 `,
       checks: [
-        { kind: "var", name: "fuelLevel", equals: 55, label: "fuel ends at 55", hint: "`t->level = t->level + amount;`. t is a pointer, so the members are reached with `->`." },
+        { kind: "var", name: "fuelLevel", equals: 70, label: "fuel ends at 70", hint: "`t->level = t->level + amount;`. t is a pointer, so the members are reached with `->`. 60 means the limit is a typed number: use `t->capacity`." },
         { kind: "var", name: "waterLevel", equals: 60, label: "water stops at its capacity, 60", hint: "After adding, compare `t->level` with `t->capacity` and cut it back if it is larger." },
-        { kind: "console", includes: "fuel 55, water 60", label: "The program prints: fuel 55, water 60" },
+        { kind: "console", includes: "fuel 70, water 60", label: "The program prints: fuel 70, water 60" },
         { kind: "source", mustMatch: "t\\s*->\\s*level|\\(\\s*\\*\\s*t\\s*\\)\\s*\\.\\s*level", label: "fill reaches the tank through its pointer t", hint: "Do not name fuel or water inside fill. Use `t->level` and `t->capacity`." },
       ],
       hints: [
@@ -1166,6 +1180,7 @@ void main(void)
     }
 
     printf("flashes: %d\\n", flashes);
+    while (1) {}
 }
 `,
       solution: `int flashes = 0;    // how many times the function said "now"
@@ -1192,6 +1207,7 @@ void main(void)
     }
 
     printf("flashes: %d\\n", flashes);
+    while (1) {}
 }
 `,
       checks: [
@@ -1277,6 +1293,7 @@ void main(void)
 
     // %.2f prints a float with two digits after the point
     printf("%.2f %.2f %.2f %.2f\\n", v1, v2, m1, m2);
+    while (1) {}
 }
 `,
       solution: `float v1, v2;
@@ -1302,6 +1319,7 @@ void main(void)
 
     // %.2f prints a float with two digits after the point
     printf("%.2f %.2f %.2f %.2f\\n", v1, v2, m1, m2);
+    while (1) {}
 }
 `,
       checks: [
@@ -1395,6 +1413,7 @@ void main(void)
     }
 
     printf("count %d\\n", count);
+    while (1) {}
 }
 `,
       solution: `int count = 0;
@@ -1433,6 +1452,7 @@ void main(void)
     }
 
     printf("count %d\\n", count);
+    while (1) {}
 }
 `,
       checks: [
@@ -1599,6 +1619,7 @@ void main(void)
     // %.1f prints a float with one digit after the point
     printf("morning %d to %d, mean %.1f\\n", mMin, mMax, mMean);
     printf("night %d to %d, mean %.1f\\n", nMin, nMax, nMean);
+    while (1) {}
 }
 `,
       solution: `struct Stats {
@@ -1648,6 +1669,7 @@ void main(void)
     // %.1f prints a float with one digit after the point
     printf("morning %d to %d, mean %.1f\\n", mMin, mMax, mMean);
     printf("night %d to %d, mean %.1f\\n", nMin, nMax, nMean);
+    while (1) {}
 }
 `,
       checks: [
@@ -1661,7 +1683,7 @@ void main(void)
         { kind: "source", mustMatch: "out\\s*->\\s*mean|\\(\\s*\\*\\s*out\\s*\\)\\s*\\.\\s*mean", label: "measure stores its results through the pointer out" },
       ],
       bonus: [
-        { kind: "max-steps", max: 80, label: "One pass over each array: 80 statements or fewer", hint: "Find min, max and the sum in the same loop instead of three loops." },
+        { kind: "max-steps", max: 72, label: "One pass over each array: 72 statements or fewer", hint: "Find min, max and the sum in the same loop instead of three loops." },
       ],
       hints: [
         "Start with `out->min = v[0];` and `out->max = v[0];`, and a local `int sum = 0;`. Then one loop over `v[i]`.",
@@ -1714,6 +1736,7 @@ int16_t distance = 120000;     // millimetres driven in a day
 void main(void)
 {
     printf("ticks %d, distance %d\\n", ticks, distance);
+    while (1) {}
 }
 `,
       solution: `uint16_t ticks = 50000;        // sensor ticks in one run, never negative
@@ -1722,6 +1745,7 @@ int32_t distance = 120000;     // millimetres driven in a day
 void main(void)
 {
     printf("ticks %u, distance %ld\\n", ticks, distance);
+    while (1) {}
 }
 `,
       checks: [
@@ -1861,6 +1885,7 @@ void main(void)
 
     printf("%d %d %d %d %d %d\\n", even[0], even[1], even[2], even[3], even[4], even[5]);
     printf("%d %d %d\\n", odd[0], odd[1], odd[2]);
+    while (1) {}
 }
 `,
       solution: `int even[6] = {1, 2, 3, 4, 5, 6};
@@ -1888,6 +1913,7 @@ void main(void)
 
     printf("%d %d %d %d %d %d\\n", even[0], even[1], even[2], even[3], even[4], even[5]);
     printf("%d %d %d\\n", odd[0], odd[1], odd[2]);
+    while (1) {}
 }
 `,
       checks: [
@@ -1970,6 +1996,7 @@ void main(void)
     run(0);     // forward: 30
 
     printf("position %d, rejected %d\\n", position, rejected);
+    while (1) {}
 }
 `,
       solution: `int position = 5;
@@ -2013,6 +2040,7 @@ void main(void)
     run(0);     // forward: 30
 
     printf("position %d, rejected %d\\n", position, rejected);
+    while (1) {}
 }
 `,
       checks: [
@@ -2090,6 +2118,7 @@ void main(void)
     hotB = hottest(bufferB, 2);
 
     printf("hottest: station %u and station %u\\n", hotA, hotB);
+    while (1) {}
 }
 `,
       solution: `struct Packet {
@@ -2125,6 +2154,7 @@ void main(void)
     hotB = hottest(bufferB, 2);
 
     printf("hottest: station %u and station %u\\n", hotA, hotB);
+    while (1) {}
 }
 `,
       checks: [

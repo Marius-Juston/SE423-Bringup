@@ -57,14 +57,15 @@ function SamplingAlias() {
       : onLimit
         ? `${f} Hz folds onto the Nyquist frequency itself (${nyq} Hz), where there are only 2 samples per period. Here they all land on the zero crossings. Sample more than twice as fast as the highest frequency, not exactly twice.`
         : `${f} Hz is above the Nyquist frequency ${fs} / 2 = ${nyq} Hz: only ${perPeriod} samples per period. The very same samples fit a sine of ${fa} Hz (${formula})${flipped ? ", upside down" : ""}. That alias is what your program sees, and nothing done after sampling can tell the two apart.`;
-  const whyLimit = Math.abs(f - nyq) < 1e-9 ? `${f} Hz is exactly the Nyquist frequency ${fs} / 2: 2 samples per period. Here every sample lands on a zero crossing and the tone vanishes. Sample more than twice as fast as the highest frequency, not exactly twice.` : why;
+  const atLimit = Math.abs(f - nyq) < 1e-9;
+  const whyLimit = atLimit ? `${f} Hz is exactly the Nyquist frequency ${fs} / 2: 2 samples per period. Here every sample lands on a zero crossing and the tone vanishes. Sample more than twice as fast as the highest frequency, not exactly twice.` : why;
 
   return (
     <figure className="figure alias" aria-label="Interactive sampling and aliasing diagram">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 204" role="img" aria-label={`A ${f} hertz sine sampled ${fs} times per second. Nyquist frequency ${nyq} hertz. The samples show ${aliased ? `${fa} hertz, an alias` : "the real signal"}.`}>
+      <svg viewBox="0 0 420 204" role="img" aria-label={`A ${f} hertz sine sampled ${fs} times per second. Nyquist frequency ${nyq} hertz. The samples show ${atLimit ? "nothing: every sample is zero" : aliased ? `${fa} hertz, an alias` : "the real signal"}.`}>
         <text x={X0} y="12" className="fig-label" style={{ fill: "var(--arches)" }}>real signal: {f} Hz</text>
-        <text x={X1} y="12" textAnchor="end" className="fig-label" style={{ fill: "var(--harvest)" }}>{aliased ? `what the samples show: ${fa} Hz` : "the samples show the same signal"}</text>
+        <text x={X1} y="12" textAnchor="end" className="fig-label" style={{ fill: "var(--harvest)" }}>{atLimit ? "the samples show nothing: all zero" : aliased ? `what the samples show: ${fa} Hz` : "the samples show the same signal"}</text>
         <line x1={X0} x2={X1} y1={MID} y2={MID} stroke="var(--border)" />
         <path d={wave(f, 1)} className="fig-trace" style={{ strokeWidth: aliased ? 1.1 : 1.8, opacity: aliased ? 0.75 : 1 }} />
         {aliased && <path d={wave(fa, flipped ? -1 : 1)} className="fig-trace data" style={{ strokeWidth: 2.2 }} />}
@@ -87,7 +88,7 @@ function SamplingAlias() {
           </g>
         ))}
         <line x1={fx(nyq)} x2={fx(nyq)} y1={FY - 30} y2={FY} stroke="var(--text)" strokeWidth="1.4" strokeDasharray="3 2" />
-        <text x={fx(nyq) - 4} y={FY - 25} textAnchor="end" className="fig-label">Nyquist {nyq} Hz</text>
+        <text x={fx(nyq) < 110 ? FX0 : fx(nyq) - 4} y={fx(nyq) < 110 ? FY - 34 : FY - 25} textAnchor={fx(nyq) < 110 ? "start" : "end"} className="fig-label">Nyquist {nyq} Hz</text>
         <line x1={fx(fs)} x2={fx(fs)} y1={FY - 30} y2={FY} stroke="var(--orange)" strokeWidth="1.4" />
         <text x={fx(fs) + (fs > 1500 ? -4 : 4)} y={FY - 25} textAnchor={fs > 1500 ? "end" : "start"} className="fig-label" style={{ fill: "var(--orange)" }}>{fs > 1500 ? `${fs} samples/s` : `sampling rate ${fs}/s`}</text>
         {aliased && Math.abs(fx(f) - fx(fa)) > 16 && (

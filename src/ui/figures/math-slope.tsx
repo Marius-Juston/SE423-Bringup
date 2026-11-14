@@ -35,7 +35,7 @@ function MathSlope() {
   const why =
     noise === 0
       ? `Between sample ${k - 1} and sample ${k} the speed rose by ${fmt(change, 4)} ft/s in ${dt} s. Rate of change = ${fmt(change, 4)} / ${dt} = ${fmt(slope(k))} ft/s per second. Without noise every pair of samples gives the same slope. Now add measurement noise.`
-      : `Each sample is now off by up to ${noise} ft/s. Between sample ${k - 1} and ${k} the reading changed by ${fmt(change, 4)} ft/s in ${dt} s: a computed slope of ${fmt(slope(k), 1)}, although the true slope is still 1. The division by ${dt} turns tiny errors into slopes that are up to ${fmt(worst, 0)} off.${dtMs === 1 ? " A shorter time step makes it worse." : ""}`;
+      : `Each sample is now off by up to ${noise} ft/s. Between sample ${k - 1} and ${k} the reading changed by ${fmt(change, 4)} ft/s in ${dt} s: a computed slope of ${fmt(slope(k), 1)}, although the true slope is still 1. The division by ${dt} turns tiny errors into slopes that are up to ${fmt(worst, worst < 10 ? 1 : 0)} off.${dtMs === 1 ? " A shorter time step makes it worse." : ""}`;
 
   return (
     <figure className="figure mk-fig" aria-label="Interactive figure: a rate of change computed from two samples, and what noise does to it">
@@ -89,6 +89,6 @@ function MathSlope() {
 export const figure = {
   id: "math-slope",
   title: "Rate of change (slope)",
-  description: "Change how fast the speed rises and see the slope the code computes from each pair of neighbouring samples.",
+  description: "Add measurement noise and shorten the time step to see what happens to the slope the code computes from each pair of neighbouring samples.",
   Component: MathSlope,
 };

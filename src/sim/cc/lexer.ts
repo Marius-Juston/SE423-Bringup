@@ -10,7 +10,10 @@ export class CError extends Error {
   }
 }
 
-export type TokKind = "id" | "num" | "str" | "chr" | "p" | "eof";
+// "bad" is text that is not valid C. Its value is the message. It only
+// becomes an error when it reaches the compiler, so a quote inside a block
+// that #if 0 removes does no harm.
+export type TokKind = "id" | "num" | "str" | "chr" | "p" | "bad" | "eof";
 
 export interface Tok {
   k: TokKind;
@@ -108,7 +111,11 @@ export function lex(src: string, file = "user"): Tok[] {
         }
       }
       while (j < n && /[uUlLfF]/.test(src[j])) j++;
-      push("num", src.slice(i, j), line);
+      // Letters, digits or dots glued to the number make it invalid (12abc, 1.2.3, 0x).
+      while (j < n && /[A-Za-z0-9_.]/.test(src[j])) j++;
+      const text = src.slice(i, j);
+      if (validNumber(text)) push("num", text, line);
+      else push("bad", `'${text}' is not a valid number.${/^0\d+$/.test(text) ? " A number that starts with 0 is octal (base 8) in C, so it cannot contain 8 or 9. Remove the leading 0." : ""}`, line);
       i = j;
       lastEnd = i;
       continue;
@@ -116,10 +123,18 @@ export function lex(src: string, file = "user"): Tok[] {
     if (c === '"' || c === "'") {
       let j = i + 1;
       let out = "";
+      let bad = "";
+      const startLine = line;
       while (j < n && src[j] !== c) {
         if (src[j] === "\n") break;
         if (src[j] === "\\") {
           const e = src[j + 1];
+          // A backslash at the end of the line continues the string on the next line.
+          if (e === "\n" || (e === "\r" && src[j + 2] === "\n")) {
+            j += e === "\n" ? 2 : 3;
+            line++;
+            continue;
+          }
           j += 2;
           const simple: Record<string, string> = {
             n: "\n", r: "\r", t: "\t", "0": "\0", "\\": "\\", "'": "'", '"': '"', a: "\x07", b: "\b", f: "\f", v: "\v", "?": "?",
@@ -128,28 +143,23 @@ export function lex(src: string, file = "user"): Tok[] {
             let h = "";
             while (/[0-9a-fA-F]/.test(src[j] ?? "")) h += src[j++];
             out += String.fromCharCode(parseInt(h || "0", 16) & 0xffff);
-          } else if (/[0-7]/.test(e) && /[0-7]/.test(src[j] ?? "")) {
+          } else if (/[0-7]/.test(e ?? "")) {
             let o = e;
             while (o.length < 3 && /[0-7]/.test(src[j] ?? "")) o += src[j++];
             out += String.fromCharCode(parseInt(o, 8));
           } else if (e in simple) out += simple[e];
-          else throw new CError(line, `Unknown escape sequence \\${e}.`, file);
+          else bad ||= `Unknown escape sequence \\${e ?? ""}.`;
           continue;
         }
         out += src[j++];
       }
-      if (src[j] !== c) {
-        throw new CError(line, c === '"' ? 'This string is missing its closing ".' : "This character is missing its closing '.", file);
-      }
-      if (c === "'" && out.length !== 1) {
-        throw new CError(
-          line,
-          `'${out}' is not a single character. Use single quotes for one character ('a') and double quotes for a string ("abc").`,
-          file,
-        );
-      }
-      push(c === '"' ? "str" : "chr", out, line);
-      i = j + 1;
+      const closed = src[j] === c;
+      if (!closed) bad = c === '"' ? 'This string is missing its closing ".' : "This character is missing its closing '.";
+      else if (!bad && c === "'" && out.length !== 1)
+        bad = `'${out}' is not a single character. Use single quotes for one character ('a') and double quotes for a string ("abc").`;
+      if (bad) push("bad", bad, startLine);
+      else push(c === '"' ? "str" : "chr", out, startLine);
+      i = closed ? j + 1 : j;
       lastEnd = i;
       continue;
     }
@@ -158,7 +168,10 @@ export function lex(src: string, file = "user"): Tok[] {
       const hint = /[‘’“”]/.test(c)
         ? " It is a curly quote, probably pasted from a document: retype it as a plain quote."
         : "";
-      throw new CError(line, `Unexpected character '${c}'.${hint}`, file);
+      push("bad", `Unexpected character '${c}'.${hint}`, line);
+      i++;
+      lastEnd = i;
+      continue;
     }
     push("p", p, line);
     i += p.length;
@@ -208,6 +221,8 @@ export class Preprocessor {
       i = this.expandAt(toks, i, out);
     }
     if (cond.length) throw new CError(toks[i].line, "An #if or #ifdef is missing its #endif.", file);
+    const bad = out.find((t) => t.k === "bad");
+    if (bad) throw new CError(bad.line, bad.v, bad.file);
     out.push(toks[i]);
     return out;
   }
@@ -290,7 +305,7 @@ export class Preprocessor {
   }
 
   private evalIf(toks: Tok[], hash: Tok): boolean {
-    // Handles: integers, defined(X), defined X, !, &&, ||, ==, !=, <, >, <=, >=, parentheses.
+    // Handles integers, defined(X), defined X and the C operators on them.
     const src: Tok[] = [];
     for (let i = 0; i < toks.length; i++) {
       if (toks[i].v === "defined") {
@@ -306,53 +321,70 @@ export class Preprocessor {
     let i = 0;
     while (all[i].k !== "eof") i = this.expandAt(all, i, ex);
     let p = 0;
-    const peek = () => ex[p]?.v;
+    const fail = (m: string) => new CError(hash.line, m, hash.file);
     const prim = (): number => {
       const t = ex[p++];
-      if (!t) throw new CError(hash.line, "Incomplete #if expression.", hash.file);
-      if (t.v === "(") {
-        const v = or();
-        p++;
+      if (!t) throw fail("Incomplete #if expression.");
+      if (t.k === "p" && t.v === "(") {
+        const v = ternary();
+        if (ex[p++]?.v !== ")") throw fail("This #if expression is missing a ).");
         return v;
       }
-      if (t.v === "!") return prim() ? 0 : 1;
-      if (t.v === "-") return -prim();
+      if (t.k === "p" && t.v === "!") return prim() ? 0 : 1;
+      if (t.k === "p" && t.v === "-") return -prim();
+      if (t.k === "p" && t.v === "+") return prim();
+      if (t.k === "p" && t.v === "~") return ~prim();
       if (t.k === "num") return Number(parseNumber(t.v).value);
+      if (t.k === "chr") return t.v.charCodeAt(0);
+      // A name that is not a macro counts as 0, as in C.
       if (t.k === "id") return 0;
-      throw new CError(hash.line, "This #if expression is too complex for this game.", hash.file);
+      throw fail("This #if expression is too complex for this game.");
     };
-    const cmp = (): number => {
-      let a = prim();
-      for (;;) {
-        const o = peek();
-        if (o === "==") (p++, (a = +(a === prim())));
-        else if (o === "!=") (p++, (a = +(a !== prim())));
-        else if (o === "<") (p++, (a = +(a < prim())));
-        else if (o === ">") (p++, (a = +(a > prim())));
-        else if (o === "<=") (p++, (a = +(a <= prim())));
-        else if (o === ">=") (p++, (a = +(a >= prim())));
-        else return a;
-      }
-    };
-    const and = (): number => {
-      let a = cmp();
-      while (peek() === "&&") {
-        p++;
-        const b = cmp();
-        a = +(a !== 0 && b !== 0);
+    const LEVELS: string[][] = [
+      ["||"], ["&&"], ["|"], ["^"], ["&"], ["==", "!="], ["<", ">", "<=", ">="], ["<<", ">>"], ["+", "-"], ["*", "/", "%"],
+    ];
+    const bin = (level: number): number => {
+      if (level >= LEVELS.length) return prim();
+      let a = bin(level + 1);
+      while (ex[p]?.k === "p" && LEVELS[level].includes(ex[p].v)) {
+        const op = ex[p++].v;
+        const b = bin(level + 1);
+        switch (op) {
+          case "||": a = +(a !== 0 || b !== 0); break;
+          case "&&": a = +(a !== 0 && b !== 0); break;
+          case "|": a = a | b; break;
+          case "^": a = a ^ b; break;
+          case "&": a = a & b; break;
+          case "==": a = +(a === b); break;
+          case "!=": a = +(a !== b); break;
+          case "<": a = +(a < b); break;
+          case ">": a = +(a > b); break;
+          case "<=": a = +(a <= b); break;
+          case ">=": a = +(a >= b); break;
+          case "<<": a = a * 2 ** b; break;
+          case ">>": a = Math.floor(a / 2 ** b); break;
+          case "+": a = a + b; break;
+          case "-": a = a - b; break;
+          case "*": a = a * b; break;
+          default:
+            if (b === 0) throw fail("Division by zero in this #if expression.");
+            a = op === "/" ? Math.trunc(a / b) : a % b;
+        }
       }
       return a;
     };
-    const or = (): number => {
-      let a = and();
-      while (peek() === "||") {
-        p++;
-        const b = and();
-        a = +(a !== 0 || b !== 0);
-      }
-      return a;
+    const ternary = (): number => {
+      const c = bin(0);
+      if (ex[p]?.v !== "?") return c;
+      p++;
+      const a = ternary();
+      if (ex[p++]?.v !== ":") throw fail("This #if expression has a ? without a :.");
+      const b = ternary();
+      return c ? a : b;
     };
-    return or() !== 0;
+    const v = ternary();
+    if (p < ex.length) throw fail(`This #if expression cannot be read: unexpected '${ex[p].v}'.`);
+    return v !== 0;
   }
 
   /** Expands the token at toks[i] into out; returns the next input index. */
@@ -416,8 +448,17 @@ export class Preprocessor {
       hide: new Set([...(b.hide ?? []), ...hide]),
     }));
     scan.push({ k: "eof", v: "", line: t.line, file: t.file, ll: -1, bol: false });
+    const before = out.length;
     let k = 0;
     while (scan[k].k !== "eof") k = this.expandAt(scan, k, out);
+    // A replacement that ends in the name of a macro with arguments takes them from the text that
+    // follows (#define F G, then F(3)): that name goes back in front of the rest of the line.
+    const tail = out.length > before ? out[out.length - 1] : undefined;
+    if (tail?.k === "id" && !tail.hide?.has(tail.v) && this.macros.get(tail.v)?.params && toks[next]?.v === "(") {
+      out.pop();
+      toks[next - 1] = tail;
+      return next - 1;
+    }
     return next;
   }
 }
@@ -433,6 +474,14 @@ function isParamList(body: Tok[]): boolean {
     if (body[k]?.v !== ",") return false;
     k++;
   }
+}
+
+function validNumber(s: string): boolean {
+  const int = "([uU][lL]?|[lL][uU]?)?";
+  if (/^0[xX]/.test(s)) return new RegExp(`^0[xX][0-9a-fA-F]+${int}$`).test(s);
+  if (/^0[bB]/.test(s)) return new RegExp(`^0[bB][01]+${int}$`).test(s);
+  if (new RegExp(`^\\d+${int}$`).test(s)) return !/^0\d*[89]/.test(s);
+  return /^(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?[fFlL]?$/.test(s);
 }
 
 export interface NumLit {

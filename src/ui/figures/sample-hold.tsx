@@ -11,7 +11,9 @@ import { useState } from "react";
 
 const RON = 425;
 const CH_PF = 14.5;
-const VPIN = 1.5;
+// The middle of code 2048 (1.5000 to 1.5007 V), so a capacitor that is less
+// than half a step off still converts to the pin's own code.
+const VPIN = 1.5004;
 const T_MAX = 1100;
 const SOURCES = [
   { r: 50, label: "50 Ω" },
@@ -34,9 +36,9 @@ function SampleHold() {
   const vAt = (t: number) => VPIN + (prev - VPIN) * Math.exp(-t / tau);
   const held = vAt(windowNs);
   const want = adc(VPIN);
-  // Error in whole steps: less than half a step off counts as settled.
-  const off = Math.round(((held - VPIN) * 4096) / 3.0);
-  const code = want + off;
+  // What the converter makes of the held voltage, and how many steps that is off.
+  const code = adc(held);
+  const off = code - want;
   const needNs = 9.7 * tau;
   const needAcqps = Math.max(14, Math.ceil(needNs / 5) - 1);
   const tooShort = windowNs < 75;
@@ -69,7 +71,7 @@ function SampleHold() {
   return (
     <figure className="figure shold" aria-label="Interactive sample-and-hold circuit and charging curve">
       <style>{CSS}</style>
-      <svg viewBox="0 0 420 200" role="img" aria-label={`Acquisition window ${windowNs} nanoseconds, source resistance ${rLabel}. The capacitor holds ${held.toFixed(4)} volts, result ${code}; the pin is at ${VPIN} volts, which is ${want}.`}>
+      <svg viewBox="0 0 420 200" role="img" aria-label={`Acquisition window ${windowNs} nanoseconds, source resistance ${rLabel}. The capacitor holds ${held.toFixed(4)} volts, result ${code}; the pin is at ${VPIN.toFixed(1)} volts, which is ${want}.`}>
         {/* circuit */}
         <rect x="6" y="18" width="62" height="34" rx="4" className="fig-box active" />
         <text x="37" y="32" textAnchor="middle" className="fig-label">sensor</text>
@@ -117,7 +119,7 @@ function SampleHold() {
         <path d={d} className="fig-trace data" />
         <line x1={xw} x2={xw} y1={Y1 - 6} y2={Y0 + 3} stroke="var(--orange)" strokeWidth="1.4" />
         <circle cx={xw} cy={y(held)} r="3.2" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.8" />
-        <text x={xw < 300 ? xw + 5 : xw - 5} y={prev < VPIN ? Y0 - 5 : Y1 + 2} textAnchor={xw < 300 ? "start" : "end"} className="fig-label">switch opens: this voltage is held</text>
+        <text x={xw < 226 ? xw + 5 : xw - 5} y={prev < VPIN ? Y0 - 5 : Y1 + 2} textAnchor={xw < 226 ? "start" : "end"} className="fig-label">switch opens: this voltage is held</text>
         {[0, 500, 1000].map((t) => (
           <g key={t}>
             <line x1={x(t)} x2={x(t)} y1={Y0} y2={Y0 + 3} className="fig-wire" />

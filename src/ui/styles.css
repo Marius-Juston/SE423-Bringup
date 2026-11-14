@@ -165,6 +165,15 @@ pre code { background: none; padding: 0; overflow-wrap: normal; }
 .code-block { overflow-x: visible; }
 .code-block .ln { display: block; white-space: pre-wrap; overflow-wrap: anywhere; padding-left: calc((var(--ind, 0) + 4) * 1ch); text-indent: calc((var(--ind, 0) + 4) * -1ch); }
 .code-block .ln:empty::before { content: "\00a0"; }
+/* The editor's colours, for code that is only read. */
+.tk-kw { color: var(--code-kw); }
+.tk-type { color: var(--code-type); }
+.tk-num { color: var(--code-num); }
+.tk-str { color: var(--code-str); }
+.tk-comment { color: var(--code-comment); font-style: italic; }
+.tk-macro { color: var(--code-macro); }
+.tk-fn { color: var(--code-fn); }
+.tk-prop { color: var(--code-prop); }
 a { color: var(--info); }
 ul, ol { margin: 0 0 0.7em; padding-left: 1.3em; }
 summary { cursor: pointer; }
@@ -810,9 +819,20 @@ table.keys td:first-child { white-space: nowrap; }
   .level-head { padding: 0.45rem 0.6rem; }
   table.keys td:first-child { white-space: normal; }
 }
-@container app (max-width: 36rem) {
+/* The top bar's words need about 38rem with a three-digit progress count: below that its buttons are icons. */
+@container app (max-width: 40rem) {
   .topnav .lbl, .brand .lbl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .topnav button { padding: 0 0.65rem; min-width: 2.4rem; justify-content: center; }
+}
+/* A phone with large text: the Map button already goes where the brand does, and the ring alone shows the progress. */
+@container app (max-width: 26rem) {
+  .brand { display: none; }
+  .topnav button { padding: 0 0.4rem; min-width: 2rem; }
+}
+@container app (max-width: 20rem) {
+  .progress-pill { font-size: 0; gap: 0; }
+}
+@container app (max-width: 36rem) {
   .setting-row { grid-template-columns: minmax(0, 1fr); gap: 0.2rem; }
   h1 { font-size: 1.4rem; }
 }

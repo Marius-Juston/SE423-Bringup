@@ -304,7 +304,7 @@ const ringChecks = (minReceived: number, lockFree = false) => [
 // cannot actually fail here. The source is checked instead.
 const RING_LOCK_CHECK = {
   kind: "source" as const,
-  mustMatch: "buf_get\\s*\\([^)]*\\)\\s*\\{(?:(?!\\n\\})[\\s\\S])*DINT(?:(?!\\n\\})[\\s\\S])*EINT",
+  mustMatch: "buf_get\\s*\\([^)]*\\)\\s*\\{(?:(?!\\n\\})[\\s\\S])*DINT(?:(?!\\n\\})[\\s\\S])*(count\\s*(--|-=|=\\s*count\\s*-)|--\\s*count)(?:(?!\\n\\})[\\s\\S])*EINT",
   label: "buf_get changes count inside a critical section (DINT ... EINT)",
   hint: "count-- in main is a read-modify-write of a variable the interrupt also writes. Keep DINT; before it and EINT; after it, on every path.",
 };
@@ -581,9 +581,9 @@ pthread_mutex_unlock(&lock);
         { kind: "isr", fn: "cpu_timer0_isr", min: 60, label: "The timer interrupt keeps running during the loop", hint: "Interrupts stayed off. Every pass of the loop needs both lines: DINT; before the read and EINT; after the write, inside the braces of the for loop." },
         {
           kind: "source",
-          mustMatch: "for\\s*\\(\\s*i\\s*=\\s*0[\\s\\S]*?DINT\\s*;[\\s\\S]*?EINT\\s*;",
-          label: "The update of shared inside the loop is between DINT; and EINT;",
-          hint: "Both lines go inside the braces of the for loop: DINT; before the read, EINT; after the write. Around the whole loop they would switch the interrupt off for the entire run. Writing shared++; on one line hides the three steps in this simulator, but not on the chip.",
+          mustMatch: "for\\s*\\(\\s*i\\s*=\\s*0[\\s\\S]*?DINT\\s*;\\s*tmp\\s*=\\s*shared\\s*;\\s*tmp\\s*=\\s*tmp\\s*\\+\\s*1\\s*;\\s*shared\\s*=\\s*tmp\\s*;[^}]*?EINT\\s*;",
+          label: "Inside the loop, the read, the add and the write are still three statements, between DINT; and EINT;",
+          hint: "Both lines go inside the braces of the for loop: DINT; on the line before the read, EINT; after the write. Around the whole loop they would switch the interrupt off for the entire run. Keep the three statements: writing shared++; on one line hides the three steps in this simulator, but not on the chip.",
         },
         {
           kind: "source",
@@ -645,7 +645,7 @@ This is the pattern for printing as well. Printing takes milliseconds, and the v
         { kind: "isr", fn: "cpu_timer0_isr", min: 150, label: "The interrupt keeps moving the robot during the loop", hint: "Interrupts stayed off. EINT; must come after the second copy, inside the braces of the for loop, on every pass." },
         {
           kind: "source",
-          mustMatch: "for\\s*\\(\\s*i\\s*=\\s*0[\\s\\S]*?DINT\\s*;[\\s\\S]*?pos_x[\\s\\S]*?pos_y[\\s\\S]*?EINT\\s*;",
+          mustMatch: "for\\s*\\(\\s*i\\s*=\\s*0[\\s\\S]*?DINT\\s*;\\s*(x\\s*=\\s*pos_x\\s*;\\s*y\\s*=\\s*pos_y|y\\s*=\\s*pos_y\\s*;\\s*x\\s*=\\s*pos_x)\\s*;[\\s\\S]*?EINT\\s*;",
           label: "Inside the loop, both copies are between DINT; and EINT;",
           hint: "Both lines go inside the for loop: DINT; x = pos_x; y = pos_y; EINT;",
         },
@@ -1291,6 +1291,9 @@ uint16_t count = 0;`,
         { kind: "var", name: "logged", at: 60.5, min: 54, max: 60, label: "After 60 ms, 54 to 60 samples are logged", hint: "Samples must be logged as they arrive, one per millisecond, not computed in one go." },
         { kind: "source", mustMatch: "return \\(produced \\* 37\\) % 1000;[\\s\\S]*cpu_timer0_isr\\(void\\)\\s*\\{[\\s\\S]*read_sensor\\s*\\(", label: "The sensor is unchanged and is read in the interrupt function" },
         { kind: "source", mustNotMatch: "37[\\s\\S]*37", label: "Readings come from read_sensor() only: its formula is not repeated elsewhere" },
+        { kind: "source", mustNotMatch: "__interrupt void cpu_timer0_isr\\(void\\)\\s*\\{[\\s\\S]*\\b(sum|logged)\\b", label: "The interrupt function does not touch sum or logged: summing is main's job", hint: "The interrupt only reads the sensor and puts the reading into the buffer. main takes it out and adds it to sum." },
+        RING_LOCK_CHECK,
+        RING_PUT_CHECK,
       ],
       bonus: [
         { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 0.75, label: "Lean interrupt: it never runs longer than 0.75 microseconds (about 15 statements)", hint: "Read, put, count a drop: nothing else belongs in the interrupt function. No sum, no loop, no DINT or EINT." },
@@ -1790,6 +1793,7 @@ Fix the read so that \`lo\` and \`hi\` always belong to the same value. Keep the
         { kind: "var", name: "reads", min: 2000, label: "main keeps reading the time" },
         { kind: "isr", fn: "cpu_timer0_isr", min: 300, label: "The tick interrupt keeps running", hint: "Interrupts must be enabled again right after the two reads." },
         { kind: "var", name: "time_hi", min: 16, label: "The clock keeps counting" },
+        { kind: "var", name: "time_hi", at: 5, min: 25, label: "After 5 ms the clock has carried at least 25 times: the tick is not held up while main reads", hint: "Interrupts are off for too long. A critical section covers the two reads only, on every pass, not the whole loop." },
         {
           kind: "source",
           mustMatch: "lo\\s*<\\s*last_lo\\s*\\)\\s*\\)\\s*\\{\\s*torn\\+\\+;[\\s\\S]*time_lo\\s*\\+=\\s*0x20000000;",

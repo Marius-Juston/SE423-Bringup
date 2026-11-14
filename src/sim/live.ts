@@ -5,9 +5,9 @@ import { Board } from "./board";
 import { CError } from "./cc/lexer";
 import { RuntimeError } from "./cc/compile";
 import { KITS, findPart, type Kit } from "./world/kits";
-import { setWorldObjects } from "./plugins/lidar";
-import type { RobotWorld } from "./plugins/robot_world";
-import type { Obstacle } from "./world/terrain";
+import { setWorldObjects, worldOf } from "./plugins/lidar";
+import { ROBOT_RADIUS_FT, type RobotWorld } from "./plugins/robot_world";
+import { objectTouches, tidyObject, type Obstacle } from "./world/terrain";
 import { tourAt, waypoints, type PathSet, type Waypoint } from "./tour";
 
 /** An input of the signal bus set when the board powers up (the world a level puts the robot in). */
@@ -88,12 +88,21 @@ export class LiveSession {
       this.handsOn = true;
     }
     for (const s of setup) if (s.set === "ROBOT_WORLD") b.setInput(s.set, s.value, 0);
+    if (this.keptObjects.length) {
+      // An object left where this run's robot starts would end the run at once: it is not carried over.
+      const start = worldOf(b).start;
+      const on = this.world !== undefined;
+      const x = on ? (b.output("ROBOT_X_FT") ?? start[0]) : (b.inputs.get("LIDAR_X_FT") ?? start[0]);
+      const y = on ? (b.output("ROBOT_Y_FT") ?? start[1]) : (b.inputs.get("LIDAR_Y_FT") ?? start[1]);
+      this.keptObjects = this.keptObjects.filter((o) => !objectTouches(tidyObject(o), x, y, ROBOT_RADIUS_FT));
+      // Placed before the program is compiled, so the world is whole even when the program is not.
+      setWorldObjects(b, this.keptObjects);
+    }
     this.path = waypoints(script);
     this.touring = this.path.length > 1 && !restored;
     this.events = script.filter((e) => e.at > 0.02 && /^(WORLD_|ROBOT_GOAL_)/.test(e.set)).sort((a, b) => a.at - b.at);
     try {
       b.load(source);
-      if (this.keptObjects.length) setWorldObjects(b, this.keptObjects);
       this.gen = b.run();
     } catch (e) {
       this.fail(e);
@@ -198,8 +207,8 @@ export class LiveSession {
   stepLine(): void {
     const b = this.board;
     const line = b.line;
-    const isr = b.isrLog.length;
-    this.stepWhile(() => b.line === line && b.isrLog.length === isr, 5000);
+    const isr = b.isrLog.length + b.isrDropped;
+    this.stepWhile(() => b.line === line && b.isrLog.length + b.isrDropped === isr, 5000);
   }
 
   /** Runs until the program next writes a register (or 200 000 statements pass). */
@@ -250,6 +259,8 @@ export class LiveSession {
     if (![x, y, theta].every(Number.isFinite)) return;
     const b = this.board;
     this.touring = false;
+    // The robot is where the student wants it: the test's later changes would pull the world from under it.
+    this.handsOn = true;
     // The next run starts where the robot was last put down.
     const names = kind === "world" ? ["ROBOT_START_X_FT", "ROBOT_START_Y_FT", "ROBOT_START_THETA_RAD"] : kind === "bench" ? ["TB_SET_X_FT", "TB_SET_Y_FT", "TB_SET_THETA_RAD"] : ["LIDAR_X_FT", "LIDAR_Y_FT", "LIDAR_THETA_RAD"];
     [x, y, theta].forEach((v, i) => this.kept.set(names[i], v));
@@ -285,7 +296,11 @@ export class LiveSession {
       else b.inputs.delete(name);
     }
     const given = new Map(this.setup.map((s) => [s.set, s.value]));
-    for (const name of ["WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS", "LIDAR_ROOM"]) if (b.inputs.has(name) || given.has(name)) b.setInput(name, given.get(name) ?? 0);
+    // The level's own terrain: an input it never set is "not set" again (0 is not the default seed or size of a maze).
+    for (const name of ["WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS"]) if (!given.has(name)) b.inputs.delete(name);
+    for (const name of ["WORLD_KIND", "WORLD_SEED", "WORLD_SIZE", "WORLD_LOOPS"]) if (given.has(name)) b.setInput(name, given.get(name)!);
+    // Setting the room also tells everything that watches the world that it has changed.
+    b.setInput("LIDAR_ROOM", given.get("LIDAR_ROOM") ?? 0);
     // An input the level never set goes back to "not set" (the world's own goal or start then applies).
     const restore = (name: string) => {
       if (given.has(name)) b.setInput(name, given.get(name)!);

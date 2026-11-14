@@ -93,6 +93,6 @@ function ButtonLedSchematic() {
 export const figure = {
   id: "button-led-schematic",
   title: "Reading a button and LED schematic",
-  description: "Highlight a point of the button and LED circuit to see everything wired to it, and press the button or drive the pin to see the voltages change.",
+  description: "Highlight a point of the button and LED circuit to see everything wired to it.",
   Component: ButtonLedSchematic,
 };

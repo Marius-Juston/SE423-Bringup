@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LiveSession } from "../src/sim/live";
+import { worldOf } from "../src/sim/plugins/lidar";
 import { TOUR_HOLD_MS, TOUR_MOVE_MS, between, replayAt, tourAt, waypoints } from "../src/sim/tour";
 import { CHAPTERS, findLevel } from "../src/levels";
 import type { CodeLevel } from "../src/levels/types";
@@ -38,6 +39,56 @@ describe("the path a test moves the robot along", () => {
     expect(tourAt(w, 0).get("LIDAR_X_FT")).toBe(2);
     expect(tourAt(w, leg).get("LIDAR_X_FT")).toBe(10);
     expect(tourAt(w, 3 * leg).get("LIDAR_X_FT")).toBe(2);
+  });
+  it("starts where the simulator has the robot when the test sets no pose at power-up", () => {
+    // Room 0 puts the robot at (5, 5); the test only turns it, then moves it along x.
+    const w = waypoints([{ at: 0, set: "LIDAR_THETA_RAD", value: 0 }, { at: 100, set: "LIDAR_THETA_RAD", value: 1 }, { at: 200, set: "LIDAR_X_FT", value: 7 }]);
+    expect([w[0].values.get("LIDAR_X_FT"), w[0].values.get("LIDAR_Y_FT")]).toEqual([5, 5]);
+    const turning = between(w[0], w[1], 0.5);
+    expect([turning.get("LIDAR_X_FT"), turning.get("LIDAR_Y_FT")]).toEqual([5, 5]);
+    const driving = between(w[1], w[2], 0.5);
+    expect(driving.get("LIDAR_X_FT")).toBeGreaterThan(5);
+    expect(driving.get("LIDAR_Y_FT")).toBe(5);
+    // A test that sets nothing at 0 ms still has a first pose: the robot is not yet at the place of the first jump.
+    const late = waypoints([{ at: 150, set: "LIDAR_X_FT", value: 8 }]);
+    expect(late.map((x) => x.at)).toEqual([0, 150]);
+    expect(replayAt(late, 50, 40).get("LIDAR_X_FT")).toBe(5);
+    expect(replayAt(late, 150, 40).get("LIDAR_X_FT")).toBe(8);
+  });
+  it("comes round to the first pose in the first world, and never arms the sensor's one-shot fault", () => {
+    const path = [
+      { at: 0, set: "LIDAR_X_FT", value: 2 },
+      { at: 0, set: "LIDAR_Y_FT", value: 2 },
+      { at: 0, set: "LIDAR_THETA_RAD", value: 0 },
+      { at: 100, set: "LIDAR_ROOM", value: 3 },
+      { at: 100, set: "LIDAR_X_FT", value: 4 },
+      { at: 120, set: "LIDAR_DROP_CHAR", value: 7 },
+    ];
+    const w = waypoints(path);
+    expect(w.map((x) => x.at)).toEqual([0, 100]);
+    expect(w.every((x) => !x.values.has("LIDAR_DROP_CHAR"))).toBe(true);
+    const leg = TOUR_HOLD_MS + TOUR_MOVE_MS;
+    expect(tourAt(w, leg).get("LIDAR_ROOM")).toBe(3);
+    expect(tourAt(w, 2 * leg).get("LIDAR_ROOM")).toBe(0);
+    const live = new LiveSession("robot", "void main(void) { while (1) {} }", path.filter((s) => s.at === 0), path);
+    live.speed = 10;
+    const rooms: (number | undefined)[] = [];
+    for (let i = 0; i < 65; i++) {
+      live.step(10, 1000);
+      rooms.push(live.board.inputs.get("LIDAR_ROOM"));
+    }
+    // 6.5 s: the first pose, the second (room 3), and the first again.
+    expect(rooms.at(-1)).toBe(0);
+    expect(rooms).toContain(3);
+    expect(live.board.inputs.get("LIDAR_DROP_CHAR") ?? 0).toBe(0);
+  });
+  it("turns the short way across +-pi", () => {
+    const w = waypoints([{ at: 0, set: "LIDAR_X_FT", value: 5 }, { at: 0, set: "LIDAR_Y_FT", value: 5 }, { at: 0, set: "LIDAR_THETA_RAD", value: 3 }, { at: 100, set: "LIDAR_THETA_RAD", value: -3 }]);
+    for (const u of [0.1, 0.5, 0.9]) {
+      const th = between(w[0], w[1], u).get("LIDAR_THETA_RAD")!;
+      expect(th).toBeGreaterThan(3);
+      expect(th).toBeLessThan(2 * Math.PI - 3);
+    }
   });
   it("never moves the robot in a way its wheels cannot, in any level", () => {
     let legs = 0;
@@ -137,5 +188,45 @@ describe("the student's world carries over to the next run", () => {
     c.step(50, 1000);
     expect(c.board.inputs.get("WORLD_SEED")).toBe(setup.find((s) => s.set === "WORLD_SEED")!.value);
     expect(c.worldChangeMs).toBeDefined();
+  });
+});
+
+describe("Reset world and the world handed to the next run", () => {
+  const idle = "void main(void) { while (1) {} }";
+  it("goes back to the level's own maze when the level leaves the seed and the size to the simulator", () => {
+    const s = new LiveSession("robot", idle, [{ set: "WORLD_KIND", value: 5 }, { set: "ROBOT_WORLD", value: 1 }]);
+    s.step(20, 1000);
+    const own = worldOf(s.board);
+    s.setInput("WORLD_SEED", 9);
+    s.setInput("WORLD_SIZE", 6);
+    expect(worldOf(s.board).name).toBe("maze 6x6 seed 9");
+    s.resetWorld("world");
+    expect(worldOf(s.board).name).toBe(own.name);
+    expect(s.board.inputs.has("WORLD_SEED")).toBe(false);
+    expect([s.board.output("ROBOT_X_FT"), s.board.output("ROBOT_Y_FT")]).toEqual([own.start[0], own.start[1]]);
+  });
+  it("does not carry over an object that lies where the next run's robot starts", () => {
+    const setup = [{ set: "LIDAR_ROOM", value: 0 }, { set: "ROBOT_START_X_FT", value: 2 }, { set: "ROBOT_START_Y_FT", value: 5 }, { set: "ROBOT_WORLD", value: 1 }];
+    // The robot had driven away when these were placed; the next run starts at (2, 5) again.
+    const left = { inputs: [] as [string, number][], objects: [{ kind: "box" as const, x0: 1.5, y0: 4.5, x1: 2.5, y1: 5.5 }, { kind: "post" as const, x: 7, y: 7, r: 0.25 }] };
+    const b = new LiveSession("robot", idle, setup, [], left);
+    b.step(20, 1000);
+    expect(b.board.output("ROBOT_CRASHED")).toBe(0);
+    expect(b.worldState.objects).toEqual([left.objects[1]]);
+    expect(worldOf(b.board).posts).toHaveLength(1);
+    // A program that does not compile still stands in the student's world.
+    const broken = new LiveSession("robot", "void main(void) { x = ; }", setup, [], left);
+    expect(broken.error?.kind).toBe("compile");
+    expect(worldOf(broken.board).posts).toHaveLength(1);
+  });
+  it("stops the test's later changes once the robot was put down by hand, in this run as in the next", () => {
+    const level = findLevel("cap-x-maze")!.level as CodeLevel;
+    const script = (level.stimuli ?? []).filter((s): s is { at: number; set: string; value: number } => "set" in s);
+    const live = new LiveSession(level.kit, idle, script.filter((s) => s.at <= 0.02), script);
+    expect(live.worldChangeMs).toBeDefined();
+    live.step(20, 1000);
+    live.placeRobot(1, 1, 0, "world");
+    expect(live.worldChangeMs).toBeUndefined();
+    expect(new LiveSession(level.kit, idle, script.filter((s) => s.at <= 0.02), script, live.worldState).worldChangeMs).toBeUndefined();
   });
 });

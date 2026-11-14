@@ -1355,8 +1355,8 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "var", name: "UARTPrint", equals: 0, label: "The flag is back at 0 after main used it" },
         {
           kind: "source",
-          mustMatch: "(?=[\\s\\S]*UARTPrint\\s*=\\s*1\\s*;)(?=[\\s\\S]*UARTPrint\\s*=\\s*0\\s*;)",
-          label: "cpu_timer1_isr raises UARTPrint and main sets it back to 0",
+          mustMatch: "(?=[\\s\\S]*UARTPrint\\s*=\\s*1\\s*;)(?=[\\s\\S]*while\\s*\\(\\s*1\\s*\\)\\s*\\{[^}]*UARTPrint[^}]*UARTPrint\\s*=\\s*0\\s*;[^}]*handled|[\\s\\S]*while\\s*\\(\\s*1\\s*\\)\\s*\\{[^}]*UARTPrint[^}]*handled[^}]*UARTPrint\\s*=\\s*0\\s*;)",
+          label: "cpu_timer1_isr raises UARTPrint, and the while (1) loop sets it back to 0 and counts handled",
           hint: "Do not count handled inside the interrupt function. It only sets the flag. The while(1) loop does the work.",
         },
         { kind: "source", mustNotMatch: "DELAY_US", label: "The timers do the timing: no DELAY_US" },
@@ -1497,7 +1497,7 @@ The interrupt function ends with \`PieCtrlRegs.PIEACK.all = PIEACK_GROUP1;\`, li
 
 HW4 warns about one thing. The contacts of a cheap button **bounce**: they close, open and close again a few times within a few milliseconds. Every bounce is an edge.
 
-The simulator does not model XINT yet, so this level is questions only.
+This level is questions only. In the next level you set one up and run it.
 `,
       questions: [
         {
@@ -1653,7 +1653,7 @@ __interrupt void xint1_isr(void)
         { kind: "isr", fn: "xint1_isr", min: 3, max: 3, label: "The interrupt function ran once per press", hint: "Once only: the function must acknowledge PIE group 1 before it returns." },
         { kind: "led", led: "LED1", at: 8, on: true, label: "LED1 turns on with the first press" },
         { kind: "led", led: "LED1", at: 24, on: false, label: "LED1 turns off with the second press" },
-        { kind: "source", mustNotMatch: "GP[EF]DAT", label: "main does not poll the button" },
+        { kind: "source", mustNotMatch: "GP[EF]DAT|GPIO_ReadPin", label: "main does not poll the button", hint: "Do not read the pin yourself. XINT1 watches it and runs xint1_isr on the edge." },
       ],
       bonus: [{ kind: "latency", led: "LED1", after: 33, withinUs: 1, label: "LED1 reacts within 1 microsecond of the press" }],
       hints: [
@@ -1943,8 +1943,9 @@ React within **2 ms of the first contact**. Waiting until the pin has been quiet
         { at: 60.2, release: "PB1" }, { at: 61.5, press: "PB1" }, { at: 62.4, release: "PB1" },
         { at: 100.7, press: "PB1" }, { at: 100.9, release: "PB1" }, { at: 101.6, press: "PB1" }, { at: 102.2, release: "PB1" }, { at: 102.5, press: "PB1" },
         { at: 130.1, release: "PB1" }, { at: 130.8, press: "PB1" }, { at: 131.9, release: "PB1" }, { at: 132.6, press: "PB1" }, { at: 133.4, release: "PB1" },
-        { at: 170.2, press: "PB1" }, { at: 171.3, release: "PB1" }, { at: 171.6, press: "PB1" },
-        { at: 185.3, release: "PB1" }, { at: 186.1, press: "PB1" }, { at: 187.4, release: "PB1" },
+        // The third press bounces with long gaps, close to the 5 ms the brief allows.
+        { at: 170.2, press: "PB1" }, { at: 170.9, release: "PB1" }, { at: 174.6, press: "PB1" },
+        { at: 185.3, release: "PB1" }, { at: 189.7, press: "PB1" }, { at: 190.1, release: "PB1" },
       ],
       starter: `${FREQ}
 
@@ -2141,9 +2142,6 @@ __interrupt void cpu_timer2_isr(void)
         { kind: "var", name: "filterSum", equals: 3909815408, label: "filter_job is unchanged and finished every time" },
         { kind: "var", name: "logSum", equals: 4049865000, label: "log_job is unchanged and finished every time" },
         { kind: "reg", reg: "PieCtrlRegs.PIEACK", equals: 0, label: "No PIE group is left blocked at the end" },
-      ],
-      bonus: [
-        { kind: "max-lines", max: 84, label: "Done with six added lines or fewer", hint: "SWI_isr needs an IER line, EINT and DINT, and its PIEACK line moved up. cpu_timer2_isr needs EINT and DINT." },
       ],
       watch: ["numTimer0calls", "numSWIcalls", "numTimer2calls"],
       inspect: ["PieCtrlRegs.PIEACK", "PieCtrlRegs.PIEIFR1", "PieCtrlRegs.PIEIFR12"],

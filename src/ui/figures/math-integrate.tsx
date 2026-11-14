@@ -47,7 +47,7 @@ function MathIntegrate() {
     if (done) {
       total += r * dt;
       pts.push(`${sx((k + 1) * dt).toFixed(1)},${ty(total).toFixed(1)}`);
-      if (terms.length < 6) terms.push(`${fmt(r, 1)} x ${dt}`);
+      if (terms.length < 6) terms.push(`${fmt(r, Math.abs(r * 10 - Math.round(r * 10)) < 1e-9 ? 1 : 2)} x ${dt}`);
     }
   }
   const truth = exact(pattern, now);
@@ -63,15 +63,17 @@ function MathIntegrate() {
       : `After ${fmt(now, 1)} s the ${w.tname} is the sum of ${steps} bar${steps > 1 ? "s" : ""}, each one "${w.rname} x ${dt} s": ${sum}${w.tu ? ` ${w.tu}` : ""}. ${
           pattern === "back" && now > 3
             ? `The ${w.rname} went negative after 3 s, so those bars are subtracted: the total comes back down.`
-            : off < 0.005
+            : off < 0.005 && pattern !== "ramp"
               ? `That is exact here, because the ${w.rname} did not change during a step.`
+              : off < 0.005
+                ? `The exact answer is ${fmt(truth, 3)}, not ${fmt(total, 3)}: a small error, because the ${w.rname} changes during each step.`
               : `The exact answer is ${fmt(truth)}: the sum is ${fmt(off)} off, because the ${w.rname} changes during each step. Choose a smaller time step and the error shrinks.`
         }`;
 
   return (
     <figure className="figure mi-fig" aria-label="Interactive figure: adding up small steps of rate times time gives a running total">
       <style>{`.mi-fig .mi-range{flex:1;min-width:110px;accent-color:var(--orange)}.mi-fig .mi-axis{stroke:var(--dim);stroke-width:1}.mi-fig .mi-bar{fill:var(--accent-soft);stroke:var(--orange);stroke-width:1}.mi-fig .mi-bar.neg{fill:none;stroke:var(--arches);stroke-dasharray:3 2}.mi-fig .mi-bar.todo{fill:none;stroke:var(--faint);stroke-dasharray:none}.mi-fig .mi-rate{fill:none;stroke:var(--text);stroke-width:1.6}.mi-fig .mi-total{fill:none;stroke:var(--harvest);stroke-width:2.4}.mi-fig .mi-exact{fill:none;stroke:var(--dim);stroke-width:1.2;stroke-dasharray:4 3}.mi-fig .mi-now{stroke:var(--orange);stroke-width:1;stroke-dasharray:3 3}.mi-fig .mi-num{font-family:var(--mono);font-size:0.82rem;min-width:3.6rem;text-align:right}`}</style>
-      <svg viewBox="0 0 400 226" role="img" aria-label={`After ${fmt(now, 1)} seconds, ${steps} steps of ${dt} seconds have been added. The running total is ${fmt(total)}; the exact value is ${fmt(truth)}.`}>
+      <svg viewBox="0 0 400 226" role="img" aria-label={`After ${fmt(now, 1)} seconds, ${steps} step${steps === 1 ? "" : "s"} of ${dt} second${dt === 1 ? "" : "s"} ${steps === 1 ? "has" : "have"} been added. The running total is ${fmt(total)}; the exact value is ${fmt(truth)}.`}>
         <text x={X0} y={11} className="fig-label">{w.rate}: each bar is one step, {w.rname} x {dt} s</text>
         <line x1={X0} x2={X1} y1={ry(0)} y2={ry(0)} className="mi-axis" />
         <line x1={X0} x2={X0} y1={ry(2.1)} y2={ry(-1.1)} className="mi-axis" />

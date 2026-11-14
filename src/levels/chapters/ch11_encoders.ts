@@ -156,6 +156,8 @@ const SPEED_CHECKS = [
   { kind: "var" as const, name: "RightVel", at: 200.5, min: 0.3, max: 0.345, label: "RightVel is about 0.32 ft/s while the right wheel turns at 3.14 rad/s" },
   { kind: "var" as const, name: "LeftVel", at: 450.5, min: -0.345, max: -0.3, label: "LeftVel is about -0.32 ft/s while the left wheel turns backwards" },
   { kind: "var" as const, name: "RightVel", at: 450.5, min: -0.01, max: 0.01, label: "RightVel is 0 while the right wheel stands still" },
+  { kind: "var" as const, name: "LeftDist", at: 150.5, min: 0.083, max: 0.0858, label: "LeftDist is about 0.084 ft at 150 ms, while the wheel is turning" },
+  { kind: "var" as const, name: "RightDist", at: 150.5, min: 0.0415, max: 0.0429, label: "RightDist is about 0.042 ft at 150 ms" },
   { kind: "var" as const, name: "LeftDist", min: 0.115, max: 0.118, label: "LeftDist ends at 0.116 ft", hint: "Distance in feet is the wheel angle in radians times (1.235/12.0). Keep the decimal point: 1/12 is an integer division and gives 0." },
   { kind: "var" as const, name: "RightDist", min: 0.0895, max: 0.0915, label: "RightDist ends at 0.091 ft" },
 ];
@@ -479,6 +481,8 @@ ${READ_RIGHT}
         { kind: "reg", reg: "EQep2Regs.QDECCTL", field: "QSRC", equals: 0, label: "eQEP2 is in quadrature count mode", hint: "Quadrature count is QSRC = 0, as in the eQEP1 block." },
         { kind: "reg", reg: "EQep2Regs.QPOSMAX", equals: 0xffffffff, label: "eQEP2 uses the full 32-bit range", hint: "Write 0xFFFFFFFF, as in the eQEP1 block. With 0 the counter has no room to count." },
         { kind: "reg", reg: "EQep2Regs.QEPCTL", field: "QPEN", equals: 1, label: "eQEP2 is enabled", hint: "The last line of the eQEP2 block must write QPEN = 1." },
+        { kind: "var", name: "LeftWheel", at: 135.5, min: 0.49, max: 0.51, label: "LeftWheel is 0.5 rad halfway through the motion" },
+        { kind: "var", name: "RightWheel", at: 135.5, min: 0.74, max: 0.76, label: "RightWheel is 0.75 rad halfway through the motion" },
         { kind: "var", name: "LeftWheel", min: 0.99, max: 1.01, label: "LeftWheel is 1.0 rad after 0.25 s at 4 rad/s" },
         { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel is 1.5 rad after 0.25 s at 6 rad/s", hint: "0 with a message under the code: the message names the setting that stops the counter. 0 with no message: the scale factor is still 0.0, or an integer division such as 1/40000 made it 0. About 30: the gear ratio of 20 is missing. Negative: 2000*20 wrapped around, write 2000.0*20.0." },
       ],
@@ -586,6 +590,8 @@ ${INIT_ALL}
       checks: [
         { kind: "var", name: "RightWheel", at: 135.5, min: 0.74, max: 0.76, label: "RightWheel is 0.75 rad halfway through the motion", hint: "0: the function still returns 0, or it divides integers (raw/40000 is 0 for less than a full turn). Multiply raw by the whole factor: raw*(2*PI/(2000.0*20.0))." },
         { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel ends at 1.5 rad", hint: "One wheel turn is 2000.0*20.0 counts and 2*PI radians. A negative value means 2000*20 wrapped around: write the decimal points." },
+        { kind: "var", name: "LeftWheel", at: 135.5, min: 0.49, max: 0.51, label: "LeftWheel is +0.5 rad halfway through the motion" },
+        { kind: "var", name: "Enc3_rad", at: 135.5, min: -0.26, max: -0.24, label: "Enc3_rad is -0.25 rad halfway through the motion" },
         { kind: "var", name: "LeftWheel", min: 0.99, max: 1.01, label: "LeftWheel ends at +1.0 rad", hint: "-1.0: the left encoder counts down when the robot drives forward, so negate its factor. A huge number: raw must be an int32_t, not unsigned." },
         { kind: "var", name: "Enc3_rad", min: -0.51, max: -0.49, label: "Enc3_rad ends at -0.5 rad", hint: "-0.05: the hand wheel has no gears, its factor is 2*PI/4000.0. A huge positive number: copy QPOSCNT into an int32_t first, so a backward count reads negative." },
       ],
@@ -820,15 +826,17 @@ serial_printf(&SerialA, "L %.2f R %.2f V %.2f\\r\\n", LeftDist, RightDist, AvgVe
 Never print inside the interrupt function: printing is slow, and the next millisecond would be late.
 
 ## The test drive
-The left wheel turns at 4 rad/s and the right wheel at 6 rad/s from 50 ms to 800 ms, then both stop. Feet per radian is \`(1.235/12.0)\`. The last line must read \`L 0.31 R 0.46 V 0.00\`.
+The left wheel turns at 4 rad/s and the right wheel at 6 rad/s from 50 ms to 800 ms. Then both creep at 2 rad/s, which is 0.21 ft/s and below the LED's limit, until 900 ms, and stop. Feet per radian is \`(1.235/12.0)\`. The last line must read \`L 0.33 R 0.48 V 0.00\`.
 `,
       kit: "robot",
       durationMs: 1050,
       stimuli: [
         { at: 50, set: "LEFT_WHEEL_RADPS", value: 4 },
         { at: 50, set: "RIGHT_WHEEL_RADPS", value: 6 },
-        { at: 800, set: "LEFT_WHEEL_RADPS", value: 0 },
-        { at: 800, set: "RIGHT_WHEEL_RADPS", value: 0 },
+        { at: 800, set: "LEFT_WHEEL_RADPS", value: 2 },
+        { at: 800, set: "RIGHT_WHEEL_RADPS", value: 2 },
+        { at: 900, set: "LEFT_WHEEL_RADPS", value: 0 },
+        { at: 900, set: "RIGHT_WHEEL_RADPS", value: 0 },
       ],
       starter: `${DEFS}
 
@@ -941,8 +949,9 @@ ${READ_RIGHT}
       checks: [
         { kind: "serial-period", periodMs: 100, label: "A line is printed every 100 ms", hint: "Too few lines: is UARTPrint ever set, and does the text end with \\r\\n? Too many: set UARTPrint only on every 100th call, and clear it in main before printing." },
         { kind: "serial", matches: "L 0\\.\\d\\d R 0\\.\\d\\d V 0\\.5[0-3]\\r\\n", label: "While driving, the average speed prints as about 0.51 ft/s", hint: "(4 + 6) / 2 = 5 rad/s, times 1.235/12 ft per rad, is 0.51 ft/s. If it prints 0.71, the sum needs parentheses: (LeftVel + RightVel) / 2.0." },
-        { kind: "serial", matches: "L 0\\.31 R 0\\.46 V 0\\.00\\r\\n$", label: "The last line is L 0.31 R 0.46 V 0.00", hint: "Distance is angle times (1.235/12.0). A speed that is not 0 at rest means the old value is not saved after the speed is computed." },
+        { kind: "serial", matches: "L 0\\.33 R 0\\.48 V 0\\.00\\r\\n$", label: "The last line is L 0.33 R 0.48 V 0.00", hint: "Distance is angle times (1.235/12.0). A speed that is not 0 at rest means the old value is not saved after the speed is computed." },
         { kind: "led", led: "LED1", at: 400, on: true, label: "LED1 is on while the robot drives", hint: "On every call, after AvgVel is computed: GPASET for GPIO22 if AvgVel > 0.25, GPACLEAR otherwise." },
+        { kind: "led", led: "LED1", at: 850, on: false, label: "LED1 is off while the robot creeps at 0.21 ft/s", hint: "The limit is 0.25 ft/s, not 0: compare AvgVel with 0.25." },
         { kind: "led", led: "LED1", at: 950, on: false, label: "LED1 is off after the robot stops" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside the interrupt function", hint: "Set UARTPrint in the interrupt function and call serial_printf in the while(1) loop." },
       ],
@@ -1052,6 +1061,8 @@ ${READ_RIGHT}
       checks: [
         { kind: "no-diagnostic", code: "eqep-mux", label: "The encoder pins are connected to their eQEP", hint: "GPIO20 and GPIO21 are still plain GPIO pins (mux 0). EQEP1A and EQEP1B are mux position 1." },
         { kind: "no-diagnostic", code: "eqep-disabled", label: "No counter is read while it is switched off", hint: "The eQEP2 block clears QPEN to set the module up and never sets it again." },
+        { kind: "var", name: "LeftWheel", at: 135.5, min: 0.49, max: 0.51, label: "LeftWheel is 0.5 rad halfway through the motion" },
+        { kind: "var", name: "RightWheel", at: 135.5, min: 0.74, max: 0.76, label: "RightWheel is 0.75 rad halfway through the motion" },
         { kind: "var", name: "LeftWheel", min: 0.99, max: 1.01, label: "LeftWheel is 1.0 rad after 0.25 s at 4 rad/s" },
         { kind: "var", name: "RightWheel", min: 1.49, max: 1.51, label: "RightWheel is 1.5 rad after 0.25 s at 6 rad/s" },
       ],
@@ -1172,7 +1183,7 @@ Keep the previous state of the pair (A, B). On each sample, the old state and th
 The old and new state together are 4 bits, so there are 16 cases. A 16-entry table indexed by those 4 bits turns the whole decoder into one array read. An if-chain works too.
 
 ## The test
-The hand wheel turns forward at 1.5 rad/s for 200 ms, then backward at 0.62 rad/s for 200 ms. It has 4000 counts per turn, so edges come about 1 ms apart at most: a 100 microsecond sample period is fast enough. The encoder is at state 00 when the program starts.
+The hand wheel turns forward at 1.5 rad/s for 200 ms, then backward at 0.61 rad/s for 200 ms. It has 4000 counts per turn, so two edges are never closer than about 1 ms: a 100 microsecond sample period is fast enough. The encoder is at state 00 when the program starts.
 
 Do not use \`EQep3Regs\`.
 `,
@@ -1180,7 +1191,7 @@ Do not use \`EQep3Regs\`.
       durationMs: 420,
       stimuli: [
         { at: 0, set: "HANDWHEEL_RADPS", value: 1.5 },
-        { at: 200, set: "HANDWHEEL_RADPS", value: -0.62 },
+        { at: 200, set: "HANDWHEEL_RADPS", value: -0.61 },
         { at: 400, set: "HANDWHEEL_RADPS", value: 0 },
       ],
       starter: `${DEFS}
@@ -1292,7 +1303,7 @@ __interrupt void cpu_timer0_isr(void)
       checks: [
         { kind: "var", name: "count", at: 100.5, min: 94, max: 97, label: "count is about 95 after 100 ms forward" },
         { kind: "var", name: "count", at: 195.5, min: 185, max: 188, label: "count is about 187 after 195 ms forward", hint: "Twice the expected value: both edges of A and of B count once each, not twice. Half: you are missing the edges of one channel." },
-        { kind: "var", name: "count", min: 111, max: 113, label: "count is back down to 112 after 200 ms backward", hint: "If it kept going up, the direction is not decoded: the same edge counts +1 or -1 depending on the other signal." },
+        { kind: "var", name: "count", equals: 113, label: "count is back down to exactly 113 after 200 ms backward", hint: "If it kept going up, the direction is not decoded: the same edge counts +1 or -1 depending on the other signal. One off: every edge of A and every edge of B counts 1. Counting one channel's edges twice only reaches even numbers." },
         { kind: "source", mustNotMatch: "EQep", label: "The eQEP module is not used" },
       ],
       bonus: [
@@ -1408,6 +1419,8 @@ ${QEP3.replace("EQep3Regs.QPOSMAX = 0xFFFFFFFF;   // use full range of the 32 bi
       checks: [
         { kind: "reg", reg: "EQep3Regs.QPOSMAX", equals: 3999, label: "QPOSMAX is still 3999" },
         { kind: "var", name: "HandVel", at: 200.5, min: 18.5, max: 20.8, label: "HandVel is about 20 rad/s while turning forward" },
+        { kind: "var", name: "HandVel", at: 320.5, min: 18.5, max: 20.8, label: "HandVel is still about 20 rad/s in the millisecond the counter passes 3999", hint: "About -6263 here: the speed is computed from a change of about -4000 counts. Correct delta before you use it for the speed." },
+        { kind: "var", name: "HandVel", at: 491.5, min: -20.8, max: -18.5, label: "HandVel is still about -20 rad/s in the millisecond the counter passes 0 going down" },
         { kind: "var", name: "TotalRad", at: 404.5, min: 7.9, max: 8.1, label: "TotalRad is about 8 rad after 400 ms forward (more than one turn)", hint: "8 rad is 1.27 turns. If you see about 1.7, the angle fell back by 2 pi when the counter passed 3999." },
         { kind: "var", name: "HandVel", at: 700.5, min: -20.8, max: -18.5, label: "HandVel is about -20 rad/s while turning backward" },
         { kind: "var", name: "TotalRad", min: -4.1, max: -3.9, label: "TotalRad ends at -4 rad", hint: "Add up the corrected changes. The counter itself can never show a negative angle or more than one turn." },
@@ -1525,6 +1538,8 @@ ${QEP2}
         { kind: "var", name: "Stalled", at: 900.5, equals: 0, label: "Stalled is 0 while the wheel turns" },
         { kind: "var", name: "SlowVel", at: 1900.5, min: 0.0018, max: 0.0022, label: "SlowVel is 0.002 rad/s (within 10 percent) during the second second" },
         { kind: "var", name: "Stalled", at: 1900.5, equals: 0, label: "Stalled is still 0 at 0.002 rad/s (a count every 79 ms)", hint: "Only 200 ms without a count means stopped." },
+        { kind: "var", name: "Stalled", at: 2100.5, equals: 0, label: "Stalled is still 0 at 2.1 s, 140 ms after the last count", hint: "The wheel counts as stopped only after 200 ms without a count, not sooner." },
+        { kind: "var", name: "Stalled", at: 2250.5, equals: 1, label: "Stalled is 1 at 2.25 s, 290 ms after the last count", hint: "200 calls of the 1 ms interrupt without a change of the count must set Stalled." },
         { kind: "var", name: "SlowVel", min: -0.000001, max: 0.000001, label: "SlowVel is 0 after the wheel has stood still for 200 ms" },
         { kind: "var", name: "Stalled", equals: 1, label: "Stalled is 1 at the end" },
       ],

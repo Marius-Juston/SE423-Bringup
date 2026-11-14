@@ -118,7 +118,7 @@ function BaudMismatch() {
         .bm-fig input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--orange); }
         .bm-fig .bm-in { width: 3.2em; font: inherit; font-family: var(--mono); text-align: center; background: var(--inset); color: var(--text); border: 1px solid var(--border-strong, var(--dim)); border-radius: 4px; }
       `}</style>
-      <svg viewBox="0 0 420 135" role="img" aria-label={`Sender at ${BAUD} baud sends ${codes.map(hex).join(" and ")}. Receiver clock ${Math.abs(err)} percent ${dir}: it reads ${rx.map((q) => hex(q.value)).join(" and ")}${bad.length ? ", wrong" : ", correct"}.`}>
+      <svg viewBox="0 0 420 135" role="img" aria-label={`Sender at ${BAUD} baud sends ${codes.map(hex).join(" and ")}. Receiver clock ${err === 0 ? "exactly right" : `${Math.abs(err)} percent ${dir}`}: it reads ${rx.map((q) => hex(q.value)).join(" and ")}${bad.length ? ", wrong" : ", correct"}.`}>
         <text x={4} y={10} className="fig-label">Sender: {BAUD} baud, sends {codes.map((c) => hex(c) + printable(c)).join(" then ")}</text>
         <text x={4} y={HI + 3} className="fig-label">1</text>
         <text x={4} y={LO + 3} className="fig-label">0</text>
@@ -151,19 +151,19 @@ function BaudMismatch() {
               </g>
             ))}
             <text x={x(q.start)} y={104} className={`bm-res ${q.sent === q.value && !q.framing ? "" : "bad"}`}>
-              {q.sent === q.value && !q.framing ? `✓ read ${hex(q.value)}${printable(q.value)}` : `✗ read ${hex(q.value)}${printable(q.value)}${q.framing ? ", framing error" : ""}`}
+              {q.sent === q.value && !q.framing ? `✓ read ${hex(q.value)}${printable(q.value)}` : q.framing ? `✗ ${hex(q.value)}${printable(q.value)}, framing error` : `✗ read ${hex(q.value)}${printable(q.value)}`}
             </text>
           </g>
         ))}
         <text x={4} y={76} className="fig-label">rx</text>
         <text x={4} y={119} className="fig-label">Receiver: {rxBaud} baud. Each box is one of its bit times, read in the middle.</text>
-        <text x={4} y={131} className="fig-label dim">Stop bit sample: 9.5 receiver bits, each {(Math.abs(r - 1) * 100).toFixed(1)} % too {err >= 0 ? "short" : "long"} = {drift.toFixed(2)} bit off (limit 0.5)</text>
+        <text x={4} y={131} className="fig-label dim">{err === 0 ? "Stop bit sample: 9.5 receiver bits, each exactly right = 0.00 bit off (limit 0.5)" : `Stop bit sample: 9.5 receiver bits, each ${(Math.abs(r - 1) * 100).toFixed(1)} % too ${err > 0 ? "short" : "long"} = ${drift.toFixed(2)} bit off (limit 0.5)`}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
           <span id="bm-e">Receiver</span>
-          <input type="range" min={-12} max={12} step={0.5} value={err} aria-labelledby="bm-e" aria-valuetext={`${Math.abs(err)} percent ${dir}`} onChange={(e) => setErr(+e.target.value)} />
+          <input type="range" min={-12} max={12} step={0.5} value={err} aria-labelledby="bm-e" aria-valuetext={err === 0 ? "exact" : `${Math.abs(err)} percent ${dir}`} onChange={(e) => setErr(+e.target.value)} />
           <strong>{err > 0 ? "+" : ""}{err} %</strong>
         </div>
         <div>

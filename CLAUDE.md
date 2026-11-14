@@ -26,6 +26,8 @@ node tools/shot.mjs map|handbook out.png [--section "Key diagrams"]
 npm run tauri build         # desktop installers (needs Rust and the Tauri system packages)
 ```
 
+Every screen has an address, so a reload and the Back button keep your place: `#/level/<level-id>`, `#/handbook`, `#/sandbox`, `#/settings` after the game's URL (`src/ui/route.ts`).
+
 Run a C program against the simulator from a script: import `runProgram` from `src/sim/runner.ts` and run the script with `npx vite-node script.ts` from the repo root.
 
 ## Layout

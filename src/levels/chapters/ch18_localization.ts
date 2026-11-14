@@ -1286,7 +1286,7 @@ The robot starts at the origin, heading 0. Drive it to (2, 0), (2, 2), (0, 2) an
 3. **Way points**: call \`xy_control\` for way point number \`statePos\`:
 
 \`\`\`c
-near = xy_control(&vref, &turn, 1.0, x, y, xWay[statePos], yWay[statePos], theta, 0.1, 0.5);
+near = xy_control(&vref, &turn, 1.0, x, y, xWay[statePos], yWay[statePos], theta, 0.25, 0.5);
 \`\`\`
 
 It returns 1 when the robot is within 0.5 ft of that point. Then go on to the next one: \`statePos++\`. Never go past the last way point: there the robot must arrive and stop.
@@ -1294,7 +1294,7 @@ It returns 1 when the robot is within 0.5 ft of that point. Then go on to the ne
 The call of \`speed_control(vref, turn)\` is in place.
 
 ## What to expect
-The robot starts each turn 0.5 ft before the corner, as the course robot does. The last two arguments are yours to choose. The final project uses 0.25 and 0.5; a smaller target radius stops closer to the point.
+The robot starts each turn 0.5 ft before the corner, as the course robot does. The last two arguments are the final project's: the robot stops once it is within 0.25 ft of the last point, and it turns to the next point 0.5 ft early. They are yours to choose. A smaller target radius stops closer to the point but takes longer to get there. The two stars pull in opposite directions: home in time, and close to the point.
 
 ## The test
 After 12 s the robot has been round the square and stands still within 0.3 ft of the origin, and your pose estimate is within 0.05 ft of the truth.
@@ -1345,8 +1345,8 @@ ${BENCH}`,
         { kind: "signal", name: "TB_EST_ERR_FT", max: 0.05, label: "Your pose estimate agrees with the truth within 0.05 ft", hint: "No value at all: call tb_report_pose(x, y, theta) on every pass. Otherwise: x and y add V * cos(theta) * 0.001 and V * sin(theta) * 0.001, with V the average wheel speed." },
       ],
       bonus: [
-        { kind: "signal", name: "TB_X_FT", min: -0.15, max: 0.15, label: "Stops within 0.15 ft of the start in x (choose the target radius)" },
-        { kind: "signal", name: "TB_Y_FT", min: -0.15, max: 0.15, label: "Stops within 0.15 ft of the start in y" },
+        { kind: "signal", name: "TB_VLEFT", at: 10500, min: -0.02, max: 0.02, label: "Home and stopped within 10.5 s", hint: "A very small target radius makes the robot creep the last inches. A larger one stops sooner." },
+        { kind: "signal", name: "TB_Y_FT", min: -0.15, max: 0.15, label: "Stops within 0.15 ft of the start (choose the target radius)", hint: "The robot comes home along the y axis and stops as soon as it is inside the target radius. 0.25 ft is too far out." },
       ],
       watch: ["x", "y", "theta", "statePos", "near", "vref", "turn"],
       hints: [
@@ -1485,7 +1485,7 @@ y_w = x sin(phi) + y cos(phi)
 ## body_to_world
 \`body_to_world(xb, yb, rx, ry, rphi, &xw, &yw)\` takes a point in the robot (body) frame and the robot's pose (rx, ry, rphi) and gives the point in the world frame: rotate by \`rphi\`, then add (rx, ry). Call \`rotate\` inside it.
 
-\`main\` already calls both: one easy case each, and the ball of the "Rotate, translate, and back" level, which must land at (7.2623, 1.7793). \`sin\` and \`cos\` take **radians**: the calls convert with \`* PI / 180.0\`.
+\`main\` already calls both: the worked example of "Maths you need: turning a point" for \`rotate\`, an easy case for \`body_to_world\`, and the ball of the "Rotate, shift, and back" level, which must land at (7.2623, 1.7793). \`sin\` and \`cos\` take **radians**: the calls convert with \`* PI / 180.0\`.
 `,
       kit: "robot",
       durationMs: 2,
@@ -1515,7 +1515,7 @@ void body_to_world(float xb, float yb, float rx, float ry, float rphi, float *xw
 
 void main(void)
 {
-    rotate(2.0, 1.0, 90.0 * PI / 180.0, &px, &py);
+    rotate(2.0, 1.0, 30.0 * PI / 180.0, &px, &py);
     body_to_world(1.0, 0.5, 2.0, 3.0, 180.0 * PI / 180.0, &qx, &qy);
     // A ball 3 ft ahead and 1.5 ft to the right of a robot at (4, 1) heading 40 degrees
     body_to_world(3.0, -1.5, 4.0, 1.0, 40.0 * PI / 180.0, &ballx, &bally);
@@ -1551,7 +1551,7 @@ void body_to_world(float xb, float yb, float rx, float ry, float rphi, float *xw
 
 void main(void)
 {
-    rotate(2.0, 1.0, 90.0 * PI / 180.0, &px, &py);
+    rotate(2.0, 1.0, 30.0 * PI / 180.0, &px, &py);
     body_to_world(1.0, 0.5, 2.0, 3.0, 180.0 * PI / 180.0, &qx, &qy);
     // A ball 3 ft ahead and 1.5 ft to the right of a robot at (4, 1) heading 40 degrees
     body_to_world(3.0, -1.5, 4.0, 1.0, 40.0 * PI / 180.0, &ballx, &bally);
@@ -1560,8 +1560,8 @@ void main(void)
 }
 `,
       checks: [
-        { kind: "var", name: "px", min: -1.001, max: -0.999, label: "rotate: (2, 1) turned by 90 degrees has x = -1" },
-        { kind: "var", name: "py", min: 1.999, max: 2.001, label: "rotate: (2, 1) turned by 90 degrees has y = 2", hint: "y_w = x sin(phi) + y cos(phi). Write it through the pointer: *yw = ..." },
+        { kind: "var", name: "px", min: 1.231, max: 1.233, label: "rotate: (2, 1) turned by 30 degrees has x = 1.232" },
+        { kind: "var", name: "py", min: 1.865, max: 1.867, label: "rotate: (2, 1) turned by 30 degrees has y = 1.866", hint: "y_w = x sin(phi) + y cos(phi). Write it through the pointer: *yw = ... 0.134: the second term is added, not subtracted." },
         { kind: "var", name: "qx", min: 0.999, max: 1.001, label: "body_to_world: (1, 0.5) seen by a robot at (2, 3) facing backwards is at x = 1", hint: "Rotate first, then add rx to *xw." },
         { kind: "var", name: "qy", min: 2.499, max: 2.501, label: "... and y = 2.5" },
         { kind: "var", name: "ballx", min: 7.2613, max: 7.2633, label: "The ball is at world x = 7.2623" },
@@ -2584,8 +2584,8 @@ uint32_t numTimer0calls = 0;`,
         { kind: "signal", name: "TB_EST_ERR_FT", max: 0.05, label: "Your pose estimate agrees with the truth within 0.05 ft", hint: "The dead reckoning starts from (1, 1) and 2.8 rad, not from zero." },
       ],
       bonus: [
-        { kind: "signal", name: "TB_VLEFT", at: 6000, min: -0.02, max: 0.02, label: "Arrived and stopped within 6 s" },
-        { kind: "signal", name: "TB_EST_ERR_FT", at: 6000, max: 0.05, label: "... with a good pose estimate" },
+        { kind: "signal", name: "TB_VLEFT", at: 6000, min: -0.02, max: 0.02, label: "Stopped within 6 s" },
+        { kind: "signal", name: "TB_X_FT", at: 6000, min: -1.1, max: -0.9, label: "... and at the target by then: x within 0.1 ft of -1.0 at 6 s" },
         { kind: "isr-time", fn: "cpu_timer0_isr", maxUs: 2, label: "Short interrupt: its longest run is below 2 us", hint: "sin, cos and atan2 cost about 1 us each, sqrt 0.25 us. Sum the heading and the distance in the interrupt, set a flag every few milliseconds, and do the rest in the while (1) loop of main." },
       ],
       watch: ["x", "y", "theta", "state", "vref", "turn"],

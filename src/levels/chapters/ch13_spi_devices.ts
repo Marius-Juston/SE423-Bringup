@@ -676,11 +676,14 @@ Then convert in \`SPIB_isr\`:
 gyrox = gyrox_raw * 250.0 / 32767.0;   // degrees per second
 \`\`\`
 
-The gyro range is +-250 degrees per second, set in \`main()\`. The test rolls the board at -90 degrees per second after 5.5 ms.
+The gyro range is +-250 degrees per second, set in \`main()\`. The test rolls the board at -90 degrees per second after 5.5 ms, and the other way at 40 degrees per second after 9.5 ms.
 `,
       kit: "robot",
       durationMs: 12,
-      stimuli: [{ at: 5.5, set: "IMU_GX_DPS", value: -90 }],
+      stimuli: [
+        { at: 5.5, set: "IMU_GX_DPS", value: -90 },
+        { at: 9.5, set: "IMU_GX_DPS", value: 40 },
+      ],
       starter: `__interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
 void mpu_write(uint16_t reg, uint16_t value);
@@ -769,8 +772,9 @@ ${MPU_WRITE}`,
       checks: [
         { kind: "isr", fn: "SPIB_isr", min: 11, max: 11, label: "SPIB_isr runs once per millisecond", hint: "It runs when RXFFST >= RXFFIL: two words sent, RXFFIL = 2, and both words read before the flag is cleared." },
         { kind: "var", name: "gyrox", at: 5.2, min: -0.01, max: 0.01, label: "gyrox is 0 while the board is still" },
-        { kind: "var", name: "gyrox_raw", equals: -11796, label: "gyrox_raw is -11796 while rolling at -90 degrees per second", hint: "-1 (0xFFFF) means no device answered: pull GPIO66 low before writing SPITXBUF. Any other number comes from another register: the read must start one register before 0x43 (0x8000 | 0x4200), and the reading is the second word received." },
-        { kind: "var", name: "gyrox", min: -90.05, max: -89.95, label: "gyrox is -90 degrees per second", hint: "0 means the sum was done in whole numbers and overflowed: write 250.0 and 32767.0, with the decimal point. A large positive number means gyrox_raw is unsigned: it must be an int16_t." },
+        { kind: "var", name: "gyrox_raw", at: 9.2, equals: -11796, label: "gyrox_raw is -11796 while rolling at -90 degrees per second", hint: "-1 (0xFFFF) means no device answered: pull GPIO66 low before writing SPITXBUF. Any other number comes from another register: the read must start one register before 0x43 (0x8000 | 0x4200), and the reading is the second word received." },
+        { kind: "var", name: "gyrox", at: 9.2, min: -90.05, max: -89.95, label: "gyrox is -90 degrees per second", hint: "0 means the sum was done in whole numbers and overflowed: write 250.0 and 32767.0, with the decimal point. A large positive number means gyrox_raw is unsigned: it must be an int16_t." },
+        { kind: "var", name: "gyrox", min: 39.95, max: 40.05, label: "gyrox ends at 40 degrees per second" },
         { kind: "pin", pin: 66, at: 7.5, level: 1, label: "The chip select is high between reads" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
@@ -1007,13 +1011,15 @@ The timer interrupt starts the message every millisecond and \`SPIB_isr\` collec
 - TODO 4: read the three words into \`dan_first\`, \`dan_adc1\`, \`dan_adc2\`, in that order
 - TODO 5: raise the chip select
 
-The test puts 1.65 V and 1.0 V on the DAN28027's two measuring pins.
+The test puts 1.65 V and 1.0 V on the DAN28027's two measuring pins. After 3.5 ms it changes them to 0.825 V and 2.5 V.
 `,
       kit: "robot",
       durationMs: 6,
       stimuli: [
         { at: 0.1, set: "DAN_ADC1", value: 1.65 },
         { at: 0.1, set: "DAN_ADC2", value: 1.0 },
+        { at: 3.5, set: "DAN_ADC1", value: 0.825 },
+        { at: 3.5, set: "DAN_ADC2", value: 2.5 },
       ],
       starter: `__interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
@@ -1121,9 +1127,12 @@ __interrupt void SPIB_isr(void)
       checks: [
         { kind: "signal", name: "DAN_PWM1", equals: 1500, label: "The DAN28027 received PWM value 1 = 1500", hint: "It only accepts a message that starts with 0x00DA, sent while GPIO29 is low." },
         { kind: "signal", name: "DAN_PWM2", equals: 2250, label: "The DAN28027 received PWM value 2 = 2250" },
-        { kind: "var", name: "dan_adc1", equals: 2048, label: "dan_adc1 is 2048 (1.65 V)", hint: "The first word received is not a reading. The ADC values are the second and third." },
-        { kind: "var", name: "dan_adc2", equals: 1241, label: "dan_adc2 is 1241 (1.0 V)" },
-        { kind: "var", name: "volts1", min: 1.649, max: 1.651, label: "volts1 is 1.65 V" },
+        { kind: "var", name: "dan_adc1", at: 3.4, equals: 2048, label: "dan_adc1 is 2048 (1.65 V) at first", hint: "The first word received is not a reading. The ADC values are the second and third." },
+        { kind: "var", name: "dan_adc2", at: 3.4, equals: 1241, label: "dan_adc2 is 1241 (1.0 V) at first" },
+        { kind: "var", name: "volts1", at: 3.4, min: 1.649, max: 1.651, label: "volts1 is 1.65 V at first" },
+        { kind: "var", name: "dan_adc1", equals: 1024, label: "dan_adc1 ends at 1024 (0.825 V)" },
+        { kind: "var", name: "dan_adc2", equals: 3103, label: "dan_adc2 ends at 3103 (2.5 V)" },
+        { kind: "var", name: "volts1", min: 0.824, max: 0.826, label: "volts1 ends at 0.825 V" },
         { kind: "isr", fn: "SPIB_isr", min: 5, max: 5, label: "SPIB_isr runs once per message" },
         { kind: "pin", pin: 29, at: 3.5, level: 1, label: "The DAN28027's chip select is high between messages" },
         { kind: "pin", pin: 66, at: 3.06, level: 1, label: "The MPU-9250's chip select stays high" },
@@ -1167,15 +1176,16 @@ Put the chapter together: a burst read driven by two interrupts, scaling, an LED
 gz:45.0 az:1.00
 \`\`\`
 
-End the line with \`\\r\\n\`. The test turns the board at 45 degrees per second between 300 ms and 600 ms, and the other way at -30 degrees per second between 700 ms and 900 ms.
+End the line with \`\\r\\n\`. The test turns the board at 45 degrees per second between 300 ms and 600 ms, and the other way at -25 degrees per second between 700 ms and 900 ms. From 920 ms on it turns slowly, at 10 degrees per second: too slow for the LED.
 `,
       kit: "robot",
       durationMs: 1100,
       stimuli: [
         { at: 300, set: "IMU_GZ_DPS", value: 45 },
         { at: 600, set: "IMU_GZ_DPS", value: 0 },
-        { at: 700, set: "IMU_GZ_DPS", value: -30 },
+        { at: 700, set: "IMU_GZ_DPS", value: -25 },
         { at: 900, set: "IMU_GZ_DPS", value: 0 },
+        { at: 920, set: "IMU_GZ_DPS", value: 10 },
       ],
       starter: `__interrupt void cpu_timer0_isr(void);
 __interrupt void SPIB_isr(void);
@@ -1291,13 +1301,14 @@ __interrupt void SPIB_isr(void)
 
 ${MPU_WRITE}`,
       checks: [
-        { kind: "serial", matches: "^gz:0\\.0 az:1\\.00\\r\\ngz:45\\.0 az:1\\.00\\r\\ngz:-30\\.0 az:1\\.00\\r\\ngz:0\\.0 az:1\\.00\\r\\n", label: "The lines are gz:0.0 az:1.00, gz:45.0 az:1.00, gz:-30.0 az:1.00, gz:0.0 az:1.00", hint: "The first word received holds the address byte and register 0x3E. Accelerometer Z is the word after it, gyro Z the last one. Use %.1f and %.2f." },
+        { kind: "serial", matches: "^gz:0\\.0 az:1\\.00\\r\\ngz:45\\.0 az:1\\.00\\r\\ngz:-25\\.0 az:1\\.00\\r\\ngz:10\\.0 az:1\\.00\\r\\n", label: "The lines are gz:0.0 az:1.00, gz:45.0 az:1.00, gz:-25.0 az:1.00, gz:10.0 az:1.00", hint: "The first word received holds the address byte and register 0x3E. Accelerometer Z is the word after it, gyro Z the last one. Use %.1f and %.2f." },
         { kind: "serial-period", periodMs: 250, label: "A line is printed every 250 ms" },
         { kind: "led", led: "LED1", at: 200, on: false, label: "LED1 is off while the board is still" },
         { kind: "led", led: "LED1", at: 450, on: true, label: "LED1 is on while the board turns at 45 degrees per second" },
         { kind: "led", led: "LED1", at: 650, on: false, label: "LED1 goes off again when the turn ends" },
-        { kind: "led", led: "LED1", at: 800, on: true, label: "LED1 is on while the board turns the other way, at -30 degrees per second", hint: "Either direction counts: compare fabs(gyroz) with 20.0." },
-        { kind: "led", led: "LED1", at: 950, on: false, label: "LED1 is off at the end" },
+        { kind: "led", led: "LED1", at: 800, on: true, label: "LED1 is on while the board turns the other way, at -25 degrees per second", hint: "Either direction counts: compare fabs(gyroz) with 20.0." },
+        { kind: "led", led: "LED1", at: 910, on: false, label: "LED1 goes off again when the second turn ends" },
+        { kind: "led", led: "LED1", at: 1050, on: false, label: "LED1 stays off during the slow turn at 10 degrees per second", hint: "The limit is 20 degrees per second: compare fabs(gyroz) with 20.0." },
         { kind: "latency", led: "LED1", after: 300, withinUs: 1300, label: "LED1 reacts within 1.3 ms of the turn starting" },
         { kind: "isr", fn: "SPIB_isr", min: 1095, max: 1100, label: "The sensor is read once per millisecond" },
         { kind: "no-diagnostic", code: "print-in-isr", label: "Nothing is printed inside an interrupt function" },
@@ -1795,7 +1806,7 @@ Nothing is given but the set-up. Write both interrupt functions:
 - \`cpu_timer0_isr\`, every 1 ms: start a burst read that returns the three accelerometer readings, each as one whole word. Decide where the read must start and how many words it needs.
 - \`SPIB_isr\`: take the words, store the readings in \`ax_raw\`, \`ay_raw\`, \`az_raw\`, and compute \`roll\` and \`pitch\` in **degrees**.
 
-The test holds the board flat, then rolls it by 30 degrees, then pitches it up by 20 degrees.
+The test holds the board flat, then rolls it by 30 degrees, then also pitches it up by 20 degrees while it stays rolled.
 `,
       kit: "robot",
       durationMs: 16,
@@ -1803,8 +1814,8 @@ The test holds the board flat, then rolls it by 30 degrees, then pitches it up b
         { at: 5.5, set: "IMU_AY_G", value: 0.5 },
         { at: 5.5, set: "IMU_AZ_G", value: 0.8660254 },
         { at: 10.5, set: "IMU_AX_G", value: -0.3420201 },
-        { at: 10.5, set: "IMU_AY_G", value: 0 },
-        { at: 10.5, set: "IMU_AZ_G", value: 0.9396926 },
+        { at: 10.5, set: "IMU_AY_G", value: 0.4698463 },
+        { at: 10.5, set: "IMU_AZ_G", value: 0.8137977 },
       ],
       starter: `#define PI 3.1415926535897932384626433832795
 
@@ -1915,8 +1926,8 @@ ${MPU_WRITE}`,
         { kind: "var", name: "pitch", at: 4.5, min: -0.1, max: 0.1, label: "Flat: pitch is 0 degrees" },
         { kind: "var", name: "roll", at: 9.5, min: 29.9, max: 30.1, label: "Rolled: roll is 30 degrees", hint: "0.52 would be radians: multiply by 180 / PI." },
         { kind: "var", name: "pitch", at: 9.5, min: -0.1, max: 0.1, label: "Rolled: pitch is still 0 degrees" },
-        { kind: "var", name: "pitch", min: 19.9, max: 20.1, label: "Pitched: pitch is 20 degrees" },
-        { kind: "var", name: "roll", min: -0.1, max: 0.1, label: "Pitched: roll is back at 0 degrees" },
+        { kind: "var", name: "pitch", min: 19.9, max: 20.1, label: "Rolled and pitched: pitch is 20 degrees", hint: "About 22.8: the second argument must be sqrt(ay * ay + az * az), not az alone." },
+        { kind: "var", name: "roll", min: 29.9, max: 30.1, label: "Rolled and pitched: roll is still 30 degrees" },
         { kind: "isr", fn: "SPIB_isr", min: 15, max: 15, label: "The sensor is read once per millisecond" },
         { kind: "no-diagnostic", code: "spi", label: "No SPI problem reported" },
       ],
@@ -1957,13 +1968,14 @@ pwm2 = 1500 - 10 * gyroz;
 
 Rules that keep the bus healthy: never have both chip selects low, read exactly as many words as were sent before clearing the interrupt flag, and give each device its \`TXDLY\`.
 
-The test turns the board at 50 degrees per second after 5.5 ms and puts 1.65 V on the DAN28027's first analog input.
+The test turns the board at 50 degrees per second after 5.5 ms and the other way at -20 degrees per second after 9.5 ms. It puts 1.65 V on the DAN28027's first analog input.
 `,
       kit: "robot",
       durationMs: 12,
       stimuli: [
         { at: 0.1, set: "DAN_ADC1", value: 1.65 },
         { at: 5.5, set: "IMU_GZ_DPS", value: 50 },
+        { at: 9.5, set: "IMU_GZ_DPS", value: -20 },
       ],
       starter: `#define MPU9250 1
 #define DAN28027 2
@@ -2091,9 +2103,11 @@ __interrupt void SPIB_isr(void)
 ${MPU_WRITE}`,
       checks: [
         { kind: "signal", name: "DAN_PWM1", at: 5.4, equals: 1500, label: "Standing still: the DAN28027 receives 1500", hint: "The DAN28027 only accepts a message that starts with 0x00DA, sent while GPIO29 is low and GPIO66 is high." },
-        { kind: "var", name: "gyroz", min: 49.9, max: 50.1, label: "gyroz is 50 degrees per second while turning" },
-        { kind: "signal", name: "DAN_PWM1", equals: 2000, tol: 1.5, label: "Turning: PWM value 1 is 2000" },
-        { kind: "signal", name: "DAN_PWM2", equals: 1000, tol: 1.5, label: "Turning: PWM value 2 is 1000" },
+        { kind: "var", name: "gyroz", at: 9.4, min: 49.9, max: 50.1, label: "gyroz is 50 degrees per second while turning" },
+        { kind: "signal", name: "DAN_PWM1", at: 9.4, equals: 2000, tol: 1.5, label: "Turning at 50: PWM value 1 is 2000" },
+        { kind: "signal", name: "DAN_PWM2", at: 9.4, equals: 1000, tol: 1.5, label: "Turning at 50: PWM value 2 is 1000" },
+        { kind: "signal", name: "DAN_PWM1", equals: 1300, tol: 1.5, label: "Turning at -20: PWM value 1 is 1300" },
+        { kind: "signal", name: "DAN_PWM2", equals: 1700, tol: 1.5, label: "Turning at -20: PWM value 2 is 1700" },
         { kind: "var", name: "dan_adc1", equals: 2048, label: "dan_adc1 is 2048 (1.65 V)" },
         { kind: "isr", fn: "SPIB_isr", min: 22, max: 22, label: "SPIB_isr runs twice per millisecond: once per device" },
         { kind: "signal", name: "DAN_COMMANDS", equals: 11, label: "The DAN28027 receives one complete command per millisecond" },

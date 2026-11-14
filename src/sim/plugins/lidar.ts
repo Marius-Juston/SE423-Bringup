@@ -129,6 +129,9 @@ export const stepAngle = (step: number): number => ((step - FRONT_STEP) * STEP_D
 /** Angle of point i of the course's scan in degrees: (3 i + 44) * 0.3515625 - 135. */
 export const pointDeg = (i: number): number => (G_CLUSTER * i + G_START) * STEP_DEG - 135;
 
+/** How far past its ends (as a fraction of its length) a wall still stops a ray. */
+const CORNER_EPS = 1e-9;
+
 /** Distance in feet from (x, y) along `angle` to the nearest wall, or Infinity. */
 export function castRay(room: Room, x: number, y: number, angle: number): number {
   const dx = Math.cos(angle);
@@ -141,7 +144,8 @@ export function castRay(room: Room, x: number, y: number, angle: number): number
     if (Math.abs(den) < 1e-12) continue; // parallel
     const t = ((x1 - x) * ey - (y1 - y) * ex) / den; // along the ray
     const u = ((x1 - x) * dy - (y1 - y) * dx) / den; // along the wall, 0..1
-    if (t >= 0 && u >= 0 && u <= 1 && t < best) best = t;
+    // A hair past either end still counts: rounding must not let a ray slip out between two walls that meet at a corner.
+    if (t >= 0 && u >= -CORNER_EPS && u <= 1 + CORNER_EPS && t < best) best = t;
   }
   if (room.posts) {
     // A post is a circle: the nearer root of |p + t d - c|^2 = r^2.
@@ -271,7 +275,8 @@ export const worldObjects = (b: Board): Obstacle[] => (b.plugins.get("lidar") as
 export function setWorldObjects(b: Board, objects: Obstacle[]): void {
   const st = b.plugins.get("lidar") as State | undefined;
   if (!st) return;
-  st.objects = objects.slice(0, MAX_OBJECTS).map(tidyObject);
+  // An object with a coordinate that is not a number has no place in the world.
+  st.objects = objects.filter((o) => Object.values(o).every((v) => typeof v !== "number" || Number.isFinite(v))).slice(0, MAX_OBJECTS).map(tidyObject);
   st.world = undefined;
   // Tell everything that watches the room that it has changed.
   b.setInput("LIDAR_ROOM", b.inputs.get("LIDAR_ROOM") ?? 0);

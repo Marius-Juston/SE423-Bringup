@@ -37,7 +37,8 @@
 //   GPIO145..168 at mux 1. An output reaches a pin only while that pin's
 //   mux selects it.
 //
-// Not modelled: dead band, chopper, trip zone, digital compare, HRPWM,
+// Not modelled: dead band, chopper, trip zone, digital compare, HRPWM
+// (a value written to CMPAHR / CMPBHR through CMPA.all gets a warning),
 // CMPC / CMPD, the ETPS count fields (they read as written).
 
 import { EPWMCLK_HZ } from "../consts";
@@ -213,8 +214,16 @@ export class Epwm {
     };
     dev.reg(`${pre}.TBPRD`).hook.after = changed;
     for (const c of ["CMPA", "CMPB"]) {
-      dev.reg(`${pre}.${c}`).hook.after = () => {
+      dev.reg(`${pre}.${c}`).hook.after = (v, before) => {
         this.checkFloat(c);
+        // The register is 32 bits: the compare value is the upper word.
+        if (v & 0xffff && (v & 0xffff) !== (before & 0xffff))
+          b.warn(
+            b.line,
+            "cmp-all",
+            `${pre}.${c} is 32 bits wide: the compare value is its upper half, and the lower half (${c}HR) is the high-resolution part, which is not simulated. ` +
+              `This write put ${v & 0xffff} in ${c}HR and ${v >>> 16} in ${c}. To set the compare value write ${pre}.${c}.bit.${c} = ${v & 0xffff};`,
+          );
         changed();
       };
     }
@@ -595,8 +604,10 @@ export class Epwm {
       if (every) {
         if (m.intCnt < every) m.intCnt++;
         if (m.intCnt >= every) {
-          if (dev.get(`${m.pre}.ETFLG`, "INT")) m.intPending = true;
-          else this.interrupt(m);
+          if (dev.get(`${m.pre}.ETFLG`, "INT")) {
+            m.intPending = true;
+            b.pie.uncleared(3, m.n, `${m.pre}.ETFLG.bit.INT`, `${m.pre}.ETCLR.bit.INT = 1;`);
+          } else this.interrupt(m);
         }
       }
     }

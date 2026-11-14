@@ -209,6 +209,8 @@ export class I2cBus {
           ack = this.dev !== null;
           this.cur = { t, address, read: this.reading, acked: ack, data: [], stopped: false };
           this.log.push(this.cur);
+          // A live run keeps the recent transfers only.
+          if (this.b.historyLimit && this.log.length > this.b.historyLimit) this.log.splice(0, this.log.length - (this.b.historyLimit >> 1));
           if (this.dev) {
             this.addressed = true;
             this.dev.start(this.reading);
@@ -762,8 +764,18 @@ export class I2cMaster {
     const rm = (mode & M_RM) !== 0;
     // The internal data counter is loaded from I2CCNT (0 means 65536).
     let count = dev.get(`${P}.I2CCNT`) || 65536;
-    const address = dev.get(`${P}.I2CSAR`) & 0x7f;
+    const sar = dev.get(`${P}.I2CSAR`);
+    const address = sar & 0x7f;
+    const startLine = this.b.line;
     if (!(yield* this.sendByte((address << 1) | (trx ? 0 : 1), 8))) {
+      // 20.6.2.8: in 7-bit mode only bits 6-0 of I2CSAR are the address. A larger value is usually an 8-bit address.
+      if (sar > 0x7f && sar !== 0x3ff)
+        this.b.warn(
+          startLine,
+          "i2c-address",
+          `I2CSAR holds 0x${sar.toString(16).toUpperCase()}, but a slave address has 7 bits (0x00 to 0x7F) and is written without the read/write bit. Only bits 6 to 0 were sent (0x${address.toString(16).toUpperCase()}) and no device answered. ` +
+            `If 0x${sar.toString(16).toUpperCase()} is the 8-bit address of a data sheet, shift it right by one: I2cbRegs.I2CSAR.all = 0x${(sar >> 1).toString(16).toUpperCase()};`,
+        );
       this.set(S_NACK | S_ARDY);
       yield* this.hold();
       return;

@@ -36,6 +36,8 @@ const bytes = (data: number[]) => data.map((v) => hex(v, 2).slice(2)).join(" ");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 interface SpiBusState {
+  /** Words a long live run has removed from the start of the log. */
+  dropped?: number;
   log: SpiWord[];
 }
 interface Entry {
@@ -184,7 +186,7 @@ function BusLog({ board, window: [, to] }: ViewProps) {
           </li>
         ))}
       </ol>
-      {nSpi > 0 && <p className="bl-sum">SPI: {plural(nSpi, "word")} exchanged so far. Every word sent is a word received.</p>}
+      {nSpi > 0 && <p className="bl-sum">SPI: {plural(nSpi + (spiOf(board)?.dropped ?? 0), "word")} exchanged so far. Every word sent is a word received.</p>}
       {i2cCounts && (
         <p className="bl-sum">
           I2C so far: {last("I2C_STARTS")} START, {last("I2C_STOPS")} STOP, {last("I2C_ADDR_ACKS")} address ACK, {last("I2C_ADDR_NACKS")} address NACK, {plural(last("I2C_DATA_BYTES"), "data byte")}.

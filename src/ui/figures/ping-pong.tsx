@@ -73,13 +73,13 @@ function PingPong() {
     if (bug) {
       const old = last.values.slice(1).filter((x) => x !== null).length;
       text = start + `Then the bug: it raises the flag of ${NAMES[dest]}, the buffer that has just been started. main reads ${NAMES[dest]} while the DMA is filling it: sample ${t} at the front, then ${old ? `samples ${span(last.values.slice(1))}, which are two buffers old` : "empty places"}. The numbers look reasonable, so this mistake is hard to notice.`;
-      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n// BUG: ${NAMES[dest]} has only just been started\n${NAMES[dest]}Ready = 1;`;
+      code = `EALLOW;\nDmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\nEDIS;\n// BUG: ${NAMES[dest]} has only just been started\n${NAMES[dest]}Ready = 1;`;
     } else if (j === 0) {
       text = start + "No buffer is complete yet, so no flag is raised this first time.";
-      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n// not the first time: ${NAMES[other]} is still empty\nif (DMAcount > 0) { ${NAMES[other]}Ready = 1; }`;
+      code = `EALLOW;\nDmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\nEDIS;\n// not the first time: ${NAMES[other]} is still empty\nif (DMAcount > 0) { ${NAMES[other]}Ready = 1; }`;
     } else {
-      text = start + `Then it raises the flag of ${NAMES[other]}: that buffer was completed one sample ago (samples ${span(last.values)}) and the DMA will not touch it for the next ${SIZE} samples. main processes ${NAMES[other]}.`;
-      code = `DmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\n// ${NAMES[other]} was completed one sample ago\n${NAMES[other]}Ready = 1;`;
+      text = start + `Then it raises the flag of ${NAMES[other]}: that buffer was completed one sample ago (samples ${span(last.values)}) and the DMA will not touch it until the next swap, ${SIZE} samples from now. main processes ${NAMES[other]}.`;
+      code = `EALLOW;\nDmaRegs.CH1.DST_ADDR_SHADOW = (Uint32)${NAMES[other]};\nEDIS;\n// ${NAMES[other]} was completed one sample ago\n${NAMES[other]}Ready = 1;`;
     }
   } else {
     title = `Trigger ${t}: one sample copied`;
@@ -93,7 +93,7 @@ function PingPong() {
   const TX0 = 50;
   const TW = 9;
   const tx = (s: number) => TX0 + s * TW;
-  const nextSwap = t === 0 ? 1 : Math.min(T_MAX, Math.floor((t - 1) / SIZE) * SIZE + SIZE + 1);
+  const nextSwap = t === 0 ? 1 : Math.floor((t - 1) / SIZE) * SIZE + SIZE + 1;
 
   return (
     <figure className="figure pingpong" aria-label="Step-through of ping-pong buffering with the DMA">
@@ -109,7 +109,7 @@ function PingPong() {
         {/* main */}
         <rect x="214" y="6" width="200" height="40" rx="4" className={`fig-box ${busy ? (last.ok ? "active" : "hot") : ""}`} />
         <text x="220" y="19" className="fig-label">main</text>
-        <text x="220" y="30" className="fig-label dim">{busy ? `flag ${NAMES[last.buf]}Ready seen:` : "waiting for a flag"}</text>
+        <text x="220" y="30" className="fig-label dim">{busy ? `${NAMES[last.buf]}Ready seen:` : "waiting for a flag"}</text>
         {busy && <text x="408" y="30" textAnchor="end" className="fig-value small">processing {NAMES[last.buf]}</text>}
         {last && (
           <text x="220" y="41" className={`fig-label ${last.ok ? "pp-ok" : "pp-bad"}`}>
@@ -174,7 +174,7 @@ function PingPong() {
       <div className="fig-controls row">
         <button className="btn small" onClick={() => setT(Math.max(0, t - 1))} disabled={t === 0}>Back</button>
         <button className="btn small primary" onClick={() => setT(Math.min(T_MAX, t + 1))} disabled={t >= T_MAX} aria-label="Next sample">Next</button>
-        <button className="btn small" onClick={() => setT(nextSwap)} disabled={t >= T_MAX}>To the next swap</button>
+        <button className="btn small" onClick={() => setT(nextSwap)} disabled={nextSwap > T_MAX}>To the next swap</button>
         <button className="btn small" onClick={() => setT(0)} disabled={t === 0}>Reset</button>
       </div>
       <div className="fig-controls">

@@ -261,6 +261,10 @@ void main(void) {
 });
 
 import { runProgram } from "../src/sim/runner";
+
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
 function runProgramWithPress(source: string) {
   return runProgram({ kit: "robot", source, durationMs: 5, stimuli: [{ at: 2, press: "PB1" }] });
 }

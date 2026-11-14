@@ -3,6 +3,10 @@ import { runProgram, type RunResult, type Stimulus } from "../src/sim/runner";
 import type { CanState } from "../src/sim/plugins/can";
 import { codes } from "./helpers";
 
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 // The CAN part of the final project starter, cut down to sensor 1 and 2 distances.
 const GLOBALS = `
 #define RX_MSG_DATA_LENGTH    8

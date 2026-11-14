@@ -19,7 +19,8 @@
 //   sets     LIDAR_X_FT, LIDAR_Y_FT, LIDAR_THETA_RAD
 //
 // The robot is a disc: it has crashed when a wall or a post is nearer to
-// its centre than its radius (exact distance to every wall and post).
+// its centre than its radius (exact distance to every wall and post), or
+// when its centre is inside a box.
 //
 // For the playground of a live run, b.plugins.get("robot-world") is a
 // RobotWorld: place() puts the robot down somewhere else and clears the
@@ -31,7 +32,7 @@
 import type { SimPlugin } from "../plugin";
 import { worldOf } from "./lidar";
 import { WHEEL_BASE } from "./plant";
-import { clearance } from "../world/terrain";
+import { clearance, insideBox } from "../world/terrain";
 
 /** Feet travelled per radian of wheel rotation (course code: 1.235 / 12). */
 export const FT_PER_WHEEL_RAD = 1.235 / 12;
@@ -74,6 +75,13 @@ export const plugin: SimPlugin = {
       const gy = b.inputs.get("ROBOT_GOAL_Y_FT") ?? goal?.[1];
       if (gx !== undefined && gy !== undefined) b.publish("ROBOT_GOAL_DIST_FT", +Math.hypot(gx - x, gy - y).toFixed(4), t);
     };
+    // Touching a wall or a post, or standing inside a box (far from its sides in a big one).
+    const touches = () => {
+      const w = worldOf(b);
+      return clearance(w, x, y) < ROBOT_RADIUS_FT || insideBox(w, x, y);
+    };
+    let onAt = -1;
+    let pending: ReturnType<typeof b.at> | null = null;
     const step = (t: number) => {
       if (!on) return;
       const dt = (t - last) / 1e9;
@@ -91,17 +99,19 @@ export const plugin: SimPlugin = {
         if (th > Math.PI) th -= 2 * Math.PI;
         if (th <= -Math.PI) th += 2 * Math.PI;
         odo += Math.abs(v) * dt;
-        if (clearance(worldOf(b), x, y) < ROBOT_RADIUS_FT) crashed = true;
+        if (touches()) crashed = true;
       }
       out(t);
-      b.at(t + STEP_NS, step);
+      pending = b.at(t + STEP_NS, step);
     };
     const toStart = () => {
       // A terrain brings its own start; the rooms keep the middle of the 10 ft box.
       const start = (b.inputs.get("WORLD_KIND") ?? 0) !== 0 ? worldOf(b).start : [5, 5, 0];
       x = b.inputs.get("ROBOT_START_X_FT") ?? start[0];
       y = b.inputs.get("ROBOT_START_Y_FT") ?? start[1];
-      th = b.inputs.get("ROBOT_START_THETA_RAD") ?? start[2];
+      const th0 = b.inputs.get("ROBOT_START_THETA_RAD") ?? start[2];
+      // Any start heading, however many turns it holds, is brought into -pi .. pi.
+      th = Math.atan2(Math.sin(th0), Math.cos(th0));
       odo = 0;
       crashed = false;
     };
@@ -110,10 +120,19 @@ export const plugin: SimPlugin = {
         on = true;
         toStart();
         last = t;
+        onAt = t;
         out(t);
-        b.at(t + STEP_NS, step);
+        b.cancel(pending);
+        pending = b.at(t + STEP_NS, step);
       } else if (!v) on = false;
     });
+    // A start pose given at the very instant of switching on counts, whichever stimulus comes first.
+    for (const name of ["ROBOT_START_X_FT", "ROBOT_START_Y_FT", "ROBOT_START_THETA_RAD"])
+      b.onInput(name, (_v, t) => {
+        if (!on || t !== onAt || last !== onAt) return;
+        toStart();
+        out(t);
+      });
     const api: RobotWorld = {
       get on() {
         return on;

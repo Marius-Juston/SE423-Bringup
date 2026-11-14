@@ -619,10 +619,10 @@ Homework 4 connects an RC servo to **GPIO14** of the red homework board. In the 
 - Saturate \`angle\` to -90..90, with two ifs as in \`setEPWM1A\`.
 - Scale: -90 degrees is 4 % of \`TBPRD\`, 0 is 8 %, +90 is 12 %, on a straight line. In counts that is the centre value plus \`angle\` times the counts per degree.
 
-\`main\` is written. It commands 0, 60, -45 and then 200 degrees, 100 ms apart. The meter "RC servo 1" shows where the arm points.
+\`main\` is written. It commands 0, 60, -45, 200 and then -200 degrees, 100 ms apart. The meter "RC servo 1" shows where the arm points.
 `,
       kit: "redboard",
-      durationMs: 400,
+      durationMs: 500,
       inspect: ["EPwm8Regs.TBCTL", "EPwm8Regs.TBPRD", "EPwm8Regs.CMPA"],
       starter: `void init_servo(void);
 void setEPWM8A_RCServo(float angle);
@@ -640,6 +640,8 @@ ${INIT}
     setEPWM8A_RCServo(-45.0);
     DELAY_US(100000);
     setEPWM8A_RCServo(200.0);
+    DELAY_US(100000);
+    setEPWM8A_RCServo(-200.0);
 
     while (1) {
     }
@@ -685,6 +687,8 @@ ${INIT}
     setEPWM8A_RCServo(-45.0);
     DELAY_US(100000);
     setEPWM8A_RCServo(200.0);
+    DELAY_US(100000);
+    setEPWM8A_RCServo(-200.0);
 
     while (1) {
     }
@@ -722,6 +726,17 @@ ${SET_SERVO_A}
           to: 400,
           label: "and the pulse itself stops at 12 %",
           hint: "The servo's arm stops at its mechanical end, but a pulse wider than 12 % pushes against it. Saturate angle in the function.",
+        },
+        { kind: "signal", name: "SERVO1_DEG", at: 495, equals: -90, tol: 0.1, label: "-200 degrees is saturated to -90", hint: "The lower limit needs its own if: below -90 becomes -90." },
+        {
+          kind: "duty",
+          pin: 14,
+          pct: 4,
+          tolPct: 0.2,
+          from: 420,
+          to: 500,
+          label: "and the pulse stops at 4 %",
+          hint: "Without the lower limit, -200 degrees gives a negative count. CMPA has no sign, so it wraps around to a huge number.",
         },
       ],
       hints: [
@@ -909,6 +924,7 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "signal", name: "BUZZER_HZ", at: 610, equals: 0, label: "The buzzer is silent after the scale", hint: "The last entry of song is OFFNOTE. It must be written too, and nothing after it." },
         { kind: "var", name: "noteIndex", equals: 9, label: "noteIndex stops at the end of the song", hint: "Only write and advance while noteIndex is less than SONG_LENGTH." },
         { kind: "duty", pin: 16, pct: 50, tolPct: 1, from: 60, to: 95, label: "The tone is a square wave with 50 % duty", hint: "One toggle per tooth always gives 50 %. Anything else means a second action is still set: CAU must be 0." },
+        { kind: "no-diagnostic", code: "array-bounds", label: "Nothing is read past the end of song", hint: "song[noteIndex] must be inside the if that tests noteIndex < SONG_LENGTH." },
       ],
       hints: [
         "CLKDIV is a code for a power of two: 0 is /1, 1 is /2, 2 is /4. Toggle is action 3. GPIO16 carries EPWM9A at mux index 5.",
@@ -1104,7 +1120,7 @@ EPWM8A is set up. Add:
 3. The sweep in \`cpu_timer0_isr\`, which runs every **20 ms**: add **5** degrees to \`angle\` per call until it reaches 90, then subtract 5 per call until it reaches -90, and repeat. Send \`angle\` to servo A and \`-angle\` to servo B.
 `,
       kit: "redboard",
-      durationMs: 600,
+      durationMs: 1200,
       watch: ["angle", "updown"],
       inspect: ["EPwm8Regs.CMPA", "EPwm8Regs.CMPB", "EPwm8Regs.AQCTLB"],
       starter: `${FREQ}
@@ -1237,6 +1253,8 @@ __interrupt void cpu_timer0_isr(void)
         { kind: "signal", name: "SERVO1_DEG", at: 395, min: 84, max: 90.1, label: "Servo 1 has turned around near 90 degrees" },
         { kind: "signal", name: "SERVO1_DEG", at: 595, min: 34, max: 41, label: "Servo 1 is on its way back, near 35 degrees" },
         { kind: "signal", name: "SERVO2_DEG", at: 595, min: -41, max: -34, label: "Servo 2 mirrors it, near -35 degrees" },
+        { kind: "signal", name: "SERVO1_DEG", at: 1195, min: -72, max: -58, label: "Servo 1 has turned around again at -90 degrees and is coming back, near -65", hint: "When angle reaches -90, set updown back to 1 and start adding." },
+        { kind: "signal", name: "SERVO2_DEG", at: 1195, min: 58, max: 72, label: "Servo 2 mirrors it, near 65 degrees" },
         { kind: "reg", reg: "EPwm8Regs.AQCTLB", field: "CBU", equals: 1, label: "Output B is cleared at CMPB" },
         { kind: "reg", reg: "EPwm8Regs.TBPRD", equals: 31250, label: "The shared period is still 20 ms" },
       ],
@@ -1454,6 +1472,7 @@ __interrupt void cpu_timer1_isr(void)
         { kind: "pin", pin: 16, at: 575, level: 0, label: "GPIO16 is low after the song" },
         { kind: "reg", reg: "GpioCtrlRegs.GPAGMUX2", field: "GPIO16", equals: 0, label: "GPIO16 is a GPIO again", hint: "GPIO_SetupPinMux(16, GPIO_MUX_CPU1, 0); then make it an output and clear it." },
         { kind: "reg", reg: "GpioCtrlRegs.GPADIR", field: "GPIO16", equals: 1, label: "GPIO16 is an output" },
+        { kind: "no-diagnostic", code: "array-bounds", label: "Nothing is read past the end of songarray", hint: "Read songarray[noteIndex] only while noteIndex is below SONG_LENGTH." },
       ],
       bonus: [{ kind: "isr", fn: "cpu_timer1_isr", max: 13, label: "The timer is stopped once the song is over", hint: "CpuTimer1Regs.TCR.bit.TSS = 1; stops the timer." }],
       hints: [
@@ -1490,6 +1509,8 @@ Jumping a motor from stop to full power draws a large current and jerks the gear
       inspect: ["EPwm1Regs.CMPA", "EPwm2Regs.CMPA"],
       stimuli: [
         { at: 20.5, press: "PB1" },
+        { at: 255.5, press: "PB2" },
+        { at: 285.5, release: "PB2" },
         { at: 300.5, release: "PB1" },
         { at: 400.5, press: "PB2" },
         { at: 600.5, release: "PB2" },
@@ -1593,6 +1614,7 @@ ${INIT_MOTORS()}
         { kind: "var", name: "u", at: 21.6, min: 0.04, max: 0.06, label: "The first step after PB1 is pressed is 0.05", hint: "u may change by at most 0.05 per call." },
         { kind: "var", name: "u", at: 100.6, min: 3.9, max: 4.1, label: "After 80 ms u has ramped to 4" },
         { kind: "var", name: "u", at: 250, equals: 8, label: "u lands exactly on 8 and stays", hint: "When the distance to the target is at most one step, set u = target." },
+        { kind: "var", name: "u", at: 284, equals: 8, label: "PB2 pressed as well: PB1 wins and u stays at 8", hint: "Test PB1 first, and PB2 in the else branch." },
         { kind: "signal", name: "LEFT_WHEEL_RADPS", at: 295, min: 22, label: "The left wheel runs forward" },
         { kind: "signal", name: "RIGHT_WHEEL_RADPS", at: 295, min: 22, label: "The right wheel runs forward" },
         { kind: "var", name: "u", at: 380.6, min: 3.9, max: 4.1, label: "After release u ramps down, not to 0 at once" },
@@ -1731,7 +1753,7 @@ void tone(float hz)
         { kind: "reg", reg: "EPwm9Regs.TBCTL", field: "CLKDIV", at: 55, equals: 0, label: "440 Hz fits without a divider: CLKDIV = 0" },
         { kind: "signal", name: "BUZZER_HZ", at: 155, equals: 55, tol: 0.1, label: "55 Hz", hint: "25 000 000 / 55 is 454 545 counts: too many for TBPRD. Halve the clock until it fits." },
         { kind: "reg", reg: "EPwm9Regs.TBCTL", field: "CLKDIV", at: 155, equals: 3, label: "55 Hz needs a divide by 8: CLKDIV = 3" },
-        { kind: "signal", name: "BUZZER_HZ", at: 195, equals: 4000, tol: 2, label: "4000 Hz" },
+        { kind: "signal", name: "BUZZER_HZ", at: 195, equals: 4000, tol: 0.3, label: "4000 Hz, exactly", hint: "3999.4 Hz: one tooth is TBPRD + 1 counts, so TBPRD is the count minus 1." },
         { kind: "reg", reg: "EPwm9Regs.TBCTL", field: "CLKDIV", at: 195, equals: 0, label: "Back to CLKDIV = 0 for a high note" },
         { kind: "signal", name: "BUZZER_HZ", at: 229, equals: 0, label: "tone(0) is silence" },
       ],

@@ -26,15 +26,27 @@ export const plugin: SimPlugin = {
           b.warn(b.line, `dac-ref-${ch}`, `DAC${ch.toUpperCase()} is using the VDAC pin as its reference (DACREFSEL = 0). The course uses the 3.0 V reference VREFHI: set ${pre}.DACCTL.bit.DACREFSEL = 1. The value shown assumes 3.0 V.`);
         b.publish(out, enabled ? (dev.get(`${pre}.DACVALA`, "DACVALA") * VREF) / 4096 : 0);
       };
+      // A value written while the output is off; taken back if DACOUTEN is set later.
+      let offKey = "";
       b.dev.reg(`${pre}.DACVALS`).hook.after = (v) => {
         b.dev.set(`${pre}.DACVALA`, v & 0xfff);
+        if (v & 0xfff && !b.libDepth && !offKey && b.dev.get(`${pre}.DACOUTEN`, "DACOUTEN") === 0) {
+          offKey = `dac-off-${ch}:${b.line}`;
+          b.warn(b.line, `dac-off-${ch}`, `${pre}.DACVALS was written, but the output of DAC${ch.toUpperCase()} is switched off (DACOUTEN = 0), so the pin stays at 0 V. Between EALLOW; and EDIS; write ${pre}.DACOUTEN.bit.DACOUTEN = 1;`);
+        }
         update();
       };
       // TRM Table 12-2: the value registers are not write-protected (the
       // course writes DACVALS from interrupt functions without EALLOW).
       b.dev.reg(`${pre}.DACVALS`).hook.protect = false;
       b.dev.reg(`${pre}.DACVALA`).hook.protect = false;
-      b.dev.reg(`${pre}.DACOUTEN`).hook.after = update;
+      b.dev.reg(`${pre}.DACOUTEN`).hook.after = (v) => {
+        if (v & 1 && offKey) {
+          b.diagnostics.delete(offKey);
+          offKey = "";
+        }
+        update();
+      };
       b.dev.reg(`${pre}.DACCTL`).hook.after = update;
     }
   },

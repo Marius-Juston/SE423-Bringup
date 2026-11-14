@@ -58,7 +58,7 @@ function DacStaircase() {
     setBits(b);
   };
   const why = !over
-    ? `${asked} fits in ${bits} bits. The output is ${asked} steps of ${bits === 12 ? "0.732 mV" : fmtV(lsb)}: ${asked} x 3.0 / ${levels} = ${fmtV(vout)}.${asked === top ? " This is the top: 3.0 V itself is never reached." : ""}`
+    ? `${asked} fits in ${bits} bits. The output is ${asked} step${asked === 1 ? "" : "s"} of ${bits === 12 ? "0.732 mV" : fmtV(lsb)}: ${asked} x 3.0 / ${levels} = ${fmtV(vout)}.${asked === top ? " This is the top: 3.0 V itself is never reached." : ""}`
     : limit
       ? `${asked} does not fit in ${bits} bits, but the code limits it to ${top} first. The output stays at the top, ${fmtV(vout)}, which is the closest the DAC can get.`
       : `${asked} needs ${bits + 1} bits. The register keeps only the lower ${bits}: the top bit, worth ${levels}, is lost. ${asked} - ${levels} = ${kept}, so the output falls to ${fmtV(vout)} instead of staying at the top.`;
@@ -117,8 +117,8 @@ function DacStaircase() {
         </div>
         <div>
           <span>In binary</span>
-          <span className="dacst-bits" role="img" aria-label={`${asked} in binary is ${bin}; the register keeps ${kept}`}>
-            {over && !limit ? <s>{bin[0]}</s> : <span style={{ color: "var(--dim)" }}>{bin[0]}</span>}
+          <span className="dacst-bits" role="img" aria-label={`${asked} in binary is ${bin}; the register ${limit && over ? "gets" : "keeps"} ${kept}`}>
+            {over && !limit ? <s>{bin[0]}</s> : <span style={{ color: "var(--dim)" }}>{limit && over ? "0" : bin[0]}</span>}
             <b>{limit && over ? top.toString(2) : bin.slice(1)}</b>
           </span>
           <code>kept: {kept} = {fmtV(vout)}</code>

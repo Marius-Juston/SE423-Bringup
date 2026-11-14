@@ -129,7 +129,7 @@ function UartFrame() {
           {["A", "a", "0", "U", "Hi"].map((t) => (
             <button key={t} className="fig-opt" aria-pressed={text === t} aria-label={`send ${t}`} onClick={() => setText(t)}>{t}</button>
           ))}
-          <code id="uf-h">{n ? `serial_printf(&SerialA, "${text.replace(/["\\]/g, "\\$&")}");` : "one or two characters"}</code>
+          <code id="uf-h">{n ? `serial_printf(&SerialA, "${text.replace(/["\\]/g, "\\$&").replace(/%/g, "%%")}");` : "one or two characters"}</code>
         </div>
         <div>
           <span>Baud rate</span>

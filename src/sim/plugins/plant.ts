@@ -211,6 +211,8 @@ function install(b: Board): void {
   // ---- world inputs ----
   for (const [name, w] of [["TB_LOAD_LEFT", p.left], ["TB_LOAD_RIGHT", p.right]] as const)
     b.onInput(name, (v, t) => {
+      // A value that is not a number would stay in the wheel speed for the rest of the run.
+      if (!Number.isFinite(v)) return;
       start();
       advance(t);
       w.load = v;
@@ -218,6 +220,7 @@ function install(b: Board): void {
   // Picking the robot up and putting it down somewhere else.
   const place = (name: string, set: (v: number) => void) =>
     b.onInput(name, (v, t) => {
+      if (!Number.isFinite(v)) return;
       start();
       advance(t);
       set(v);

@@ -126,6 +126,8 @@ export class CanModule {
   objs: MsgObj[] = [];
   /** Frames this module sent, with the time the frame ended. */
   sent: (CanFrame & { t: number })[] = [];
+  /** Frames sent since power-up (the list above is cut short in a long live run). */
+  sentTotal = 0;
   /** Frames stored in a message object. */
   stored = 0;
   /** The most recent frames stored in a message object (at most RECEIVED_MAX), oldest first. */
@@ -416,7 +418,9 @@ export class CanModule {
       this.put("CAN_ES", (this.get("CAN_ES") & ~ES_LEC) | ES_TXOK);
       if (this.get("CAN_CTL") & CTL_SIE) this.statusPending = true;
       this.sent.push({ ...frame, t });
-      b.publish("CAN_TX_FRAMES", this.sent.length, t);
+      b.publish("CAN_TX_FRAMES", ++this.sentTotal, t);
+      // A live run keeps the recent frames only.
+      if (b.historyLimit && this.sent.length > b.historyLimit) this.sent.splice(0, this.sent.length - (b.historyLimit >> 1));
       // Nobody else at this bit rate: the frame is not acknowledged and is lost.
       if (Math.abs(this.bitRate() - SENSOR_BITRATE) <= 0.01 * SENSOR_BITRATE) for (const fn of this.onTx) fn(frame, t);
       b.mem.writes++;

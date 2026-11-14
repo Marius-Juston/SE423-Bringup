@@ -3,6 +3,10 @@ import { runProgram, type Check, type RunResult, type Stimulus } from "../src/si
 import { MOTOR_DEAD_ZONE, MOTOR_TAU_S, WHEEL_MAX_RADPS, servoAngle, wheelTarget } from "../src/sim/plugins/actuators";
 import { KITS } from "../src/sim/world/kits";
 
+import { Board } from "../src/sim/board";
+// These tests run bare programs for one peripheral, without the InitSysCtrl() every real program starts with.
+Board.expectInitSysCtrl = false;
+
 const run = (source: string, durationMs: number, checks: Check[] = [], kit = "robot", stimuli?: Stimulus[]) => runProgram({ kit, source, durationMs, checks, stimuli });
 
 function ok(r: RunResult): void {

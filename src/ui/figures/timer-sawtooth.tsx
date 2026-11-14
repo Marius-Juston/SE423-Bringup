@@ -137,7 +137,9 @@ function TimerSawtooth() {
   const usNum = Number(us);
   const product = Math.floor(200 * usNum);
   const valid = us.trim() !== "" && Number.isFinite(usNum) && product >= 1;
-  const fits = valid && product <= 4294967296;
+  // ConfigCpuTimer computes (Uint32)(Freq * Period): the product itself must fit in 32 bits.
+  const fits = valid && product <= 4294967295;
+  const whole = Number.isInteger(200 * usNum);
   const prdReal = product - 1;
 
   return (
@@ -276,12 +278,12 @@ function TimerSawtooth() {
             <p className="ts-bad">Enter a period of at least 0.005 microseconds (one clock cycle).</p>
           ) : !fits ? (
             <p className="ts-bad">
-              200 x {us} = {product} does not fit in the 32-bit PRD. The longest period without the prescaler is 2^32 x 5 ns, about 21.47 s.
+              200 x {us} = {product} does not fit in the 32-bit PRD. The longest period without the prescaler is about 21.47 s.
             </p>
           ) : (
             <pre>
               <code>
-                {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = 200 x ${us} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
+                {`ConfigCpuTimer(&CpuTimer0, 200, ${us});\n// PRD = ${whole ? `200 x ${us}` : `(whole part of 200 x ${us})`} - 1 = ${prdReal}, prescaler = 0\n// period = (${prdReal} + 1) x 1 x 5 ns = ${nice((prdReal + 1) * NS)}\nCpuTimer0Regs.TCR.all = 0x4000;  // TIE = 1, TSS = 0: start`}
               </code>
             </pre>
           )}
