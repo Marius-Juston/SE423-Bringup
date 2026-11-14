@@ -15,9 +15,13 @@ const CSS = `
 .pcm-doc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.2rem; }
 .pcm-title { text-align: center; font-weight: 700; font-size: 0.78rem; margin: 0.1rem 0 0.3rem; }
 .pcm-title + table { margin-bottom: 0.5rem; }
-.pcm-doc table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; line-height: 1.15; }
+.pcm-doc table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--fig-small, 11px); line-height: 1.15; }
 .pcm-doc th { font-weight: 700; color: var(--text); padding: 2px 1px; border-bottom: 1.5px solid var(--text); text-align: center; overflow-wrap: anywhere; }
-.pcm-doc th[scope="row"] { border-bottom: 1px solid var(--border); text-align: left; width: 2.35rem; white-space: nowrap; padding-left: 0; }
+.pcm-doc th[scope="row"] { border-bottom: 1px solid var(--border); text-align: left; width: 4.4em; white-space: nowrap; padding-left: 0; }
+/* In the larger view all sixteen channels get room for their names; a narrow window scrolls sideways. */
+.fig-big .pcm-doc { min-width: 62rem; }
+/* The first row sets the column widths of a fixed table: its corner cell is the row names' column. */
+.pcm-doc thead th:first-child { width: 4.4em; }
 .pcm-doc td { padding: 0; border-bottom: 1px solid var(--border); vertical-align: top; }
 .pcm-cell { display: block; width: 100%; min-height: 2.5em; padding: 2px 0; background: none; letter-spacing: -0.01em; border: 1px solid transparent; border-radius: 3px; color: var(--text); font: inherit; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
 .pcm-cell.none { color: var(--dim); }
@@ -115,7 +119,7 @@ function PieChannelMap() {
         <table>
           <thead>
             <tr>
-              <th scope="col" style={{ width: "2.35rem" }}></th>
+              <th scope="col" style={{ width: "4.4em" }}></th>
               {cols.map((y) => (
                 <th key={y} scope="col" className={y === c ? "pcm-colsel" : undefined}>INTx.{y}</th>
               ))}

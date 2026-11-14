@@ -186,7 +186,8 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
   const [benchPref, setBenchW] = usePref<number | null>("w-bench", null);
   // Briefings and quick checks are for reading: the text gets the larger share.
   const taskDefault = isCode ? clamp(Math.round(winW * 0.27), 340, 520) : reading ? Math.round(winW * 0.56) : 460;
-  const taskMax = isCode ? Math.min(520, winW - 2 * SPLIT - EDITOR_MIN - BENCH_MIN) : winW - SPLIT - (reading ? 340 : 440);
+  // The briefing may be dragged as wide as the editor and the board allow at their smallest: a figure in it grows with it.
+  const taskMax = isCode ? winW - 2 * SPLIT - EDITOR_MIN - BENCH_MIN : winW - SPLIT - (reading ? 340 : 440);
   const taskW = clamp(num(taskPref, taskDefault), 240, taskMax);
   const { bench: benchW, max: benchMax } = benchWidth(winW, taskW, benchPref);
 

@@ -15,9 +15,9 @@ const CSS = `
 .iv-svg { width: 100%; display: block; background: var(--inset); border: 1px solid var(--border); border-radius: 6px; }
 .iv-ring { fill: none; stroke: var(--border-strong); stroke-width: 1; }
 .iv-ring.g1 { stroke-dasharray: 3 3; }
-.iv-txt { fill: var(--text); font-size: 10px; font-family: var(--sans); }
+.iv-txt { fill: var(--text); font-size: 11.5px; font-family: var(--sans); }
 .iv-txt.dim { fill: var(--dim); }
-.iv-num { fill: var(--value); font-size: 11px; font-family: var(--mono); font-weight: 700; }
+.iv-num { fill: var(--value); font-size: 12px; font-family: var(--mono); font-weight: 700; }
 .iv-src { margin: 0 0 0.4rem; font-size: 0.9rem; color: var(--text); }
 .iv-src b { color: var(--value); font-weight: 700; }
 .iv-table { width: 100%; border-collapse: collapse; margin: 0.4rem 0 0; font-size: 0.85rem; }

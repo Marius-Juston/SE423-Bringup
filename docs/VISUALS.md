@@ -59,6 +59,15 @@ What makes a good figure here:
   at 380 px. Text with a class of its own uses
   `font-size: max(8.5px, calc(9px / var(--fig-k, 1)))`. A sentence does not
   belong in the drawing: put it in the status line or the caption.
+- **Small text has three ways out.** A drawing in a narrow pane cannot make
+  every label large, so: the reader can drag the briefing pane wider (a
+  drawing grows with it), every figure has a **Larger** button that opens it
+  across the window in the state it is in (Escape or a press outside closes
+  it), and the smallest label follows the Text size setting. Text in an HTML
+  table of a figure uses `font-size: var(--fig-small, 11px)`: 11 px at least
+  in the text and larger in the larger view. Never set a fixed size under
+  11 px on HTML text. Column widths of such a table are in `em`, so they
+  grow with the text.
 - **Correct.** Numbers, register names, bit values and formulas come from
   the Technical Reference Manual (text extracted for grep at the path given
   in your task) and the course code. Cite the TRM section in a comment at

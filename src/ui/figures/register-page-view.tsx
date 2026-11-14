@@ -20,11 +20,11 @@ const CSS = `
 .rpv-sub.dim { color: var(--dim); }
 .rpv-cap { text-align: center; font-weight: 700; font-size: 0.76rem; margin: 0.55rem 0 0.25rem; }
 .rpv-row { display: grid; grid-template-columns: repeat(8, 1fr); margin-bottom: 0.3rem; }
-.rpv-num { text-align: center; font-size: 9px; color: var(--dim); font-family: var(--mono); }
-.rpv-seg { min-width: 0; margin: 0 -0.5px; padding: 3px 1px; background: var(--surface); border: 1px solid var(--text); border-radius: 0; color: var(--text); font-size: 9px; line-height: 1.1; letter-spacing: -0.02em; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
+.rpv-num { text-align: center; font-size: var(--fig-small, 11px); color: var(--dim); font-family: var(--mono); }
+.rpv-seg { min-width: 0; margin: 0 -0.5px; padding: 3px 1px; background: var(--surface); border: 1px solid var(--text); border-radius: 0; color: var(--text); font-size: var(--fig-small, 11px); line-height: 1.1; letter-spacing: -0.02em; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
 .rpv-seg.rsv { color: var(--dim); }
 .rpv-seg[aria-pressed="true"] { background: var(--orange); color: var(--accent-ink); border-color: var(--orange); position: relative; z-index: 1; }
-.rpv-acc { text-align: center; font-size: 9px; font-family: var(--mono); letter-spacing: -0.03em; color: var(--text); padding-top: 1px; overflow-wrap: anywhere; }
+.rpv-acc { text-align: center; font-size: var(--fig-small, 11px); font-family: var(--mono); letter-spacing: -0.03em; color: var(--text); padding-top: 1px; overflow-wrap: anywhere; }
 .rpv-acc.sel { color: var(--orange); font-weight: 700; }
 .rpv-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.72rem; line-height: 1.25; background: var(--surface); margin-top: 0.5rem; }
 .rpv-table caption { background: var(--surface); margin: 0; padding: 0.4rem 0 0.25rem; border-radius: 6px 6px 0 0; }

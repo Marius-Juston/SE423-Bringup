@@ -68,7 +68,7 @@ function draw(mm: number[], scans: number | undefined): ReactElement {
     <div className="lview">
       <style>{`
         .lview svg { width: 100%; display: block; background: var(--inset); border: 1px solid var(--border); border-radius: 6px; }
-        .lview text { font-family: var(--sans); font-size: 10px; fill: var(--dim); }
+        .lview text { font-family: var(--sans); font-size: 11.5px; fill: var(--dim); }
         .lview text.lbl { fill: var(--text); font-weight: 600; }
         .lview-grid { stroke: var(--border); }
         .lview-line { stroke: var(--info); stroke-width: 1.8; fill: none; stroke-linejoin: round; }
