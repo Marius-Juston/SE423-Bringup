@@ -133,6 +133,7 @@ export const CONTRAST_RULES = [
   { name: "code colours", inks: ["--code-kw", "--code-type", "--code-num", "--code-str", "--code-comment", "--code-macro", "--code-fn", "--code-prop", "--text"], on: ["--inset"], min: 7 },
   { name: "code colours on a highlighted line or a selection", inks: ["--code-kw", "--code-type", "--code-num", "--code-str", "--code-comment", "--code-macro", "--code-fn", "--code-prop", "--text"], on: ["--accent-soft+--inset", "--bad-soft+--inset", "--select", "--bg", "--surface"], min: 4.5 },
   { name: "words on the board", inks: ["--pcb-ink"], on: ["--pcb"], min: 4.5 },
+  { name: "what is lit up on the board", inks: ["--pcb-lit"], on: ["--pcb", "--pcb-edge"], min: 3 },
   { name: "words on a chosen filter", inks: ["--bg"], on: ["--text", "--value"], min: 4.5 },
 ];
 /** Pairs that mean different things and must stay apart without colour vision. */

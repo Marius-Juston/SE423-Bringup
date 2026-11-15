@@ -10,10 +10,15 @@
 // when the part is pointed at, focused or chosen. Silkscreen words are
 // drawn only where they are at least 9 px tall.
 //
+// A figure of a board lesson shows the same picture as a tour (`tour`): a
+// part of the board, with the names a lesson talks about written on small
+// plates so that copper passing under a name does not disturb it, and
+// without the board's own silkscreen, which is too small to read there.
+//
 // Pointing works three ways, none of them by hovering alone: the mouse
 // (move to look, click to keep), touch (tap), and the keyboard: the parts
 // and the LaunchPad's pins are two groups that the arrow keys move through.
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useId, useMemo, useRef, useState } from "react";
 import { HW_BOARD } from "../../sim/wiring/board";
 import { NET_KINDS, netWords, pinsOfNet, type Highlight, type NetKind, type Pick } from "../../sim/wiring/nets";
 import type { Inst, Shape, Status, Tone } from "../../sim/wiring/types";
@@ -27,6 +32,7 @@ export const PICTURE_CSS = `
 .wb-halo { paint-order: stroke; stroke: var(--pcb); stroke-width: 0.6px; stroke-linejoin: round; }
 .wb-focus { position: absolute; transform: translate(-50%, -50%); background: transparent; border: 0; padding: 0; border-radius: 4px; cursor: pointer; }
 .wb-focus:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+.wb-plate { fill: var(--pcb); fill-opacity: 0.92; }
 @media (any-pointer: coarse) { .wb-focus { min-width: 44px; min-height: 44px; } }
 `;
 const MIN_TEXT_PX = 9;
@@ -61,7 +67,7 @@ function shape(s: Shape, k: number, px: number) {
     case "circle":
       return <circle key={k} cx={s.x} cy={s.y} r={s.r} fill={s.fill ? t.fill : "none"} stroke={t.stroke} strokeWidth={0.3} strokeDasharray={t.dash} />;
     case "line":
-      return <line key={k} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.tone === "lit" ? "var(--accent)" : t.stroke} strokeWidth={s.w ?? 0.35} strokeLinecap="round" strokeDasharray={t.dash} />;
+      return <line key={k} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} stroke={s.tone === "lit" ? "var(--pcb-lit)" : t.stroke} strokeWidth={s.w ?? 0.35} strokeLinecap="round" strokeDasharray={t.dash} />;
     case "text":
       return (s.size ?? 1.6) * px >= MIN_TEXT_PX ? <text key={k} x={s.x} y={s.y} fontSize={s.size ?? 1.6} textAnchor={s.anchor ?? "middle"} fill="var(--pcb-ink)">{s.text}</text> : null;
   }
@@ -107,7 +113,8 @@ export interface PinName {
  * column inwards, so every pin has a place of its own that nothing else may take.
  */
 export function pinNames(px: number): PinName[] {
-  const h = (NAME_PX + 1) / px;
+  // A plate is never taller than a row of pins.
+  const h = Math.min((NAME_PX + 1) / px, 2.54);
   return B.launchpad.pins.map(([x, y, net, n]): PinName => {
     const text = net < 0 ? "NC" : B.nets[net];
     const outer = Math.abs(x - LP_CENTRE) > 21.5;
@@ -136,7 +143,7 @@ for (const [x, y, net] of B.holes) PADS.set(net, `${PADS.get(net) ?? ""}M${x - 0
 /** Everything that never changes while a program runs. */
 const Still = memo(function Still({ px: scale, words }: { px: number; words: boolean }) {
   const lp = B.launchpad;
-  // Without words (a figure in a brief) nothing is written in the drawing: a scale of 0 keeps every word out.
+  // Without words (a tour, which writes its own names) the silkscreen is left out: a scale of 0 keeps every word out.
   const px = words ? scale : 0;
   // A silkscreen word that a pin's name would cover is left out while the names show.
   const plates = pinsNamed(px) ? pinNames(px).map((p) => p.box) : [];
@@ -200,10 +207,221 @@ interface Label {
   y: number;
   anchor: "start" | "middle" | "end";
   text: string;
+  /** The plate behind the name (a tour): x, y, width, height. */
+  box?: Box;
+}
+
+/** The tag of a device attached to a pin: its name, and the line from the pin to it. */
+type Tag = Label & { id: string; px: number; py: number; x2: number; x0: number; x1: number };
+
+/** A tour: the picture as a figure of a board lesson shows it. */
+export interface Tour {
+  /** The part of the board that is shown, in millimetres: x, y, width, height. */
+  crop: Box;
+  /** The parts that are named, each with the words to write ("" for the part's own short name), or every part. */
+  parts: "all" | Record<string, string>;
+  /** The LaunchPad pins that are named by their signal, or all 80. What is lit up is named too. */
+  pins: "all" | number[];
+  /** The listed pins are written by their number ("21"), and with their signal once they are lit up ("21: 5V"). */
+  numbers?: boolean;
+  /** The LaunchPad and its four pairs of headers are named. */
+  heads?: boolean;
+}
+
+/** The header pairs of the LaunchPad as they stand side by side: the words, the middle of the two columns, the first row. */
+const HEAD_PAIRS: [string, number, number][] = [["J1", "J3"], ["J4", "J2"], ["J5", "J7"], ["J8", "J6"]].map(([a, b]) => {
+  const at = (j: string) => B.launchpad.pins[(+j.slice(1) - 1) * 10];
+  return [`${a} ${b}`, (at(a)[0] + at(b)[0]) / 2, Math.min(...B.launchpad.pins.filter((p) => p[0] === at(a)[0] && Math.abs(p[1] - at(a)[1]) < 30).map((p) => p[1]))];
+});
+
+/**
+ * Places for names that stand in a column: each as near to its own height as it can be while two names
+ * stay `d` apart. `ys` is in rising order; the result keeps that order.
+ */
+export function spread(ys: number[], d: number, lo: number, hi: number): number[] {
+  const groups: { first: number; n: number; mid: number }[] = [];
+  for (let i = 0; i < ys.length; i++) {
+    groups.push({ first: i, n: 1, mid: ys[i] });
+    while (groups.length > 1) {
+      const b = groups[groups.length - 1];
+      const a = groups[groups.length - 2];
+      if (b.mid - ((b.n - 1) * d) / 2 - (a.mid + ((a.n - 1) * d) / 2) >= d) break;
+      const n = a.n + b.n;
+      let sum = 0;
+      for (let k = a.first; k < a.first + n; k++) sum += ys[k];
+      groups.splice(groups.length - 2, 2, { first: a.first, n, mid: sum / n });
+    }
+  }
+  const out: number[] = [];
+  for (const g of groups) {
+    const half = ((g.n - 1) * d) / 2;
+    const mid = Math.max(lo + half, Math.min(hi - half, g.mid));
+    for (let k = 0; k < g.n; k++) out.push(mid - half + k * d);
+  }
+  return out;
+}
+
+interface TourPin extends PinName {
+  /** A short line from the pin to a name that had to move away from its row. */
+  leader?: [number, number, number, number];
+}
+
+/** The names of some pins in a tour: beside their pins, moved apart where the rows are closer than a name is tall. */
+function tourPinNames(px: number, items: { n: number; text: string }[], crop: Box): TourPin[] {
+  const h = (NAME_PX + 1) / px;
+  const d = (NAME_PX + 2) / px;
+  const edge = 3 / px;
+  const cols = new Map<number, { n: number; text: string; x: number; y: number }[]>();
+  for (const it of items) {
+    const at = PIN_AT.get(it.n);
+    if (!at || at[0] < crop[0] || at[0] > crop[0] + crop[2] || at[1] < crop[1] || at[1] > crop[1] + crop[3]) continue;
+    const col = cols.get(at[0]) ?? [];
+    col.push({ ...it, x: at[0], y: at[1] });
+    cols.set(at[0], col);
+  }
+  const out: TourPin[] = [];
+  for (const [x, col] of cols) {
+    col.sort((a, b) => a.y - b.y);
+    const ys = spread(col.map((c) => c.y), d, crop[1] + edge + h / 2, crop[1] + crop[3] - edge - h / 2);
+    const moved = ys.some((y, k) => Math.abs(y - col[k].y) > 0.3);
+    const outer = Math.abs(x - LP_CENTRE) > 21.5;
+    const left = (x < LP_CENTRE) === outer;
+    const gap = moved ? 3.4 : 1.5;
+    col.forEach((c, k) => {
+      const w = nameWidth(c.text, px);
+      // The plate stays inside the picture, even where that brings it nearer to its pin.
+      const bx = Math.max(crop[0] + edge, Math.min(crop[0] + crop[2] - edge - w, left ? x - gap - w + 0.3 : x + gap - 0.3));
+      const tx = left ? bx + w - 0.3 : bx + 0.3;
+      out.push({ n: c.n, text: c.text, x: tx, y: ys[k] + (NAME_PX * 0.36) / px, anchor: left ? "end" : "start", box: [bx, ys[k] - h / 2, w, h], leader: moved ? [x + (left ? -0.7 : 0.7), c.y, left ? bx + w : bx, ys[k]] : undefined });
+    });
+  }
+  return out;
+}
+
+/** What a tour writes beside a part. */
+function tourName(p: Pictured): string {
+  const part = p.inst.part!;
+  const k = part.kind;
+  return k === "buzzer" ? "Buzzer" : k === "buzzer-jumper" ? "Buzzer jumper" : k === "photoresistor" ? "Photoresistor" : k === "battery" ? "Battery pack (on the back)" : k === "joystick" ? "Joystick" : k === "imu" ? "IMU" : k === "imu-jumper" ? (part.signal ?? part.id) : k === "power-led" ? `${part.rail ?? part.id} LED` : part.id;
 }
 
 const PIN_AT = new Map(B.launchpad.pins.map((p) => [p[3], p] as const));
 const LP_MID = B.launchpad.x + B.launchpad.w / 2;
+const WHOLE: Box = [0, 0, B.w, B.h];
+
+/**
+ * The names of a tour: the pins first (the listed ones and what is lit up), then the LaunchPad and its headers,
+ * then the parts, the chosen one before the others. Every name gets a plate and a place that no other name
+ * and no part has; one that finds no place is left out, and is then in the sentence under the picture.
+ */
+function tourLabels(px: number, tour: Tour, onBoard: Pictured[], selected: string, pick: Pick | null, light: Highlight | null) {
+  const mm = (n: number) => n / px;
+  const tag = mm(NAME_PX);
+  const crop = tour.crop;
+  const edge = mm(3);
+  const h = mm(NAME_PX + 2);
+  const lp = B.launchpad;
+  const width = (text: string) => mm(text.length * NAME_PX * 0.6 + 4);
+  const taken: { box: Box; id?: string }[] = [];
+  const boxAt = (x: number, y: number, anchor: Label["anchor"], text: string): Box => [anchor === "start" ? x : anchor === "end" ? x - width(text) : x - width(text) / 2, y - h * 0.8, width(text), h];
+  const inside = (b: Box) => b[0] >= crop[0] + edge && b[1] >= crop[1] + edge && b[0] + b[2] <= crop[0] + crop[2] - edge && b[1] + b[3] <= crop[1] + crop[3] - edge;
+  const labels: Label[] = [];
+  /** `self`: the part the name belongs to, on whose own ground it may stand. */
+  const place = (key: string, text: string, tries: [number, number, Label["anchor"]][], self?: string): boolean => {
+    for (const [x, y, anchor] of tries) {
+      const b = boxAt(x, y, anchor, text);
+      if (!inside(b) || taken.some((t) => (self === undefined || t.id !== self) && hits(t.box, b))) continue;
+      taken.push({ box: b });
+      labels.push({ key, x: anchor === "start" ? x + mm(2) : anchor === "end" ? x - mm(2) : x, y, anchor, text, box: b });
+      return true;
+    }
+    return false;
+  };
+  const seen = (b: Box) => hits(b, crop);
+
+  // 1. Pins: the listed ones and those of what is lit up, or all 80 where a row is tall enough.
+  const lit = new Set<number>();
+  for (const net of light?.near ?? []) for (const [n] of pinsOfNet(net)) lit.add(n);
+  if (pick?.t === "pin") lit.add(pick.n);
+  const signal = (n: number) => {
+    const net = PIN_AT.get(n)![2];
+    return net < 0 ? "NC" : B.nets[net];
+  };
+  let named: TourPin[];
+  if (tour.pins === "all" && 2.54 * px >= NAME_PX - 0.5) named = pinNames(px).filter((p) => seen(p.box));
+  else {
+    const listed = tour.pins === "all" ? [] : tour.pins;
+    const text = (n: number) => (!tour.numbers ? signal(n) : lit.has(n) || n === 1 ? `${n}: ${signal(n)}` : `${n}`);
+    // Two columns that face each other can ask for the same room: what is lit up keeps its name, the other is left out.
+    const all = tourPinNames(px, [...new Set([...listed, ...lit])].map((n) => ({ n, text: text(n) })), crop);
+    named = [];
+    for (const p of [...all.filter((q) => lit.has(q.n)), ...all.filter((q) => !lit.has(q.n))]) if (!named.some((q) => hits(q.box, p.box))) named.push(p);
+  }
+  for (const p of named) taken.push({ box: p.box });
+
+  // 2. Parts claim their own ground, so no name lands on another part.
+  const shown = onBoard.filter((p) => seen(p.inst.part!.box));
+  for (const p of shown) if (p.inst.kind !== "battery") taken.push({ box: p.inst.part!.box, id: p.inst.id });
+  for (const p of shown) if (p.inst.kind === "joystick") taken.push({ box: [p.inst.part!.box[0] + p.inst.part!.box[2] - 5.5, p.inst.part!.box[1] + p.inst.part!.box[3] + 0.8, 5.5, 5.5], id: p.inst.id });
+
+  // 3. The LaunchPad and its header pairs, each pair above its two columns.
+  if (tour.heads) {
+    for (const [words, x, y] of HEAD_PAIRS) place(`head-${words}`, words, [[x, y - Math.max(1.5, mm(7.5)) - mm(3), "middle"]]);
+    place("launchpad", "LaunchPad", [[LP_MID, lp.y + 24, "middle"], [LP_MID, lp.y + 62, "middle"], [LP_MID, lp.y + lp.h - 4, "middle"]]);
+  }
+
+  // 4. The parts. LEDs stand too close for "LED16" each: they get their number, and the block its name.
+  const wanted = tour.parts;
+  const listed = (p: Pictured) => wanted === "all" || p.inst.id in wanted;
+  const first = shown.find((p) => p.inst.id === selected);
+  const leds = shown.filter((p) => p.inst.kind === "led" && listed(p));
+  const numbered = width("16") + mm(1.5) <= 5.6;
+  const mid = (p: Pictured) => p.inst.part!.box[1] + p.inst.part!.box[3] / 2;
+  // Names of parts that stand in a column (push buttons, the IMU's jumpers) move apart like the pins' names.
+  const row = new Map<string, number>();
+  for (const kind of ["button", "imu-jumper"]) {
+    const col = shown.filter((p) => p.inst.kind === kind && (listed(p) || p === first)).sort((a, b) => mid(a) - mid(b));
+    spread(col.map(mid), mm(NAME_PX + 3), crop[1] + edge + mm(7), crop[1] + crop[3] - edge - mm(7)).forEach((y, k) => row.set(col[k].inst.id, y));
+  }
+  for (const p of [...(first ? [first] : []), ...shown.filter((q) => q !== first)]) {
+    if (!listed(p) && p !== first) continue;
+    const id = p.inst.id;
+    const k = p.inst.kind;
+    const [x, y, w, hh] = p.inst.part!.box;
+    let text = (wanted !== "all" && wanted[id]) || tourName(p);
+    if (k === "led") {
+      if (numbered && listed(p)) text = id.replace(/^LED/, "");
+      else if (p !== first) continue;
+    }
+    const cx = x + w / 2;
+    const cy = y + hh / 2 + tag * 0.35;
+    const fy = (row.get(id) ?? y + hh / 2) + tag * 0.35;
+    const above: [number, number, Label["anchor"]] = [cx, y - 0.9, "middle"];
+    const below: [number, number, Label["anchor"]] = [cx, y + hh + tag + 0.3, "middle"];
+    const tries: [number, number, Label["anchor"]][] =
+      k === "led" ? [[x + w + 0.5, cy, "start"], [x - 0.5, cy, "end"], above, below]
+      : k === "button" ? [[cx - 3.4, fy, "end"], [x - 0.6, fy, "end"]]
+      : k === "inverter" || k === "imu" ? [[cx, cy, "middle"], above, below]
+      : k === "buzzer" ? [below, above, [cx, cy, "middle"]]
+      : k === "buzzer-jumper" ? [[x - 0.8, cy, "end"], below, [x + w + 0.8, cy, "start"]]
+      : k === "imu-jumper" ? [[x - 0.8, fy, "end"], [x + w + 0.8, fy, "start"]]
+      : k === "battery" ? [[cx, y + hh - 1.5, "middle"], [cx, y + hh / 2, "middle"]]
+      : k === "joystick" ? [[x - 1, cy, "end"], [x + w, y - 1, "end"], [x + w, y + hh + 7.5 + tag, "end"]]
+      : k === "servo" ? [[x + w + 13.5, cy, "start"], [x + 1, y - 0.8, "start"], [x + 1, y + hh + tag, "start"]]
+      : [above, below, [x + w + 1, cy, "start"], [x - 1, cy, "end"]];
+    // The buzzer's jumper stands beside the buzzer: where its whole name finds no room, "Jumper" says enough.
+    if (!place(`part-${id}`, text, tries, id) && k === "buzzer-jumper") place(`part-${id}`, "Jumper", tries, id);
+  }
+  if (leds.length > 1) {
+    const boxes = leds.map((p) => p.inst.part!.box);
+    const x0 = Math.min(...boxes.map((b) => b[0]));
+    const x1 = Math.max(...boxes.map((b) => b[0] + b[2]));
+    const y0 = Math.min(...boxes.map((b) => b[1]));
+    const y1 = Math.max(...boxes.map((b) => b[1] + b[3]));
+    place("group-led", "LED1 to LED16", [[(x0 + x1) / 2, y1 + tag + 1, "middle"], [x1 + 1, y1 + tag + 1, "end"], [(x0 + x1) / 2, y0 - 1.2, "middle"], [x0 - 1.5, (y0 + y1) / 2, "end"]]);
+  }
+  return { labels, tags: [] as Tag[], named, lightLabels: [] as Label[] };
+}
 
 export interface PictureProps {
   px: number;
@@ -221,13 +439,15 @@ export interface PictureProps {
   onPick: (p: Pick | null, keep: boolean) => void;
   onHold: (id: string, down: boolean) => void;
   /**
-   * A plain picture for a figure in a brief: nothing is written in the drawing and it has no stops for the
-   * keyboard of its own. The figure's sentence and its lists carry the names and the choice.
+   * The picture for a figure in a brief: a part of the board, with the names the lesson talks about on plates.
+   * It has no stops for the keyboard of its own: the figure's lists carry the choice.
    */
-  plain?: boolean;
+  tour?: Tour;
 }
 
-export function BoardPicture({ px, parts, selected, pick, light, routes, live, label, onPick, onHold, plain = false }: PictureProps) {
+export function BoardPicture({ px, parts, selected, pick, light, routes, live, label, onPick, onHold, tour }: PictureProps) {
+  const clipId = useId();
+  const crop: Box = tour?.crop ?? WHOLE;
   const svg = useRef<SVGSVGElement>(null);
   const [holding, setHolding] = useState("");
   const [pinCursor, setPinCursor] = useState(1);
@@ -240,7 +460,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
 
   // ----- names: placed where nothing else is written -----
   const { labels, tags, named, lightLabels } = useMemo(() => {
-    if (plain) return { labels: [], tags: [], named: [], lightLabels: [] };
+    if (tour) return tourLabels(px, tour, onBoard, selected, pick, light);
     const taken: Box[] = [];
     const width = (text: string) => mm(text.length * NAME_PX * 0.6 + 4);
     const h = mm(NAME_PX + 2);
@@ -259,7 +479,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
       return { key, x, y, anchor, text };
     };
     // 0. The LaunchPad's pin names have their own places: all 80, before anything else.
-    const named = pinsNamed(px) ? pinNames(px) : [];
+    const named: TourPin[] = pinsNamed(px) ? pinNames(px) : [];
     for (const p of named) taken.push(p.box);
     // What is written already: silkscreen words that show at this zoom, and the words of parts that are only drawn.
     for (const t of B.texts) if (t[2] * px >= MIN_TEXT_PX && !named.some((p) => hits(p.box, silkBox(t)))) taken.push(silkBox(t));
@@ -277,7 +497,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
       }
     }
     // 2. Devices attached to pins.
-    const tags: (Label & { id: string; px: number; py: number; x2: number; x0: number; x1: number })[] = [];
+    const tags: Tag[] = [];
     for (const { inst } of parts) {
       if (inst.part) continue;
       for (const d of inst.def.terminals) {
@@ -332,13 +552,13 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
     if (!each["imu-jumper"]) group("imu-jumper", "IMU jumpers");
     return { labels, tags, named, lightLabels };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [px, parts, selected, light, live, onBoard, plain]);
+  }, [px, parts, selected, pick, light, live, onBoard, tour]);
 
   // ----- the mouse: what is under the pointer -----
   const under = (e: { clientX: number; clientY: number }): Pick | null => {
     const r = svg.current!.getBoundingClientRect();
-    const x = ((e.clientX - r.left) / r.width) * B.w;
-    const y = ((e.clientY - r.top) / r.height) * B.h;
+    const x = crop[0] + ((e.clientX - r.left) / r.width) * crop[2];
+    const y = crop[1] + ((e.clientY - r.top) / r.height) * crop[3];
     const slack = Math.max(0.6, mm(12));
     let best: Pick | null = null;
     let area = Infinity;
@@ -404,9 +624,25 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
 
   const sel = onBoard.find((p) => p.inst.id === selected);
   const cursorPin = PIN_AT.get(pick?.t === "pin" ? pick.n : pinCursor)!;
-  const name = (l: Label, cls = "wb-halo") => (
-    <text key={l.key} x={l.x} y={l.y} fontSize={tag} textAnchor={l.anchor} fill="var(--pcb-ink)" className={cls}>{l.text}</text>
-  );
+  const name = (l: Label, cls = "wb-halo") =>
+    l.box ? (
+      <g key={l.key} className="wb-name" data-name={l.key}>
+        <rect className="wb-plate" x={l.box[0]} y={l.box[1]} width={l.box[2]} height={l.box[3]} rx={0.3} />
+        <text x={l.x} y={l.y} fontSize={tag} textAnchor={l.anchor} fill="var(--pcb-ink)">{l.text}</text>
+      </g>
+    ) : (
+      <text key={l.key} x={l.x} y={l.y} fontSize={tag} textAnchor={l.anchor} fill="var(--pcb-ink)" className={cls}>{l.text}</text>
+    );
+  // In a tour the ring of a chosen pin is filled with the board's colour and the pin is drawn again inside it, so
+  // the ring stands out whatever lies next to it.
+  const pinRing = pick?.t === "pin" && (tour ? (
+    <g className="wb-pinring">
+      <rect x={cursorPin[0] - 1.4} y={cursorPin[1] - 1.4} width={2.8} height={2.8} rx={0.6} fill="var(--pcb)" stroke="var(--pcb-lit)" strokeWidth={Math.max(0.5, mm(2.5))} />
+      <rect x={cursorPin[0] - 0.6} y={cursorPin[1] - 0.6} width={1.2} height={1.2} fill="var(--pcb-lit)" />
+    </g>
+  ) : (
+    <rect aria-hidden="true" x={cursorPin[0] - 1.9} y={cursorPin[1] - 1.9} width={3.8} height={3.8} rx={0.6} fill="none" stroke="var(--pcb-lit)" strokeWidth={Math.max(0.5, mm(2.5))} />
+  ));
   // The keyboard's two stops are real buttons laid over the picture: one on the chosen part, one on a LaunchPad pin.
   const over = (x: number, y: number, w: number, h: number): React.CSSProperties => {
     const side = (v: number) => Math.max(24, v * px + 8);
@@ -415,13 +651,13 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
   };
   const pinNet = cursorPin[2];
   return (
-    <div className="wb-stage" style={{ width: B.w * px, height: B.h * px }}>
+    <div className="wb-stage" style={{ width: crop[2] * px, height: crop[3] * px }}>
     <svg
       ref={svg}
       className="wb-board"
-      viewBox={`0 0 ${B.w} ${B.h}`}
-      width={B.w * px}
-      height={B.h * px}
+      viewBox={crop.join(" ")}
+      width={crop[2] * px}
+      height={crop[3] * px}
       role="img"
       aria-label={label}
       onPointerMove={(e) => e.pointerType === "mouse" && !holding && onPick(under(e), false)}
@@ -441,11 +677,14 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
       onPointerUp={release}
       onPointerCancel={release}
     >
-      <Still px={px} words={!plain} />
+      {tour && <defs><clipPath id={clipId}><rect x={crop[0]} y={crop[1]} width={crop[2]} height={crop[3]} /></clipPath></defs>}
+      <Still px={px} words={!tour} />
+      {/* A tour shows a part of the board: what reaches past its edge is cut there. */}
+      <g clipPath={tour ? `url(#${clipId})` : undefined}>
       {routes.length > 0 && <AllRoutes nets={routes} />}
       {/* What is lit up: its copper (top solid, bottom dashed), every pad of it, and its LaunchPad pin. */}
       {light && (
-        <g aria-hidden="true" data-light={light.near.map((n) => B.nets[n]).join(" ")}>
+        <g aria-hidden={tour ? undefined : "true"} data-light={light.near.map((n) => B.nets[n]).join(" ")}>
           {light.far.map((net) => (
             <g key={`f${net}`} fill="none" stroke="var(--pcb-ink)" strokeLinecap="round">
               <path d={(TRACES.get(net)?.[0] ?? "") + (TRACES.get(net)?.[1] ?? "")} strokeWidth={0.5} strokeDasharray="0.1 0.9" />
@@ -453,7 +692,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
             </g>
           ))}
           {light.near.map((net) => (
-            <g key={net} fill="none" stroke="var(--focus)" strokeLinecap="round" strokeLinejoin="round">
+            <g key={net} fill="none" stroke="var(--pcb-lit)" strokeLinecap="round" strokeLinejoin="round">
               <path d={TRACES.get(net)?.[0] ?? ""} strokeWidth={0.85} />
               <path d={TRACES.get(net)?.[1] ?? ""} strokeWidth={0.85} strokeDasharray="1.5 1" />
               <path d={PADS.get(net) ?? ""} strokeWidth={0.4} />
@@ -467,7 +706,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
         {onBoard.flatMap(({ inst }) =>
           inst.opts.fitted === "no" ? [] : (inst.part!.links ?? []).map(([x1, y1, x2, y2], k) => {
             const lit = !!light && ((pick?.t === "part" && pick.id === inst.id) || inst.part!.nets.some((n) => light.near.includes(n)));
-            const ink = lit ? "var(--focus)" : "var(--pcb-ink)";
+            const ink = lit ? "var(--pcb-lit)" : "var(--pcb-ink)";
             return (
               <g key={`${inst.id}-${k}`} data-link={inst.id} data-lit={lit ? "yes" : "no"}>
                 <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={ink} strokeWidth={lit ? 0.9 : 0.5} strokeDasharray="2.6 0.7 0.5 0.7" strokeLinecap="round" />
@@ -478,16 +717,19 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
           }),
         )}
       </g>
-      <g aria-hidden={plain || undefined}>
+      <g>
         {onBoard.map(({ inst, status }) => (
-          <g key={inst.id} className="wb-part" data-part={inst.id} data-state={status.text}>
+          // In a tour the lists under the picture choose a part, so a part does not ask for the pointer.
+          <g key={inst.id} className={tour ? undefined : "wb-part"} data-part={inst.id} data-state={status.text}>
             <title>{`${inst.label}: ${status.text}`}</title>
-            {inst.def.draw!(inst, status, inst.part!.box).map((s, k) => shape(s, k, plain ? 0 : px))}
+            {inst.def.draw!(inst, status, inst.part!.box).map((s, k) => shape(s, k, tour ? 0 : px))}
           </g>
         ))}
         {sel && (
-          <rect className="wb-cursor" x={sel.inst.part!.box[0] - 1.2} y={sel.inst.part!.box[1] - 1.2} width={sel.inst.part!.box[2] + 2.4} height={sel.inst.part!.box[3] + 2.4} rx={1} fill="none" stroke="var(--focus)" strokeWidth={Math.max(0.5, mm(2.5))} strokeDasharray={`${mm(6)} ${mm(3)}`} />
+          <rect className="wb-cursor" x={sel.inst.part!.box[0] - 1.2} y={sel.inst.part!.box[1] - 1.2} width={sel.inst.part!.box[2] + 2.4} height={sel.inst.part!.box[3] + 2.4} rx={1} fill="none" stroke="var(--pcb-lit)" strokeWidth={Math.max(0.5, mm(2.5))} strokeDasharray={`${mm(6)} ${mm(3)}`} />
         )}
+        {/* In a tour the ring of a chosen pin lies under the names, so it crosses none. */}
+        {tour && pinRing}
       </g>
       {tags.map((t) => (
         <g key={t.key} className="wb-part" data-part={t.id}>
@@ -496,7 +738,8 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
           {t.text && name(t)}
         </g>
       ))}
-      <g aria-hidden="true">
+      <g aria-hidden={tour ? undefined : "true"}>
+        {named.map((p) => p.leader && <line key={`to-${p.n}`} x1={p.leader[0]} y1={p.leader[1]} x2={p.leader[2]} y2={p.leader[3]} stroke="var(--pcb-ink)" strokeWidth={Math.max(0.2, mm(1))} />)}
         {named.map((p) => (
           <g key={p.n} className="wb-pinname" data-pin={p.n}>
             <rect x={p.box[0]} y={p.box[1]} width={p.box[2]} height={p.box[3]} rx={0.3} fill="var(--pcb)" fillOpacity={0.88} />
@@ -506,10 +749,11 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
         {labels.map((l) => name(l))}
         {lightLabels.map((l) => name(l, "wb-halo wb-lightname"))}
       </g>
-      {pick?.t === "pin" && <rect aria-hidden="true" x={cursorPin[0] - 1.9} y={cursorPin[1] - 1.9} width={3.8} height={3.8} rx={0.6} fill="none" stroke="var(--focus)" strokeWidth={Math.max(0.5, mm(2.5))} />}
+      {!tour && pinRing}
+      </g>
     </svg>
       {/* The two stops in the order they stand on the page, so Tab never jumps upwards. */}
-      {!plain && (() => {
+      {!tour && (() => {
         const partStop = sel ? (
           <button
             key="parts"
@@ -569,9 +813,9 @@ export function Legend({ routes }: { routes: boolean }) {
       <li>{swatch(<><rect x="6" y="1.5" width="4" height="5" fill="var(--accent)" stroke={ink} strokeWidth="0.5" /><path d="M2.5,4h2M11.5,4h2M3,1.5l1.5,1M13,1.5l-1.5,1" stroke={ink} strokeWidth="0.5" /></>)} LED on: filled, with rays</li>
       <li>{swatch(<><circle cx="8" cy="4" r="1.6" fill="var(--accent)" stroke={ink} strokeWidth="0.5" /><circle cx="8" cy="4" r="3" fill="none" stroke={ink} strokeWidth="0.5" /></>)} Button pressed: filled, in a second ring</li>
       <li>{swatch(<><path d="M5,4L11,2.5" stroke={ink} strokeWidth="0.6" /><circle cx="11" cy="2.5" r="1.6" fill="none" stroke={ink} strokeWidth="0.5" /></>)} Joystick: the knob moves off centre</li>
-      <li>{swatch(<><circle cx="5" cy="5" r="1" fill="none" stroke={ink} strokeWidth="0.5" /><path d="M5,5L11,2" stroke="var(--accent)" strokeWidth="1.1" /></>)} Servo: the horn turns; its name gives the angle</li>
+      <li>{swatch(<><circle cx="5" cy="5" r="1" fill="none" stroke={ink} strokeWidth="0.5" /><path d="M5,5L11,2" stroke="var(--pcb-lit)" strokeWidth="1.1" /></>)} Servo: the horn turns; its name gives the angle</li>
       <li>{swatch(<><rect x="4" y="1.5" width="8" height="5" fill="none" stroke={ink} strokeWidth="0.5" strokeDasharray="1 0.8" /><path d="M4,1.5l8,5M12,1.5l-8,5" stroke={ink} strokeWidth="0.5" /></>)} Not soldered: dashed box with a cross</li>
-      <li>{swatch(<><path d="M1,2.5H15" stroke="var(--focus)" strokeWidth="1.2" /><path d="M1,5.5H15" stroke="var(--focus)" strokeWidth="1.2" strokeDasharray="2 1.4" /></>)} Lit-up connection: solid on the top of the board, dashed on the bottom</li>
+      <li>{swatch(<><path d="M1,2.5H15" stroke="var(--pcb-lit)" strokeWidth="1.2" /><path d="M1,5.5H15" stroke="var(--pcb-lit)" strokeWidth="1.2" strokeDasharray="2 1.4" /></>)} Lit-up connection: solid on the top of the board, dashed on the bottom</li>
       <li>{swatch(<><path d="M2,4H14" stroke={ink} strokeWidth="0.9" strokeDasharray="4 1.2 1 1.2" /><circle cx="2" cy="4" r="1.2" fill={ink} /><circle cx="14" cy="4" r="1.2" fill={ink} /></>)} Soldered lead or wire: made by hand, not copper</li>
       {routes && NET_KINDS.map((k) => (
         <li key={k.id}>{swatch(<path d="M1,4H15" stroke={ink} strokeWidth={Math.max(0.6, KIND_STYLE[k.id].w * 1.6)} strokeDasharray={KIND_STYLE[k.id].dash} strokeLinecap="round" />)} {k.name}</li>

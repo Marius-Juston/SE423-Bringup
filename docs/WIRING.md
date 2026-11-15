@@ -24,6 +24,7 @@ src/sim/wiring/
   parts/          one file per part, picked up automatically
 src/sim/plugins/bench_wiring.ts     the bench while a program runs
 src/ui/wiring/                      the panel: store.ts, BoardPicture.tsx, WiringBench.tsx
+                                    the board lessons' figures: tours.ts, TourFigure.tsx
 tests/wiring_bench.test.ts          rules, faults, checks, saving, the guard
 tests/e2e/wiring.e2e.ts             the panel with the keyboard and with the mouse
 ```
@@ -67,7 +68,7 @@ One difference from the board panel alone: at rest the joystick's axes are at 1.
 
 The picture shows connections with the board's real copper, compiled into the data file.
 
-- Point at a part, a pad or a LaunchPad pin (mouse), click or tap it, or move to it with the arrow keys. Everything joined to it lights up: the traces (solid on the top layer, dashed on the bottom), every pad of the net and the LaunchPad pin, with a label such as "GPIO22, pin 8, J1.8". Behind an inverter chip or a resistor the far side is drawn too, dotted.
+- Point at a part, a pad or a LaunchPad pin (mouse), click or tap it, or move to it with the arrow keys. Everything joined to it lights up in yellow (`--pcb-lit`, 3:1 on the board in both themes): the traces (solid on the top layer, dashed on the bottom), every pad of the net and the LaunchPad pin, with a label such as "GPIO22, pin 8, J1.8". Behind an inverter chip or a resistor the far side is drawn too, dotted.
 - It works both ways. A part shows its pin ("LED1: GPIO22, pin 8, J1.8 through IC1"). A pin shows its parts ("Pin 8, J1.8: GPIO22. Connected: LED1 (through IC1)"), or "Nothing connected. Free for a device of yours."
 - A click, a tap or a key keeps the highlight; Escape clears it. Hovering alone keeps nothing.
 - "Show all connections" draws every route in use. Each kind has its own line: digital output solid, digital input dashed, PWM dash-dot, analog dotted, SPI heavy dashes, supply long thin dashes, ground thin dots. The legend under the picture shows them.
@@ -86,7 +87,26 @@ The LaunchPad's 80 pins are named whenever a row is tall enough for 11 px text (
 
 ## In a level
 
-Primer D leads into the bench: a tour of the board with the figure `board-connections` (the same picture, nothing running), then four fault-finding levels. A code level with a `bench` field (`docs/AUTHORING.md`) shows this panel above its tests in a mode of its own:
+Primer D leads into the bench: a tour of the board, then four fault-finding levels. Each tour lesson has a figure of its own (the same picture, nothing running) that shows the part of the board the lesson is about and names what it talks about:
+
+| Figure | Lesson | Named in the picture | Opens with |
+| --- | --- | --- | --- |
+| `board-headers` | `brd-tour` | the LaunchPad, its four header pairs, the first and last pin of each header by number, pin 1 as 3V3 | pin 8 |
+| `board-leds` | `brd-follow` | the LEDs by number, IC1 to IC3, the 16 pins the LEDs are on | LED1 |
+| `board-buttons` | `brd-button` | PB1 to PB4 and their four pins | PB1 |
+| `board-jumpers` | `brd-jumpers` | the buzzer and its jumper, the IMU and its four jumpers with the pin each carries, those pins | the buzzer's jumper |
+| `board-connections` | (Handbook) | the whole board, every part that has room | LED1 |
+
+What a figure shows is data in `src/ui/wiring/tours.ts` (pins are looked up in the board data, never typed); `src/ui/wiring/TourFigure.tsx` draws it with `BoardPicture` and its `tour` property. In a tour:
+
+- the picture is cropped to a region in board millimetres, so names fit at the width of the text. Two regions (the jumpers) stand side by side, or one above the other in a narrow column;
+- names are 11 px, each on a small plate, placed where no other name and no part is. Pins in neighbouring rows that are closer than a name is tall get their names moved apart, with a short line to the pin. A name that finds no room is left out (in a narrow column the LEDs share "LED1 to LED16");
+- what is chosen is named too: its pins get their signal, also in a lesson that does not list them;
+- the board's own silkscreen is left out: it is under 11 px there;
+- the picture has no keyboard stops of its own. The Part and LaunchPad pin lists under it choose;
+- the Larger view shows the whole board with every part and all 80 pins named.
+
+A code level with a `bench` field (`docs/AUTHORING.md`) shows this panel above its tests in a mode of its own:
 
 - the board starts with the level's faults, kept in a store of its own (`lessonStore` in `src/ui/wiring/store.ts`) that is never saved;
 - with no program running everything is drawn and described as if nothing were wrong;
