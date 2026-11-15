@@ -1,5 +1,7 @@
 // A small set of line icons drawn on a 24 x 24 grid. Status is always
 // carried by the icon's shape and a text label, never by colour alone.
+import { memo } from "react";
+
 const PATHS: Record<string, string> = {
   play: "M7 4.5v15l12-7.5z",
   stop: "M6 6h12v12H6z",
@@ -33,7 +35,8 @@ const FILLED = new Set(["play", "stop", "pause", "star", "skip", "dot"]);
 
 export type IconName = keyof typeof PATHS;
 
-export function Icon({ name, size = 16, label }: { name: string; size?: number; label?: string }) {
+/** Drawn again only when its name, size or label changes: a toolbar or a panel that redraws does not redraw its icons. */
+export const Icon = memo(function Icon({ name, size = 16, label }: { name: string; size?: number; label?: string }) {
   const filled = FILLED.has(name);
   return (
     <svg
@@ -53,7 +56,7 @@ export function Icon({ name, size = 16, label }: { name: string; size?: number; 
       <path d={PATHS[name] ?? PATHS.dot} />
     </svg>
   );
-}
+});
 
 /** Progress as a ring: `value` of `max`. */
 export function Ring({ value, max, size = 36 }: { value: number; max: number; size?: number }) {

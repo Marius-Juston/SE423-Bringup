@@ -76,7 +76,11 @@ export function startTestRun(spec: RunSpec, turn: () => Promise<void> = browserT
       const until = now() + TURN_BUDGET_MS;
       let step = steps.next();
       while (!step.done && now() < until) step = steps.next();
-      if (step.done) return cancelled ? null : step.value;
+      if (step.done) {
+        // One more turn, so that judging the run and drawing its result are two pieces of work, not one.
+        await turn();
+        return cancelled ? null : step.value;
+      }
       if (now() - told >= PROGRESS_EVERY_MS) {
         told = now();
         fraction = step.value;
