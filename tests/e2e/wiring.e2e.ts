@@ -239,7 +239,7 @@ describe("wiring bench", () => {
     // All connections at once, with their legend.
     await page.locator('[data-wb="routes"]').check();
     await expect.poll(() => page.locator(".wb-routes-guide path").count()).toBeGreaterThan(40);
-    expect(await page.locator(".wb-legend li").count()).toBe(13);
+    expect(await page.locator(".wb-legend li").count()).toBe(14);
     await page.locator('[data-wb="routes"]').uncheck();
   });
 
@@ -269,6 +269,60 @@ describe("wiring bench", () => {
     await page.locator('[data-card="LDR"] input[type="range"]').fill("0");
     await expect.poll(() => now("LDR").textContent()).toMatch(/^0\.04 V on ADCINA4/);
     await stop().click();
+  });
+
+  it("shows a servo's signal, supply and ground, and the battery's leads only while the pack is there", async () => {
+    const info = page.locator('[data-wb="info"]');
+    await page.locator('[data-wb="part"]').selectOption("RC1");
+    await expect.poll(() => info.textContent()).toMatch(/^RC servo 1: signal GPIO14, pin 74, J8\.4; supply battery pack \(about 6 V\) through its soldered lead; ground GND\./);
+    expect((await page.locator("[data-light]").getAttribute("data-light"))!.split(" ")).toEqual(expect.arrayContaining(["GPIO14", "GND"]));
+    // The leads and wires made by hand are drawn, and those of the battery light up with the servo.
+    expect(await page.locator('[data-link="BAT"]').count()).toBe(5);
+    expect(await page.locator('[data-link="BAT"][data-lit="yes"]').count()).toBe(5);
+    await page.locator('[data-wb="part"]').selectOption("BAT");
+    await page.locator('[data-card="BAT"] [data-option="fitted"]').selectOption("no");
+    await expect.poll(() => page.locator('[data-link="BAT"]').count()).toBe(0);
+    await page.locator('[data-wb="part"]').selectOption("RC1");
+    await expect.poll(() => info.textContent()).toMatch(/supply battery pack, which is not on the board: no supply/);
+    await page.locator('[data-wb="part"]').selectOption("BAT");
+    await page.locator('[data-card="BAT"] [data-option="fitted"]').selectOption("yes");
+    await expect.poll(() => page.locator('[data-link="BAT"]').count()).toBe(5);
+  });
+
+  it("names every one of the LaunchPad's 80 pins in the large view, none over another", async () => {
+    await page.locator('[data-panel="wiring-bench"] [data-size-button="large"]').click();
+    const names = page.locator(".wb-pinname");
+    await expect.poll(() => names.count()).toBe(80);
+    const read = () =>
+      names.evaluateAll((els) =>
+        els.map((el) => {
+          const t = el.querySelector("text")!;
+          const r = t.getBoundingClientRect();
+          const plate = el.querySelector("rect")!.getBoundingClientRect();
+          return { pin: el.getAttribute("data-pin"), text: t.textContent ?? "", x: r.left, y: r.top, w: r.width, h: r.height, inPlate: r.left >= plate.left - 1 && r.right <= plate.right + 1, px: parseFloat(getComputedStyle(t).fontSize) * (r.height / t.getBBox().height) };
+        }),
+      );
+    for (const routes of [false, true]) {
+      if (routes) await page.locator('[data-wb="routes"]').check();
+      const all = await read();
+      expect(new Set(all.map((n) => n.pin)).size).toBe(80);
+      // The pins this board's LEDs and buttons use are there by name, in the upper left header too.
+      for (const want of ["GPIO22", "GPIO94", "GPIO95", "GPIO97", "GPIO111", "GPIO4", "ADCINA4", "3V3", "GND"]) expect(all.some((n) => n.text === want), want).toBe(true);
+      for (const n of all) {
+        expect(n.text.length, `pin ${n.pin}`).toBeGreaterThan(1);
+        expect(n.w > 4 && n.h >= 10.5, `pin ${n.pin} is drawn at 11 px`).toBe(true);
+        expect(n.inPlate, `pin ${n.pin} stays on its plate`).toBe(true);
+      }
+      for (let a = 0; a < all.length; a++)
+        for (let b = a + 1; b < all.length; b++) {
+          const p = all[a];
+          const q = all[b];
+          const apart = p.x + p.w <= q.x + 0.5 || q.x + q.w <= p.x + 0.5 || p.y + p.h * 0.85 <= q.y || q.y + q.h * 0.85 <= p.y;
+          expect(apart, `${p.text} (pin ${p.pin}) and ${q.text} (pin ${q.pin})`).toBe(true);
+        }
+    }
+    await page.locator('[data-wb="routes"]').uncheck();
+    await page.locator('[data-panel="wiring-bench"] [data-size-button="large"]').click();
   });
 
   it("zooms inside its own box, and nothing spills out of the page", async () => {

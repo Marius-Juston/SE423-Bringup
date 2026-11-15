@@ -506,12 +506,12 @@ describe("who is connected to what", () => {
   it("goes from a part to its pin, through the inverter chip where there is one", async () => {
     const { highlightOf } = await import("../src/sim/wiring/nets");
     const h = highlightOf(emptyBench(), { t: "part", id: "LED1" })!;
-    expect(h.words).toBe("LED1: GPIO22, pin 8, J1.8 through IC1.");
+    expect(h.words).toContain("LED1: GPIO22, pin 8, J1.8 through IC1.");
     expect(h.near.map((n) => HW_BOARD.nets[n])).toEqual(["GPIO22"]);
     // Behind the inverter: the LED's two own nets, distinct from the pin's.
     expect(h.far).toHaveLength(2);
     expect(h.far.every((n) => !h.near.includes(n))).toBe(true);
-    expect(highlightOf(emptyBench(), { t: "part", id: "JOY" })!.words).toBe("Joystick: ADCINA2, pin 29, J3.9; ADCINA3, pin 26, J3.6; GPIO8, pin 78, J8.8.");
+    expect(highlightOf(emptyBench(), { t: "part", id: "JOY" })!.words).toContain("Joystick: ADCINA2, pin 29, J3.9; ADCINA3, pin 26, J3.6; GPIO8, pin 78, J8.8; supply 3V3; ground GND.");
   });
 
   it("goes from a pin to every part and device on it, and says when a pin is free", async () => {
@@ -542,5 +542,47 @@ describe("who is connected to what", () => {
       for (let k = 2; k < t.length; k += 2) expect(t[k] >= 0 && t[k] <= HW_BOARD.w && t[k + 1] >= 0 && t[k + 1] <= HW_BOARD.h).toBe(true);
     }
     expect(JSON.stringify(HW_BOARD.texts)).not.toMatch(/ESP|MSP|Orange/);
+  });
+});
+
+describe("nothing is connected by rule alone", () => {
+  it("shows every terminal of every part of the board: copper, a plane, or a connection made by hand", async () => {
+    const { highlightOf } = await import("../src/sim/wiring/nets");
+    const copper = new Set(HW_BOARD.traces.map((t) => t[0]));
+    const bat = HW_BOARD.parts.find((p) => p.id === "BAT")!;
+    expect(bat.links!.length).toBeGreaterThanOrEqual(2);
+    for (const i of instances(emptyBench())) {
+      const p = i.part!;
+      for (const d of i.def.terminals) {
+        const t = i.conn[d.id];
+        const net = HW_BOARD.nets.indexOf(t);
+        const plane = t === "GND" || t === "3V3" || t === "5V";
+        const byHand = (t === "BAT" && bat.links!.length > 0) || (p.links ?? []).length > 0;
+        // A pin's net has copper to follow, unless the part itself declares the wire that takes it there.
+        expect(plane || byHand || (net >= 0 && copper.has(net)), `${i.id}.${d.id} -> ${t}`).toBe(true);
+      }
+      // And the sentence names what has no copper to light: supply, ground, plugs and hand-made wires.
+      const words = highlightOf(emptyBench(), { t: "part", id: i.id })!.words;
+      for (const d of i.def.terminals) if (d.role === "ground") expect(words, i.id).toMatch(/GND/);
+      expect(words.split(". ").length, `${i.id}: ${words}`).toBeGreaterThanOrEqual(2);
+    }
+    for (const p of HW_BOARD.parts) for (const [x1, y1, x2, y2, what] of p.links ?? []) {
+      expect([x1, x2].every((x) => x >= 0 && x <= HW_BOARD.w) && [y1, y2].every((y) => y >= 0 && y <= HW_BOARD.h), `${p.id}: ${what}`).toBe(true);
+      expect(what.length).toBeGreaterThan(5);
+    }
+  });
+
+  it("names a servo's signal, supply and ground, with and without the battery pack", async () => {
+    const { highlightOf } = await import("../src/sim/wiring/nets");
+    expect(highlightOf(emptyBench(), { t: "part", id: "RC1" })!.words).toBe(
+      "RC servo 1: signal GPIO14, pin 74, J8.4; supply battery pack (about 6 V) through its soldered lead; ground GND. It plugs onto its 3-pin connector. The supply row gets the battery pack through wires soldered by hand.",
+    );
+    const none = highlightOf(setOption(emptyBench(), "BAT", "fitted", "no"), { t: "part", id: "RC1" })!;
+    expect(none.words).toMatch(/supply battery pack, which is not on the board: no supply; ground GND/);
+    // Signal row, supply row and ground are all lit.
+    const lit = highlightOf(emptyBench(), { t: "part", id: "RC2" })!.near.map((n) => HW_BOARD.nets[n]);
+    expect(lit).toContain("GPIO15");
+    expect(lit).toContain("GND");
+    expect(lit.length).toBe(4);
   });
 });

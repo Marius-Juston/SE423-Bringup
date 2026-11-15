@@ -1265,15 +1265,15 @@
   {"id":"PB3","kind":"button","label":"PB3","box":[137.23,11.66,14.31,2.4],"pin":6,"nets":[26],"far":[]},
   {"id":"PB4","kind":"button","label":"PB4","box":[137.23,16.74,14.31,2.4],"pin":7,"nets":[27],"far":[]},
   {"id":"JOY","kind":"joystick","label":"Joystick","box":[150.42,27.48,3.2,13.36],"adcX":"ADCINA2","adcY":"ADCINA3","pin":8,"nets":[6,7,28],"far":[]},
-  {"id":"RC1","kind":"servo","label":"RC servo 1","box":[0.7,34.36,12.57,7.48],"pin":14,"nets":[32,127],"far":[130]},
-  {"id":"RC2","kind":"servo","label":"RC servo 2","box":[0.7,44.52,12.57,7.48],"pin":15,"nets":[33,128],"far":[129]},
-  {"id":"BAT","kind":"battery","label":"Battery pack","box":[45.34,70.42,50,53.5],"back":true,"nets":[3],"far":[]},
+  {"id":"RC1","kind":"servo","label":"RC servo 1","box":[0.7,34.36,12.57,7.48],"pin":14,"nets":[32,127,130],"far":[],"links":[[14.61,35.56,12.07,35.56,"joint between the pin's pads and the signal row"]]},
+  {"id":"RC2","kind":"servo","label":"RC servo 2","box":[0.7,44.52,12.57,7.48],"pin":15,"nets":[33,128,129],"far":[],"links":[[14.61,45.72,12.07,45.72,"joint between the pin's pads and the signal row"]]},
+  {"id":"BAT","kind":"battery","label":"Battery pack","box":[45.34,70.42,50,53.5],"back":true,"nets":[133,129,130],"far":[156],"links":[[49.34,153.92,107.32,124.46,"battery pack's positive lead"],[109.86,124.46,12.07,48.26,"long wire to the servo supply row"],[9.52,48.26,9.52,38.1,"short wire between the two servo supply rows"],[52.34,153.92,122.56,124.46,"battery pack's negative lead"],[132.72,124.46,136.53,124.46,"short wire to the ground rail"]]},
   {"id":"IMU","kind":"imu","label":"MPU-9250 IMU","box":[87.65,132.12,15.4,25],"nets":[113,114,117,119],"far":[]},
   {"id":"JIMU1","kind":"imu-jumper","label":"IMU jumper SCLK","box":[77.54,137.07,4.94,2.4],"pin":65,"signal":"SCLK","nets":[54,113],"far":[]},
   {"id":"JIMU2","kind":"imu-jumper","label":"IMU jumper MOSI","box":[77.54,139.61,4.94,2.4],"pin":63,"signal":"MOSI","nets":[52,114],"far":[]},
   {"id":"JIMU3","kind":"imu-jumper","label":"IMU jumper MISO","box":[77.54,147.23,4.94,2.4],"pin":64,"signal":"MISO","nets":[53,117],"far":[]},
   {"id":"JIMU4","kind":"imu-jumper","label":"IMU jumper NCS","box":[77.54,152.31,4.94,2.4],"pin":66,"signal":"NCS","nets":[55,119],"far":[]},
-  {"id":"LDR","kind":"photoresistor","label":"Photoresistor","box":[121.36,118.18,12.56,7.48],"adc":"ADCINA4","ohm":2200,"nets":[8],"far":[]}
+  {"id":"LDR","kind":"photoresistor","label":"Photoresistor","box":[121.36,118.18,12.56,7.48],"adc":"ADCINA4","ohm":2200,"nets":[8],"far":[],"links":[[121.36,121.92,49.53,116.21,"wire from the junction to the ADC pin"]]}
 ],
 "traces": [
   [2,0,57.15,95.9,57.1,95.8,54.85,95.8,54.6,95.9,54.55,95.8,52.3,95.8,52.05,95.9,52,95.8,49.6,95.8,49.55,95.9],
@@ -1515,6 +1515,8 @@
   [295,0,83.8,17.9,83.8,18.4,83,19.2,80.25,19.2],
   [295,1,96.5,41.45,105.45,41.45],
   [295,1,80.25,19.2,77,22.45,77,27.25,80.85,31.1,82.8,31.1,83.6,31.9,83.6,32.5,84.65,33.55,85.25,33.55,86.15,34.45,86.15,35.05,87.15,36.05,87.8,36.05,88.7,37,88.7,37.6,89.2,38.1,89.2,38.6],
+  [133,0,117.5,124.45,107.3,124.45],
+  [156,0,132.7,124.45,122.55,124.45],
   [113,0,88.95,138.25,88.9,138.2,86.55,138.2,86.35,138.25,86.35,138.2,84,138.2,83.8,138.25,83.8,138.2,81.3,138.2,81.3,138.25],
   [114,0,88.95,140.8,88.9,140.7,86.55,140.7,86.35,140.8,86.35,140.7,84,140.7,83.8,140.8,83.8,140.7,81.3,140.7,81.3,140.8],
   [117,0,88.95,148.45,88.9,148.35,86.55,148.35,86.35,148.45,86.35,148.35,84,148.35,83.8,148.45,83.8,148.35,81.3,148.35,81.3,148.45],

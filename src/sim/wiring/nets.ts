@@ -26,7 +26,8 @@ export const NET_KINDS: { id: NetKind; name: string }[] = [
 
 /** The nets a part is on. For a device the student attached: the nets of the pins and supplies it goes to. */
 export function partNets(i: Inst): { near: number[]; far: number[] } {
-  if (i.part) return { near: i.part.nets, far: i.part.far };
+  // A servo's ground is a plane with no trace to follow: its pads are lit with the rest.
+  if (i.part) return { near: i.kind === "servo" ? [...i.part.nets, B.nets.indexOf("GND")] : i.part.nets, far: i.part.far };
   const near = [...new Set(i.def.terminals.map((d) => B.nets.indexOf(i.conn[d.id] === "BAT" ? "VIN" : i.conn[d.id])).filter((n) => n >= 0))];
   return { near, far: [] };
 }
@@ -62,6 +63,25 @@ export function netUsers(list: Inst[], net: number): NetUser[] {
   }
   return out;
 }
+
+/**
+ * What the picture cannot show as copper for a part of the board: its supply and ground (planes and short
+ * stubs), and connections that are plugged in or soldered by hand.
+ */
+const NOTE: Record<string, string> = {
+  led: "Its other side: 3V3 through its 1 k resistor.",
+  "power-led": "Through its 1 k resistor to GND.",
+  button: "Its other side: GND.",
+  buzzer: "The pin reaches it through the jumper beside it, an inverter of IC3 and a 100 ohm resistor. Its other leg: GND.",
+  "buzzer-jumper": "A plug-in jumper, not copper.",
+  inverter: "Supply 3V3, ground GND.",
+  joystick: "It plugs into the 5-pin JOY socket, which also gives it 3V3 and GND.",
+  photoresistor: "Soldered by hand on free pads with its 2.2 k resistor, between 3V3 and GND. A soldered wire takes the junction to the pin.",
+  imu: "It plugs into its 10-pin socket, which gives it 3V3 and GND. The four pins reach it through the four jumpers.",
+  "imu-jumper": "A plug-in jumper, not copper.",
+  servo: "It plugs onto its 3-pin connector. The supply row gets the battery pack through wires soldered by hand.",
+  battery: "Its two leads are soldered by hand: positive to the supply rows of RC1 and RC2, negative to GND.",
+};
 
 const ORDER: NetKind[] = ["spi", "pwm", "analog", "in", "out", "supply", "ground"];
 /** How a net is used, or null for a net nothing uses. Supplies and ground are what they are. */
@@ -132,8 +152,19 @@ export function highlightOf(state: BenchState, pick: Pick): Highlight | null {
     if (!i) return null;
     const { near, far } = partNets(i);
     const via = i.part?.via ? ` through ${i.part.via}` : "";
-    const where = near.map((n) => netWords(n)).filter((w, k, a) => a.indexOf(w) === k);
-    return { near, far, words: `${i.label}${i.part && !fitted(i) ? " (not soldered)" : ""}: ${where.length ? `${where.join("; ")}${via}` : "not connected to a pin"}.` };
+    // The pins its terminals go to, then its supply and ground, then what is not copper about it.
+    const pins = i.def.terminals.filter((d) => headerPin(i.conn[d.id])).map((d) => `${i.kind === "servo" ? "signal " : ""}${netWords(B.nets.indexOf(i.conn[d.id]))}`);
+    const where = pins.filter((w, k, a) => a.indexOf(w) === k);
+    const battery = fitted(list.find((x) => x.id === "BAT"));
+    const power = i.def.terminals.filter((d) => d.role === "power" || d.role === "ground").map((d) => {
+      const t = i.conn[d.id];
+      if (d.role === "ground") return `ground ${t || "not connected"}`;
+      if (t === "BAT") return battery ? "supply battery pack (about 6 V) through its soldered lead" : "supply battery pack, which is not on the board: no supply";
+      return `supply ${t || "not connected"}`;
+    });
+    const first = [...(where.length ? [`${where.join("; ")}${via}`] : []), ...power].join("; ");
+    const note = i.part ? NOTE[i.kind] : "";
+    return { near, far, words: `${i.label}${i.part && !fitted(i) ? " (not soldered)" : ""}: ${first || "not connected to a pin"}.${note ? ` ${note}` : ""}` };
   }
   const net = pick.t === "net" ? pick.net : (B.launchpad.pins.find((p) => p[3] === pick.n)?.[2] ?? -1);
   const row = pick.t === "pin" ? pinRows(state).find((r) => r.number === pick.n) : undefined;
