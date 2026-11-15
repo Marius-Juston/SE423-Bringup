@@ -66,7 +66,7 @@ function SamplingAlias() {
       <svg viewBox="0 0 420 204" role="img" aria-label={`A ${f} hertz sine sampled ${fs} times per second. Nyquist frequency ${nyq} hertz. The samples show ${atLimit ? "nothing: every sample is zero" : aliased ? `${fa} hertz, an alias` : "the real signal"}.`}>
         <text x={X0} y="12" className="fig-label" style={{ fill: "var(--arches)" }}>real signal: {f} Hz</text>
         <text x={X1} y="12" textAnchor="end" className="fig-label" style={{ fill: "var(--harvest)" }}>{atLimit ? "the samples show nothing: all zero" : aliased ? `what the samples show: ${fa} Hz` : "the samples show the same signal"}</text>
-        <line x1={X0} x2={X1} y1={MID} y2={MID} stroke="var(--border)" />
+        <line x1={X0} x2={X1} y1={MID} y2={MID} stroke="var(--dim)" strokeWidth="0.8" />
         <path d={wave(f, 1)} className="fig-trace" style={{ strokeWidth: aliased ? 1.1 : 1.8, opacity: aliased ? 0.75 : 1 }} />
         {aliased && <path d={wave(fa, flipped ? -1 : 1)} className="fig-trace data" style={{ strokeWidth: 2.2 }} />}
         {samples.map((s, i) => (
@@ -76,10 +76,10 @@ function SamplingAlias() {
           </g>
         ))}
         <text x={X0} y="112" className="fig-label dim">0 ms</text>
-        <text x={(X0 + X1) / 2} y="112" textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)" }}>dots: {samples.length} samples, one every {(1000 / fs).toFixed(2)} ms</text>
+        <text x={(X0 + X1) / 2} y="112" textAnchor="middle" className="fig-label" style={{ fill: "var(--accent-text)" }}>dots: {samples.length} samples, one every {(1000 / fs).toFixed(2)} ms</text>
         <text x={X1} y="112" textAnchor="end" className="fig-label dim">{T_MS} ms</text>
         {/* frequency strip */}
-        <rect x={FX0} y={FY - 20} width={fx(nyq) - FX0} height="20" fill="var(--arches)" fillOpacity="0.16" />
+        <rect x={FX0} y={FY - 18} width={fx(nyq) - FX0} height="18" fill="var(--arches)" fillOpacity="0.16" stroke="var(--arches)" strokeWidth="0.8" />
         <line x1={FX0} x2={FX1} y1={FY} y2={FY} className="fig-wire" />
         {[0, 500, 1000, 1500, 2000].map((hz) => (
           <g key={hz}>
@@ -90,18 +90,19 @@ function SamplingAlias() {
         <line x1={fx(nyq)} x2={fx(nyq)} y1={FY - 30} y2={FY} stroke="var(--text)" strokeWidth="1.4" strokeDasharray="3 2" />
         <text x={fx(nyq) < 110 ? FX0 : fx(nyq) - 4} y={fx(nyq) < 110 ? FY - 34 : FY - 25} textAnchor={fx(nyq) < 110 ? "start" : "end"} className="fig-label">Nyquist {nyq} Hz</text>
         <line x1={fx(fs)} x2={fx(fs)} y1={FY - 30} y2={FY} stroke="var(--orange)" strokeWidth="1.4" />
-        <text x={fx(fs) + (fs > 1500 ? -4 : 4)} y={FY - 25} textAnchor={fs > 1500 ? "end" : "start"} className="fig-label" style={{ fill: "var(--orange)" }}>{fs > 1500 ? `${fs} samples/s` : `sampling rate ${fs}/s`}</text>
+        <text x={fx(fs) + (fs > 1500 ? -4 : 4)} y={FY - 25} textAnchor={fs > 1500 ? "end" : "start"} className="fig-label" style={{ fill: "var(--accent-text)" }}>{fs > 1500 ? `${fs} samples/s` : `sampling rate ${fs}/s`}</text>
         {aliased && Math.abs(fx(f) - fx(fa)) > 16 && (
           <path d={`M${fx(f)},${FY - 5} Q${(fx(f) + fx(fa)) / 2},${FY - 26} ${fx(fa) + (fa < f ? 3 : -3)},${FY - 6}`} fill="none" stroke="var(--harvest)" strokeWidth="1.4" strokeDasharray="3 2" markerEnd="url(#alias-arrow)" />
         )}
         <circle cx={fx(f)} cy={FY} r="4.2" fill="var(--arches)" stroke="var(--text)" strokeWidth="0.8" />
-        <text x={fx(f) + (fx(f) > 330 ? -3 : 7)} y={FY + 26} textAnchor={fx(f) > 330 ? "end" : "start"} className="fig-label" style={{ fill: "var(--arches)" }}>real: {f} Hz</text>
-        <line x1={fx(f)} x2={fx(f) + 5} y1={FY + 5} y2={FY + 19} stroke="var(--arches)" strokeWidth="0.8" />
+        {/* Each name carries its marker's shape, so no leader line has to cross the numbers of the axis. */}
+        <circle cx={fx(f) + (fx(f) > 330 ? -3 : 3)} cy={FY + 23} r="3" fill="var(--arches)" stroke="var(--text)" strokeWidth="0.8" />
+        <text x={fx(f) + (fx(f) > 330 ? -9 : 9)} y={FY + 26} textAnchor={fx(f) > 330 ? "end" : "start"} className="fig-label" style={{ fill: "var(--arches)" }}>real: {f} Hz</text>
         {aliased && (
           <>
             <rect x={fx(fa) - 4} y={FY - 4} width="8" height="8" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.8" />
-            <line x1={fx(fa)} x2={fx(fa) + (fx(fa) < 100 ? 5 : -5)} y1={FY + 5} y2={FY + 30} stroke="var(--harvest)" strokeWidth="0.8" />
-            <text x={fx(fa) + (fx(fa) < 100 ? 7 : -7)} y={FY + 38} textAnchor={fx(fa) < 100 ? "start" : "end"} className="fig-label" style={{ fill: "var(--harvest)" }}>seen as: {fa} Hz</text>
+            <rect x={fx(fa) + (fx(fa) < 100 ? 0 : -6)} y={FY + 32} width="6" height="6" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.8" />
+            <text x={fx(fa) + (fx(fa) < 100 ? 9 : -9)} y={FY + 38} textAnchor={fx(fa) < 100 ? "start" : "end"} className="fig-label" style={{ fill: "var(--harvest)" }}>seen as: {fa} Hz</text>
           </>
         )}
         <defs>
@@ -114,17 +115,17 @@ function SamplingAlias() {
       <div className="fig-controls">
         <div>
           <span>Signal</span>
-          <input type="range" min={50} max={1500} step={10} value={f} aria-label="Signal frequency in hertz" onChange={(e) => setF(+e.target.value)} />
+          <input type="range" min={50} max={1500} step={10} value={f} aria-label="Signal frequency in hertz" aria-valuetext={`${f} hertz`} onChange={(e) => setF(+e.target.value)} />
           <span className="alias-num">{f} Hz</span>
         </div>
         <div>
           <span>Sampling</span>
-          <input type="range" min={400} max={2000} step={50} value={fs} aria-label="Sampling rate in hertz" onChange={(e) => setFs(+e.target.value)} />
+          <input type="range" min={400} max={2000} step={50} value={fs} aria-label="Sampling rate in hertz" aria-valuetext={`${fs} hertz`} onChange={(e) => setFs(+e.target.value)} />
           <span className="alias-num">{fs} Hz</span>
           <code>Nyquist = {fs} / 2 = {nyq} Hz</code>
         </div>
       </div>
-      <figcaption>Top: 10 ms of a sine and the samples taken from it. Bottom: the frequency axis. Only the shaded part, from 0 Hz to half the sampling rate, can be told apart in the samples. A tone outside it (circle) lands back inside (square), at its distance from the nearest multiple of the sampling rate.</figcaption>
+      <figcaption>Top: 10 ms of a sine and the samples taken from it. Bottom: the frequency axis. Only the shaded part, from 0 Hz to half the sampling rate, can be told apart in the samples. A tone outside it (circle, "real") lands back inside (square, "seen as"), at its distance from the nearest multiple of the sampling rate.</figcaption>
     </figure>
   );
 }

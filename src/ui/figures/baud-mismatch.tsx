@@ -113,10 +113,11 @@ function BaudMismatch() {
         .bm-fig .bm-cell.bad { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1.4; }
         .bm-fig .bm-tick { stroke: var(--text); stroke-width: 0.9; }
         .bm-fig .bm-tick.bad { stroke: var(--bad); stroke-width: 1.6; }
+        .bm-fig .bm-miss { fill: var(--inset); stroke: var(--bad); stroke-width: 1.6; }
         .bm-fig .bm-res { font-size: max(8.5px, calc(9px / var(--fig-k, 1))); font-family: var(--mono); font-weight: 700; fill: var(--ok); }
         .bm-fig .bm-res.bad { fill: var(--bad); }
         .bm-fig input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--orange); }
-        .bm-fig .bm-in { width: 3.2em; font: inherit; font-family: var(--mono); text-align: center; background: var(--inset); color: var(--text); border: 1px solid var(--border-strong, var(--dim)); border-radius: 4px; }
+        .bm-fig .bm-in { width: 3.2em; font: inherit; font-family: var(--mono); text-align: center; background: var(--inset); color: var(--text); border: 1px solid var(--control); border-radius: 4px; }
       `}</style>
       <svg viewBox="0 0 420 135" role="img" aria-label={`Sender at ${BAUD} baud sends ${codes.map(hex).join(" and ")}. Receiver clock ${err === 0 ? "exactly right" : `${Math.abs(err)} percent ${dir}`}: it reads ${rx.map((q) => hex(q.value)).join(" and ")}${bad.length ? ", wrong" : ", correct"}.`}>
         <text x={4} y={10} className="fig-label">Sender: {BAUD} baud, sends {codes.map((c) => hex(c) + printable(c)).join(" then ")}</text>
@@ -136,7 +137,11 @@ function BaudMismatch() {
           q.samples.map((sm, k) => (
             <g key={`${f}${k}`}>
               <line x1={x(sm.t)} x2={x(sm.t)} y1={HI - 3} y2={64} className={`bm-tick ${sm.ok ? "" : "bad"}`} />
-              <circle cx={x(sm.t)} cy={sm.v ? HI : LO} r={2.3} fill={sm.ok ? "var(--text)" : "var(--bad)"} stroke="var(--inset)" strokeWidth={0.6} />
+              {sm.ok ? (
+                <circle cx={x(sm.t)} cy={sm.v ? HI : LO} r={2.3} fill="var(--text)" stroke="var(--inset)" strokeWidth={0.6} />
+              ) : (
+                <circle cx={x(sm.t)} cy={sm.v ? HI : LO} r={3.2} className="bm-miss" />
+              )}
             </g>
           )),
         )}
@@ -180,7 +185,7 @@ function BaudMismatch() {
         </div>
       </div>
       <figcaption>
-        There is no clock wire, so the receiver measures time from the falling edge of each start bit with its own clock (S start bit, 0 to 7 data bits, P stop bit). A red box marked ✗ is a sample taken in the wrong bit. The two clocks may differ by about 5 % before that happens.
+        There is no clock wire, so the receiver measures time from the falling edge of each start bit with its own clock (S start bit, 0 to 7 data bits, P stop bit). A red box marked ✗, under a hollow red ring on the line, is a sample taken in the wrong bit. The two clocks may differ by about 5 % before that happens.
       </figcaption>
     </figure>
   );

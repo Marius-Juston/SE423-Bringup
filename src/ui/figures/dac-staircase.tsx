@@ -11,6 +11,8 @@ const CSS = `
 .dacst .dacst-bits { font-family: var(--mono); letter-spacing: 0.05em; }
 .dacst .dacst-bits s { color: var(--bad); }
 .dacst .dacst-bits b { color: var(--harvest); }
+.dacst .dacst-grid { stroke: var(--border); }
+.dacst .dacst-over { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1; }
 .dacst .dacst-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
 `;
 
@@ -68,8 +70,7 @@ function DacStaircase() {
       <style>{CSS}</style>
       <svg viewBox="0 0 420 182" role="img" aria-label={`Number written ${asked}, number kept ${kept}, output ${fmtV(vout)}.`}>
         {/* region that does not fit */}
-        <rect x={x(levels)} y={Y1 - 8} width={X1 - x(levels)} height={Y0 - Y1 + 8} fill="var(--bad)" fillOpacity="0.1" />
-        <line x1={x(levels)} x2={x(levels)} y1={Y1 - 8} y2={Y0} className="fig-wire" strokeDasharray="3 3" />
+        <rect x={x(levels)} y={Y1 - 5} width={X1 - x(levels)} height={Y0 - Y1 + 5} className="dacst-over" />
         <text x={x(levels) - 4} y={Y1 - 10} textAnchor="end" className="fig-label dim">fits in {bits} bits</text>
         <text x={x(levels) + 4} y={Y1 - 10} className="fig-label" style={{ fill: "var(--bad)" }}>too big for {bits} bits</text>
         {/* axes */}
@@ -77,7 +78,7 @@ function DacStaircase() {
         <line x1={X0} x2={X0} y1={Y0} y2={Y1 - 8} className="fig-wire" />
         {[0, 1.5, 3].map((v) => (
           <g key={v}>
-            <line x1={X0 - 3} x2={X1} y1={y(v)} y2={y(v)} stroke="var(--border)" />
+            <line x1={X0 - 3} x2={X1} y1={y(v)} y2={y(v)} className="dacst-grid" />
             <text x={X0 - 5} y={y(v) + 3} textAnchor="end" className="fig-label">{v.toFixed(1)} V</text>
           </g>
         ))}
@@ -105,9 +106,9 @@ function DacStaircase() {
         </div>
         <div>
           <span>Number</span>
-          <input type="range" min={0} max={xMax} value={asked} aria-label="Number written to the DAC" onChange={(e) => setAsked(+e.target.value)} />
+          <input type="range" min={0} max={xMax} value={asked} aria-label="Number written to the DAC" aria-valuetext={`${asked}, output ${fmtV(vout)}`} onChange={(e) => setAsked(+e.target.value)} />
           <span className="dacst-num">{asked}</span>
-          {bits === 12 && <button className="fig-opt" aria-label="Ask for 3.2 volts: 3.2 x 4095 / 3.0 = 4368" onClick={() => setAsked(4368)}>ask for 3.2 V (4368)</button>}
+          {bits === 12 && <button className="fig-opt" aria-label="ask for 3.2 V (4368): 3.2 x 4095 / 3.0 = 4368" onClick={() => setAsked(4368)}>ask for 3.2 V (4368)</button>}
         </div>
         <div>
           <span>Too big?</span>

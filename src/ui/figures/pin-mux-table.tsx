@@ -10,7 +10,7 @@ import { PINMUX_INDEXES, PINMUX_ROWS, isGradedMux, muxCall, muxFields, pinMuxRow
 // students look up, the call keeps the word "index" (muxCall).
 
 const CSS = `
-.pmt-doc { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.2rem 0.2rem; }
+.pmt-doc { container-type: inline-size; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.2rem 0.2rem; }
 .pmt-title { text-align: center; font-weight: 700; font-size: 0.78rem; margin: 0.1rem 0 0.3rem; }
 .pmt-scroll { max-height: 17.5rem; overflow-y: auto; position: relative; }
 .pmt-doc table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--fig-small, 11px); line-height: 1.15; }
@@ -18,8 +18,14 @@ const CSS = `
 .pmt-doc thead th { background: var(--surface); font-weight: 700; padding: 2px 1px; text-align: center; overflow-wrap: anywhere; }
 .pmt-doc thead tr:nth-child(2) th { color: var(--dim); }
 .pmt-doc thead tr:nth-child(3) th { color: var(--dim); box-shadow: 0 1.5px 0 var(--text); }
-.pmt-doc thead th.pmt-lab { text-align: left; color: var(--text); letter-spacing: -0.03em; white-space: nowrap; }
-.pmt-doc thead th.pmt-colsel { color: var(--orange); }
+.pmt-doc thead th.pmt-lab { text-align: left; color: var(--text); letter-spacing: -0.03em; white-space: nowrap; overflow-wrap: normal; }
+.pmt-doc thead tr:first-child th.pmt-lab { width: 5.6em; }
+/* In a narrow column the three row labels break in two, so the signal columns keep their width. */
+@container (max-width: 20rem) {
+  .pmt-doc thead th.pmt-lab { white-space: normal; }
+  .pmt-doc thead tr:first-child th.pmt-lab { width: 3.9em; }
+}
+.pmt-doc thead th.pmt-colsel { color: var(--accent-text); }
 .pmt-doc td { padding: 0; border-bottom: 1px solid var(--border); vertical-align: middle; }
 .pmt-cell { display: block; width: 100%; min-height: 2.3em; padding: 2px 0; background: none; border: 0; border-radius: 3px; color: var(--text); font: inherit; letter-spacing: -0.03em; text-align: center; overflow-wrap: anywhere; cursor: pointer; }
 .pmt-cell.pin { font-weight: 700; }
@@ -121,20 +127,20 @@ function PinMuxTable() {
           <table>
             <thead>
               <tr>
-                <th scope="col" className="pmt-lab" style={{ width: "3.05rem" }}>GPIO Index</th>
+                <th scope="col" className="pmt-lab">GPIO Index</th>
                 {COLS.map((i) => (
                   <th key={i} scope="col" className={i === index ? "pmt-colsel" : undefined}>{i === 0 ? "0, 4, 8, 12" : i}</th>
                 ))}
               </tr>
               <tr>
-                <th scope="row" className="pmt-lab">GPyGMUXn</th>
+                <th scope="row" className="pmt-lab">GPy<wbr />GMUXn</th>
                 <th>00b-11b</th>
                 <th colSpan={3}>00b</th>
                 <th colSpan={3}>01b</th>
                 <th>11b</th>
               </tr>
               <tr>
-                <th scope="row" className="pmt-lab">GPyMUXn</th>
+                <th scope="row" className="pmt-lab">GPy<wbr />MUXn</th>
                 {["00b", "01b", "10b", "11b", "01b", "10b", "11b", "11b"].map((b, i) => (
                   <th key={i}>{b}</th>
                 ))}
@@ -155,7 +161,7 @@ function PinMuxTable() {
                           data-cell={`${r.pin}.${i}`}
                           className={`pmt-cell ${i === 0 ? "pin" : ""} ${isHit(r.fn[i]) && i !== 0 ? "hit" : ""}`}
                           aria-pressed={on}
-                          aria-label={i === 0 ? `GPIO${r.pin} as a plain GPIO` : `GPIO${r.pin}: ${text}`}
+                          aria-label={i === 0 ? `GPIO${r.pin} as a plain GPIO` : `GPIO${r.pin}: ${text}, in the column of index ${i}`}
                           tabIndex={`${r.pin}.${i}` === tabKey ? 0 : -1}
                           onClick={() => pick(r.pin, i)}
                         >

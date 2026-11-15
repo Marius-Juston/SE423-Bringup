@@ -62,12 +62,12 @@ function OhmsLaw() {
       <div className="fig-controls">
         <div>
           <span>Voltage</span>
-          <input type="range" min={0} max={12} step={1} value={v} aria-label="Voltage in volts" onChange={(e) => setV(+e.target.value)} />
+          <input type="range" min={0} max={12} step={1} value={v} aria-label="Voltage in volts" aria-valuetext={`${v} volt${v === 1 ? "" : "s"}`} onChange={(e) => setV(+e.target.value)} />
           <span className="ol-num">{v} V</span>
         </div>
         <div>
           <span>Resistance</span>
-          <input type="range" min={2} max={24} step={1} value={r} aria-label="Resistance in ohms" onChange={(e) => setR(+e.target.value)} />
+          <input type="range" min={2} max={24} step={1} value={r} aria-label="Resistance in ohms" aria-valuetext={`${r} ohms`} onChange={(e) => setR(+e.target.value)} />
           <span className="ol-num">{r} Ω</span>
         </div>
       </div>

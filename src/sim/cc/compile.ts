@@ -35,7 +35,9 @@ export interface Rt {
   /** Called at the start of every statement. */
   tick(line: number): void;
   /** The loop just ran a full pass without changing anything: skip ahead. */
-  idle(): void;
+  idle(): boolean;
+  /** True in a test run cut into slices: nothing outside the program changes during a pause. */
+  sliced: boolean;
   /** A loop with a real condition is waiting at this line (0: it ended). */
   waiting?(line: number): void;
   warn(line: number, code: string, msg: string): void;
@@ -154,6 +156,8 @@ export class Compiler {
   fns = new Map<string, Fn>();
   fnById: Fn[] = [];
   globals = new Map<string, GlobalVar>();
+  /** Globals of the student's file that a local variable of the same name hides, with the line of that local. */
+  hidden = new Map<string, number>();
   /** Run once before main(): global initialisers. */
   inits: (() => void)[] = [];
   private nextGlobal = GLOBAL_BASE;
@@ -623,6 +627,9 @@ export class Compiler {
             if (v.init) this.inits.push(this.initCode(t, v.init, () => addr));
             continue;
           }
+          // A local with the name of one of the file's own globals hides it. The course's code does this
+          // on purpose, so it is no warning; a test that reads the global says so when it fails.
+          if (this.globals.get(v.name)?.file === "user" && !this.hidden.has(v.name)) this.hidden.set(v.name, v.line);
           // The initialiser is compiled before the name exists (int x = x; is an error).
           const off = this.reserveLocal(t);
           if (v.init) runs.push(this.initCode(t, v.init, () => rt.fp + off));
@@ -717,7 +724,15 @@ export class Compiler {
               if (idleNext) {
                 idleNext = false;
                 if (waits) rt.waiting?.(tl);
-                rt.idle();
+                // Paused before anything happened (the end of a run slice): keep waiting after the pause.
+                // (Only in a test run: in a live run a button may have been pressed during the pause,
+                // and the loop must look at its pins again.)
+                while (!rt.idle() && rt.pause && rt.sliced) {
+                  yield;
+                  // Not resumed: this loop is inside an interrupt function, which runs to its end without pausing.
+                  if (rt.pause) break;
+                  if (waits) rt.waiting?.(tl);
+                }
                 if (rt.pause) yield;
               }
               first = false;

@@ -90,11 +90,13 @@ function Quadrature() {
 
   return (
     <figure className="figure qd-fig" aria-label="Interactive quadrature encoder: disc, channels A and B, state sequence and count">
-      <style>{`.qd-fig .qd-disc{cursor:grab;touch-action:none}.qd-fig .qd-range{flex:1;min-width:120px;accent-color:var(--orange)}.qd-fig .qd-hole{fill:var(--inset);stroke:var(--dim);stroke-width:.6}.qd-fig .qd-off{stroke-dasharray:3 3;opacity:.55}`}</style>
+      <style>{`.qd-fig .qd-disc{cursor:grab;touch-action:none}.qd-fig .qd-range{flex:1;min-width:120px;accent-color:var(--orange)}.qd-fig .qd-hole{fill:var(--inset);stroke:var(--dim);stroke-width:.6}.qd-fig .qd-off{stroke-dasharray:3 3}`}</style>
       <svg ref={svg} viewBox="0 0 420 200" role="img" aria-label={`Channel A is ${a ? "high" : "low"}, channel B is ${oneChannel ? "covered" : b ? "high" : "low"}. ${dir > 0 ? "Last turned forward. " : dir < 0 ? "Last turned backward. " : ""}${oneChannel ? `${st.aEdges} edge${st.aEdges === 1 ? "" : "s"} of A counted, true position ${netA} edge${Math.abs(netA) === 1 ? "" : "s"}` : `Count ${count} with x${mode} decoding`}.`}>
         {/* disc */}
+        {/* Pointer only, and hidden from assistive technology: the Shaft angle slider and the Back and Step buttons turn the disc too. */}
         <g
           className="qd-disc"
+          aria-hidden="true"
           onPointerDown={(e) => {
             drag.current = angleAt(e);
             (e.currentTarget as SVGGElement).setPointerCapture(e.pointerId);
@@ -126,10 +128,18 @@ function Quadrature() {
           const [x, y] = pol(47, place(s)).split(",").map(Number);
           const [lx, ly] = pol(70, place(s * 2.4 + 0.7)).split(",").map(Number);
           return (
-            <g key={name} opacity={dim ? 0.4 : 1}>
-              <circle cx={x} cy={y} r={4} fill={dim ? "var(--dim)" : col(lv)} stroke="var(--text)" strokeWidth={0.8} />
-              <line x1={x} y1={y - 4} x2={lx} y2={ly + 3} className="fig-wire" />
-              <text x={lx} y={ly} textAnchor="middle" className="fig-label">{name}</text>
+            <g key={name}>
+              {dim ? (
+                <>
+                  {/* a covered sensor: a dashed, crossed-out circle */}
+                  <circle cx={x} cy={y} r={4.5} fill="var(--surface)" stroke="var(--text)" strokeWidth={1.2} strokeDasharray="2 1.5" />
+                  <path d={`M${x - 2.4},${y - 2.4} l4.8,4.8 M${x + 2.4},${y - 2.4} l-4.8,4.8`} className="fig-wire" style={{ stroke: "var(--text)" }} />
+                </>
+              ) : (
+                <circle cx={x} cy={y} r={4} fill={col(lv)} stroke="var(--text)" strokeWidth={0.8} />
+              )}
+              <line x1={x} y1={y - 5} x2={lx} y2={ly + 3} className="fig-wire" />
+              <text x={lx} y={ly} textAnchor={dim ? "start" : "middle"} className={dim ? "fig-label dim" : "fig-label"}>{dim ? `${name}: covered` : name}</text>
             </g>
           );
         })}
@@ -138,7 +148,7 @@ function Quadrature() {
 
         {/* waveforms */}
         <text x={150} y={36} textAnchor="end" className="fig-label">A</text>
-        <text x={150} y={78} textAnchor="end" className="fig-label" opacity={oneChannel ? 0.4 : 1}>B</text>
+        <text x={150} y={78} textAnchor="end" className={oneChannel ? "fig-label dim" : "fig-label"}>B</text>
         <path d={wave(levelA, 22)} className="fig-trace" />
         <path d={wave(levelB, 64)} className={`fig-trace ${oneChannel ? "dim qd-off" : "data"}`} />
         {marks.map((m, i) => (
@@ -153,10 +163,12 @@ function Quadrature() {
         <text x={XC} y={102} textAnchor="middle" className="fig-label dim">dots: counted edges</text>
 
         {/* the four states */}
-        <g opacity={oneChannel ? 0.35 : 1}>
+        <g>
           <circle cx={196} cy={152} r={30} className="fig-wire" strokeDasharray="2 3" />
-          <text x={196} y={dir === 0 ? 143 : 150} textAnchor="middle" className="fig-label dim">A B</text>
-          {dir === 0 ? (
+          <text x={196} y={dir === 0 && !oneChannel ? 143 : 150} textAnchor="middle" className="fig-label dim">A B</text>
+          {oneChannel ? (
+            <text x={196} y={161} textAnchor="middle" className="fig-label dim">B = ?</text>
+          ) : dir === 0 ? (
             <>
               <text x={196} y={155} textAnchor="middle" className="fig-label">↻ +1</text>
               <text x={196} y={167} textAnchor="middle" className="fig-label">↺ -1</text>
@@ -166,8 +178,10 @@ function Quadrature() {
           )}
           {nodes.map((n, i) => (
             <g key={i}>
-              <rect x={n.x - 14} y={n.y - 9} width={28} height={18} rx={4} className={`fig-box ${i === q && !oneChannel ? "hot" : ""}`} />
-              <text x={n.x} y={n.y + 4} textAnchor="middle" className="fig-value">{STATES[i]}</text>
+              {/* a plate first: the dashed ring must not show through the tinted box of the current state */}
+              <rect x={n.x - 14} y={n.y - 9} width={28} height={18} rx={4} style={{ fill: "var(--surface)" }} />
+              <rect x={n.x - 14} y={n.y - 9} width={28} height={18} rx={4} className={`fig-box ${i === q && !oneChannel ? "hot" : ""}`} strokeDasharray={oneChannel ? "3 2" : undefined} />
+              <text x={n.x} y={n.y + 4} textAnchor="middle" className="fig-value" style={oneChannel ? { fill: "var(--dim)" } : undefined}>{STATES[i]}</text>
             </g>
           ))}
         </g>
@@ -186,9 +200,9 @@ function Quadrature() {
             <text x={262} y={124} className="fig-label dim">count</text>
             <text x={412} y={124} textAnchor="end" className="fig-label dim">per motor turn</text>
             {([4, 2, 1] as Mode[]).map((m, i) => (
-              <g key={m} opacity={m === mode ? 1 : 0.55}>
+              <g key={m}>
                 {m === mode && <rect x={256} y={130 + i * 22} width={160} height={19} rx={4} className="fig-box hot" />}
-                <text x={262} y={143 + i * 22} className="fig-label">x{m}</text>
+                <text x={262} y={143 + i * 22} className="fig-label" style={m === mode ? { fontWeight: 700 } : undefined}>x{m}</text>
                 <text x={330} y={144 + i * 22} textAnchor="end" className="fig-value">{countOf(pos, m) - countOf(0.5, m)}</text>
                 <text x={412} y={143 + i * 22} textAnchor="end" className="fig-label">500 x {m} = {500 * m}</text>
               </g>
@@ -203,7 +217,7 @@ function Quadrature() {
           <button className="fig-opt" disabled={pos <= MIN} onClick={() => moveTo(Math.floor(pos) - 0.5)}>Back</button>
           <button className="fig-opt" disabled={pos >= MAX} onClick={() => moveTo(Math.floor(pos) + 1.5)}>Step</button>
           <button className="fig-opt" disabled={pos === 0.5 && st.aEdges === 0 && dir === 0} onClick={() => setSt({ pos: 0.5, aEdges: 0, dir: 0 })}>Reset</button>
-          <input className="qd-range" type="range" aria-label="Shaft angle" min={MIN} max={MAX} step={0.05} value={pos} onChange={(e) => moveTo(+e.target.value)} />
+          <input className="qd-range" type="range" aria-label="Shaft angle" aria-valuetext={`${((pos - 0.5) * QDEG).toFixed(1)} degrees from the start, A ${a ? "high" : "low"}, B ${oneChannel ? "covered" : b ? "high" : "low"}`} min={MIN} max={MAX} step={0.05} value={pos} onChange={(e) => moveTo(+e.target.value)} />
         </div>
         <div>
           <span>Count</span>
@@ -220,7 +234,7 @@ function Quadrature() {
       <div className="fig-step">
         <CodePre><code>{oneChannel ? "// One channel: a counter cannot tell forward from\n// backward. The eQEP needs both QEPA and QEPB\n// for quadrature count mode (QSRC = 0)." : mode === 4 ? "// x4: every edge of A and B\nEQep1Regs.QDECCTL.bit.QSRC = 0;\n// the count so far\nint32_t raw = EQep1Regs.QPOSCNT;" : `// x${mode}: what simpler decoders do, with\n// ${mode === 2 ? "half" : "a quarter of"} the resolution. The eQEP's\n// quadrature count (QSRC = 0) is always x4.`}</code></CodePre>
       </div>
-      <figcaption>The same disc read with one sensor or two. With two, the order of the edges gives the direction, and counting all four edges of a slit period gives 4 x 500 = 2000 counts per motor turn. Each step of Back or Step is one edge, a quarter of a slit period.</figcaption>
+      <figcaption>The same disc read with one sensor or two. With two, the order of the edges gives the direction, and counting all four edges of a slit period gives 4 x 500 = 2000 counts per motor turn. Each step of Back or Step is one edge, a quarter of a slit period. The Shaft angle slider turns the disc like dragging it does.</figcaption>
     </figure>
   );
 }

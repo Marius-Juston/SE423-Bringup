@@ -19,7 +19,8 @@ const N = 2000;
 const CSS = `
 .pwma input[type=range] { flex: 1 1 7rem; min-width: 5rem; padding: 0; accent-color: var(--accent); }
 .pwma-note { color: var(--dim); font-size: 0.82rem; }
-.pwma-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
+.pwma-plate { fill: var(--inset); }
+.pwma-guide { stroke: var(--border); }
 `;
 
 function PwmAverage() {
@@ -119,25 +120,34 @@ function PwmAverage() {
         <text x={X0 - 4} y={PL + 3} textAnchor="end" className="fig-label dim">0 V</text>
         {drawn || duty === 0 || duty === 1 ? (
           <>
-            <path d={fill} fill="var(--accent-soft)" />
+            <path d={fill} fill="var(--accent-soft)" aria-hidden="true" />
             <path d={pin} className="fig-trace" style={{ stroke: "var(--hi)" }} />
           </>
         ) : (
           <>
             <rect x={X0} y={PH} width={X1 - X0} height={PL - PH} fill="var(--hi)" fillOpacity={0.15 + 0.5 * duty} stroke="var(--hi)" strokeWidth="1.5" />
-            <text x={(X0 + X1) / 2} y={(PH + PL) / 2 + 3} textAnchor="middle" className="fig-label pwma-halo">{periods >= 1000 ? "20 000" : periods} pulses, too close to draw</text>
           </>
         )}
         <line x1={X0} x2={X1} y1={yp(duty)} y2={yp(duty)} stroke="var(--value)" strokeWidth="1.4" strokeDasharray="5 3" />
+        {!(drawn || duty === 0 || duty === 1) && (
+          <>
+            {/* On a plate, so that the average line stops short of the words. */}
+            <rect x={(X0 + X1) / 2 - 82} y={(PH + PL) / 2 - 8} width={164} height={16} rx={3} className="pwma-plate" />
+            <text x={(X0 + X1) / 2} y={(PH + PL) / 2 + 3} textAnchor="middle" className="fig-label">{periods >= 1000 ? "20 000" : periods} pulses, too close to draw</text>
+          </>
+        )}
         <text x={X1 + 4} y={yp(duty) + 3} className="fig-value small">{avgV} V</text>
         <text x={X1 + 4} y={yp(duty) + 15 > PL + 8 ? yp(duty) - 9 : yp(duty) + 15} className="fig-label dim">average</text>
 
         <text x="4" y={FH + 8} className="fig-label">a slow</text>
-        <text x="4" y={FH + 19} className="fig-label">load sees</text>
-        <line x1={X0} x2={X1} y1={FH} y2={FH} stroke="var(--border)" />
-        <line x1={X0} x2={X1} y1={FL} y2={FL} stroke="var(--border)" />
+        <text x="4" y={FH + 21} className="fig-label">load</text>
+        <text x="4" y={FH + 34} className="fig-label">sees</text>
+        <line x1={X0} x2={X1} y1={FH} y2={FH} className="pwma-guide" />
+        <line x1={X0} x2={X1} y1={FL} y2={FL} className="pwma-guide" />
         <line x1={X0} x2={X1} y1={yf(duty)} y2={yf(duty)} stroke="var(--value)" strokeWidth="1" strokeDasharray="5 3" />
         <path d={filt} className="fig-trace data" style={{ strokeWidth: 1.8 }} strokeLinejoin="round" />
+        <text x={X1 + 4} y={(FH + FL) / 2 - 2} className="fig-value small">{ripple.toFixed(ripple < 1 ? 2 : 1)} V</text>
+        <text x={X1 + 4} y={(FH + FL) / 2 + 10} className="fig-label dim">swing</text>
         <text x={X0} y="146" className="fig-label dim">0</text>
         <text x={(X0 + X1) / 2} y="146" textAnchor="middle" className="fig-label dim">0.5 s</text>
         <text x={X1} y="146" textAnchor="end" className="fig-label dim">1 s</text>
@@ -145,9 +155,9 @@ function PwmAverage() {
 
         {/* LED */}
         <text x="386" y="20" textAnchor="middle" className="fig-label">LED1</text>
-        <circle cx="386" cy="62" r="26" fill="var(--hi)" fillOpacity={0.3 * seen} />
+        <circle cx="386" cy="62" r="26" className="pwma-glow" fill="var(--hi)" fillOpacity={0.3 * seen} />
         <circle cx="386" cy="62" r="17" fill="var(--surface)" stroke="var(--dim)" />
-        <circle cx="386" cy="62" r="17" fill="var(--hi)" fillOpacity={seen} />
+        <circle cx="386" cy="62" r="17" fill="var(--hi)" fillOpacity={seen} stroke="var(--dim)" />
         <text x="386" y="108" textAnchor="middle" className="fig-value small">{Math.round(seen * 100)} %</text>
         <text x="386" y="119" textAnchor="middle" className="fig-label dim">brightness</text>
         <text x="386" y="130" textAnchor="middle" className="fig-label dim">{flickers ? (playing ? "flickering" : "it flickers") : "steady"}</text>
@@ -156,7 +166,7 @@ function PwmAverage() {
       <div className="fig-controls">
         <div>
           <span>Duty cycle</span>
-          <input type="range" min={0} max={100} step={5} value={pct} aria-label="Duty cycle in percent" onChange={(e) => setPct(+e.target.value)} />
+          <input type="range" min={0} max={100} step={5} value={pct} aria-label="Duty cycle in percent" aria-valuetext={`${pct} percent`} onChange={(e) => setPct(+e.target.value)} />
           <span className="pwma-note" style={{ color: "var(--value)", fontFamily: "var(--mono)", minWidth: "2.8em", textAlign: "right" }}>{pct} %</span>
           <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa}; // {duty === 1 ? "above TBPRD = 5000: never low" : `${pct} % of 5000`}</code>
         </div>

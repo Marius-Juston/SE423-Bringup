@@ -85,7 +85,7 @@ function SpeedFromCounts() {
 
   return (
     <figure className="figure sc-fig" aria-label="Interactive plot: speed computed from encoder counts, with its quantisation">
-      <style>{`.sc-fig .sc-range{flex:1;min-width:140px;accent-color:var(--orange)}.sc-fig .sc-true{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.sc-fig .sc-grid{stroke:var(--border);stroke-width:1}.sc-fig .sc-thin{stroke-width:1;opacity:.4}.sc-fig .sc-dot{fill:var(--harvest)}.sc-fig .fig-controls>div>span:first-child{width:5.6rem}`}</style>
+      <style>{`.sc-fig .sc-range{flex:1;min-width:140px;accent-color:var(--orange)}.sc-fig .sc-true{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.sc-fig .sc-grid{stroke:var(--border);stroke-width:1}.sc-fig .sc-guide{stroke-width:1;opacity:.4}.sc-fig .sc-dot{fill:var(--harvest)}.sc-fig .fig-controls>div>span:first-child{width:5.6rem}`}</style>
       <svg viewBox="0 0 420 208" role="img" aria-label={`True speed ${sig(v0)} radians per second. The computed speed is between ${sig(lo)} and ${sig(hi)}.`}>
         <text x={X0} y={10} className="fig-label">position: <tspan className="fig-label dim">true (dashed) and </tspan>the counter</text>
         <line x1={X0} x2={X1} y1={84} y2={84} className="sc-grid" />
@@ -110,7 +110,8 @@ function SpeedFromCounts() {
           </g>
         )}
         <path d={trueV} className="sc-true" />
-        {method !== 1 && <path d={trace} className="fig-trace data sc-thin" />}
+        {/* a faint guide that joins the samples; the dots are the data */}
+        {method !== 1 && <path d={trace} className="fig-trace data sc-guide" />}
         {sim.est.map((v, k) => (v === null ? null : <circle key={k} cx={xOf(k)} cy={yV(v)} r={1.4} className="sc-dot" />))}
         {[0, 50, 100, 150, 200].map((ms) => (
           <text key={ms} x={xOf(ms)} y={204} textAnchor={ms === 0 ? "start" : ms === 200 ? "end" : "middle"} className="fig-label dim">{ms} ms</text>
@@ -120,7 +121,7 @@ function SpeedFromCounts() {
       <div className="fig-controls">
         <div>
           <span>Wheel speed</span>
-          <input className="sc-range" type="range" aria-label="True wheel speed" min={0} max={1} step={0.01} value={s} onChange={(e) => setS(+e.target.value)} />
+          <input className="sc-range" type="range" aria-label="True wheel speed" aria-valuetext={`${sig(v0)} radians per second`} min={0} max={1} step={0.01} value={s} onChange={(e) => setS(+e.target.value)} />
           <code>{sig(v0)} rad/s = {perMs.toFixed(2)} counts per ms</code>
         </div>
         <div>

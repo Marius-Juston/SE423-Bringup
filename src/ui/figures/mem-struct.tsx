@@ -40,10 +40,15 @@ function MemStruct() {
         <Cells cells={cells} />
         <Brace slot={0} count={3} label="left: one struct Motor" />
         <Brace slot={3} count={3} label="right: one struct Motor" />
-        <path d={`M${px},${y0} C${px},${y0 + 58} ${tx},${y0 + 64} ${tx},${y0 + 21}`} className="mem-arrow" style={via === "p" ? undefined : { opacity: 0.45 }} />
-        <polygon points={`${tx - 5},${y0 + 23} ${tx + 5},${y0 + 23} ${tx},${y0 + 14}`} className="mem-arrow-head" style={via === "p" ? undefined : { opacity: 0.45 }} />
-        <circle cx={px} cy={y0} r="2.5" className="mem-arrow-head" />
-        <text x={px - 14} y={y0 + 22} textAnchor="end" className="fig-label dim">p = &amp;{target};</text>
+        {/* The arrow drops straight past its label, then turns. In use it is orange, solid and thick with a filled head; otherwise grey, dashed and thin with an open head. */}
+        <path d={`M${px},${y0} V${y0 + 30} C${px},${y0 + 54} ${tx},${y0 + 66} ${tx},${y0 + 21}`} className="mem-arrow" style={via === "p" ? undefined : { stroke: "var(--dim)", strokeWidth: 1.4, strokeDasharray: "4 3" }} />
+        {via === "p" ? (
+          <polygon points={`${tx - 5},${y0 + 23} ${tx + 5},${y0 + 23} ${tx},${y0 + 14}`} className="mem-arrow-head" />
+        ) : (
+          <path d={`M${tx - 4},${y0 + 22} L${tx},${y0 + 15} L${tx + 4},${y0 + 22}`} className="mem-arrow" style={{ stroke: "var(--dim)", strokeWidth: 1.4 }} />
+        )}
+        <circle cx={px} cy={y0} r="2.5" className="mem-arrow-head" style={via === "p" ? undefined : { fill: "var(--inset)", stroke: "var(--dim)", strokeWidth: 1.4 }} />
+        <text x={px - 8} y={y0 + 22} textAnchor="end" className="fig-label dim">p = &amp;{target};</text>
       </svg>
       <code className="mem-out">{expr} = {expr} + 1;</code>
       <p className="fig-why" role="status">{why}</p>
@@ -67,7 +72,7 @@ function MemStruct() {
           <button className="fig-opt" onClick={store}>Run the line</button>
         </div>
       </div>
-      <figcaption>Two variables of the same struct type: the same three members, in the same order, in different boxes. A dot picks a member of a struct variable; an arrow (-&gt;) picks a member through a pointer.</figcaption>
+      <figcaption>Two variables of the same struct type: the same three members, in the same order, in different boxes. A dot picks a member of a struct variable; an arrow (-&gt;) picks a member through a pointer. The arrow from p is orange while the line uses p, and grey and dashed while it does not.</figcaption>
     </figure>
   );
 }

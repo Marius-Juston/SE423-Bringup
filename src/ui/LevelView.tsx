@@ -180,6 +180,8 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
   const wide = winW >= (isCode ? 1000 : 720) * Math.max(1, num(scale, 1));
   // A code level in a narrow window: one pane at a time, chosen with tabs.
   const tabbed = isCode && !wide;
+  // A warm-up question in a narrow window comes first, with the briefing below it for looking things up: in the page too, so the keyboard meets them in the order they are drawn.
+  const warmLast = !!warmup && !wide && !tabbed;
   const tabbedNow = useRef(tabbed);
   tabbedNow.current = tabbed;
   const [taskPref, setTaskW] = usePref<number | null>(isCode ? "w-task-code" : reading ? "w-task-read" : "w-task", null);
@@ -379,6 +381,15 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
           </>
         ) : (
           <>
+            {/* One unit, so a narrow header never wraps between the two buttons. Before the dots, as they are drawn and read. */}
+            <span className="level-arrows">
+              <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title={index === 0 ? "This is the first level of the chapter" : "Previous level"}>
+                <Icon name="back" size={16} />
+              </button>
+              <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title={next ? "Next level" : "This is the last level"}>
+                <Icon name="next" size={16} />
+              </button>
+            </span>
             <nav className="stepper" aria-label={`Levels of chapter ${ch}`}>
               {chapter.levels.map((l, i) => {
                 const t = tierOf(l);
@@ -398,15 +409,6 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
                 );
               })}
             </nav>
-            {/* One unit, so a narrow header never wraps between the two buttons. */}
-            <span className="level-arrows">
-              <button className="icon-btn" disabled={index === 0} onClick={() => go({ name: "level", id: chapter.levels[index - 1].id })} aria-label="Previous level" title={index === 0 ? "This is the first level of the chapter" : "Previous level"}>
-                <Icon name="back" size={16} />
-              </button>
-              <button className="icon-btn" disabled={!next} onClick={() => next && go({ name: "level", id: next.id })} aria-label="Next level" title={next ? "Next level" : "This is the last level"}>
-                <Icon name="next" size={16} />
-              </button>
-            </span>
           </>
         )}
       </div>
@@ -433,7 +435,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
             </p>
           </div>
         )}
-        {side}
+        {!warmLast && side}
         <Splitter value={taskW} onChange={setTaskW} min={240} max={taskMax} side="left" label="Resize the briefing pane" reset={taskDefault} />
         {isCode ? (
           <CodeLevelView
@@ -461,6 +463,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
             </div>
           </div>
         )}
+        {warmLast && side}
       </div>
     </div>
   );

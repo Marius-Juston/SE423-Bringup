@@ -5,6 +5,7 @@ import { KITS } from "../sim/world/kits";
 import { Figure, FIGURE_IDS, figureMeta } from "./figures";
 import { Guard, Inline } from "./Markdown";
 import { Icon } from "./Icon";
+import { ScrollBox } from "./ScrollBox";
 import { usePref } from "./prefs";
 import { PARTS } from "./MapView";
 import { GLOSSARY } from "../levels/glossary/index";
@@ -273,7 +274,7 @@ function RegisterDetail({ reg }: { reg: RegInfo }) {
         {reg.desc} {reg.words * 16} bits at address {hex(reg.addr, 16)}.{reg.hook.protect ? " EALLOW-protected: write it between EALLOW; and EDIS;." : ""}
       </p>
       {reg.fields.length > 0 ? (
-        <div className="table-scroll">
+        <ScrollBox className="table-scroll" label={`Fields of ${reg.name}`}>
           <table className="fields">
             <thead>
               <tr><th scope="col">Field</th><th scope="col">Bits</th><th scope="col">Description</th><th scope="col">In C</th></tr>
@@ -289,7 +290,7 @@ function RegisterDetail({ reg }: { reg: RegInfo }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </ScrollBox>
       ) : (
         <p>This register has no named fields: use it as a whole value{/Vect/.test(reg.name) ? " (a pointer to an interrupt function)" : ""}.</p>
       )}
@@ -349,7 +350,7 @@ function Registers({ sel, setSel, q, setQ }: { sel: string; setSel: (name: strin
           </button>
         ))}
       </nav>
-      <div className="hb-col hb-reg-detail" tabIndex={-1}>
+      <div className="hb-col hb-reg-detail" role="region" aria-label="The chosen register" tabIndex={0}>
         {shownReg ? <RegisterDetail reg={shownReg} /> : <p className="hint-text">Choose a peripheral, then one of its registers, to see its fields. In C a field is written as <code>Peripheral.REGISTER.bit.FIELD</code>.</p>}
       </div>
     </div>
@@ -365,7 +366,7 @@ function Pins() {
       {kits.map((k) => (
         <section key={k}>
           <h2>{k}</h2>
-          <div className="table-scroll">
+          <ScrollBox className="table-scroll" label={`Table of the parts of the ${k}`}>
             <table className="fields">
               <thead>
                 <tr><th scope="col">Part</th><th scope="col">GPIO</th><th scope="col">Port</th><th scope="col">Notes</th></tr>
@@ -381,7 +382,7 @@ function Pins() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollBox>
         </section>
       ))}
     </>
@@ -430,7 +431,7 @@ function Formulas({ showFigure }: { showFigure: (title: string) => void }) {
   return (
     <>
       <h1>Formulas</h1>
-      <div className="table-scroll">
+      <ScrollBox className="table-scroll" label="Table of formulas">
         <table className="fields">
           <thead>
             <tr><th scope="col">What</th><th scope="col">Formula</th><th scope="col">Source</th></tr>
@@ -441,12 +442,12 @@ function Formulas({ showFigure }: { showFigure: (title: string) => void }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollBox>
       <h2 style={{ marginTop: "1.6rem" }}>printf on this chip</h2>
       <p className="hint-text">
         One conversion per value, in order: <code>%[flags][width][.precision][length]specifier</code>. Here <code>int</code> and <code>char</code> are 16 bits, <code>long</code> and <code>float</code> are 32. A 32-bit value needs the <code>l</code>: without it the number printed is wrong and the 16-bit values after it are shifted. <code>serial_printf</code>, <code>printf</code> and the robot's <code>UART_printfLine</code> all take the same format.
       </p>
-      <div className="table-scroll">
+      <ScrollBox className="table-scroll" label="Table of printf conversions">
         <table className="fields">
           <thead>
             <tr><th scope="col">Value</th><th scope="col">Write</th><th scope="col">Example</th><th scope="col">Prints</th></tr>
@@ -457,8 +458,8 @@ function Formulas({ showFigure }: { showFigure: (title: string) => void }) {
             ))}
           </tbody>
         </table>
-      </div>
-      <div className="table-scroll">
+      </ScrollBox>
+      <ScrollBox className="table-scroll" label="Table of printf examples">
         <table className="fields">
           <thead>
             <tr><th scope="col">Flag, width, precision</th><th scope="col">Example</th><th scope="col">Prints</th></tr>
@@ -469,9 +470,9 @@ function Formulas({ showFigure }: { showFigure: (title: string) => void }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollBox>
       <h2 style={{ marginTop: "1.6rem" }}>Which document answers which question</h2>
-      <div className="table-scroll">
+      <ScrollBox className="table-scroll" label="Table of documents">
         <table className="fields">
           <thead>
             <tr><th scope="col">Question</th><th scope="col">Where to look</th><th scope="col">Practise reading it</th></tr>
@@ -486,7 +487,7 @@ function Formulas({ showFigure }: { showFigure: (title: string) => void }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </ScrollBox>
     </>
   );
 }

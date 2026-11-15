@@ -60,7 +60,7 @@ function LidarFan() {
         .lfan-slider input { flex: 1; min-width: 6rem; accent-color: var(--orange); }
         .lfan-slider output { font-family: var(--mono); color: var(--harvest); font-weight: 700; min-width: 3.6rem; }
         .lfan svg { touch-action: none; cursor: crosshair; }
-        .lfan-rays { stroke: var(--arches); stroke-width: 0.5; opacity: 0.55; fill: none; }
+        .lfan-rays { stroke: var(--arches); stroke-width: 0.5; opacity: 0.75; fill: none; }
         .lfan-pick { stroke: var(--orange); stroke-width: 2.4; }
         .lfan-tip { fill: var(--orange); }
         .lfan-mark { stroke: var(--text); stroke-width: 1.1; stroke-dasharray: 3 2; }
@@ -68,7 +68,7 @@ function LidarFan() {
         .lfan-wall { stroke: var(--text); stroke-width: 2; fill: none; }
         .lfan-robot { fill: var(--surface); stroke: var(--text); stroke-width: 1.4; }
         .lfan-nose { fill: var(--text); }
-        .lfan pre { font-size: 0.76rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .lfan pre { font-size: 0.8rem; white-space: pre-wrap; overflow-wrap: anywhere; }
       `}</style>
       <svg
         ref={svg}
@@ -140,7 +140,7 @@ function LidarFan() {
         <div>
           <span>Point i</span>
           <label className="lfan-slider">
-            <input type="range" min={0} max={LIDAR_POINTS - 1} step={1} value={i} onChange={(e) => setI(+e.target.value)} aria-label="Index of the point in the scan, 0 to 227" />
+            <input type="range" min={0} max={LIDAR_POINTS - 1} step={1} value={i} onChange={(e) => setI(+e.target.value)} aria-label="Index of the point in the scan, 0 to 227" aria-valuetext={`point ${i}, ${Math.abs(deg).toFixed(2)} degrees ${side}`} />
             <output>i = {i}</output>
           </label>
         </div>

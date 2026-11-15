@@ -13,7 +13,7 @@ import { IMU_INPUTS, type SpiDevicesState } from "../../sim/plugins/spi_devices"
 
 const CSS = `
 .iv-svg { width: 100%; display: block; background: var(--inset); border: 1px solid var(--border); border-radius: 6px; }
-.iv-ring { fill: none; stroke: var(--border-strong); stroke-width: 1; }
+.iv-ring { fill: none; stroke: var(--control); stroke-width: 1; }
 .iv-ring.g1 { stroke-dasharray: 3 3; }
 .iv-txt { fill: var(--text); font-size: 11.5px; font-family: var(--sans); }
 .iv-txt.dim { fill: var(--dim); }
@@ -24,7 +24,8 @@ const CSS = `
 .iv-table th { text-align: left; color: var(--dim); font-weight: 400; padding: 0.1rem 0.3rem 0.1rem 0; }
 .iv-table td { font-family: var(--mono); color: var(--value); font-weight: 700; text-align: right; padding: 0.1rem 0.3rem; white-space: nowrap; }
 .iv-table thead th { border-bottom: 1px solid var(--border); text-align: right; }
-.iv-table thead th:first-child { text-align: left; }
+.iv-table thead th:first-child, .iv-table thead th:last-child { text-align: left; }
+.iv-table thead th:last-child { padding-left: 0.3rem; }
 .iv-table td.unit { color: var(--dim); font-weight: 400; text-align: left; font-family: var(--sans); }
 .iv-cfg { margin: 0.4rem 0 0; font-size: 0.85rem; color: var(--dim); }
 .iv-vars { display: flex; flex-wrap: wrap; gap: 0.2rem 1rem; margin: 0.3rem 0 0; font-family: var(--mono); font-size: 0.82rem; }
@@ -158,7 +159,7 @@ function ImuView({ board }: ViewProps) {
             <th scope="col">Axis</th>
             <th scope="col">Feels</th>
             <th scope="col">Last sample</th>
-            <th scope="col" aria-label="Unit" />
+            <th scope="col">Unit</th>
           </tr>
         </thead>
         <tbody>

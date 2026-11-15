@@ -97,7 +97,18 @@ function PingPong() {
 
   return (
     <figure className="figure pingpong" aria-label="Step-through of ping-pong buffering with the DMA">
-      <style>{`.pingpong .pp-ok { fill: var(--ok); } .pingpong .pp-bad { fill: var(--bad); }`}</style>
+      <style>{`
+        .pingpong .pp-ok { fill: var(--ok); }
+        .pingpong .pp-bad { fill: var(--bad); }
+        .pingpong .pp-later { stroke-dasharray: 3 2; }
+        .pingpong .pp-read { fill: none; stroke: var(--ok); stroke-width: 1.6; stroke-dasharray: 6 3; }
+        .pingpong .pp-read.wrong { stroke: var(--bad); stroke-width: 2.4; stroke-dasharray: 2 2; }
+        .pingpong .pp-job { fill: var(--surface); stroke: var(--ok); stroke-width: 1; }
+        .pingpong .pp-job.wrong { stroke: var(--bad); stroke-width: 1.6; stroke-dasharray: 3 2; }
+        .pingpong .pp-done { fill: var(--text); }
+        .pingpong .fig-controls.row { flex-wrap: wrap; }
+        /* A primary button that cannot be pressed gives up its orange fill, so it is not told from the live one by a paler orange alone. */
+      `}</style>
       <svg viewBox="0 0 420 198" role="img" aria-label={`${title}. The DMA writes to ${NAMES[dest]}; the next transfer goes to ${t === 0 ? "ping" : NAMES[other]}. ${last ? `main ${busy ? "is reading" : "last read"} ${NAMES[last.buf]}, ${last.ok ? "a complete buffer" : "a buffer still being filled"}.` : "main waits."}`}>
         {/* DMA */}
         <rect x="6" y="6" width="200" height="40" rx="4" className={`fig-box ${t > 0 ? "hot" : ""}`} />
@@ -113,7 +124,7 @@ function PingPong() {
         {busy && <text x="408" y="30" textAnchor="end" className="fig-value small">processing {NAMES[last.buf]}</text>}
         {last && (
           <text x="220" y="41" className={`fig-label ${last.ok ? "pp-ok" : "pp-bad"}`}>
-            {last.ok ? `good: samples ${span(last.values)}, one whole buffer` : `wrong: sample ${last.values[0]} + ${last.values[1] === null ? "empty places" : `old ${span(last.values.slice(1))}`}`}
+            {last.ok ? `good: ${span(last.values)}, a whole buffer` : `wrong: sample ${last.values[0]} + ${last.values[1] === null ? "empty places" : `old ${span(last.values.slice(1))}`}`}
           </text>
         )}
         {/* buffers */}
@@ -130,14 +141,14 @@ function PingPong() {
                 const fresh = cell.transfer === j && filling;
                 return (
                   <g key={i}>
-                    <rect x={CX + i * CW} y={y} width={CW - 2} height="22" rx="3" className={`fig-box ${now ? "hot" : cell.sample === null ? "off" : ""}`} />
+                    <rect x={CX + i * CW} y={y} width={CW - 2} height="22" rx="3" className={`fig-box ${now ? "hot" : cell.sample === null ? "pp-later" : ""}`} />
                     <text x={CX + i * CW + CW / 2 - 1} y={y + 15} textAnchor="middle" className={cell.sample === null ? "fig-label dim" : filling && !fresh ? "fig-label dim" : "fig-value"}>{cell.sample ?? ""}</text>
                     {now && <path d={`M${CX + i * CW + CW / 2 - 6},${y - 9} h10 l-5,7 z`} fill="var(--orange)" />}
                   </g>
                 );
               })}
-              {reading && <rect x={CX - 3} y={y - 3} width={SIZE * CW + 4} height="28" rx="5" fill="none" stroke={last.ok ? "var(--ok)" : "var(--bad)"} strokeWidth="1.6" strokeDasharray="5 3" />}
-              <text x={CX + SIZE * CW + 6} y={y + 9} className="fig-label" style={{ fill: filling ? "var(--orange)" : undefined }}>{filling ? "DMA is filling" : empty ? "empty" : "complete"}</text>
+              {reading && <rect x={CX - 3} y={y - 3} width={SIZE * CW + 4} height="28" rx="5" className={`pp-read ${last.ok ? "" : "wrong"}`} />}
+              <text x={CX + SIZE * CW + 6} y={y + 9} className="fig-label" style={{ fill: filling ? "var(--accent-text)" : undefined }}>{filling ? "DMA is filling" : empty ? "empty" : "complete"}</text>
               <text x={CX + SIZE * CW + 6} y={y + 20} className={`fig-label ${reading ? (last.ok ? "pp-ok" : "pp-bad") : "dim"}`}>{reading ? "main is reading" : filling ? "do not read" : empty ? "" : "safe to read"}</text>
             </g>
           );
@@ -148,18 +159,19 @@ function PingPong() {
         <text x="6" y="172" className="fig-label dim">main</text>
         {[0, 1, 2, 3, 4].map((k) => (
           <g key={k}>
-            <rect x={tx(k * SIZE)} y="142" width={SIZE * TW - 1} height="14" rx="2" className={`fig-box ${k * SIZE < t ? "" : "off"}`} />
+            <rect x={tx(k * SIZE)} y="142" width={SIZE * TW - 1} height="14" rx="2" className={`fig-box ${k * SIZE < t ? "" : "pp-later"}`} />
             <text x={tx(k * SIZE) + (SIZE * TW) / 2} y="152.5" textAnchor="middle" className="fig-label">{NAMES[k % 2]}</text>
             <line x1={tx(k * SIZE) + TW} x2={tx(k * SIZE) + TW} y1="136" y2="158" stroke={k * SIZE < t ? "var(--orange)" : "var(--dim)"} strokeWidth="1.2" strokeDasharray={k * SIZE < t ? undefined : "2 2"} />
-            <text x={tx(k * SIZE) + TW + 2} y="139" className={`fig-label ${k * SIZE < t ? "" : "dim"}`} style={k * SIZE < t ? { fill: "var(--orange)" } : undefined}>DMA_ISR</text>
+            <text x={tx(k * SIZE) + TW + 2} y="139" className={`fig-label ${k * SIZE < t ? "" : "dim"}`} style={k * SIZE < t ? { fill: "var(--accent-text)" } : undefined}>DMA_ISR</text>
           </g>
         ))}
         {reads.map((r, i) => {
           const w = Math.max(0, Math.min(MAIN_TIME, t - r.at)) * TW;
           return (
             <g key={i}>
-              <rect x={tx(r.at)} y="162" width={MAIN_TIME * TW} height="14" rx="2" fill="var(--surface)" stroke={r.ok ? "var(--ok)" : "var(--bad)"} strokeWidth="1" />
-              <rect x={tx(r.at)} y="162" width={w} height="14" rx="2" fill={r.ok ? "var(--ok)" : "var(--bad)"} fillOpacity="0.3" />
+              <rect x={tx(r.at)} y="162" width={MAIN_TIME * TW} height="14" rx="2" className={`pp-job ${r.ok ? "" : "wrong"}`} />
+              {/* how far main has got with this buffer: a bar under the box */}
+              {w > 0 && <rect x={tx(r.at)} y="177.5" width={w} height="2.5" className="pp-done" />}
               <text x={tx(r.at) + (MAIN_TIME * TW) / 2} y="172.5" textAnchor="middle" className={`fig-label ${r.ok ? "pp-ok" : "pp-bad"}`}>{NAMES[r.buf]}{r.ok ? "" : " !"}</text>
             </g>
           );
@@ -184,7 +196,7 @@ function PingPong() {
           <button className="fig-opt" aria-pressed={bug} onClick={() => setBug(true)}>the buffer just started (bug)</button>
         </div>
       </div>
-      <figcaption>Two buffers, 8 samples each here (1024 in the course project). Numbers are sample numbers; grey numbers are old samples that will be overwritten. The interrupt comes when a transfer starts, so main must read the buffer the DMA has just finished, never the one it has just started.</figcaption>
+      <figcaption>Two buffers, 8 samples each here (1024 in the course project). Numbers are sample numbers; grey numbers are old samples that will be overwritten. Dashed boxes are still empty or still to come. In the main row, the bar under a box shows how far main has got with that buffer. The interrupt comes when a transfer starts, so main must read the buffer the DMA has just finished, never the one it has just started.</figcaption>
     </figure>
   );
 }

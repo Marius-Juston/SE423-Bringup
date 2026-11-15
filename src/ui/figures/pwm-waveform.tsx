@@ -21,6 +21,7 @@ const CSS = `
 .pwmw-read { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.4rem 0; }
 .pwmw-read div { flex: 1 1 7rem; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.55rem; font-size: 0.78rem; color: var(--dim); }
 .pwmw-read b { display: block; font-family: var(--mono); color: var(--value); font-size: 0.95rem; }
+.pwmw-glow { fill: var(--accent-soft); }
 .pwmw-grab { cursor: ns-resize; touch-action: none; fill: transparent; }
 .pwmw-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
 `;
@@ -105,7 +106,7 @@ function PwmWaveform() {
   const moving = edges.some((e) => e.t >= 2 * len && e.t < 4 * len);
   const halved = moving && startOf2 !== startOf3;
 
-  const X0 = 52;
+  const X0 = 60;
   const X1 = 408;
   const Y0 = 118;
   const Y1 = 20;
@@ -217,19 +218,19 @@ function PwmWaveform() {
         <line x1={X0} x2={X1} y1={y(prd)} y2={y(prd)} stroke="var(--info)" strokeWidth="1.4" strokeDasharray="6 3" />
         <text x={X1 - 2} y={y(prd) - 4} textAnchor="end" className="fig-value small pwmw-halo" style={{ fill: "var(--info)" }}>TBPRD = {prd}</text>
         {/* CMPA */}
-        <line x1={X0} x2={X1} y1={y(cmpa)} y2={y(cmpa)} stroke="var(--value)" strokeWidth="1.4" strokeDasharray="6 3" />
+        <line x1={X0} x2={X1} y1={y(cmpa)} y2={y(cmpa)} stroke="var(--value)" strokeWidth="1.4" strokeDasharray="2 3" />
         <text x={X0 + 12} y={y(cmpa) > Y0 - 14 ? y(cmpa) + 11 : y(cmpa) - 4} className="fig-value small pwmw-halo">CMPA = {cmpa}</text>
         {marks.map((m, i) => (
           <circle key={i} cx={x(m.t)} cy={y(m.c)} r={m.ev ? 2.6 : 1.6} fill={m.ev ? "var(--accent)" : "var(--dim)"} />
         ))}
         <path d={`M${X0 - 5},${y(prd) - 4} L${X0 + 3},${y(prd)} L${X0 - 5},${y(prd) + 4} Z`} fill="var(--info)" />
-        <path d={`M${X0 - 5},${y(cmpa) - 4} L${X0 + 3},${y(cmpa)} L${X0 - 5},${y(cmpa) + 4} Z`} fill="var(--value)" />
-        <rect x={X0 - 10} y={y(prd) - 7} width={X1 - X0 + 10} height="14" className="pwmw-grab" {...drag("prd")}><title>Drag to change TBPRD</title></rect>
-        <rect x={X0 - 10} y={y(cmpa) - 7} width={X1 - X0 + 10} height="14" className="pwmw-grab" {...drag("cmpa")}><title>Drag to change CMPA</title></rect>
+        <circle cx={X0 - 2} cy={y(cmpa)} r="3.6" fill="var(--value)" stroke="var(--inset)" strokeWidth="1" />
+        <rect x={X0 - 10} y={y(prd) - 7} width={X1 - X0 + 10} height="14" className="pwmw-grab" aria-hidden="true" {...drag("prd")}><title>Drag to change TBPRD</title></rect>
+        <rect x={X0 - 10} y={y(cmpa) - 7} width={X1 - X0 + 10} height="14" className="pwmw-grab" aria-hidden="true" {...drag("cmpa")}><title>Drag to change CMPA</title></rect>
         {/* pin */}
         <text x="4" y={PH + 9} className="fig-label">EPWM12A</text>
         <text x="4" y={PH + 20} className="fig-label dim">0 or 3.3 V</text>
-        <path d={fill} fill="var(--accent-soft)" />
+        <path d={fill} className="pwmw-glow" />
         <path d={pin} className="fig-trace" style={{ stroke: "var(--hi)" }} />
         {[0, 50, 100, 150, 200].map((us) => (
           <text key={us} x={x(us * 50)} y="190" textAnchor={us === 0 ? "start" : us === 200 ? "end" : "middle"} className="fig-label dim">{us === 0 ? "0" : `${us} µs`}</text>
@@ -244,12 +245,12 @@ function PwmWaveform() {
       <div className="fig-controls">
         <div>
           <span>Period</span>
-          <input type="range" min={PMIN} max={CMAX} step={50} value={prd} aria-label="TBPRD, the period register" onChange={(e) => setPrd(+e.target.value)} />
+          <input type="range" min={PMIN} max={CMAX} step={50} value={prd} aria-label="TBPRD, the period register" aria-valuetext={`TBPRD = ${prd} counts`} onChange={(e) => setPrd(+e.target.value)} />
           <code>EPwm12Regs.TBPRD = {prd};</code>
         </div>
         <div>
           <span>Compare</span>
-          <input type="range" min={0} max={CMAX} step={25} value={cmpa} aria-label="CMPA, the compare register" onChange={(e) => setCmpa(+e.target.value)} />
+          <input type="range" min={0} max={CMAX} step={25} value={cmpa} aria-label="CMPA, the compare register" aria-valuetext={`CMPA = ${cmpa} counts`} onChange={(e) => setCmpa(+e.target.value)} />
           <code>EPwm12Regs.CMPA.bit.CMPA = {cmpa};</code>
         </div>
         <div>
@@ -281,7 +282,7 @@ function PwmWaveform() {
           )}
         </div>
       </details>
-      <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. A CMPA above TBPRD is never reached. Drag the two dashed lines or use the sliders. Orange dots mark the events that move the pin. Both outputs, dead time and triggers are in the figure "ePWM playground".</figcaption>
+      <figcaption>The counter climbs one count every 20 ns, so its slope never changes: TBPRD is where it turns back, CMPA is a level it crosses on the way. A CMPA above TBPRD is never reached. Drag the two dashed lines (TBPRD long dashes with a triangle, CMPA short dashes with a dot) or use the sliders, which do the same. Orange dots mark the events that move the pin. Both outputs, dead time and triggers are in the figure "ePWM playground".</figcaption>
     </figure>
   );
 }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { CodePre } from "../CopyButton";
+import { CodeBlock } from "../Markdown";
+import { ScrollBox } from "../ScrollBox";
 import type { RegisterLevel } from "../../levels/types";
 import { device, fieldValue, fieldsOf, fillGaps, hex, type BitField } from "../device";
 
@@ -72,6 +73,7 @@ export function RegisterPuzzle({ level, onPass, onMiss, solved }: { level: Regis
         <span>decimal <b>{value}</b></span>
       </div>
       {fields.some((f) => !f.reserved && f.name) && (
+        <ScrollBox className="table-scroll" label="Fields of this register">
         <table className="fields">
           <thead>
             <tr><th scope="col">Field</th><th scope="col">Bits</th><th scope="col">Value</th><th scope="col">What it does</th></tr>
@@ -91,6 +93,7 @@ export function RegisterPuzzle({ level, onPass, onMiss, solved }: { level: Regis
             })}
           </tbody>
         </table>
+        </ScrollBox>
       )}
       <div className="actions">
         <button
@@ -109,7 +112,7 @@ export function RegisterPuzzle({ level, onPass, onMiss, solved }: { level: Regis
       {solved && level.code && (
         <div className="takeaway">
           <strong>In C:</strong>
-          <CodePre><code>{level.code}</code></CodePre>
+          <CodeBlock code={level.code} />
         </div>
       )}
     </div>

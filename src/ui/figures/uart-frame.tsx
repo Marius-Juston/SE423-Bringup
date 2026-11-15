@@ -56,7 +56,7 @@ function UartFrame() {
   return (
     <figure className="figure uf-fig" aria-label="Interactive diagram of a serial frame on the TX line">
       <style>{`
-        .uf-fig .uf-in { width: 3.2em; font: inherit; font-family: var(--mono); font-size: 1.1rem; text-align: center; background: var(--inset); color: var(--text); border: 1px solid var(--border-strong, var(--dim)); border-radius: 4px; padding: 0.05em 0.2em; }
+        .uf-fig .uf-in { width: 3.2em; font: inherit; font-family: var(--mono); font-size: 1.1rem; text-align: center; background: var(--inset); color: var(--text); border: 1px solid var(--control); border-radius: 4px; padding: 0.05em 0.2em; }
         .uf-fig .uf-start { fill: var(--arches); opacity: 0.16; }
         .uf-fig .uf-stop { fill: var(--orange); opacity: 0.16; }
         .uf-fig .uf-fan { stroke: var(--harvest); stroke-width: 0.8; opacity: 0.75; fill: none; }

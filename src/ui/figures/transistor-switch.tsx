@@ -17,6 +17,8 @@ const CSS = `
 function TransistorSwitch() {
   const [high, setHigh] = useState(false);
   const pin = high ? "var(--orange)" : "var(--arches)";
+  // Words in the pin's colour: orange words use the text token.
+  const pinText = high ? "var(--accent-text)" : "var(--arches)";
   const why = high
     ? "Pin high (3.3 V): the transistor switches on and closes the motor's loop. About 1 A flows from the battery through the motor. The pin itself supplies less than 1 mA: it only gives the order."
     : "Pin low (0 V): the transistor is off, like an open switch. The motor's loop is broken, no current flows, and the motor stands still.";
@@ -28,7 +30,7 @@ function TransistorSwitch() {
         <rect x="8" y="76" width="84" height="56" rx="6" className="fig-chip" />
         <text x="50" y="92" textAnchor="middle" className="fig-label">microcontroller</text>
         <text x="50" y="108" textAnchor="middle" className="fig-label dim">pin is</text>
-        <text x="50" y="122" textAnchor="middle" className="fig-value" style={{ fill: pin }}>{high ? "high, 3.3 V" : "low, 0 V"}</text>
+        <text x="50" y="122" textAnchor="middle" className="fig-value" style={{ fill: pinText }}>{high ? "high, 3.3 V" : "low, 0 V"}</text>
         {/* control wire */}
         <line x1="92" y1="104" x2="176" y2="104" className="fig-wire thick" style={{ stroke: pin }} />
         <text x="134" y="98" textAnchor="middle" className="fig-label">control</text>
@@ -37,7 +39,8 @@ function TransistorSwitch() {
         <rect x="176" y="78" width="72" height="52" rx="5" className={`fig-box ${high ? "hot" : "active"}`} />
         <text x="220" y="143" textAnchor="end" className="fig-label">transistor: {high ? "on" : "off"}</text>
         <path d="M176,104 H196" className="ts-ctl" style={{ stroke: pin }} />
-        <polygon points="196,100 203,104 196,108" style={{ fill: pin }} />
+        {/* The order: a hollow arrowhead while the pin is low, a filled one when it is high. */}
+        <polygon points="196,100 203,104 196,108" style={high ? { fill: pin } : { fill: "none", stroke: pin, strokeWidth: 1.4, strokeLinejoin: "round" }} />
         <circle cx="226" cy="90" r="2.6" className="fig-dot" />
         <circle cx="226" cy="118" r="2.6" className="fig-dot" />
         <line x1="226" y1="118" x2={high ? 226 : 210} y2={high ? 90 : 95} className="fig-wire thick" />
@@ -48,7 +51,7 @@ function TransistorSwitch() {
         <circle cx="330" cy="48" r="18" className={`ts-motor ${high ? "on" : ""}`} />
         <text x="330" y="53" textAnchor="middle" className="ts-m">M</text>
         <text x="354" y="45" className="fig-label">motor</text>
-        <text x="354" y="57" className="fig-value small" style={{ fill: high ? "var(--orange)" : "var(--dim)" }}>{high ? "RUNS" : "stopped"}</text>
+        <text x="354" y="57" className="fig-value small" style={{ fill: high ? "var(--accent-text)" : "var(--dim)" }}>{high ? "RUNS" : "stopped"}</text>
         <path d="M330,66 V74 H226 V90" className="fig-wire thick" style={{ stroke: high ? "var(--arches)" : "var(--orange)" }} />
         <path d="M226,118 V152" className="fig-wire thick" style={{ stroke: "var(--arches)" }} />
         <path d="M214,152 H238 M219,157 H233 M223,162 H229" className="fig-wire thick" />

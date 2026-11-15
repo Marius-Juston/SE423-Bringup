@@ -205,11 +205,11 @@ function BlobCentroid() {
           <text key={r} x={OX - 6} y={y(r) + 3} textAnchor="end" className="fig-label dim">{r}</text>
         ))}
         {/* image centre and centroid */}
-        <line x1={x(CENTRE_COL)} x2={x(CENTRE_COL)} y1={OY} y2={OY + gridH + 22} className="blobc-centre" />
+        <line x1={x(CENTRE_COL)} x2={x(CENTRE_COL)} y1={OY} y2={OY + gridH + 19} className="blobc-centre" />
         {!filter && best && <circle cx={x(best.m10 / best.m00)} cy={y(best.m01 / best.m00)} r="5.5" className="blobc-ghost" />}
         {used && (
           <>
-            <line x1={x(cx)} x2={x(cx)} y1={OY} y2={OY + gridH + 22} className="blobc-cross" />
+            <line x1={x(cx)} x2={x(cx)} y1={OY} y2={OY + gridH + 19} className="blobc-cross" />
             <line x1={OX} x2={OX + gridW} y1={y(cy)} y2={y(cy)} className="blobc-cross" />
             <circle cx={x(cx)} cy={y(cy)} r="4" className="blobc-dot" />
           </>
@@ -223,7 +223,7 @@ function BlobCentroid() {
           </>
         )}
         <text x={x(CENTRE_COL) + (cx > CENTRE_COL ? -4 : 4)} y={OY + gridH + 11} textAnchor={cx > CENTRE_COL ? "end" : "start"} className="fig-label dim">image centre, column {CENTRE_COL.toFixed(1)}</text>
-        {used && <text x={Math.max(OX + 20, Math.min(OX + gridW - 20, (x(cx) + x(CENTRE_COL)) / 2))} y={OY + gridH + 28} textAnchor="middle" className="fig-label">{dir}</text>}
+        {used && <text x={Math.max(OX + 20, Math.min(OX + gridW - 20, (x(cx) + x(CENTRE_COL)) / 2))} y={OY + gridH + 31} textAnchor="middle" className="fig-label">{dir}</text>}
         {/* numbers */}
         <text x="310" y="26" className="fig-label dim">{filter ? "LARGEST BLOB" : "ALL MASK PIXELS"}</text>
         <text x="310" y="44" className="fig-label">M00 (pixels)</text>
@@ -247,7 +247,7 @@ function BlobCentroid() {
       <div className="fig-controls">
         <div className="blobc-row">
           <span><label htmlFor="blobc-min">MIN_AREA</label></span>
-          <input id="blobc-min" type="range" min={1} max={12} value={minArea} disabled={!filter} onChange={(e) => setMinArea(+e.target.value)} />
+          <input id="blobc-min" type="range" min={1} max={12} value={minArea} aria-valuetext={`${minArea} pixel${minArea === 1 ? "" : "s"}`} disabled={!filter} onChange={(e) => setMinArea(+e.target.value)} />
           <code>#define MIN_AREA {minArea}</code>
         </div>
         <div>

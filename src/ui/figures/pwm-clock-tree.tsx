@@ -22,6 +22,7 @@ const CSS = `
 .pwmc-read b { display: block; font-family: var(--mono); color: var(--value); font-size: 0.95rem; }
 .pwmc-read div.bad b { color: var(--bad); }
 .pwmc .fig-opt { padding: 0.12em 0.5em; }
+.pwmc-over { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1; stroke-dasharray: 3 2; }
 `;
 
 const group = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+$)/g, " ");
@@ -128,8 +129,8 @@ function PwmClockTree() {
 
         {/* counts per period */}
         <text x={AX0} y="72" className="fig-label">Counts in one period = TBCLK / frequency = number of duty steps</text>
-        <rect x={lx(65535)} y={AY - 30} width={AX1 - lx(65535)} height="30" fill="var(--bad)" fillOpacity="0.12" />
-        <line x1={lx(65535)} x2={lx(65535)} y1={AY - 30} y2={AY} stroke="var(--bad)" strokeDasharray="3 3" />
+        {/* The part of the axis that does not fit: a low outlined strip, so the labels above it stay clear of its edge. */}
+        <rect x={lx(65535)} y={AY - 9} width={AX1 - lx(65535)} height="9" className="pwmc-over" />
         <text x={AX1} y={AY + 26} textAnchor="end" className="fig-label" style={{ fill: "var(--bad)" }}>more than 65 535 counts do not fit in TBPRD</text>
         <line x1={AX0} x2={AX1} y1={AY} y2={AY} className="fig-wire" />
         {[1, 2, 3, 4, 5, 6, 7].map((e) => (
@@ -138,11 +139,12 @@ function PwmClockTree() {
             <text x={lx(10 ** e)} y={AY + 14} textAnchor={e === 1 ? "start" : e === 7 ? "end" : "middle"} className="fig-label dim">{["10", "100", "1 000", "10 000", "100 000", "1 million", "10 M"][e - 1]}</text>
           </g>
         ))}
-        {marks.map((m) => (
-          <g key={m.name} opacity={m.off ? 0.75 : 1}>
+        {/* The chosen frequency is drawn last, so it stays on top where two marks meet at an end of the axis. */}
+        {[...marks].sort((a, b) => +a.on - +b.on).map((m) => (
+          <g key={m.name}>
             <line x1={m.x} x2={m.x} y1={AY} y2={AY - 8} stroke={m.on ? "var(--accent)" : "var(--dim)"} strokeWidth={m.on ? 2.2 : 1.2} />
             <circle cx={m.x} cy={AY} r={m.on ? 4 : 2.5} fill={m.on ? "var(--accent)" : "var(--dim)"} />
-            <text x={m.tx} y={AY - 11 - m.row * 11} className={m.on ? "fig-value small" : "fig-label dim"}>{m.label}</text>
+            <text x={m.tx} y={AY - 14 - m.row * 12} className={m.on ? "fig-value small" : "fig-label dim"}>{m.label}</text>
           </g>
         ))}
       </svg>

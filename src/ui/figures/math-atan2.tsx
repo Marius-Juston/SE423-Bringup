@@ -39,7 +39,7 @@ function MathAtan2() {
   return (
     <figure className="figure mt-fig" aria-label="Interactive figure: atan2 gives the angle of an arrow from its two parts">
       <style>{`.mt-fig .mt-range{flex:1;min-width:110px;accent-color:var(--orange)}.mt-fig .mt-axis{stroke:var(--dim);stroke-width:1}.mt-fig .mt-grid{stroke:var(--border);stroke-width:1}.mt-fig .mt-arrow{stroke:var(--text);stroke-width:2.4}.mt-fig .mt-dx{stroke:var(--arches);stroke-width:2.4;stroke-dasharray:5 3}.mt-fig .mt-dy{stroke:var(--orange);stroke-width:2.4;stroke-dasharray:5 3}.mt-fig .mt-arc{fill:none;stroke:var(--harvest);stroke-width:2}.mt-fig .mt-seam{stroke:var(--bad);stroke-width:1.4;stroke-dasharray:2 3}.mt-fig .mt-num{font-family:var(--mono);font-size:0.82rem;min-width:4.6rem;text-align:right}`}</style>
-      <svg viewBox="0 0 400 224" role="img" aria-label={zero ? "The arrow has zero length: no direction." : `Arrow with dx ${fmt(dx, 1)} and dy ${fmt(dy, 1)} feet. Angle ${fmt(ang)} radians, ${fmt(deg, 0)} degrees. Length ${fmt(len)} feet.`}>
+      <svg viewBox="-10 0 410 224" role="img" aria-label={zero ? "The arrow has zero length: no direction." : `Arrow with dx ${fmt(dx, 1)} and dy ${fmt(dy, 1)} feet. Angle ${fmt(ang)} radians, ${fmt(deg, 0)} degrees. Length ${fmt(len)} feet.`}>
         {[-2, -1, 1, 2].map((g) => (
           <g key={g}>
             <line x1={CX + g * S} x2={CX + g * S} y1={CY - 2.3 * S} y2={CY + 2.3 * S} className="mt-grid" />
@@ -49,18 +49,20 @@ function MathAtan2() {
         <line x1={CX} x2={CX + 2.9 * S} y1={CY} y2={CY} className="mt-axis" />
         <line x1={CX - 2.9 * S} x2={CX} y1={CY} y2={CY} className="mt-seam" />
         <line x1={CX} x2={CX} y1={CY - 2.3 * S} y2={CY + 2.3 * S} className="mt-axis" />
-        <text x={CX + 2.9 * S - 2} y={CY - 4} textAnchor="end" className="fig-label dim">x: angle 0</text>
-        <text x={CX - 2.9 * S + 2} y={CY - 4} className="fig-label dim">+3.14</text>
-        <text x={CX - 2.9 * S + 2} y={CY + 11} className="fig-label dim">-3.14</text>
-        {/* The y axis is labelled on the side the target's own label does not use. */}
-        <text x={CX + (dx >= 0 ? -4 : 4)} y={CY - 2.3 * S + 8} textAnchor={dx >= 0 ? "end" : "start"} className="fig-label dim">y: +1.57</text>
-        <text x={CX + (dx >= 0 ? -4 : 4)} y={CY + 2.3 * S - 2} textAnchor={dx >= 0 ? "end" : "start"} className="fig-label dim">-1.57</text>
         <line x1={CX} y1={CY} x2={tx} y2={CY} className="mt-dx" />
         <line x1={tx} y1={CY} x2={tx} y2={ty} className="mt-dy" />
         {!zero && <path d={`M${CX + 20},${CY} A20,20 0 0 ${ang > 0 ? 0 : 1} ${(CX + 20 * Math.cos(ang)).toFixed(1)},${(CY - 20 * Math.sin(ang)).toFixed(1)}`} className="mt-arc" />}
         <line x1={CX} y1={CY} x2={tx} y2={ty} className="mt-arrow" />
+        {/* The axis labels come after the grid and the arrow's lines and carry a rim, so a line never runs through their letters.
+            They sit where the target cannot reach: past the ends of the axes, and for the x axis on the side the target is not on. */}
+        <text x={CX + 2.9 * S - 2} y={dy >= 0 ? CY + 17 : CY - 9} textAnchor="end" className="fig-label dim fig-halo">x: angle 0</text>
+        <text x={22} y={CY - 4} textAnchor="end" className="fig-label dim fig-halo">+3.14</text>
+        <text x={22} y={CY + 11} textAnchor="end" className="fig-label dim fig-halo">-3.14</text>
+        {/* The y axis is labelled on the side the target's own label does not use. */}
+        <text x={CX + (dx >= 0 ? -4 : 4)} y={CY - 2.3 * S + 2} textAnchor={dx >= 0 ? "end" : "start"} className="fig-label dim fig-halo">y: +1.57</text>
+        <text x={CX + (dx >= 0 ? -4 : 4)} y={CY + 2.3 * S + 4} textAnchor={dx >= 0 ? "end" : "start"} className="fig-label dim fig-halo">-1.57</text>
         <circle cx={tx} cy={ty} r={5} style={{ fill: "var(--orange)" }} />
-        <text x={tgt.x} y={tgt.y} textAnchor={tgt.anchor} className="fig-label">target</text>
+        <text x={tgt.x} y={tgt.y} textAnchor={tgt.anchor} className="fig-label fig-halo">target</text>
         <circle cx={CX} cy={CY} r={3} className="fig-dot" />
 
         <text x={282} y={24} className="fig-label">direction</text>
@@ -78,12 +80,12 @@ function MathAtan2() {
       <div className="fig-controls">
         <div>
           <span>dx</span>
-          <input className="mt-range" type="range" aria-label="dx: how far the target is along x, in feet" min={-2.5} max={2.5} step={0.1} value={dx} onChange={(e) => setDx(+e.target.value)} />
+          <input className="mt-range" type="range" aria-label="dx: how far the target is along x, in feet" min={-2.5} max={2.5} step={0.1} value={dx} aria-valuetext={`${fmt(dx, 1)} feet`} onChange={(e) => setDx(+e.target.value)} />
           <span className="mt-num">{fmt(dx, 1)} ft</span>
         </div>
         <div>
           <span>dy</span>
-          <input className="mt-range" type="range" aria-label="dy: how far the target is along y, in feet" min={-2} max={2} step={0.1} value={dy} onChange={(e) => setDy(+e.target.value)} />
+          <input className="mt-range" type="range" aria-label="dy: how far the target is along y, in feet" min={-2} max={2} step={0.1} value={dy} aria-valuetext={`${fmt(dy, 1)} feet`} onChange={(e) => setDy(+e.target.value)} />
           <span className="mt-num">{fmt(dy, 1)} ft</span>
         </div>
       </div>

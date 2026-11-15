@@ -4,6 +4,8 @@ import type { BenchView, ViewProps } from "./types";
 const MS = 1e6;
 const MAX_LANES = 6;
 const COLORS = ["var(--hi)", "var(--lo)", "var(--ok)", "var(--value)", "var(--code-macro)", "var(--text)"];
+/** The colour of a strip's name: orange is a fill, its words use the text orange. */
+const wordColor = (c: string) => (c === "var(--hi)" ? "var(--accent-text)" : c);
 
 const span = (ns: number) => (ns >= 1e6 ? `${+(ns / 1e6).toPrecision(3)} ms` : ns >= 1e3 ? `${+(ns / 1e3).toPrecision(3)} us` : `${Math.round(ns)} ns`);
 
@@ -99,7 +101,7 @@ function InterruptLog({ board, window: [from, to] }: ViewProps) {
         const each = l.dur > 0 ? `last run took ${span(l.dur)}` : "";
         return (
           <svg key={name} className="scope" viewBox={`0 0 ${W} 44`} role="img" aria-label={`Interrupt function ${name} (${l.vector}): ${[runs, every, each].filter(Boolean).join(", ")}`}>
-            <text x={X0} y={12} style={{ fill: color }}>{name}() <tspan style={{ fill: "var(--dim)" }}>{l.vector}</tspan></text>
+            <text x={X0} y={12} style={{ fill: wordColor(color) }}>{name}() <tspan style={{ fill: "var(--dim)" }}>{l.vector}</tspan></text>
             <text x={X1} y={12} textAnchor="end" style={{ fill: "var(--text)" }}>{runs}</text>
             <line x1={X0} x2={X1} y1={30} y2={30} stroke="var(--dim)" strokeWidth={0.6} />
             <path d={marks.get(name)?.d ?? ""} fill={color} />

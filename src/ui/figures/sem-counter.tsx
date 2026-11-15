@@ -63,8 +63,14 @@ function SemCounter() {
         <text x="150" y="20" textAnchor="middle" className="fig-label">{s.sem ? "sem (a counter)" : "flag (0 or 1)"}</text>
         <text x="150" y="40" textAnchor="middle" className="fig-value">{s.value}</text>
         {Array.from({ length: 8 }, (_, i) => (
-          <circle key={i} cx={120 + (i % 4) * 20} cy={56 + Math.floor(i / 4) * 20} r="7" style={{ fill: i < tokens ? "var(--orange)" : "none", stroke: "var(--dim)", strokeDasharray: i < tokens ? undefined : "2 2", opacity: s.sem || i === 0 ? 1 : 0.25 }} />
+          <circle key={i} cx={120 + (i % 4) * 20} cy={56 + Math.floor(i / 4) * 20} r="7" style={{ fill: i < tokens ? "var(--orange)" : "none", stroke: "var(--dim)", strokeDasharray: i < tokens ? undefined : s.sem || i === 0 ? "2 2" : "1 3" }} />
         ))}
+        {/* A flag has one place only: the other seven are struck out. */}
+        {!s.sem && Array.from({ length: 7 }, (_, j) => {
+          const cx = 120 + ((j + 1) % 4) * 20;
+          const cy = 56 + Math.floor((j + 1) / 4) * 20;
+          return <line key={j} x1={cx - 4} y1={cy + 4} x2={cx + 4} y2={cy - 4} style={{ stroke: "var(--control)", strokeWidth: 1.2 }} />;
+        })}
         <line x1="192" y1="51" x2="208" y2="51" className="fig-wire" />
         <polygon points="208,47 215,51 208,55" className="fig-arrowhead" />
         <text x="203" y="43" textAnchor="middle" className="fig-label dim">{s.sem ? "-1" : "= 0"}</text>

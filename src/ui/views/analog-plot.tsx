@@ -128,11 +128,11 @@ function AnalogPlot({ board, kit, window: [from, to] }: ViewProps) {
         const places = span >= 10 ? 0 : 2;
         return (
           <svg key={name} className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${label}: between ${num(bottom, 3)} and ${num(top, 3)} from ${from.toFixed(places)} to ${to.toFixed(places)} milliseconds, now ${num(last, 4)}${bad ? "; some values are not numbers" : ""}`}>
-            <text x={6} y={12} style={{ fill: color }}>{label}</text>
+            <text x={6} y={12} style={{ fill: color === "var(--accent)" ? "var(--accent-text)" : color }}>{label}</text>
             <text x={W - 6} y={12} textAnchor="end" style={{ fill: "var(--text)" }}>{bad && Number.isFinite(last) ? "some values are not numbers · " : ""}now {num(last, 4)}</text>
             <text x={X0 - 4} y={Y_TOP + 6} textAnchor="end">{num(top, 3)}</text>
             {top !== bottom && <text x={X0 - 4} y={Y_BOT} textAnchor="end">{num(bottom, 3)}</text>}
-            <line x1={X0} x2={X1} y1={Y_BOT} y2={Y_BOT} stroke="var(--faint)" />
+            <line x1={X0} x2={X1} y1={Y_BOT} y2={Y_BOT} stroke="var(--control)" />
             {lo < 0 && hi > 0 && <line x1={X0} x2={X1} y1={y(0)} y2={y(0)} stroke="var(--dim)" strokeWidth={0.6} strokeDasharray="3 3" />}
             <path d={d} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeDasharray={DASHES[i % DASHES.length] || undefined} />
             <text x={X0} y={H - 4}>{from.toFixed(places)} ms</text>

@@ -94,13 +94,13 @@ function MovingAverage() {
         })}
         <path d={out} className="fig-trace data" style={{ strokeWidth: 2.2 }} />
         <circle cx={x(n)} cy={y(yn)} r="4" fill="var(--harvest)" stroke="var(--text)" strokeWidth="0.9" />
-        <text x={Math.max(X0 + 16, Math.min(X1 - 16, (wx0 + wx1) / 2))} y={Y0 + 12} textAnchor="middle" className="fig-label" style={{ fill: "var(--orange)" }}>window</text>
+        <text x={Math.max(X0 + 16, Math.min(X1 - 16, (wx0 + wx1) / 2))} y={Y0 + 12} textAnchor="middle" className="fig-label" style={{ fill: "var(--accent-text)" }}>window</text>
         {/* delay */}
         {delay > 0 && (
           <>
             <line x1={x(EDGE_UP) - dx / 2} x2={x(EDGE_UP) - dx / 2 + delay * dx} y1={y(1.5)} y2={y(1.5)} stroke="var(--text)" strokeWidth="2" />
             <line x1={x(EDGE_UP) - dx / 2 + delay * dx} x2={x(EDGE_UP) - dx / 2 + delay * dx} y1={y(1.5) - 4} y2={y(1.5) + 4} stroke="var(--text)" strokeWidth="1.2" />
-            <text x={x(EDGE_UP) - dx / 2 - 4} y={y(1.5) - 2} textAnchor="end" className="fig-label">{delay} late</text>
+            <text x={x(EDGE_UP) - dx / 2 - 4} y={y(1.5) - 2} textAnchor="end" className="fig-label fig-halo">{delay} late</text>
           </>
         )}
         {(wx0 + wx1) / 2 > X0 + 62 && <text x={X0} y={Y0 + 12} className="fig-label dim">n = 0</text>}
@@ -108,14 +108,14 @@ function MovingAverage() {
       </svg>
       <svg viewBox="0 0 420 122" role="img" aria-label={`The ${points} sample${points === 1 ? "" : "s"} in the window times the weights ${b.map((v) => v.toFixed(3)).join(", ")} add up to ${yn.toFixed(2)}.`}>
         <text x="4" y="24" className="fig-label">samples</text>
-        <text x="4" y="35" className="fig-value small" style={{ fill: "var(--orange)" }}>xk[i]</text>
+        <text x="4" y="35" className="fig-value small" style={{ fill: "var(--accent-text)" }}>xk[i]</text>
         <text x="4" y="62" className="fig-label dim">times</text>
         <text x="4" y="84" className="fig-label">weights</text>
         <text x="4" y="95" className="fig-value small">b[i]</text>
         {b.map((bk, k) => {
           const cx = BX0 + k * cw + cw / 2;
           const v = X[n - k];
-          const h = (v / 3) * 34;
+          const h = (v / 3) * 26;
           const hb = (bk / bmax) * 22;
           return (
             <g key={k}>
@@ -128,8 +128,8 @@ function MovingAverage() {
             </g>
           );
         })}
-        <text x={BX0 + 2} y="12" className="fig-label dim">newest</text>
-        {points > 2 && <text x={BX0 + points * cw - 2} y="12" textAnchor="end" className="fig-label dim">oldest</text>}
+        <text x={BX0 + 2} y="10" className="fig-label dim">newest</text>
+        {points > 2 && <text x={BX0 + points * cw - 2} y="10" textAnchor="end" className="fig-label dim">oldest</text>}
         <text x={BX0 + points * cw + 8} y="56" className="fig-label dim">added up:</text>
         <text x={BX0 + points * cw + 8} y="72" className="fig-value">y = {yn.toFixed(2)}</text>
       </svg>
@@ -137,13 +137,13 @@ function MovingAverage() {
       <div className="fig-controls">
         <div>
           <span>Window at</span>
-          <input type="range" min={points - 1} max={N - 1} value={n} aria-label="Newest sample in the window, n" onChange={(e) => setPos(+e.target.value)} />
+          <input type="range" min={points - 1} max={N - 1} value={n} aria-label="Newest sample in the window, n" aria-valuetext={`sample ${n}`} onChange={(e) => setPos(+e.target.value)} />
           <span className="mavg-num">{n}</span>
           <code>y[{n}] = {yn.toFixed(2)}</code>
         </div>
         <div>
           <span>Points</span>
-          <input type="range" min={1} max={9} value={points} aria-label="Number of points" onChange={(e) => setPoints(+e.target.value)} />
+          <input type="range" min={1} max={9} value={points} aria-label="Number of points" aria-valuetext={`${points} point${points === 1 ? "" : "s"}`} onChange={(e) => setPoints(+e.target.value)} />
           <span className="mavg-num">{points}</span>
           <code>{points} sample{points === 1 ? "" : "s"}, {points} weight{points === 1 ? "" : "s"}</code>
         </div>

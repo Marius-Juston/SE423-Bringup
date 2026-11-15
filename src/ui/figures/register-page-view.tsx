@@ -25,7 +25,10 @@ const CSS = `
 .rpv-seg.rsv { color: var(--dim); }
 .rpv-seg[aria-pressed="true"] { background: var(--orange); color: var(--accent-ink); border-color: var(--orange); position: relative; z-index: 1; }
 .rpv-acc { text-align: center; font-size: var(--fig-small, 11px); font-family: var(--mono); letter-spacing: -0.03em; color: var(--text); padding-top: 1px; overflow-wrap: anywhere; }
-.rpv-acc.sel { color: var(--orange); font-weight: 700; }
+.rpv-acc.sel { color: var(--accent-text); font-weight: 700; }
+/* The Description column never gets narrower than its heading: in a very narrow column with large text the table scrolls sideways in its own box. */
+.rpv-scroll { overflow-x: auto; margin-top: 0.5rem; }
+.rpv-scroll .rpv-table { min-width: 16.5rem; margin-top: 0; }
 .rpv-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.72rem; line-height: 1.25; background: var(--surface); margin-top: 0.5rem; }
 .rpv-table caption { background: var(--surface); margin: 0; padding: 0.4rem 0 0.25rem; border-radius: 6px 6px 0 0; }
 .rpv-table th:first-child, .rpv-table td:first-child { padding-left: 0.4rem; }
@@ -120,7 +123,7 @@ export function RegisterPageView({ initial, field }: { initial: string; field?: 
                       className={`rpv-seg ${reserved(s.f) ? "rsv" : ""}`}
                       style={{ gridColumn: `span ${s.hi - s.lo + 1}` }}
                       aria-pressed={i === at}
-                      aria-label={`${s.f.name}, bit${s.f.hi === s.f.lo ? "" : "s"} ${bitsText(s.f)}, ${s.f.type}, reset ${s.f.reset}`}
+                      aria-label={`${s.f.name}, bit${s.f.hi === s.f.lo ? "" : "s"} ${bitsText(s.f)}${s.hi === s.f.hi && s.lo === s.f.lo ? "" : ` (this row holds bit${s.hi === s.lo ? ` ${s.hi}` : `s ${s.hi}-${s.lo}`})`}, ${s.f.type}, reset ${s.f.reset}`}
                       onClick={() => choose(i)}
                     >
                       {s.f.name}
@@ -160,14 +163,15 @@ export function RegisterPageView({ initial, field }: { initial: string; field?: 
           ))}
         </div>
       </div>
+      <div className="rpv-scroll fig-scroll">
       <table className="rpv-table">
         <caption className="rpv-cap">{page.table}</caption>
           <thead>
             <tr>
-              <th style={{ width: "2.5rem" }}>Bit</th>
-              <th style={{ width: "4.9rem" }}>Field</th>
-              <th style={{ width: "3.1rem" }}>Type</th>
-              <th style={{ width: "2.6rem" }}>Reset</th>
+              <th style={{ width: "2.3rem" }}>Bit</th>
+              <th style={{ width: "4.4rem" }}>Field</th>
+              <th style={{ width: "3rem" }}>Type</th>
+              <th style={{ width: "2.5rem" }}>Reset</th>
               <th>Description</th>
             </tr>
           </thead>
@@ -192,6 +196,7 @@ export function RegisterPageView({ initial, field }: { initial: string; field?: 
             })}
           </tbody>
       </table>
+      </div>
       <figcaption>
         A register page has two halves that say the same thing: the picture of the bits, and the table with one row per field. Choose a field in the picture or a row of the table.{" "}
         <a className="rpv-link" href={`${TRM_URL}#page=${page.page}`} target="_blank" rel="noreferrer">

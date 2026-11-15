@@ -44,7 +44,7 @@ function MathAngle() {
         <line x1={CX} y1={CY} x2={tip.x} y2={tip.y} className="ma-arrow" />
         <circle cx={tip.x} cy={tip.y} r={4} style={{ fill: "var(--orange)" }} />
         <circle cx={CX} cy={CY} r={2.5} className="fig-dot" />
-        <text x={CX} y={CY + 14} textAnchor="middle" className="fig-label dim">radius {radius} ft</text>
+        <text x={CX} y={219} textAnchor="middle" className="fig-label dim">radius of the circle: {radius} ft</text>
         <text x={8} y={14} className="fig-label dim">counter-clockwise is positive</text>
 
         <text x={244} y={36} className="fig-label">angle in degrees</text>
@@ -62,7 +62,7 @@ function MathAngle() {
       <div className="fig-controls">
         <div>
           <span>Angle</span>
-          <input className="ma-range" type="range" aria-label="Angle in degrees" min={-180} max={360} step={1} value={deg} onChange={(e) => setDeg(+e.target.value)} />
+          <input className="ma-range" type="range" aria-label="Angle in degrees" min={-180} max={360} step={1} value={deg} aria-valuetext={`${deg} degrees, ${fmt(rad, 3)} radians`} onChange={(e) => setDeg(+e.target.value)} />
           <span className="ma-num">{deg} deg</span>
         </div>
         <div>

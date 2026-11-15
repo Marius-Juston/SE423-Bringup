@@ -87,7 +87,8 @@ const CELL = 20;
 /**
  * Heat-map steps from the smallest value (the panel background) to the
  * largest (the theme's blue), as the share of blue in each step. The value
- * is also written in the cell when it fits, so colour is never the only cue.
+ * is also written in the cell when it fits, and the faint steps above the
+ * smallest value carry a rim, so colour is never the only cue.
  * Steps 0 to 3 carry text in the normal text colour, 4 and 5 in the
  * background colour: both pairs keep their contrast in the light and the
  * dark theme because they are built from the theme's own tokens.
@@ -105,10 +106,10 @@ function Frame({ rows, cols, label, children }: { rows: number; cols: number; la
   for (let c = 1; c < cols; c++) lines += `M${c * CELL},0v${h}`;
   for (let r = 1; r < rows; r++) lines += `M0,${r * CELL}h${w}`;
   return (
-    <svg viewBox={`-1 -1 ${w + 2} ${h + 2}`} style={{ maxWidth: `${Math.max(120, cols * 24)}px` }} role="img" aria-label={label}>
+    <svg viewBox={`-3 -3 ${w + 6} ${h + 6}`} style={{ maxWidth: `${Math.max(120, cols * 24)}px` }} role="img" aria-label={label}>
       <rect x="0" y="0" width={w} height={h} className="agrid-bg" />
       {children}
-      <path d={lines} className="agrid-lines" />
+      <path d={lines} className="agrid-grid" />
       <rect x="0" y="0" width={w} height={h} className="agrid-edge" />
     </svg>
   );
@@ -183,7 +184,7 @@ const OneGrid = memo(function OneGrid({ grid, data }: { grid: Grid; data: number
     <figure className="agrid-item" style={itemStyle(cols)}>
       <figcaption><code>{decl}</code> <span>{rows} x {cols}, {fmt(lo)} (faint) to {fmt(hi)} (strong){oddNote}</span></figcaption>
       <Frame rows={rows} cols={cols} label={`${grid.name}: ${rows} rows by ${cols} columns, values from ${fmt(lo)} to ${fmt(hi)}${oddNote}`}>
-        {groups.map((cells, k) => (cells.length ? <path key={k} d={rectPath(cells, cols)} style={{ fill: heat(k) }} /> : null))}
+        {groups.map((cells, k) => (cells.length ? <path key={k} d={rectPath(cells, cols, k > 0 && k < 4 ? 0.5 : 0)} className={k > 0 && k < 4 ? "agrid-mid" : undefined} style={{ fill: heat(k) }} /> : null))}
         {odd.length > 0 && <path d={rectPath(odd, cols, 1.5)} className="agrid-odd" />}
         {texts((v) => fmt(v), (v) => (!Number.isFinite(v) ? "" : level(v) >= 4 ? "strong" : ""))}
       </Frame>
@@ -228,7 +229,9 @@ function ArrayGrid({ board }: ViewProps) {
         .agrid-item svg { display: block; width: 100%; height: auto; }
         .agrid-bg { fill: var(--surface); }
         .agrid-edge { fill: none; stroke: var(--dim); stroke-width: 1; }
-        .agrid-lines { fill: none; stroke: var(--border); stroke-width: 0.6; }
+        .agrid-grid { fill: none; stroke: var(--border); stroke-width: 0.6; }
+        /* The faint steps above the smallest value get a rim, so they do not rest on a faint tint alone. */
+        .agrid-mid { stroke: var(--control); stroke-width: 1; }
         .agrid-on { fill: var(--orange); }
         .agrid-wall { fill: var(--dim); }
         .agrid-num { font-family: var(--mono); font-size: 9.5px; fill: var(--text); }

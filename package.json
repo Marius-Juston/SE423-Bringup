@@ -12,7 +12,8 @@
     "check-levels": "vitest run tests/levels.test.ts",
     "gen-registers": "node tools/gen-registers.mjs",
     "tauri": "tauri",
-    "e2e": "vite build && vitest run --config vitest.e2e.config.ts"
+    "e2e": "vite build && vitest run --config vitest.e2e.config.ts",
+    "a11y": "node tools/a11y/run.mjs"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
@@ -35,6 +36,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
+    "axe-core": "4.14.0",
     "playwright-core": "^1.65.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",

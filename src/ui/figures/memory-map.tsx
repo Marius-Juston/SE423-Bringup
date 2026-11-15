@@ -42,17 +42,28 @@ const CSS = `
 .mm-none { fill: none; stroke: var(--dim); stroke-dasharray: 3 2; }
 .mm-sum { display: block; margin: 0.4rem 0; padding: 0.4rem 0.5rem; background: var(--inset); border-radius: 6px; font-size: 0.7rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mm-h { margin: 0.7rem 0 0.2rem; font-size: 0.85rem; font-weight: 700; }
+.mm-wrap { container-type: inline-size; }
 .mm-grid { display: grid; grid-template-columns: 3.4rem repeat(16, minmax(0, 1fr)); column-gap: 2px; row-gap: 2px; align-items: center; }
+.mm-grid > * { grid-column: var(--c); grid-row: var(--r); }
 .mm-grid .mm-nib { margin-left: 4px; }
+.mm-lab.half { display: none; }
+/* Sixteen bits of 24 px do not fit a narrow column: there a word is two lines of eight bits. */
+@container (max-width: 31rem) {
+  .mm-grid { grid-template-columns: 3.4rem repeat(8, minmax(0, 1fr)); }
+  .mm-grid > * { grid-column: var(--c8); grid-row: var(--r8); }
+  .mm-grid .mm-nib.mid { margin-left: 0; }
+  .mm-grid .mm-gap { margin-top: 6px; }
+  .mm-lab.half { display: block; }
+}
 .mm-lab { font-size: 0.7rem; line-height: 1.1; color: var(--dim); }
 .mm-bit { height: 1.55rem; padding: 0; min-width: 0; font-family: var(--mono); font-weight: 700; font-size: 0.82rem; border: 1px solid var(--dim); border-radius: 4px; background: var(--surface); color: var(--dim); }
 .mm-bit[aria-pressed="true"] { background: var(--harvest); border-color: var(--harvest); color: var(--bg); }
 .mm-bit.none { border-style: dashed; opacity: 0.6; cursor: default; }
-.mm-num { text-align: center; font-family: var(--mono); font-size: 0.66rem; color: var(--dim); }
-.mm-f { text-align: center; font-family: var(--mono); font-size: 0.66rem; font-weight: 700; color: var(--text); border: 1px solid var(--dim); border-bottom: none; border-radius: 4px 4px 0 0; min-width: 0; padding: 2px 0; }
+.mm-num { text-align: center; font-family: var(--mono); font-size: var(--fig-small, 11px); color: var(--dim); }
+.mm-f { text-align: center; font-family: var(--mono); font-size: var(--fig-small, 11px); font-weight: 700; color: var(--text); border: 1px solid var(--dim); border-bottom: none; border-radius: 4px 4px 0 0; min-width: 0; padding: 2px 0; }
 .mm-f.v { writing-mode: vertical-rl; height: 2.6rem; justify-self: stretch; display: grid; place-items: center; }
 .mm-f.none { border: none; color: var(--dim); font-weight: 400; }
-.mm-f.cur { border-color: var(--orange); color: var(--orange); }
+.mm-f.cur { border-color: var(--orange); color: var(--accent-text); }
 `;
 
 const hex = (v: number, digits: number) => "0x" + (v >>> 0).toString(16).toUpperCase().padStart(digits, "0");
@@ -85,7 +96,23 @@ function MemoryMap() {
     setLast(f === "gpio" ? 22 : f ? f[1].lo : 0);
   };
   const rows = reg.words === 2 ? [1, 0] : [0];
-  const nib = (b: number) => (b % 4 === 3 && b % 16 !== 15 ? " mm-nib" : "");
+  const nib = (b: number) => (b % 4 === 3 && b % 16 !== 15 ? (b % 16 === 7 ? " mm-nib mid" : " mm-nib") : "");
+  const named = Array.isArray(reg.fields);
+  const per = named ? 3 : 2; // rows per line of bits: the field names (when there are any), the bits, the bit numbers
+  /**
+   * The grid place of a cell, set as custom properties: 16 bits on a line in a wide figure, 8 in a
+   * narrow one. `line` is the word's place from the top, `top` the cell's highest bit (-1 and -2:
+   * the label of the first and of the second half), `kind` its row within the line. A field of
+   * several bits must lie within one byte (every one in BLOCKS does).
+   */
+  const place = (line: number, top: number, kind: number, span = 1): React.CSSProperties => {
+    const half = top < 0 ? -1 - top : top % 16 >= 8 ? 0 : 1;
+    const wide = top < 0 ? "1" : `${17 - (top % 16)} / span ${span}`;
+    const narrow = top < 0 ? "1" : `${9 - (top % 8)} / span ${span}`;
+    return { "--c": wide, "--r": line * per + kind + 1, "--c8": narrow, "--r8": (line * 2 + half) * per + kind + 1 } as React.CSSProperties;
+  };
+  /** Space above the first row of every line of bits but the first (narrow figure only). */
+  const gap = (line: number, top: number, kind: number) => (kind === 0 && (line > 0 || (top < 0 ? top === -2 : top % 16 < 8)) ? " mm-gap" : "");
   const why = `${block.name}.${reg.name} (${reg.what}) is ${nbits} bits, so it takes ${reg.words === 2 ? `two words: ${hex(addr, 4)} holds bits 15 to 0 and ${hex(addr + 1, 4)} holds bits 31 to 16` : `one word, at ${hex(addr, 4)}`}. ${
     reg.fields === null
       ? "It is one plain number with no named fields, so code uses .all."
@@ -131,35 +158,43 @@ function MemoryMap() {
         <text x="392" y="111" textAnchor="end" className="fig-label">base + offset = address of {reg.name}</text>
       </svg>
       <p className="mm-h">The bits of {reg.name}: click a bit to change it</p>
-      <div className="mm-grid" role="group" aria-label={`The ${nbits} bits of ${reg.name}, value ${hex(value, nbits / 4)}`}>
-        {rows.map((row) => {
-          const bits = Array.from({ length: 16 }, (_, i) => row * 16 + 15 - i);
-          const cells = [];
-          if (Array.isArray(reg.fields)) {
-            // Field names over their bits; a field wider than one bit spans its bits.
-            let b = 15;
-            while (b >= 0) {
-              const f = fieldAt(b);
-              const w = f ? f.width : 1;
-              cells.push(
-                <span key={`f${b}`} className={`mm-f${f ? (w === 1 ? " v" : "") : " none"}${f && f === cur ? " cur" : ""}${nib(b)}`} style={{ gridColumn: `span ${w}` }}>{f ? f.name : "-"}</span>,
-              );
-              b -= w;
+      <div className="mm-wrap">
+        <div className="mm-grid" role="group" aria-label={`The ${nbits} bits of ${reg.name}, value ${hex(value, nbits / 4)}`}>
+          {rows.map((row, line) => {
+            const bits = Array.from({ length: 16 }, (_, i) => row * 16 + 15 - i);
+            const cells = [];
+            if (named) {
+              // Field names over their bits; a field wider than one bit spans its bits.
+              let b = 15;
+              while (b >= 0) {
+                const f = fieldAt(b);
+                const w = f ? f.width : 1;
+                cells.push(
+                  <span key={`f${b}`} className={`mm-f${f ? (w === 1 ? " v" : "") : " none"}${f && f === cur ? " cur" : ""}${nib(b)}${gap(line, b, 0)}`} style={place(line, b, 0, w)}>{f ? f.name : "-"}</span>,
+                );
+                b -= w;
+              }
             }
-          }
-          return [
-            Array.isArray(reg.fields) && <span key={`fl${row}`} className="mm-lab">.bit name</span>,
-            ...cells,
-            <span key={`al${row}`} className="mm-lab">{reg.words === 2 ? (row ? `${hex(addr + 1, 4)} high word` : `${hex(addr, 4)} low word`) : hex(addr, 4)}</span>,
-            ...bits.map((b) => (
-              <button key={b} className={`mm-bit${nib(b)}`} aria-pressed={((value >>> b) & 1) === 1} aria-label={`${(value >>> b) & 1}, bit ${b}${fieldAt(b) ? `, ${fieldAt(b)!.name}` : ""}`} onClick={() => flip(b)}>
-                {(value >>> b) & 1}
-              </button>
-            )),
-            <span key={`nl${row}`} className="mm-lab">{reg.fields === "gpio" ? "bit = GPIO" : "bit"}</span>,
-            ...bits.map((b) => <span key={`n${b}`} className={`mm-num${nib(b)}`}>{b}</span>),
-          ];
-        })}
+            const word = reg.words === 2 ? (row ? `${hex(addr + 1, 4)} high word` : `${hex(addr, 4)} low word`) : hex(addr, 4);
+            const k = per - 2; // row of the bits
+            // Each label is there twice: the second one shows only where the word takes two lines.
+            const labels = (kind: number, text: string) => [-1, -2].map((h) => (
+              <span key={`l${row}.${kind}${h}`} className={`mm-lab${h === -2 ? " half" : ""}${gap(line, h, kind)}`} style={place(line, h, kind)}>{text}</span>
+            ));
+            return [
+              ...(named ? labels(0, ".bit name") : []),
+              ...cells,
+              ...labels(k, word),
+              ...bits.map((b) => (
+                <button key={b} className={`mm-bit${nib(b)}${gap(line, b, k)}`} style={place(line, b, k)} aria-pressed={((value >>> b) & 1) === 1} aria-label={`${(value >>> b) & 1}, bit ${b}${fieldAt(b) ? `, ${fieldAt(b)!.name}` : ""}`} onClick={() => flip(b)}>
+                  {(value >>> b) & 1}
+                </button>
+              )),
+              ...labels(k + 1, reg.fields === "gpio" ? "bit = GPIO" : "bit"),
+              ...bits.map((b) => <span key={`n${b}`} className={`mm-num${nib(b)}`} style={place(line, b, k + 1)}>{b}</span>),
+            ];
+          })}
+        </div>
       </div>
       <code className="mm-sum">
         {`${block.name}.${reg.name}.all = ${hex(value, nbits / 4)};  // all bits`}

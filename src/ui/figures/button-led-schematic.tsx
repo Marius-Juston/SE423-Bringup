@@ -25,6 +25,7 @@ const CSS = `
 .bl-led { fill: var(--surface); stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; }
 .bl-pt { fill: var(--text); font-size: 12px; font-family: var(--sans); font-weight: 700; }
 .bl-pt.sel { fill: var(--harvest); }
+.bl-dot-sel { fill: var(--harvest); stroke: var(--text); stroke-width: 1.4; }
 .bl-pin { fill: var(--accent-soft); stroke: var(--dim); stroke-width: 1; }
 `;
 
@@ -45,7 +46,7 @@ function ButtonLedSchematic() {
         <text x={L + 14} y="48" className="fig-label">R1</text>
         <text x={L + 14} y="60" className="fig-value small">10 kΩ</text>
         <path d={`M${L},68 V104 M${L},86 H62`} className={w("a")} />
-        <circle cx={L} cy="86" r="3.4" className="fig-dot" style={{ fill: sel === "a" ? "var(--harvest)" : undefined }} />
+        <circle cx={L} cy="86" r={sel === "a" ? 5 : 3.4} className={`fig-dot ${sel === "a" ? "bl-dot-sel" : ""}`} />
         <text x={L + 9} y="91" className={pt("a")}>A</text>
         <rect x="8" y="74" width="54" height="24" rx="4" className="bl-pin" />
         <text x="35" y="89" textAnchor="middle" className="fig-label">input pin</text>
@@ -60,13 +61,13 @@ function ButtonLedSchematic() {
         <rect x={R - 32} y="4" width="64" height="24" rx="4" className="bl-pin" />
         <text x={R} y="19" textAnchor="middle" className="fig-label">output pin</text>
         <path d={`M${R},28 V52`} className={w("b")} />
-        <circle cx={R} cy="40" r="3.4" className="fig-dot" style={{ fill: sel === "b" ? "var(--harvest)" : undefined }} />
+        <circle cx={R} cy="40" r={sel === "b" ? 5 : 3.4} className={`fig-dot ${sel === "b" ? "bl-dot-sel" : ""}`} />
         <text x={R + 9} y="45" className={pt("b")}>B</text>
         <rect x={R - 7} y="52" width="14" height="34" className="fig-box active" />
         <text x={R + 14} y="66" className="fig-label">R2</text>
         <text x={R + 14} y="78" className="fig-value small">330 Ω</text>
         <path d={`M${R},86 V112`} className={w("c")} />
-        <circle cx={R} cy="99" r="3.4" className="fig-dot" style={{ fill: sel === "c" ? "var(--harvest)" : undefined }} />
+        <circle cx={R} cy="99" r={sel === "c" ? 5 : 3.4} className={`fig-dot ${sel === "c" ? "bl-dot-sel" : ""}`} />
         <text x={R + 9} y="104" className={pt("c")}>C</text>
         <polygon points={`${R - 11},112 ${R + 11},112 ${R},131`} className="bl-led" />
         <path d={`M${R - 11},131 H${R + 11}`} className="bl-wire" />

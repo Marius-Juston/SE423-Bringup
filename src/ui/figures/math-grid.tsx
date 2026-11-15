@@ -27,7 +27,7 @@ function MathGrid() {
         .mgrid-head { display: grid; grid-template-columns: repeat(${COLS}, 1fr); gap: 2px; font-size: 0.72rem; color: var(--dim); text-align: center; }
         .mgrid-rowlab { font-size: 0.72rem; color: var(--dim); text-align: right; white-space: nowrap; }
         .mgrid-row { display: grid; grid-template-columns: repeat(${COLS}, 1fr); gap: 2px; }
-        .mgrid-cell { font-family: var(--mono); font-size: 0.8rem; padding: 0.35em 0; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: 3px; cursor: pointer; }
+        .mgrid-cell { font-family: var(--mono); font-size: 0.8rem; padding: 0.35em 0; background: var(--surface); color: var(--text); border: 1px solid var(--control); border-radius: 3px; cursor: pointer; }
         .mgrid-cell.inrow { border-color: var(--arches); border-width: 2px; }
         .mgrid-cell[aria-pressed="true"] { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
         .mgrid-title { font-size: 0.8rem; color: var(--dim); margin: 0.6rem 0 0.25rem; }
@@ -36,7 +36,8 @@ function MathGrid() {
         .mgrid-slot.rowstart { border-left: 3px solid var(--text); }
         .mgrid-slot.inrow { border-color: var(--arches); border-width: 2px; color: var(--text); }
         .mgrid-slot.on { background: var(--orange); border-color: var(--orange); color: var(--accent-ink); font-weight: 700; }
-        .mgrid-code { margin: 0.5rem 0 0; font-size: 0.74rem; overflow-x: auto; }
+        .mgrid-code { margin: 0.5rem 0 0; font-size: max(0.75rem, var(--fig-small, 11px)); overflow-x: auto; }
+        .mgrid-code code { font-size: inherit; }
         .mgrid-code b { color: var(--harvest); }
       `}</style>
       <p className="mgrid-title">The picture: {ROWS} rows by {COLS} columns. Click a cell.</p>

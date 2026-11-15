@@ -127,7 +127,7 @@ function FeedbackLoop() {
 
   return (
     <figure className="figure fb-fig" aria-label="Interactive block diagram of a speed control loop, open and closed">
-      <style>{`.fb-fig .fb-range{flex:1;min-width:140px;accent-color:var(--orange)}.fb-fig .fb-off{stroke-dasharray:3 3;opacity:.5}.fb-fig .fb-ref{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.fb-fig .fb-grid{stroke:var(--border);stroke-width:1}.fb-fig .fb-sat{fill:var(--bad)}`}</style>
+      <style>{`.fb-fig .fb-range{flex:1;min-width:140px;accent-color:var(--orange)}.fb-fig .fb-off{stroke-dasharray:3 3}.fb-fig .fb-ref{fill:none;stroke:var(--dim);stroke-width:1.3;stroke-dasharray:4 3}.fb-fig .fb-grid{stroke:var(--border);stroke-width:1}.fb-fig .fb-sat{fill:var(--bad)}`}</style>
       <svg viewBox="0 0 420 226" role="img" aria-label={`${closed ? "Closed" : "Open"} loop${load ? " with load" : ""}. Reference ${fmt(r, 1)}, speed ${fmt(s.v)} feet per second, effort ${fmt(s.u, 1)}.`}>
         <defs>
           <marker id="fb-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto">
@@ -164,7 +164,7 @@ function FeedbackLoop() {
         <text x={328} y={49} textAnchor="middle" className="fig-label">motor</text>
         <text x={328} y={61} textAnchor="middle" className="fig-label">and wheel</text>
         <path d="M328 12 V30" className={load ? "fig-wire hot" : "fig-wire fb-off"} markerEnd="url(#fb-arrow)" />
-        <text x={334} y={18} className="fig-label" opacity={load ? 1 : 0.5}>load {load ? `-${LOAD}` : "0"}</text>
+        <text x={334} y={18} className={load ? "fig-label" : "fig-label dim"}>load {load ? `-${LOAD}` : "0"}</text>
         <path d="M359 52 H412" className="fig-wire" markerEnd="url(#fb-arrow)" />
         <text x={390} y={36} textAnchor="middle" className="fig-label dim">speed v</text>
         <text x={390} y={47} textAnchor="middle" className="fig-value">{fmt(s.v, 2)}</text>
@@ -172,8 +172,8 @@ function FeedbackLoop() {
         <circle cx={376} cy={52} r={2.2} className="fig-dot" />
         <path d="M376 52 V102 H262" className={fb} />
         <rect x={190} y={88} width={72} height={28} rx={4} className={`fig-box ${closed ? "" : "off"}`} />
-        <text x={226} y={100} textAnchor="middle" className="fig-label" opacity={closed ? 1 : 0.5}>encoder</text>
-        <text x={226} y={111} textAnchor="middle" className="fig-label dim" opacity={closed ? 1 : 0.5}>{closed ? `measures ${fmt(s.v, 2)}` : "not used"}</text>
+        <text x={226} y={100} textAnchor="middle" className={closed ? "fig-label" : "fig-label dim"}>encoder</text>
+        <text x={226} y={111} textAnchor="middle" className="fig-label dim">{closed ? `measures ${fmt(s.v, 2)}` : "not used"}</text>
         <path d={closed ? "M190 102 H60 V62" : "M190 102 H60 V70"} className={fb} markerEnd={closed ? "url(#fb-arrow)" : undefined} />
         {!closed && <text x={66} y={114} className="fig-label dim">not connected</text>}
         {/* speed over time */}
@@ -192,7 +192,7 @@ function FeedbackLoop() {
       <div className="fig-controls">
         <div>
           <span>Reference</span>
-          <input className="fb-range" type="range" aria-label="Reference speed" min={0} max={2} step={0.1} value={r} onChange={(e) => setR(+e.target.value)} />
+          <input className="fb-range" type="range" aria-label="Reference speed" aria-valuetext={`${fmt(r, 1)} feet per second`} min={0} max={2} step={0.1} value={r} onChange={(e) => setR(+e.target.value)} />
           <code>vref = {fmt(r, 1)};</code>
         </div>
         <div>

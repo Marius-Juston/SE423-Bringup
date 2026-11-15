@@ -46,14 +46,31 @@ class Boundary extends Component<{ children: ReactNode; onReset: () => void }, {
 export function App() {
   // ?figure=<id> shows one figure on its own (used by tools/shot.mjs).
   const only = new URLSearchParams(window.location.search).get("figure");
-  if (only) {
-    return (
-      <div style={{ maxWidth: 640, margin: "0 auto", padding: "1rem" }}>
-        <Figure id={only} />
-      </div>
-    );
-  }
+  if (only) return <FigurePage id={only} />;
   return <Game />;
+}
+
+/** The Theme and Text size settings, applied to the page. */
+function useAppearance(): ["system" | "light" | "dark", (v: "system" | "light" | "dark") => void] {
+  const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
+  const [scale] = usePref<number>("text-scale", 1);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "system") delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    root.style.fontSize = `${16 * scale}px`;
+  }, [theme, scale]);
+  return [theme, setTheme];
+}
+
+/** One figure on its own, with the same theme and text size as the game. */
+function FigurePage({ id }: { id: string }) {
+  useAppearance();
+  return (
+    <div style={{ maxWidth: 640, margin: "0 auto", padding: "1rem" }}>
+      <Figure id={id} />
+    </div>
+  );
 }
 
 function Game() {
@@ -113,14 +130,7 @@ function Game() {
     };
   }, []);
   const save = useSave();
-  const [theme, setTheme] = usePref<"system" | "light" | "dark">("theme", "system");
-  const [scale] = usePref<number>("text-scale", 1);
-  useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "system") delete root.dataset.theme;
-    else root.dataset.theme = theme;
-    root.style.fontSize = `${16 * scale}px`;
-  }, [theme, scale]);
+  const [theme, setTheme] = useAppearance();
   // A new screen starts at its top, with the focus on its heading (so a screen reader announces where you are).
   const where = view.name === "level" ? view.id : view.name;
   const shownOnce = useRef(false);

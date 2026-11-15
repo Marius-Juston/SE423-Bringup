@@ -86,9 +86,14 @@ interface Point {
   load: boolean;
 }
 
+/** The registers the running module reads or writes by name. */
+const REG_NAMES = ["AQCSFRC", "AQCTLA", "AQCTLB", "CMPA", "CMPB", "CMPCTL", "ETFLG", "ETPS", "ETSEL", "TBCTL", "TBPHS", "TBPRD"];
+
 export interface EpwmModule {
   n: number;
   pre: string;
+  /** Full register names ("EPwm1Regs.ETSEL"), built once: event handlers must not build a string per event. */
+  k: Record<string, string>;
   /** TBCTL.CTRMODE: 0 up, 1 down, 2 up-down, 3 freeze. */
   mode: number;
   /** TBCLK period, ns. */
@@ -163,7 +168,7 @@ export class Epwm {
     const dev = b.dev;
     const pre = `EPwm${n}Regs`;
     const m: EpwmModule = {
-      n, pre, mode: 3, tick: EPWMCLK_NS * 2, prd: 0, cmpa: 0, cmpb: 0, t0: 0, frozenCtr: 0, frozenUp: true,
+      n, pre, k: Object.fromEntries(REG_NAMES.map((r) => [r, `${pre}.${r}`])), mode: 3, tick: EPWMCLK_NS * 2, prd: 0, cmpa: 0, cmpb: 0, t0: 0, frozenCtr: 0, frozenUp: true,
       out: [0, 0], points: [], idx: 0, ev: null, doneT: -1, wrapLoad: 0, socCnt: [0, 0], intCnt: 0, intPending: false,
       everMuxed: false, unmuxedSince: -1, aqLine: 0,
     };
@@ -356,15 +361,15 @@ export class Epwm {
 
   private shadow(m: EpwmModule): { prd: number; cmpa: number; cmpb: number } {
     const dev = this.b.dev;
-    return { prd: dev.get(`${m.pre}.TBPRD`), cmpa: dev.get(`${m.pre}.CMPA`, "CMPA"), cmpb: dev.get(`${m.pre}.CMPB`, "CMPB") };
+    return { prd: dev.get(m.k.TBPRD), cmpa: dev.get(m.k.CMPA, "CMPA"), cmpb: dev.get(m.k.CMPB, "CMPB") };
   }
 
   /** Copies shadow values to the active registers on the given events (all of them when `on` is -1). */
   private load(m: EpwmModule, on: number): boolean {
     const dev = this.b.dev;
     const s = this.shadow(m);
-    const tbctl = dev.get(`${m.pre}.TBCTL`);
-    const cmpctl = dev.get(`${m.pre}.CMPCTL`);
+    const tbctl = dev.get(m.k.TBCTL);
+    const cmpctl = dev.get(m.k.CMPCTL);
     const all = on === -1;
     let changed = false;
     if (s.prd !== m.prd && (all || tbctl & 8 || on & ZRO)) {
@@ -433,17 +438,17 @@ export class Epwm {
       }
     }
 
-    const etsel = dev.get(`${m.pre}.ETSEL`);
-    const etps = dev.get(`${m.pre}.ETPS`);
+    const etsel = dev.get(m.k.ETSEL);
+    const etps = dev.get(m.k.ETPS);
     let need = 0;
     if (etsel & 0x0008 && etps & 0x0003) need |= ET_SEL[etsel & 7];
     if (etsel & 0x0800 && etps & 0x0300) need |= ET_SEL[(etsel >> 8) & 7];
     if (etsel & 0x8000 && etps & 0x3000) need |= ET_SEL[(etsel >> 12) & 7];
-    const syncosel = (dev.get(`${m.pre}.TBCTL`) >> 4) & 3;
+    const syncosel = (dev.get(m.k.TBCTL) >> 4) & 3;
     if (this.syncWanted(m)) need |= syncosel === 1 ? ZRO : syncosel === 2 ? CBU | CBD : 0;
 
-    const aq = [dev.get(`${m.pre}.AQCTLA`), dev.get(`${m.pre}.AQCTLB`)];
-    const csf = dev.get(`${m.pre}.AQCSFRC`);
+    const aq = [dev.get(m.k.AQCTLA), dev.get(m.k.AQCTLB)];
+    const csf = dev.get(m.k.AQCSFRC);
     const forced = [(csf & 3) === 1 || (csf & 3) === 2, ((csf >> 2) & 3) === 1 || ((csf >> 2) & 3) === 2];
     const s = this.shadow(m);
     const pending = s.prd !== m.prd || s.cmpa !== m.cmpa || s.cmpb !== m.cmpb;
@@ -586,8 +591,8 @@ export class Epwm {
   private trigger(m: EpwmModule, evs: number, t: number): void {
     const b = this.b;
     const dev = b.dev;
-    const etsel = dev.get(`${m.pre}.ETSEL`);
-    const etps = dev.get(`${m.pre}.ETPS`);
+    const etsel = dev.get(m.k.ETSEL);
+    const etps = dev.get(m.k.ETPS);
     for (const i of [0, 1]) {
       const sh = 8 + 4 * i;
       if (!((etsel >> (sh + 3)) & 1) || !(evs & ET_SEL[(etsel >> sh) & 7])) continue;
@@ -596,7 +601,7 @@ export class Epwm {
       if (++m.socCnt[i] < every) continue;
       m.socCnt[i] = 0;
       const name = i ? "SOCB" : "SOCA";
-      dev.set(`${m.pre}.ETFLG`, 1, name);
+      dev.set(m.k.ETFLG, 1, name);
       b.fireTrigger(`EPWM${m.n}${name}`, t);
     }
     if (etsel & 8 && evs & ET_SEL[etsel & 7]) {
@@ -604,20 +609,20 @@ export class Epwm {
       if (every) {
         if (m.intCnt < every) m.intCnt++;
         if (m.intCnt >= every) {
-          if (dev.get(`${m.pre}.ETFLG`, "INT")) {
+          if (dev.get(m.k.ETFLG, "INT")) {
             m.intPending = true;
             b.pie.uncleared(3, m.n, `${m.pre}.ETFLG.bit.INT`, `${m.pre}.ETCLR.bit.INT = 1;`);
           } else this.interrupt(m);
         }
       }
     }
-    const syncosel = (dev.get(`${m.pre}.TBCTL`) >> 4) & 3;
+    const syncosel = (dev.get(m.k.TBCTL) >> 4) & 3;
     if ((syncosel === 1 && evs & ZRO) || (syncosel === 2 && evs & (CBU | CBD))) this.syncOut(m, t);
   }
 
   private interrupt(m: EpwmModule): void {
     m.intCnt = 0;
-    this.b.dev.set(`${m.pre}.ETFLG`, 1, "INT");
+    this.b.dev.set(m.k.ETFLG, 1, "INT");
     this.b.pie.raise(3, m.n);
   }
 
@@ -629,9 +634,9 @@ export class Epwm {
 
   private syncIn(m: EpwmModule, t: number): void {
     const dev = this.b.dev;
-    const tbctl = dev.get(`${m.pre}.TBCTL`);
+    const tbctl = dev.get(m.k.TBCTL);
     if (tbctl & 4) {
-      const phs = dev.get(`${m.pre}.TBPHS`, "TBPHS");
+      const phs = dev.get(m.k.TBPHS, "TBPHS");
       const up = m.mode === 2 ? (tbctl & 0x2000) !== 0 : m.mode !== 1;
       if (m.mode === 3) this.setCounter(m, phs, up, t);
       else {
@@ -654,7 +659,7 @@ export class Epwm {
     const dev = b.dev;
     const s = this.shadow(m);
     if (s.prd === 0) return;
-    const aq = dev.get(`${m.pre}.AQCTLA`) | dev.get(`${m.pre}.AQCTLB`);
+    const aq = dev.get(m.k.AQCTLA) | dev.get(m.k.AQCTLB);
     for (const [name, value, mask] of [["CMPA", s.cmpa, 0x0f0], ["CMPB", s.cmpb, 0xf00]] as const) {
       if (value <= s.prd || !(aq & mask)) continue;
       b.warn(

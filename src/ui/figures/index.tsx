@@ -45,7 +45,7 @@ const FIT_CSS = `
 /* Any figure can be opened across the window, where its labels grow with it. */
 .fig-fit { position: relative; --fig-small: max(11px, 0.69rem); }
 .fig-fit.fig-big { --fig-small: 0.92rem; }
-.fig-zoom { position: absolute; top: 0.35rem; right: 0.35rem; z-index: 2; display: inline-flex; align-items: center; gap: 0.25rem; font: inherit; font-size: 0.75rem; line-height: 1.2; padding: 0.2rem 0.5rem; color: var(--text); background: var(--surface); border: 1px solid var(--control); border-radius: var(--radius); cursor: pointer; opacity: 0.85; }
+.fig-zoom { position: absolute; top: 0.35rem; right: 0.35rem; z-index: 2; display: inline-flex; align-items: center; gap: 0.25rem; font: inherit; font-size: 0.75rem; line-height: 1.2; min-height: 1.5rem; padding: 0.2rem 0.5rem; color: var(--text); background: var(--surface); border: 1px solid var(--control); border-radius: var(--radius); cursor: pointer; opacity: 0.85; }
 .fig-zoom:hover, .fig-zoom:focus-visible { opacity: 1; }
 .fig-fit > .figure { padding-top: 2.1rem; }
 .fig-fit.fig-big { max-width: none; position: fixed; z-index: 61; top: 1rem; bottom: 1rem; left: 50%; transform: translateX(-50%); width: min(68rem, calc(100vw - 2rem)); overflow: auto; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.6rem; /* the dimmed surround is the box's own shadow, so it is drawn wherever the box is */ box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.55); }
@@ -53,6 +53,14 @@ const FIT_CSS = `
 .fig-fit.fig-big > .figure { margin: 0; font-size: 1.15rem; min-width: min(46rem, 190vw); }
 .hb-card-preview .fig-zoom { display: none; }
 .hb-card-preview .fig-fit > .figure { padding-top: 0.7rem; }
+/* The edge of a control, the chip's outline and a part that is off must be seen: 3:1 against the figure (WCAG 1.4.11). */
+.fig-fit .fig-opt { border-color: var(--control); min-height: 1.5rem; }
+.fig-fit .fig-chip { stroke: var(--control); }
+/* A step button that has nothing left to do gives up its fill, so "off" is not told by a paler orange alone. */
+.fig-fit .btn.primary:disabled, .fig-fit .fig-opt[aria-disabled="true"] { background: var(--surface); border-color: var(--control); border-style: dashed; color: var(--text); }
+.fig-fit .fig-box.off { opacity: 0.7; }
+/* A label that a line of the drawing may cross gets a rim in the figure's background, so the line stops short of the letters. */
+.fig-fit svg .fig-halo { paint-order: stroke; stroke: var(--inset); stroke-width: 3px; stroke-linejoin: round; }
 .fig-more { margin: 0.4rem 0; }
 .fig-more > summary { cursor: pointer; width: fit-content; color: var(--dim); font-size: 0.82rem; }
 .fig-more[open] > summary { margin-bottom: 0.35rem; }
@@ -95,6 +103,40 @@ function hold(root: HTMLElement, tallest: WeakMap<Element, number>) {
   }
 }
 
+/**
+ * What every figure needs for the keyboard and a screen reader, done here once:
+ * a row of options under its label is a named group ("Supply: 3.3 V"), and a box that
+ * scrolls sideways (a long code line in a narrow column) can be focused and has a name.
+ */
+function enhance(root: HTMLElement) {
+  for (const row of root.querySelectorAll<HTMLElement>(".fig-controls > div")) {
+    const label = row.firstElementChild;
+    if (!label || label.tagName !== "SPAN" || label.querySelector("input, button, select")) continue;
+    const text = (label.textContent ?? "").replace(/\s+/g, " ").replace(/[:\s]+$/, "").trim();
+    if (!text) continue;
+    if (!row.hasAttribute("role")) row.setAttribute("role", "group");
+    if (row.dataset.figNamed !== undefined || !row.hasAttribute("aria-label")) {
+      row.dataset.figNamed = "";
+      if (row.getAttribute("aria-label") !== text) row.setAttribute("aria-label", text);
+    }
+  }
+  for (const box of root.querySelectorAll<HTMLElement>("pre, ol, code, table, .fig-scroll")) {
+    const wide = box.scrollWidth > box.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(box).overflowX);
+    if (wide && !box.hasAttribute("tabindex")) {
+      box.tabIndex = 0;
+      box.dataset.figScroll = "";
+      if (!box.hasAttribute("role")) box.setAttribute("role", "group");
+      if (!box.hasAttribute("aria-label") && !box.hasAttribute("aria-labelledby")) box.setAttribute("aria-label", box.matches("pre, code, ol") ? "Code, scrolls sideways" : "Table, scrolls sideways");
+    } else if (!wide && box.dataset.figScroll !== undefined) {
+      delete box.dataset.figScroll;
+      box.removeAttribute("tabindex");
+    }
+  }
+}
+
+/** While a slider moves, the sentence that reacts changes with every step: it is announced once, when the slider rests. */
+const SETTLE_MS = 450;
+
 export function Figure({ id }: { id: string }) {
   const box = useRef<HTMLDivElement>(null);
   // The larger view: the same figure, in the state it is in, across the window. Escape or the button closes it.
@@ -102,7 +144,10 @@ export function Figure({ id }: { id: string }) {
   const zoom = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (!big) return;
+    let back = false;
     const on = (e: KeyboardEvent) => {
+      // Which way Tab is going, for the focus that tries to leave (below).
+      if (e.key === "Tab") back = e.shiftKey;
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
@@ -113,11 +158,20 @@ export function Figure({ id }: { id: string }) {
     const out = (e: PointerEvent) => {
       if (box.current && !box.current.contains(e.target as Node)) setBig(false);
     };
+    // The larger view is modal: the focus stays inside it. When Tab would leave, it goes round to the other end.
+    const keep = (e: FocusEvent) => {
+      const el = box.current;
+      if (!el || el.contains(e.target as Node)) return;
+      const stops = [...el.querySelectorAll<HTMLElement>('button, input, select, textarea, summary, a[href], [tabindex]:not([tabindex="-1"])')].filter((s) => !(s as HTMLButtonElement).disabled && s.tabIndex >= 0 && s.getClientRects().length > 0);
+      (back ? stops[stops.length - 1] : stops[0])?.focus();
+    };
     window.addEventListener("keydown", on, true);
     window.addEventListener("pointerdown", out, true);
+    document.addEventListener("focusin", keep, true);
     return () => {
       window.removeEventListener("keydown", on, true);
       window.removeEventListener("pointerdown", out, true);
+      document.removeEventListener("focusin", keep, true);
     };
   }, [big]);
   useLayoutEffect(() => {
@@ -126,12 +180,14 @@ export function Figure({ id }: { id: string }) {
     let tallest = new WeakMap<Element, number>();
     let width = el.clientWidth;
     fit(el);
+    enhance(el);
     hold(el, tallest);
     const sized =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
             fit(el);
+            enhance(el);
             // Another width wraps the text differently: start again.
             if (Math.abs(el.clientWidth - width) > 1) {
               width = el.clientWidth;
@@ -147,12 +203,27 @@ export function Figure({ id }: { id: string }) {
         ? null
         : new MutationObserver(() => {
             fit(el);
+            enhance(el);
             hold(el, tallest);
           });
     changed?.observe(el, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["viewBox"] });
+    let rest = 0;
+    const moving = (e: Event) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || !(t.matches?.('input[type="range"]') || t.getAttribute?.("role") === "slider")) return;
+      const live = el.querySelectorAll<HTMLElement>('[role="status"], [aria-live]');
+      for (const l of live) l.setAttribute("aria-busy", "true");
+      window.clearTimeout(rest);
+      rest = window.setTimeout(() => {
+        for (const l of el.querySelectorAll<HTMLElement>('[aria-busy="true"]')) l.removeAttribute("aria-busy");
+      }, SETTLE_MS);
+    };
+    el.addEventListener("input", moving, true);
     return () => {
       sized?.disconnect();
       changed?.disconnect();
+      el.removeEventListener("input", moving, true);
+      window.clearTimeout(rest);
     };
   }, [id]);
   const C = TABLE.get(id)?.Component;

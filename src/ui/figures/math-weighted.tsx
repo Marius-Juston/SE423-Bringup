@@ -42,7 +42,7 @@ function MathWeighted() {
 
   return (
     <figure className="figure mw-fig" aria-label="Interactive figure: a weighted average of a prediction and a measurement, weighted by trust">
-      <style>{`.mw-fig .mw-range{flex:1;min-width:110px;accent-color:var(--orange)}.mw-fig .mw-axis{stroke:var(--dim);stroke-width:1}.mw-fig .mw-bar{stroke-width:5;stroke-linecap:round;opacity:0.55}.mw-fig .mw-bar.a,.mw-fig .mw-dot.a{stroke:var(--arches);fill:var(--arches)}.mw-fig .mw-bar.z,.mw-fig .mw-dot.z{stroke:var(--orange);fill:var(--orange)}.mw-fig .mw-bar.b,.mw-fig .mw-dot.b{stroke:var(--harvest);fill:var(--harvest)}.mw-fig .mw-link{stroke:var(--dim);stroke-width:1;stroke-dasharray:3 3}.mw-fig .mw-num{font-family:var(--mono);font-size:0.82rem;min-width:4.6rem;text-align:right}`}</style>
+      <style>{`.mw-fig .mw-range{flex:1;min-width:110px;accent-color:var(--orange)}.mw-fig .mw-axis{stroke:var(--dim);stroke-width:1}.mw-fig .mw-bar{stroke-width:4;stroke-linecap:round}.mw-fig .mw-dot{stroke-width:1.4}.mw-fig .mw-bar.a{stroke:var(--arches)}.mw-fig .mw-dot.a{stroke:var(--text);fill:var(--arches)}.mw-fig .mw-bar.z{stroke:var(--orange)}.mw-fig .mw-dot.z{stroke:var(--text);fill:var(--orange)}.mw-fig .mw-bar.b{stroke:var(--harvest)}.mw-fig .mw-dot.b{stroke:var(--text);fill:var(--harvest)}.mw-fig .mw-link{stroke:var(--dim);stroke-width:1;stroke-dasharray:3 3}.mw-fig .mw-num{font-family:var(--mono);font-size:0.82rem;min-width:4.6rem;text-align:right}`}</style>
       <svg viewBox="0 0 400 196" role="img" aria-label={`Prediction ${fmt(a)} feet with variance ${fmt(p)}. Measurement ${fmt(z)} feet with variance ${fmt(r)}. Weight of the measurement ${fmt(K)}. Blend ${fmt(blend)} feet with variance ${fmt(pNew, 3)}.`}>
         <text x={X0} y={12} className="fig-label dim">the bars show how unsure each number is (wider = less sure)</text>
         {row(42, a, p, "a", "prediction")}
@@ -62,17 +62,17 @@ function MathWeighted() {
       <div className="fig-controls">
         <div>
           <span>Prediction</span>
-          <input className="mw-range" type="range" aria-label="Variance of the prediction" min={0.05} max={1.5} step={0.05} value={p} onChange={(e) => setP(+e.target.value)} />
+          <input className="mw-range" type="range" aria-label="Variance of the prediction" aria-valuetext={`variance ${fmt(p)}`} min={0.05} max={1.5} step={0.05} value={p} onChange={(e) => setP(+e.target.value)} />
           <span className="mw-num">var {fmt(p)}</span>
         </div>
         <div>
           <span>Measured</span>
-          <input className="mw-range" type="range" aria-label="Variance of the measurement" min={0.05} max={1.5} step={0.05} value={r} onChange={(e) => setR(+e.target.value)} />
+          <input className="mw-range" type="range" aria-label="Variance of the measurement" aria-valuetext={`variance ${fmt(r)}`} min={0.05} max={1.5} step={0.05} value={r} onChange={(e) => setR(+e.target.value)} />
           <span className="mw-num">var {fmt(r)}</span>
         </div>
         <div>
           <span>It says</span>
-          <input className="mw-range" type="range" aria-label="Measured position in feet" min={1.5} max={4.5} step={0.1} value={z} onChange={(e) => setZ(+e.target.value)} />
+          <input className="mw-range" type="range" aria-label="Measured position in feet" aria-valuetext={`${fmt(z, 1)} feet`} min={1.5} max={4.5} step={0.1} value={z} onChange={(e) => setZ(+e.target.value)} />
           <span className="mw-num">{fmt(z, 1)} ft</span>
         </div>
       </div>

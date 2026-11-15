@@ -28,14 +28,14 @@ const WHY: Record<Part, string> = {
 };
 
 const CSS = `
-.ml-part { cursor: pointer; }
 .ml-part rect { fill: var(--surface); stroke: var(--dim); stroke-width: 1.2; }
 .ml-part.sel rect { fill: var(--accent-soft); stroke: var(--orange); stroke-width: 2.2; }
 .ml-title { fill: var(--text); font-size: 10.5px; font-family: var(--sans); font-weight: 700; }
 .ml-arrow { fill: none; stroke: var(--dim); stroke-width: 2; }
 .ml-arrow.sel { stroke: var(--orange); stroke-width: 3; }
 .ml-head { fill: var(--dim); }
-.ml-head.sel { fill: var(--orange); }
+.ml-part rect.ml-hit, .ml-part.sel rect.ml-hit { cursor: pointer; fill: transparent; stroke: none; }
+.ml-head.sel { fill: var(--orange); stroke: var(--orange); stroke-width: 2.5; stroke-linejoin: round; }
 `;
 
 function MechatronicLoop() {
@@ -43,39 +43,43 @@ function MechatronicLoop() {
   const cls = (p: Part) => `ml-part ${sel === p ? "sel" : ""}`;
   const w = sel === "wires" ? "sel" : "";
   const box = (p: Part, x: number, y: number, wd: number, title: string, l1: string, l2: string) => (
-    <g className={cls(p)} onClick={() => setSel(p)}>
+    <g className={cls(p)}>
       <rect x={x} y={y} width={wd} height="54" rx="6" />
       <text x={x + wd / 2} y={y + 17} textAnchor="middle" className="ml-title">{title}</text>
       <text x={x + wd / 2} y={y + 32} textAnchor="middle" className="fig-label dim">{l1}</text>
       <text x={x + wd / 2} y={y + 44} textAnchor="middle" className="fig-label dim">{l2}</text>
+      {/* A click on the box does what its Show button does, so this target is for the pointer only. */}
+      <rect x={x} y={y} width={wd} height="54" rx="6" className="ml-hit" aria-hidden="true" onClick={() => setSel(p)} />
     </g>
   );
   return (
     <figure className="figure" aria-label="Interactive picture of a mechatronic system: sensors, microcontroller, actuators and the world in a loop">
       <style>{CSS}</style>
       <svg viewBox="0 0 400 168" role="img" aria-label={`A loop: sensors feed the microcontroller, the microcontroller commands the actuators, the actuators change the world, and the sensors measure the world again. Selected: ${NAME[sel]}.`}>
-        {box("sensors", 8, 20, 104, "Sensors", "measure", "distance, turning, touch")}
-        {box("mcu", 148, 20, 104, "Microcontroller", "decides", "runs your program")}
-        {box("actuators", 288, 20, 104, "Actuators", "act", "motors, lights, sound")}
+        {/* The boxes are wide enough for their words at the largest type a narrow column gives them. */}
+        {box("sensors", 4, 20, 118, "Sensors", "measure distance,", "turning, touch")}
+        {box("mcu", 141, 20, 118, "Microcontroller", "decides:", "runs your program")}
+        {box("actuators", 278, 20, 118, "Actuators", "act:", "motors, lights, sound")}
         {/* wires between the boxes */}
-        <line x1="112" y1="47" x2="140" y2="47" className={`ml-arrow ${w}`} />
-        <polygon points="140,42 148,47 140,52" className={`ml-head ${w}`} />
-        <line x1="252" y1="47" x2="280" y2="47" className={`ml-arrow ${w}`} />
-        <polygon points="280,42 288,47 280,52" className={`ml-head ${w}`} />
-        <text x="130" y="14" textAnchor="middle" className="fig-label">wire</text>
-        <text x="270" y="14" textAnchor="middle" className="fig-label">wire</text>
-        <line x1="130" y1="17" x2="130" y2="42" className="fig-wire" strokeDasharray="2 2" />
-        <line x1="270" y1="17" x2="270" y2="42" className="fig-wire" strokeDasharray="2 2" />
+        <line x1="122" y1="47" x2="133" y2="47" className={`ml-arrow ${w}`} />
+        <polygon points="133,42 141,47 133,52" className={`ml-head ${w}`} />
+        <line x1="259" y1="47" x2="270" y2="47" className={`ml-arrow ${w}`} />
+        <polygon points="270,42 278,47 270,52" className={`ml-head ${w}`} />
+        <text x="131.5" y="11" textAnchor="middle" className="fig-label">wire</text>
+        <text x="268.5" y="11" textAnchor="middle" className="fig-label">wire</text>
+        <line x1="131.5" y1="15" x2="131.5" y2="40" className="fig-wire" strokeDasharray="2 2" />
+        <line x1="268.5" y1="15" x2="268.5" y2="40" className="fig-wire" strokeDasharray="2 2" />
         {/* the world closes the loop */}
-        <path d="M340,74 V120 H300" className="ml-arrow" />
-        <polygon points="300,115 292,120 300,125" className="ml-head" />
-        <path d="M108,120 H60 V82" className="ml-arrow" />
-        <polygon points="55,82 60,74 65,82" className="ml-head" />
-        <g className={cls("world")} onClick={() => setSel("world")}>
-          <rect x="108" y="98" width="184" height="54" rx="6" />
+        <path d="M352,74 V120 H334" className="ml-arrow" />
+        <polygon points="334,115 326,120 334,125" className="ml-head" />
+        <path d="M74,120 H48 V82" className="ml-arrow" />
+        <polygon points="43,82 48,74 53,82" className="ml-head" />
+        <g className={cls("world")}>
+          <rect x="74" y="98" width="252" height="54" rx="6" />
           <text x="200" y="115" textAnchor="middle" className="ml-title">The world</text>
           <text x="200" y="130" textAnchor="middle" className="fig-label dim">the robot, the floor, the walls</text>
           <text x="200" y="142" textAnchor="middle" className="fig-label dim">what the actuators change, the sensors see</text>
+          <rect x="74" y="98" width="252" height="54" rx="6" className="ml-hit" aria-hidden="true" onClick={() => setSel("world")} />
         </g>
       </svg>
       <p className="fig-why" role="status"><strong>{NAME[sel]}.</strong> {WHY[sel]}</p>

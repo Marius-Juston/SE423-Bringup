@@ -110,7 +110,8 @@ export function Wiring({ level, onPass, onMiss }: { level: WiringLevel; onPass: 
         {wires.map(([a, b], i) => (
           <line key={i} className="wire" x1={node(a).x} y1={node(a).y} x2={node(b).x} y2={node(b).y} />
         ))}
-        {level.nodes.map((n) => (
+        {/* In reading order (top to bottom, left to right), so Tab moves through the picture the way it is drawn. */}
+        {[...level.nodes].sort((a, b) => a.y - b.y || a.x - b.x).map((n) => (
           <g
             key={n.id}
             className={`node ${sel === n.id ? "sel" : ""}`}

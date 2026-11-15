@@ -19,6 +19,8 @@ const TBPRD = 2500;
 const CSS = `
 .hbr input[type=range] { flex: 1 1 8rem; min-width: 6rem; padding: 0; accent-color: var(--accent); }
 .hbr-sw { cursor: pointer; fill: transparent; }
+.hbr-grid { stroke: var(--border); }
+.hbr-sat { fill: var(--bad-soft); stroke: var(--bad); stroke-width: 1; stroke-dasharray: 3 2; }
 .hbr-num { font-family: var(--mono); color: var(--value); min-width: 2.8em; text-align: right; font-size: 0.85rem; }
 .hbr pre { margin: 0.3rem 0 0; font-size: 0.78rem; background: var(--surface); border-radius: 6px; padding: 0.4rem 0.6rem; overflow-x: auto; }
 `;
@@ -36,8 +38,10 @@ interface Paint {
 }
 const IDLE: Paint = { c: "var(--dim)", w: 1.4 };
 
-function Head({ x, y, deg, c }: { x: number; y: number; deg: number; c: string }) {
-  return <path d="M-4.5,-4 L4.5,0 L-4.5,4 Z" fill={c} transform={`translate(${x} ${y}) rotate(${deg})`} />;
+// An arrow head on a current path. In a short circuit it is drawn heavier, with an outline, so
+// the fault does not show by its colour alone.
+function Head({ x, y, deg, c, heavy }: { x: number; y: number; deg: number; c: string; heavy?: boolean }) {
+  return <path d="M-4.5,-4 L4.5,0 L-4.5,4 Z" fill={c} stroke={heavy ? c : undefined} strokeWidth={heavy ? 2.4 : undefined} strokeLinejoin="round" transform={`translate(${x} ${y}) rotate(${deg})`} />;
 }
 
 function HBridge() {
@@ -83,12 +87,14 @@ function HBridge() {
   const leg = (x: number, y0: number, closed: boolean, p: Paint, inward: number) => {
     const a = y0 + 22;
     const b = a + 26;
+    // The contacts are drawn heavier when the leg carries current, so the state is not colour alone.
+    const ring = p === IDLE ? 1.2 : p.w - 0.8;
     return (
       <g stroke={p.c} strokeWidth={p.w} fill="none" strokeLinecap="round">
         <path d={`M${x},${y0} V${a} M${x},${b} V${y0 + 73}`} />
         <path d={closed ? `M${x},${b} V${a}` : `M${x},${b} L${x + inward * 12},${a + 4}`} />
-        <circle cx={x} cy={a} r="2" fill="var(--surface)" strokeWidth="1.2" />
-        <circle cx={x} cy={b} r="2" fill="var(--surface)" strokeWidth="1.2" />
+        <circle cx={x} cy={a} r="2" fill="var(--surface)" strokeWidth={ring} />
+        <circle cx={x} cy={b} r="2" fill="var(--surface)" strokeWidth={ring} />
       </g>
     );
   };
@@ -149,10 +155,10 @@ function HBridge() {
             <Head x={flow > 0 ? RX - 16 : RX - 22} y={MID} deg={flow > 0 ? 0 : 180} c={P.m.c} />
           </>
         )}
-        {(flow > 0 || shortL) && <Head x={LX} y={TOP + 14} deg={90} c={P.s1.c} />}
-        {(flow > 0 || shortR) && <Head x={RX} y={BOT - 8} deg={90} c={P.s4.c} />}
-        {(flow < 0 || shortR) && <Head x={RX} y={TOP + 14} deg={90} c={P.s3.c} />}
-        {(flow < 0 || shortL) && <Head x={LX} y={BOT - 8} deg={90} c={P.s2.c} />}
+        {(flow > 0 || shortL) && <Head x={LX} y={TOP + 14} deg={90} c={P.s1.c} heavy={shortL} />}
+        {(flow > 0 || shortR) && <Head x={RX} y={BOT - 8} deg={90} c={P.s4.c} heavy={shortR} />}
+        {(flow < 0 || shortR) && <Head x={RX} y={TOP + 14} deg={90} c={P.s3.c} heavy={shortR} />}
+        {(flow < 0 || shortL) && <Head x={LX} y={BOT - 8} deg={90} c={P.s2.c} heavy={shortL} />}
         <circle cx={LX} cy={MID} r="2.6" className="fig-dot" />
         <circle cx={RX} cy={MID} r="2.6" className="fig-dot" />
         <circle cx={CX} cy={MID} r="18" className="fig-box" />
@@ -171,7 +177,7 @@ function HBridge() {
             <g key={n}>
               <text x={i < 2 ? x - 9 : x + 9} y={y + 11} textAnchor={i < 2 ? "end" : "start"} className="fig-label" style={{ fontWeight: 700 }}>{n}</text>
               <text x={i < 2 ? x - 9 : x + 9} y={y + 22} textAnchor={i < 2 ? "end" : "start"} className="fig-label dim">{[s1, s2, s3, s4][i] ? "closed" : "open"}</text>
-              {!pwm && <rect x={x - 40} y={y - 8} width="80" height="42" className="hbr-sw" onClick={() => toggle(i)}><title>Click to open or close {n}</title></rect>}
+              {!pwm && <rect x={x - 40} y={y - 8} width="80" height="42" className="hbr-sw" aria-hidden="true" onClick={() => toggle(i)}><title>Click to open or close {n}</title></rect>}
             </g>
           );
         })}
@@ -191,9 +197,9 @@ function HBridge() {
             <rect x="318" y="82" width="96" height="7" rx="2" className="fig-box" />
             <rect x="318" y="82" width={96 * (1 - duty)} height="7" rx="2" fill="var(--lo)" />
             <text x="318" y="100" className="fig-label dim">S3 + S2: backward</text>
-            <text x="318" y="126" className="fig-label">average on the motor</text>
+            <text x="318" y="126" className="fig-label">average voltage</text>
             <text x="318" y="140" className="fig-value">{net > 0 ? "+" : net < 0 ? "-" : ""}{pct(Math.abs(net))}</text>
-            <text x="318" y="151" className="fig-label dim">of the battery voltage</text>
+            <text x="318" y="151" className="fig-label dim">of the battery</text>
           </g>
         )}
       </svg>
@@ -221,14 +227,14 @@ function HBridge() {
       </div>
       {pwm && (
         <>
-          <svg viewBox="0 -4 420 120" role="img" aria-label={`Transfer line of setMotor1: power ${u} percent gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
-            <rect x={X0} y={Y1} width={tx(-100) - X0} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
-            <rect x={tx(100)} y={Y1} width={X1 - tx(100)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.1" />
-            <text x={X0 + 4} y={Y1 + 12} className="fig-label dim">saturated</text>
-            <text x={X1 - 4} y={Y0 - 8} textAnchor="end" className="fig-label dim">saturated</text>
+          <svg viewBox="0 -8 420 124" role="img" aria-label={`Transfer line of setMotor1: power ${u} percent gives CMPA ${cmpa}, duty cycle ${pct(duty)}.`}>
+            <rect x={X0} y={Y1} width={tx(-100) - X0} height={Y0 - Y1} className="hbr-sat" />
+            <rect x={tx(100)} y={Y1} width={X1 - tx(100)} height={Y0 - Y1} className="hbr-sat" />
+            <text x={X0} y={Y1 - 6} className="fig-label dim">saturated</text>
+            <text x={X1} y={Y1 - 6} textAnchor="end" className="fig-label dim">saturated</text>
             {[0, 1250, 2500].map((c, i) => (
               <g key={c}>
-                <line x1={X0 - 6} x2={X1} y1={ty(c)} y2={ty(c)} stroke="var(--border)" />
+                <line x1={X0 - 6} x2={X1} y1={ty(c)} y2={ty(c)} className="hbr-grid" />
                 <text x={X0 - 8} y={ty(c) + 3} textAnchor="end" className="fig-label">{c}</text>
                 <text x={X1 + 5} y={ty(c) + 3} className="fig-label dim">{["0 %: full backward", "50 %: stopped", "100 %: full forward"][i]}</text>
               </g>
@@ -249,7 +255,7 @@ function HBridge() {
           <div className="fig-controls">
             <div>
               <span>Power p</span>
-              <input type="range" min={-140} max={140} step={5} value={u} aria-label="Power p in percent" onChange={(e) => setU(+e.target.value)} />
+              <input type="range" min={-140} max={140} step={5} value={u} aria-label="Power p in percent" aria-valuetext={`${u} percent${saturated ? `, saturated to ${us}` : ""}`} onChange={(e) => setU(+e.target.value)} />
               <span className="hbr-num">{u}</span>
               <button className="fig-opt" onClick={() => setU(0)}>stop (0)</button>
             </div>
@@ -260,7 +266,7 @@ function HBridge() {
       <figcaption>
         {pwm
           ? "The robot's amplifier takes one PWM signal as its direction input and works the four switches itself, one diagonal at a time. The duty cycle is a signed command centred on 50 %: a stopped motor is a pin switching at exactly half. The right motor is mounted mirrored, so it gets the opposite command: setMotor2(-p)."
-          : "Four switches connect the motor to the battery either way round. The two diagonals are the two directions. Two closed switches in the same leg short the battery: the one state that must never happen."}
+          : "Four switches connect the motor to the battery either way round. Click a switch in the drawing or press its button under Switches. The two diagonals are the two directions. Two closed switches in the same leg short the battery: the one state that must never happen."}
       </figcaption>
     </figure>
   );

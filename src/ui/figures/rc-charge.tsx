@@ -61,19 +61,21 @@ function RcCharge() {
         ))}
         {/* what the switch asks for: an instant jump */}
         <path d={`M${X0},${charge ? LO : HI} V${charge ? HI : LO} H${X1}`} className="rc-step" />
-        <text x={tauMs > 5 ? X0 + 4 : X1} y={charge ? HI - 5 : LO - 20} textAnchor={tauMs > 5 ? "start" : "end"} className="fig-label dim">what the switch asks for</text>
         <path d={curve} className="fig-trace" style={{ stroke: "var(--hi)" }} strokeLinejoin="round" />
-        <text x={X1} y={charge ? HI + 14 : LO - 7} textAnchor="end" className="fig-label">the capacitor's voltage</text>
         {/* one time constant */}
         <line x1={x(tauMs)} y1={HI - 8} x2={x(tauMs)} y2={LO + 4} className="rc-tau" />
         <circle cx={x(tauMs)} cy={y(vTau)} r="3" className="rc-pt" />
-        <text x={labelRight ? x(tauMs) + 5 : x(tauMs) - 5} y={charge ? y(vTau) + (labelRight ? 12 : 20) : y(vTau) - (labelRight ? 6 : 14)} textAnchor={labelRight ? "start" : "end"} className="fig-value small">{vTau.toFixed(2)} V at t = tau</text>
+        <text x={labelRight ? x(tauMs) + 5 : x(tauMs) - 5} y={charge ? y(vTau) + (labelRight ? 12 : 24) : y(vTau) - (labelRight ? 6 : 20)} textAnchor={labelRight ? "start" : "end"} className="fig-value small fig-halo">{vTau.toFixed(2)} V at t = tau</text>
         <text x={x(tauMs) > X1 - 34 ? X1 : x(tauMs)} y={HI - 11} textAnchor={x(tauMs) > X1 - 34 ? "end" : "middle"} className="fig-value small">tau = {ms(tauMs)}</text>
-        {[0, 5, 10].map((t) => (
-          <text key={t} x={x(t)} y="128" textAnchor={t === 0 ? "start" : t === 10 ? "end" : "middle"} className="fig-label dim">{t} ms</text>
-        ))}
+        <text x={X0} y="128" className="fig-label dim">0 ms: the switch flips</text>
+        <text x={x(5)} y="128" textAnchor="middle" className="fig-label dim">5 ms</text>
+        <text x={x(10)} y="128" textAnchor="end" className="fig-label dim">10 ms</text>
         <text x={x(7.5)} y="128" textAnchor="middle" className="fig-label dim">time</text>
-        <text x={X0} y="144" className="fig-label dim">The switch flips at 0 ms.</text>
+        {/* A key under the plot: the two lines cross the whole plot, so a label on them would be in the way somewhere. */}
+        <line x1={X0} y1="141" x2={X0 + 18} y2="141" className="rc-step" />
+        <text x={X0 + 23} y="144" className="fig-label dim">what the switch asks for</text>
+        <line x1="226" y1="141" x2="244" y2="141" className="fig-trace" style={{ stroke: "var(--hi)" }} />
+        <text x="249" y="144" className="fig-label">the capacitor's voltage</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -93,7 +95,7 @@ function RcCharge() {
           <span className="rc-num">{farad(c)}</span>
         </div>
       </div>
-      <figcaption>The dashed line jumps instantly; the capacitor's voltage cannot. It follows with a curve whose speed is set by tau = R x C: a larger resistor or a larger capacitor makes it slower.</figcaption>
+      <figcaption>The dashed line is what the switch asks for: it jumps instantly. The capacitor's voltage (the solid curve) cannot. It follows with a curve whose speed is set by tau = R x C: a larger resistor or a larger capacitor makes it slower.</figcaption>
     </figure>
   );
 }

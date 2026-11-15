@@ -24,3 +24,12 @@ log = "0.4"
 tauri = { version = "2.12.5", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
+
+# A smaller installer (Tauri's size guide): one codegen unit and link-time
+# optimisation, optimised for size, no unwinding tables, no symbols.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

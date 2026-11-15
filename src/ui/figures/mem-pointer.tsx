@@ -23,7 +23,7 @@ const STATES: State[] = [
   { x: null, y: null, p: "none", hot: "", why: "Nothing has run yet. Step through the program and watch the arrow." },
   { x: 5, y: null, p: "none", hot: "x", why: "x is the box at address 0x0100. It holds 5." },
   { x: 5, y: 8, p: "none", hot: "y", why: "y is the box at address 0x0101. It holds 8." },
-  { x: 5, y: 8, p: "unset", hot: "p", why: "p is a variable too, with boxes of its own. The * in its declaration says: the value kept here is the address of an int. Nothing has been stored yet, so p points nowhere useful. Using *p now would be a bug." },
+  { x: 5, y: 8, p: "unset", hot: "p", why: "p is a variable too, with boxes of its own: a pointer takes 2 boxes. The * in its declaration says: the value kept here is the address of an int. Nothing has been stored yet, so p points nowhere useful. Using *p now would be a bug." },
   { x: 5, y: 8, p: "x", hot: "p", why: "&x means \"the address of x\", which is 0x0100. That number is now the value of p. The arrow is only a picture of it: p points to x." },
   { x: 5, y: 5, p: "x", hot: "y", why: "*p means \"the box p points to\". p holds 0x0100, so *p is the box of x. Its value, 5, is copied into y." },
   { x: 9, y: 5, p: "x", hot: "x", why: "*p on the left of = writes to the box p points to. x changed to 9, and the name x does not appear in this line at all. p itself still holds 0x0100." },
@@ -39,7 +39,7 @@ function MemPointer() {
     { addr: 0x0101, name: s.y === null ? undefined : "y", value: s.y === null ? "free" : String(s.y), state: s.y === null ? "unused" : s.hot === "y" ? "hot" : undefined },
     ...(s.p === "none"
       ? [2, 3].map((k): Cell => ({ addr: 0x0100 + k, value: "free", state: "unused" }))
-      : [{ addr: 0x0102, words: 2, name: "p (a pointer: 2 boxes)", value: s.p === "unset" ? "not set yet" : s.p === "x" ? "0x0100" : "0x0101", small: s.p === "unset", state: s.hot === "p" ? "hot" : undefined } satisfies Cell]),
+      : [{ addr: 0x0102, words: 2, name: "p (pointer)", value: s.p === "unset" ? "not set yet" : s.p === "x" ? "0x0100" : "0x0101", small: s.p === "unset", state: s.hot === "p" ? "hot" : undefined } satisfies Cell]),
     ...[4, 5, 6, 7].map((k): Cell => ({ addr: 0x0100 + k, value: "free", state: "unused" })),
   ];
   const target = s.p === "x" ? 0 : s.p === "y" ? 1 : -1;

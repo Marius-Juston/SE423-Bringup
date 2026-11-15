@@ -50,14 +50,19 @@ function MathSpread() {
     bins.set(k, (bins.get(k) ?? 0) + 1);
   }
   const peakCount = Math.max(...bins.values());
-  const unit = Math.min(12, 104 / peakCount); // px per reading
+  // The top of the bell curve, in readings per bin: the drawing is scaled so that it stays under the labels.
+  const bellPeak = (BIN * n) / (sigma * Math.sqrt(2 * Math.PI));
+  const unit = Math.min(12, 104 / peakCount, 114 / bellPeak); // px per reading
   // bell curve of the sensor, scaled to the expected count per bin
   let bell = "";
   for (let i = 0; i <= 140; i++) {
     const v = LO + (i / 140) * (HI - LO);
     const pdf = Math.exp(-((v - centre) ** 2) / (2 * sigma * sigma)) / (sigma * Math.sqrt(2 * Math.PI));
-    bell += `${i ? "L" : "M"}${sx(v).toFixed(1)},${Math.max(BASE - pdf * BIN * n * unit, 18).toFixed(1)}`;
+    bell += `${i ? "L" : "M"}${sx(v).toFixed(1)},${(BASE - pdf * BIN * n * unit).toFixed(1)}`;
   }
+  // The two labels on top stand on the outer sides of their lines, so they never meet.
+  const meanLeft = mean < TRUE && sx(mean) > 90;
+  const trueLeft = mean >= TRUE;
   const why =
     n === 1
       ? `One reading: ${fmt(last)} ft. The true distance is ${fmt(TRUE)} ft, so this reading is ${fmt(Math.abs(last - TRUE))} ft off, and you cannot tell from one number. Take more readings.`
@@ -67,8 +72,8 @@ function MathSpread() {
 
   return (
     <figure className="figure mp-fig" aria-label="Interactive figure: the mean and the spread of noisy sensor readings">
-      <style>{`.mp-fig .mp-range{flex:1;min-width:110px;accent-color:var(--orange)}.mp-fig .mp-axis{stroke:var(--dim);stroke-width:1}.mp-fig .mp-bar{fill:var(--accent-soft);stroke:var(--orange);stroke-width:1}.mp-fig .mp-band{fill:var(--faint)}.mp-fig .mp-bell{fill:none;stroke:var(--arches);stroke-width:1.8}.mp-fig .mp-mean{stroke:var(--harvest);stroke-width:2.4}.mp-fig .mp-true{stroke:var(--text);stroke-width:1.4;stroke-dasharray:4 3}.mp-fig .mp-num{font-family:var(--mono);font-size:0.82rem;min-width:4.6rem;text-align:right}`}</style>
-      <svg viewBox="0 0 400 200" role="img" aria-label={`${n} readings of a true distance of ${fmt(TRUE)} feet. Mean ${fmt(mean)} feet, variance ${fmt(variance, 3)}, standard deviation ${fmt(sd)} feet.`}>
+      <style>{`.mp-fig .mp-range{flex:1;min-width:110px;accent-color:var(--orange)}.mp-fig .mp-axis{stroke:var(--dim);stroke-width:1}.mp-fig .mp-bar{fill:var(--accent-soft);stroke:var(--orange);stroke-width:1}.mp-fig .mp-band{fill:var(--faint);stroke:var(--dim);stroke-width:1;stroke-dasharray:2 3}.mp-fig .mp-bell{fill:none;stroke:var(--arches);stroke-width:1.8}.mp-fig .mp-mean{stroke:var(--harvest);stroke-width:2.4}.mp-fig .mp-true{stroke:var(--text);stroke-width:1.4;stroke-dasharray:4 3}.mp-fig .mp-num{font-family:var(--mono);font-size:0.82rem;min-width:4.6rem;text-align:right}`}</style>
+      <svg viewBox="0 0 400 214" role="img" aria-label={`${n} readings of a true distance of ${fmt(TRUE)} feet. Mean ${fmt(mean)} feet, variance ${fmt(variance, 3)}, standard deviation ${fmt(sd)} feet.`}>
         {n > 1 && <rect x={sx(mean - sd)} width={sx(mean + sd) - sx(mean - sd)} y={30} height={BASE - 30} className="mp-band" />}
         {[...bins.entries()].map(([k, count]) => (
           <rect key={k} x={sx(LO + k * BIN) + 0.6} width={sx(LO + BIN) - X0 - 1.2} y={BASE - count * unit} height={count * unit} className="mp-bar" />
@@ -82,24 +87,24 @@ function MathSpread() {
           </g>
         ))}
         <line x1={sx(TRUE)} x2={sx(TRUE)} y1={22} y2={BASE} className="mp-true" />
-        <text x={sx(TRUE) - 4} y={20} textAnchor="end" className="fig-label">true: {fmt(TRUE)}</text>
+        <text x={trueLeft ? sx(TRUE) - 4 : sx(TRUE) + 4} y={20} textAnchor={trueLeft ? "end" : "start"} className="fig-label">true: {fmt(TRUE)}</text>
         <line x1={sx(mean)} x2={sx(mean)} y1={30} y2={BASE} className="mp-mean" />
-        <text x={sx(mean) + 4} y={20} className="fig-value small">mean: {fmt(mean)}</text>
-        {n > 1 && <text x={sx(mean + sd) > 270 ? sx(mean - sd) - 3 : sx(mean + sd) + 3} y={42} textAnchor={sx(mean + sd) > 270 ? "end" : "start"} className="fig-label dim">grey band: mean ± {fmt(sd)}</text>}
+        <text x={meanLeft ? sx(mean) - 4 : sx(mean) + 4} y={20} textAnchor={meanLeft ? "end" : "start"} className="fig-value small">mean: {fmt(mean)}</text>
         <text x={X0} y={178} className="fig-label">mean = sum / count = <tspan className="fig-value small">{fmt(mean)} ft</tspan></text>
         <text x={X0} y={193} className="fig-label">variance = average of (reading - mean) squared = <tspan className="fig-value small">{fmt(variance, 3)}</tspan></text>
         <text x={X1} y={178} textAnchor="end" className="fig-label dim">bars: readings, blue: bell curve</text>
+        {n > 1 && <text x={X0} y={208} className="fig-label dim">grey band: mean ± {fmt(sd)} ft, from {fmt(mean - sd)} to {fmt(mean + sd)} ft</text>}
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
           <span>Readings</span>
-          <input className="mp-range" type="range" aria-label="Number of readings" min={1} max={200} step={1} value={n} onChange={(e) => setN(+e.target.value)} />
+          <input className="mp-range" type="range" aria-label="Number of readings" min={1} max={200} step={1} value={n} aria-valuetext={n === 1 ? "1 reading" : `${n} readings`} onChange={(e) => setN(+e.target.value)} />
           <span className="mp-num">{n}</span>
         </div>
         <div>
           <span>Noise</span>
-          <input className="mp-range" type="range" aria-label="Noise of the sensor: typical error of one reading, in feet" min={0.05} max={0.4} step={0.05} value={sigma} onChange={(e) => setSigma(+e.target.value)} />
+          <input className="mp-range" type="range" aria-label="Noise of the sensor: typical error of one reading, in feet" min={0.05} max={0.4} step={0.05} value={sigma} aria-valuetext={`${fmt(sigma)} feet`} onChange={(e) => setSigma(+e.target.value)} />
           <span className="mp-num">{fmt(sigma)} ft</span>
         </div>
         <div>

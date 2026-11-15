@@ -44,14 +44,14 @@ function SpiBus() {
       <style>{CSS}</style>
       <svg viewBox={`0 0 420 ${Math.max(SY(count - 1) + 62, 14 + masterH + 6)}`} role="img" aria-label={`${count} slaves. ${none ? "No chip select is low, the master reads 0xFFFF." : conflict ? "Several chip selects are low: bus conflict." : `${sel[0].name} is selected and drives SOMI.`}`}>
         {/* master */}
-        <rect x="6" y="14" width="84" height={masterH} rx="6" className="fig-box active" />
-        <text x="12" y="27" className="fig-label dim">master: F28379D</text>
-        <text x="84" y={MPIN.clk + 3} textAnchor="end" className="fig-label">SPICLK</text>
-        <text x="84" y={MPIN.simo + 3} textAnchor="end" className="fig-label">SIMO, out</text>
-        <text x="84" y={MPIN.somi + 3} textAnchor="end" className="fig-label">SOMI, in</text>
+        <rect x="2" y="14" width="94" height={masterH} rx="6" className="fig-box active" />
+        <text x="7" y="27" className="fig-label dim">master: F28379D</text>
+        <text x="90" y={MPIN.clk + 3} textAnchor="end" className="fig-label">SPICLK</text>
+        <text x="90" y={MPIN.simo + 3} textAnchor="end" className="fig-label">SIMO, out</text>
+        <text x="90" y={MPIN.somi + 3} textAnchor="end" className="fig-label">SOMI, in</text>
         {/* shared rails */}
         {(["clk", "simo", "somi"] as const).map((k, j) => (
-          <path key={k} d={`M90,${MPIN[k]} H${RAIL[k]} M${RAIL[k]},${SY(0) + 10 + j * 12} V${SY(count - 1) + 10 + j * 12}`} className="fig-wire" style={k === "somi" ? { stroke: somiColor, strokeDasharray: none ? "3 2" : undefined, strokeWidth: 2 } : { stroke: "var(--text)" }} />
+          <path key={k} d={`M96,${MPIN[k]} H${RAIL[k]} M${RAIL[k]},${SY(0) + 10 + j * 12} V${SY(count - 1) + 10 + j * 12}`} className="fig-wire" style={k === "somi" ? { stroke: somiColor, strokeDasharray: none ? "3 2" : undefined, strokeWidth: conflict ? 3.2 : 2 } : { stroke: "var(--text)" }} />
         ))}
         {SLAVES.slice(0, count).map((s, i) => {
           const y = SY(i);
@@ -71,19 +71,20 @@ function SpiBus() {
               <circle cx={RAIL.clk} cy={y + 10} r="2.2" className="fig-dot" />
               <line x1={RAIL.simo} y1={y + 22} x2="296" y2={y + 22} className="fig-wire" style={{ stroke: "var(--text)" }} />
               <circle cx={RAIL.simo} cy={y + 22} r="2.2" className="fig-dot" />
-              <line x1={RAIL.somi} y1={y + 34} x2="296" y2={y + 34} className="fig-wire" style={{ stroke: drives ? (conflict ? "var(--bad)" : "var(--value)") : "var(--dim)", strokeDasharray: drives ? undefined : "3 2", strokeWidth: drives ? 2 : 1.2 }} />
-              <circle cx={RAIL.somi} cy={y + 34} r="2.2" style={{ fill: somiColor }} />
-              {drives && <polygon points={`${RAIL.somi + 8},${y + 34} ${RAIL.somi + 15},${y + 30} ${RAIL.somi + 15},${y + 38}`} style={{ fill: conflict ? "var(--bad)" : "var(--value)" }} />}
+              <line x1={RAIL.somi} y1={y + 34} x2="296" y2={y + 34} className="fig-wire" style={{ stroke: drives ? (conflict ? "var(--bad)" : "var(--value)") : "var(--dim)", strokeDasharray: drives ? undefined : "3 2", strokeWidth: drives ? (conflict ? 3.2 : 2) : 1.2 }} />
+              {/* the joint: a ring while nobody drives the line, a dot when one slave does, a larger outlined dot in a conflict */}
+              <circle cx={RAIL.somi} cy={y + 34} r={conflict ? 3.6 : none ? 2.4 : 2.6} style={none ? { fill: "var(--inset)", stroke: somiColor, strokeWidth: 1.2 } : { fill: somiColor, stroke: conflict ? "var(--text)" : undefined, strokeWidth: 1 }} />
+              {drives && <polygon points={conflict ? `${RAIL.somi + 8},${y + 34} ${RAIL.somi + 17},${y + 28.5} ${RAIL.somi + 17},${y + 39.5}` : `${RAIL.somi + 8},${y + 34} ${RAIL.somi + 15},${y + 30} ${RAIL.somi + 15},${y + 38}`} style={conflict ? { fill: "var(--bad)", stroke: "var(--text)", strokeWidth: 1 } : { fill: "var(--value)" }} />}
               {/* chip select */}
-              <text x="84" y={csY(i) + 3} textAnchor="end" className="fig-label">{i < 2 ? s.cs : "GPIO"}</text>
-              <path d={`M90,${csY(i)} H${csX(i)} V${y + 47} H296`} className="fig-wire" style={{ stroke: on ? LO : HI, strokeWidth: on ? 2.2 : 1.4 }} />
+              <text x="90" y={csY(i) + 3} textAnchor="end" className="fig-label">{i < 2 ? s.cs : "GPIO"}</text>
+              <path d={`M96,${csY(i)} H${csX(i)} V${y + 47} H296`} className="fig-wire" style={{ stroke: on ? LO : HI, strokeWidth: on ? 2.2 : 1.4 }} />
             </g>
           );
         })}
         <text x={RAIL.clk + 3} y={10} textAnchor="middle" className="fig-label dim">shared by all</text>
         <text x={csX(0) + 4} y={SY(0) + 56} className="sb-note" style={{ fill: "var(--dim)" }}>one each</text>
-        <text x="12" y={MPIN.somi + 19} className="fig-label dim">master reads</text>
-        <text x="12" y={MPIN.somi + 32} className="fig-value" style={{ fill: conflict ? "var(--bad)" : undefined }}>{conflict ? "garbage" : hex4(read)}</text>
+        <text x="8" y={MPIN.somi + 19} className="fig-label dim">master reads</text>
+        <text x="8" y={MPIN.somi + 32} className="fig-value" style={{ fill: conflict ? "var(--bad)" : undefined }}>{conflict ? "garbage" : hex4(read)}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
@@ -106,7 +107,7 @@ function SpiBus() {
           <code>{low[0] ? "GpioDataRegs.GPCCLEAR.bit.GPIO66 = 1;  // select the MPU-9250" : "GpioDataRegs.GPCSET.bit.GPIO66 = 1;    // MPU-9250 not selected"}</code>
         </div>
       </div>
-      <figcaption>Clock, SIMO and SOMI go to every slave. The chip-select wires are what tell them apart: a blue chip-select line is low (selected), an orange one is high. A dashed grey SOMI is driven by nobody. Every extra slave costs one more pin on the master.</figcaption>
+      <figcaption>Clock, SIMO and SOMI go to every slave. The chip-select wires are what tell them apart: a blue chip-select line is low (selected), an orange one is high. A dashed grey SOMI is driven by nobody; a thick red one with outlined arrows is driven by several at once. Every extra slave costs one more pin on the master.</figcaption>
     </figure>
   );
 }

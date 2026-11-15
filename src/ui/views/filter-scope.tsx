@@ -39,7 +39,7 @@ interface Stretch {
 
 const W = 400;
 const H = 150;
-const X0 = 40;
+const X0 = 56;
 const X1 = W - 6;
 const Y0 = H - 18;
 const Y1 = 20;
@@ -95,6 +95,11 @@ function stretch(tr: Point[] | undefined, r: ReturnType<typeof range>, x: (tNs: 
   return out;
 }
 
+/** A value beside the axis: at most seven characters, so it stays inside the drawing. */
+const axis = (v: number) => {
+  const s = v.toPrecision(3);
+  return s.length <= 7 ? s : v.toPrecision(2).length <= 7 ? v.toPrecision(2) : v.toExponential(0);
+};
 const num = (v: number | undefined, digits = 4) => (v === undefined ? "none yet" : Number.isFinite(v) ? v.toPrecision(digits) : "not a number");
 /** Peak to peak of a stretch, in words. */
 const swing = (s: { lo: number; hi: number; bad: number }) => (s.lo > s.hi ? (s.bad ? "not a number" : "no values") : s.hi - s.lo < 0.0005 ? "0 (steady)" : (s.hi - s.lo).toPrecision(3));
@@ -131,6 +136,7 @@ function FilterScope({ board, window: [winFrom, to] }: ViewProps) {
   const badOutput = output.bad > 0;
   return (
     <div className="filter-scope">
+      <style>{`.filter-scope .fig-opt:not([aria-pressed="true"]) { border-color: var(--control); }`}</style>
       <div className="fig-controls">
         <div>
           <span>Show last</span>
@@ -140,14 +146,14 @@ function FilterScope({ board, window: [winFrom, to] }: ViewProps) {
         </div>
       </div>
       <svg className="scope" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Filter input and output from ${from.toFixed(2)} to ${to.toFixed(2)} milliseconds. Input peak to peak ${swing(input)}, output peak to peak ${swing(output)}. Latest input ${num(input.last)}, latest output ${num(output.last)}.`}>
-        <line x1={X0} x2={X0 + 12} y1={9} y2={9} stroke="var(--lo)" strokeWidth={1.2} />
-        <text x={X0 + 16} y={12} style={{ fill: "var(--lo)" }}>input TB_IN {num(input.last, 4)}</text>
+        <line x1={6} x2={18} y1={9} y2={9} stroke="var(--lo)" strokeWidth={1.2} />
+        <text x={22} y={12} style={{ fill: "var(--lo)" }}>input TB_IN {num(input.last, 4)}</text>
         <line x1={W / 2 + 4} x2={W / 2 + 16} y1={9} y2={9} stroke="var(--value)" strokeWidth={2.4} />
         <text x={W / 2 + 20} y={12} style={{ fill: "var(--value)" }}>output TB_OUT {num(output.last, 4)}</text>
-        <text x={X0 - 4} y={y(top) + 4} textAnchor="end">{top.toPrecision(3)}</text>
-        <text x={X0 - 4} y={y(bottom) + 3} textAnchor="end">{bottom.toPrecision(3)}</text>
-        <line x1={X0} x2={X1} y1={y(top)} y2={y(top)} stroke="var(--border)" />
-        <line x1={X0} x2={X1} y1={y(bottom)} y2={y(bottom)} stroke="var(--border)" />
+        <text x={X0 - 4} y={y(top) + 4} textAnchor="end">{axis(top)}</text>
+        <text x={X0 - 4} y={y(bottom) + 3} textAnchor="end">{axis(bottom)}</text>
+        <line x1={X0} x2={X1} y1={y(top)} y2={y(top)} stroke="var(--control)" strokeWidth={0.6} />
+        <line x1={X0} x2={X1} y1={y(bottom)} y2={y(bottom)} stroke="var(--control)" strokeWidth={0.6} />
         {lo < 0 && hi > 0 && <line x1={X0} x2={X1} y1={y(0)} y2={y(0)} stroke="var(--dim)" strokeDasharray="3 3" strokeWidth={0.8} />}
         <path d={input.d} fill="none" stroke="var(--lo)" strokeWidth={1.1} strokeLinejoin="round" />
         {input.dots.map(([cx, cy], i) => <circle key={i} cx={cx} cy={cy} r={1.8} fill="var(--lo)" />)}
@@ -156,6 +162,7 @@ function FilterScope({ board, window: [winFrom, to] }: ViewProps) {
         <text x={X1} y={H - 4} textAnchor="end">{to.toFixed(places)} ms</text>
       </svg>
       <p className="hint-text">
+        <span role="status">{span ? `Showing the last ${span} ms.` : "Showing everything in the window."}</span>{" "}
         {noOutput
           ? "The program has not called tb_output() yet, so there is no output to compare."
           : badOutput

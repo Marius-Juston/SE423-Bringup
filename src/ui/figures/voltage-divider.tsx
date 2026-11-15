@@ -19,8 +19,8 @@ const CSS = `
 .vd input[type=range] { flex: 1 1 7rem; min-width: 5rem; padding: 0; }
 .vd-num { color: var(--value); font-family: var(--mono); min-width: 4.2em; text-align: right; font-size: 0.86rem; }
 .vd-big { fill: var(--harvest); font-size: 14px; font-family: var(--mono); font-weight: 700; }
-.vd-share1 { fill: var(--orange); opacity: 0.55; }
-.vd-share2 { fill: var(--arches); opacity: 0.55; }
+.vd-share1 { fill: var(--orange); fill-opacity: 0.55; stroke: var(--text); stroke-width: 1.2; stroke-dasharray: 3 2; }
+.vd-share2 { fill: var(--arches); fill-opacity: 0.55; stroke: var(--text); stroke-width: 1.2; }
 .vd-flow { fill: none; stroke: var(--harvest); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 `;
 
@@ -89,13 +89,13 @@ function VoltageDivider() {
         {/* how the 3.3 V is shared */}
         <text x="330" y="14" textAnchor="middle" className="fig-label">how 3.3 V is shared</text>
         <rect x="316" y={barY} width="28" height={barH} className="fig-box" />
-        <rect x="316" y={barY} width="28" height={split - barY} className="vd-share1" />
-        <rect x="316" y={split} width="28" height={barY + barH - split} className="vd-share2" />
-        <line x1="310" y1={split} x2="350" y2={split} stroke="var(--text)" strokeWidth="1.6" />
+        {split - barY > 0.5 && <rect x="316" y={barY} width="28" height={split - barY} className="vd-share1" />}
+        {barY + barH - split > 0.5 && <rect x="316" y={split} width="28" height={barY + barH - split} className="vd-share2" />}
+        <line x1="312" y1={split} x2="350" y2={split} stroke="var(--text)" strokeWidth="1.6" />
         {v1 > 0.25 && <text x="354" y={(barY + split) / 2 + 3} className="fig-label">{v1.toFixed(2)} V</text>}
         {vout > 0.25 && <text x="354" y={(split + barY + barH) / 2 + 3} className="fig-label">{vout.toFixed(2)} V</text>}
-        <text x="310" y={barY + 6} textAnchor="end" className="fig-label dim">top part</text>
-        <text x="310" y={barY + barH - 1} textAnchor="end" className="fig-label dim">bottom part</text>
+        {v1 > 0.25 && <text x="307" y={(barY + split) / 2 + 3} textAnchor="end" className="fig-label dim">top part</text>}
+        {vout > 0.25 && <text x="307" y={(split + barY + barH) / 2 + 3} textAnchor="end" className="fig-label dim">bottom part</text>}
         <text x="330" y="158" textAnchor="middle" className="fig-label dim">0 V</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
@@ -119,7 +119,7 @@ function VoltageDivider() {
           </div>
         )}
       </div>
-      <figcaption>Two parts in series share the supply voltage in proportion to their resistance: middle voltage = 3.3 V x R2 / (R1 + R2).</figcaption>
+      <figcaption>Two parts in series share the supply voltage in proportion to their resistance: middle voltage = 3.3 V x R2 / (R1 + R2). In the bar on the right, the share of the top part has a dashed edge and the share of the bottom part a solid one.</figcaption>
     </figure>
   );
 }

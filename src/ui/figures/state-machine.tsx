@@ -178,8 +178,8 @@ function StateMachine() {
         .fsm-fig input[type=range] { flex: 1 1 8rem; min-width: 7rem; accent-color: var(--orange); }
         .fsm-fig output { font-family: var(--mono); font-size: 0.82rem; color: var(--harvest); min-width: 4.2rem; }
         .fsm-fig svg text.fsm-name { font-weight: 700; font-size: max(9.5px, calc(9px / var(--fig-k, 1))); }
-        .fsm-fig .fsm-gap { fill: var(--value); opacity: 0.16; }
-        .fsm-fig .fsm-plot { fill: none; stroke: var(--border); }
+        .fsm-fig .fsm-gap { fill: var(--value); fill-opacity: 0.16; stroke: var(--harvest); stroke-width: 1; stroke-dasharray: 4 3; }
+        .fsm-fig .fsm-plot { fill: none; stroke: var(--dim); }
         .fsm-fig .fsm-thr { stroke: var(--harvest); stroke-width: 1; stroke-dasharray: 4 3; }
         .fsm-fig .fsm-wall { stroke: var(--text); stroke-width: 3; }
         .fsm-fig .fsm-wall.lost { stroke: var(--dim); stroke-width: 1.4; stroke-dasharray: 3 3; }
@@ -190,7 +190,7 @@ function StateMachine() {
         .fsm-fig .fsm-hot { fill: var(--orange); }
         .fsm-fig .fsm-note { color: var(--dim); font-size: 0.82rem; }
       `}</style>
-      <svg viewBox="0 0 420 290" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} time${m.changes === 1 ? "" : "s"}.`}>
+      <svg viewBox="0 0 420 294" role="img" aria-label={`The robot is in state ${state}. Front ${last.front.toFixed(2)} feet, right ${last.right.toFixed(1)} feet. ${m.hyst ? "Two thresholds for the front, 1.5 and 3.0 feet." : "One threshold for the front, 1.5 feet."} The state has changed ${m.changes} time${m.changes === 1 ? "" : "s"}.`}>
         <defs>
           <marker id="fsm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
             <path d="M0 0 L8 4 L0 8 Z" className="fig-arrowhead" />
@@ -227,20 +227,21 @@ function StateMachine() {
         <line x1={RX + 7} x2={wallX - 3} y1={RY} y2={RY} className="fig-sample" />
         <circle cx={RX} cy={RY} r="6" className="fsm-robot" />
         <path d={`M${RX - 3.5} ${RY + 1} L${RX} ${RY - 5} L${RX + 3.5} ${RY + 1} Z`} className="fsm-nose" />
-        <text x="4" y={RY + 21} className="fig-label">front <tspan className="fig-value small">{last.front.toFixed(2)}</tspan>{"  "}right <tspan className="fig-value small">{last.right.toFixed(1)}</tspan>{wallLost ? " (no wall)" : ""}</text>
+        <text x="4" y={RY + 24} className="fig-label">front <tspan className="fig-value small">{last.front.toFixed(2)}</tspan>{"  "}right <tspan className="fig-value small">{last.right.toFixed(1)}</tspan>{wallLost ? " (no wall)" : ""}</text>
 
         {/* history of the front reading */}
         <text x={CX0} y="182" className="fig-label dim">FRONT, LAST {KEEP} SCANS</text>
         <text x={CX1} y="182" textAnchor="end" className="fig-label">state changes: <tspan className="fig-value small">{m.changes}</tspan></text>
         <rect x={CX0} y={CY0 - 6} width={CX1 - CX0} height={CY1 - CY0 + 10} className="fsm-plot" />
         {m.hyst && <rect x={CX0} y={cy(FRONT_CLEAR)} width={CX1 - CX0} height={cy(FRONT_BLOCKED) - cy(FRONT_CLEAR)} className="fsm-gap" />}
-        <line x1={CX0} x2={CX1} y1={cy(FRONT_BLOCKED)} y2={cy(FRONT_BLOCKED)} className="fsm-thr" />
+        {/* With two thresholds the outline of the shaded gap draws both of them. */}
+        {!m.hyst && <line x1={CX0} x2={CX1} y1={cy(FRONT_BLOCKED)} y2={cy(FRONT_BLOCKED)} className="fsm-thr" />}
         <text x={CX0 - 3} y={cy(FRONT_BLOCKED) + 3} textAnchor="end" className="fig-value small">1.5</text>
         {m.hyst && (
           <>
-            <line x1={CX0} x2={CX1} y1={cy(FRONT_CLEAR)} y2={cy(FRONT_CLEAR)} className="fsm-thr" />
             <text x={CX0 - 3} y={cy(FRONT_CLEAR) + 3} textAnchor="end" className="fig-value small">3.0</text>
-            <text x={CX1 - 4} y={(cy(FRONT_CLEAR) + cy(FRONT_BLOCKED)) / 2 + 3} textAnchor="end" className="fig-label dim">gap: keep the state</text>
+            {/* Under the plot, where the trace cannot run through it. */}
+            <text x={CX1} y={RY + 24} textAnchor="end" className="fig-label dim">shaded gap: keep the state</text>
           </>
         )}
         <path d={line} className="fig-trace" />
@@ -263,12 +264,12 @@ function StateMachine() {
       <div className="fig-controls">
         <div>
           <span>Front</span>
-          <input type="range" min={0.5} max={5} step={0.05} value={last.front} aria-label="Front distance in feet" onChange={(e) => setFront(+e.target.value)} />
+          <input type="range" min={0.5} max={5} step={0.05} value={last.front} aria-label="Front distance in feet" aria-valuetext={`${last.front.toFixed(2)} feet`} onChange={(e) => setFront(+e.target.value)} />
           <output>{last.front.toFixed(2)} ft</output>
         </div>
         <div>
           <span>Right</span>
-          <input type="range" min={0.5} max={6} step={0.1} value={last.right} aria-label="Distance to the right in feet" onChange={(e) => setRight(+e.target.value)} />
+          <input type="range" min={0.5} max={6} step={0.1} value={last.right} aria-label="Distance to the right in feet" aria-valuetext={`${last.right.toFixed(1)} feet`} onChange={(e) => setRight(+e.target.value)} />
           <output>{last.right.toFixed(1)} ft</output>
         </div>
         <div>

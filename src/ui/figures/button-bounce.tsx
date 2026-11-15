@@ -127,6 +127,7 @@ function ButtonBounce() {
         .bb-fig .bb-naive { fill: var(--text); }
         .bb-fig .bb-deb { fill: var(--ok); stroke: var(--inset); stroke-width: 0.6; }
         .bb-fig .bb-zoom { fill: var(--surface); fill-opacity: 0.55; stroke: var(--dim); stroke-dasharray: 3 2; stroke-width: 0.8; }
+        .bb-fig .bb-guide { stroke: var(--faint); }
         .bb-fig .bb-counts small { display: block; font-size: 0.75rem; }
         .bb-fig .bb-counts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0.5rem 0; }
         .bb-fig .bb-counts div { background: var(--surface); border-radius: 6px; padding: 0.3rem 0.5rem; font-size: 0.82rem; color: var(--dim); border-top: 3px solid var(--dim); }
@@ -163,7 +164,7 @@ function ButtonBounce() {
         <text x={4} y={152} className="fig-label">debounced</text>
         {naiveAll.filter((t) => t >= zFrom && t <= zTo).map((t, i) => tri(xz(t), 132, `zn${i}`))}
         {debounced.filter((t) => t >= zFrom && t <= zTo).map((t, i) => dia(xz(t), 145, `zd${i}`))}
-        <line x1={X0} x2={X1} y1={142.5} y2={142.5} stroke="var(--faint)" />
+        <line x1={X0} x2={X1} y1={142.5} y2={142.5} className="bb-guide" />
         {Array.from({ length: 11 }, (_, i) => (
           <g key={i}>
             <line x1={xz(zFrom + i)} x2={xz(zFrom + i)} y1={128} y2={131} className="fig-wire" />

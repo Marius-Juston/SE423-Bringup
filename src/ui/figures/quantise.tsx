@@ -10,6 +10,7 @@ const VMAX = 3.3;
 const CSS = `
 .quant input[type=range] { flex: 1 1 4rem; min-width: 3.5rem; padding: 0; accent-color: var(--orange); }
 .quant .quant-num { font-family: var(--mono); color: var(--harvest); min-width: 4.6em; text-align: right; }
+.quant-guide { stroke: var(--dim); stroke-width: 0.6; stroke-dasharray: 1 3; }
 `;
 
 function Quantise() {
@@ -41,7 +42,7 @@ function Quantise() {
   // right panel: four steps around the voltage
   const c0 = Math.min(Math.max(code - 1, 0), top - 3);
   const RX0 = 250;
-  const RX1 = 400;
+  const RX1 = 384; // the step numbers are written right of it
   const rx = (v: number) => RX0 + ((v - c0 * lsb) / (4 * lsb)) * (RX1 - RX0);
   const RY0 = Y0 - 14;
   const ry = (v: number) => RY0 - ((v - c0 * lsb) / (4 * lsb)) * (RY0 - Y1);
@@ -64,7 +65,7 @@ function Quantise() {
       <svg viewBox="0 0 420 182" role="img" aria-label={`${bits}-bit converter. Pin voltage ${vin.toFixed(4)} volts gives ${code}. One step is ${mv(lsb * 1000)} millivolts.`}>
         {/* ---- whole range ---- */}
         <text x={LX0} y="12" className="fig-label dim">whole range: {levels} steps</text>
-        <rect x={lx(VREF)} y={Y1} width={LX1 - lx(VREF)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.12" />
+        <rect x={lx(VREF)} y={Y1} width={LX1 - lx(VREF)} height={Y0 - Y1} fill="var(--bad)" fillOpacity="0.12" stroke="var(--bad)" strokeWidth="1" strokeDasharray="3 2" />
         <line x1={LX0} x2={LX1} y1={Y0} y2={Y0} className="fig-wire" />
         <line x1={LX0} x2={LX0} y1={Y0} y2={Y1 - 6} className="fig-wire" />
         <text x={LX0 - 4} y={ly(top) + 3} textAnchor="end" className="fig-label">{top}</text>
@@ -82,13 +83,18 @@ function Quantise() {
         <line x1={RX0} x2={RX0} y1={Y0} y2={Y1} className="fig-wire" />
         <path d={`M${RX0},${RY0} L${RX1},${Y1}`} className="fig-trace dim" strokeDasharray="4 3" />
         <path d={zoom} className="fig-trace data" />
+        {/* the result of each step, read off at the right like a scale: no line can cross a number there */}
         {[0, 1, 2, 3].map((k) => (
-          <text key={k} x={rx((c0 + k + 1) * lsb) - 4} y={ry((c0 + k) * lsb) + 11} textAnchor="end" className={c0 + k === code ? "fig-value" : "fig-label dim"}>{c0 + k}</text>
+          <g key={k}>
+            {k < 3 && <line x1={rx((c0 + k + 1) * lsb) + 3} x2={RX1} y1={ry((c0 + k) * lsb)} y2={ry((c0 + k) * lsb)} className="quant-guide" />}
+            <line x1={RX1} x2={RX1 + 3} y1={ry((c0 + k) * lsb)} y2={ry((c0 + k) * lsb)} className="fig-wire" />
+            <text x={RX1 + 6} y={ry((c0 + k) * lsb) + (c0 + k === code ? 4 : 3)} className={c0 + k === code ? "fig-value" : "fig-label dim"}>{c0 + k}</text>
+          </g>
         ))}
         {[0, 1, 2, 3, 4].map((k) => (
           <g key={k}>
             <line x1={rx((c0 + k) * lsb)} x2={rx((c0 + k) * lsb)} y1={Y0} y2={Y0 + 3} className="fig-wire" />
-            {(c0 + k === code || c0 + k === code + 1) && <text x={rx((c0 + k) * lsb) + (dec < 4 ? 0 : c0 + k === code ? 12 : rx((c0 + k) * lsb) > RX1 - 6 ? 18 : -12)} y={Y0 + 11} textAnchor={dec < 4 ? "middle" : c0 + k === code ? "end" : rx((c0 + k) * lsb) > RX1 - 6 ? "end" : "start"} className="fig-label">{((c0 + k) * lsb).toFixed(dec)}</text>}
+            {(c0 + k === code || c0 + k === code + 1) && <text x={rx((c0 + k) * lsb) + (dec < 4 ? 0 : c0 + k === code ? 12 : rx((c0 + k) * lsb) > RX1 - 6 ? 26 : -12)} y={Y0 + 11} textAnchor={dec < 4 ? "middle" : c0 + k === code ? "end" : rx((c0 + k) * lsb) > RX1 - 6 ? "end" : "start"} className="fig-label">{((c0 + k) * lsb).toFixed(dec)}</text>}
           </g>
         ))}
         <text x={(RX0 + RX1) / 2} y={Y0 + 24} textAnchor="middle" className="fig-label dim">pin voltage (V)</text>
@@ -99,19 +105,24 @@ function Quantise() {
         {!clipped && (
           <>
             <line x1={RX0 + 8} x2={RX0 + 8} y1={Y1 + 2} y2={Y1 + 12} stroke="var(--orange)" strokeWidth="3" />
-            <text x={RX0 + 14} y={Y1 + 10} className="fig-label" style={{ fill: "var(--orange)" }}>lost: {mv(errMv)} mV</text>
+            <text x={RX0 + 14} y={Y1 + 10} className="fig-label" style={{ fill: "var(--accent-text)" }}>lost: {mv(errMv)} mV</text>
           </>
         )}
-        {clipped && <text x={RX0 + 6} y={Y1 + 10} className="fig-label" style={{ fill: "var(--bad)" }}>off the scale: stays at {top}</text>}
+        {clipped && (
+          <text y={Y1 + 10} className="fig-label" style={{ fill: "var(--bad)" }}>
+            <tspan x={RX0 + 6}>off the scale:</tspan>
+            <tspan x={RX0 + 6} dy="1.15em">stays at {top}</tspan>
+          </text>
+        )}
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>
           <span>Pin voltage</span>
-          <input type="range" min={0} max={VMAX} step={0.001} value={vin} aria-label="Pin voltage in volts" onChange={(e) => setVin(+e.target.value)} />
+          <input type="range" min={0} max={VMAX} step={0.001} value={vin} aria-label="Pin voltage in volts" aria-valuetext={`${vin.toFixed(4)} volts`} onChange={(e) => setVin(+e.target.value)} />
           <span className="quant-num">{vin.toFixed(4)} V</span>
-          <button className="fig-opt" aria-label="0.1 millivolt lower" onClick={() => setVin(Math.max(0, +(vin - 0.0001).toFixed(4)))}>- 0.1 mV</button>
-          <button className="fig-opt" aria-label="0.1 millivolt higher" onClick={() => setVin(Math.min(VMAX, +(vin + 0.0001).toFixed(4)))}>+ 0.1 mV</button>
+          <button className="fig-opt" aria-label="- 0.1 mV (0.1 millivolt lower)" onClick={() => setVin(Math.max(0, +(vin - 0.0001).toFixed(4)))}>- 0.1 mV</button>
+          <button className="fig-opt" aria-label="+ 0.1 mV (0.1 millivolt higher)" onClick={() => setVin(Math.min(VMAX, +(vin + 0.0001).toFixed(4)))}>+ 0.1 mV</button>
         </div>
         <div>
           <span>Resolution</span>
@@ -129,7 +140,7 @@ function Quantise() {
           <code>volts = {code} * 3.0 / {levels}.0 = {back.toFixed(5)} V</code>
         </div>
       </div>
-      <figcaption>result = 4096 x Vin / 3.0 V with the fraction dropped, limited to 4095: the ADC answers with the number of the step the voltage is on. Dashed line: the exact voltage. Staircase: what the result says. The short thick bar between them is the quantisation error.</figcaption>
+      <figcaption>result = 4096 x Vin / 3.0 V with the fraction dropped, limited to 4095: the ADC answers with the number of the step the voltage is on. Dashed line: the exact voltage. Staircase: what the result says, with the number of each step at its right. The short thick bar between them is the quantisation error.</figcaption>
     </figure>
   );
 }

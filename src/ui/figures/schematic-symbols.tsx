@@ -115,11 +115,11 @@ const SYMS: Sym[] = [
 
 const CSS = `
 .ss-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.6rem, 1fr)); gap: 0.4rem; }
-.ss-tile { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.35rem 0.2rem 0.3rem; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); color: var(--text); font-size: 0.8rem; line-height: 1.2; }
+.ss-tile { display: flex; flex-direction: column; align-items: center; gap: 0.15rem; padding: 0.35rem 0.2rem 0.3rem; background: var(--surface); border: 1px solid var(--control); border-radius: var(--radius); color: var(--text); font-size: 0.8rem; line-height: 1.2; }
 .ss-tile[aria-pressed="true"] { border-color: var(--orange); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--orange); font-weight: 700; }
 .ss-tile svg { width: 3.6rem; height: 2.7rem; display: block; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ss-tile svg circle { fill: currentColor; stroke: none; }
-.ss-tile svg text { fill: currentColor; stroke: none; font-size: 9.5px; font-family: var(--sans); }
+.ss-tile svg text { fill: currentColor; stroke: none; font-size: 12px; font-family: var(--sans); }
 `;
 
 function SchematicSymbols() {

@@ -138,7 +138,7 @@ function PollingVsInterrupt() {
           return (
             <g key={i}>
               <line x1={x(l.event)} x2={x(l.at)} y1={74} y2={74} className="pvi-late" />
-              <text x={x(l.event) > 330 ? x(l.at) : x(l.event) + 3} y={86} textAnchor={x(l.event) > 330 ? "end" : "start"} className="pvi-latetext">{d.toFixed(0)} ms{i === 0 ? " late" : ""}</text>
+              <text x={x(l.event) > 330 ? x(l.event) - 3 : x(l.event) + 3} y={86} textAnchor={x(l.event) > 330 ? "end" : "start"} className="pvi-latetext">{d.toFixed(0)} ms{i === 0 ? " late" : ""}</text>
             </g>
           );
         })}
@@ -155,7 +155,7 @@ function PollingVsInterrupt() {
         {work === 0 ? (
           <g>
             <rect x={x(0)} y={146} width={x(T_END) - x(0)} height={18} className="pvi-ask" />
-            <text x={(X0 + X1) / 2} y={158} textAnchor="middle" className="fig-label dim">free for anything else</text>
+            <text x={(X0 + X1) / 2} y={158} textAnchor="middle" className="fig-label dim fig-halo">free for anything else</text>
           </g>
         ) : (
           main.map((b, i) => (

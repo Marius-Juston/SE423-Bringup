@@ -12,7 +12,7 @@ const TARGETS: Target[] = [
   { reg: "GpioCtrlRegs.GPADIR", stmt: "GpioCtrlRegs.GPADIR.bit.GPIO22 = 1;", what: "pin direction", before: "GPIO22 = 0 (input)", after: "GPIO22 = 1 (output)", protect: true },
   { reg: "PieVectTable.TIMER0_INT", stmt: "PieVectTable.TIMER0_INT = &cpu_timer0_isr;", what: "interrupt vector", before: "default handler", after: "&cpu_timer0_isr", protect: true },
   { reg: "ClkCfgRegs.LOSPCP", stmt: "ClkCfgRegs.LOSPCP.bit.LSPCLKDIV = 0;", what: "clock divider", before: "LSPCLKDIV = 2 (divide by 4)", after: "LSPCLKDIV = 0 (divide by 1)", protect: true },
-  { reg: "GpioDataRegs.GPASET", stmt: "GpioDataRegs.GPASET.bit.GPIO22 = 1;", what: "pin level", before: "GPIO22 latch = 0", after: "GPIO22 latch = 1", protect: false },
+  { reg: "GpioDataRegs.GPASET", stmt: "GpioDataRegs.GPASET.bit.GPIO22 = 1;", what: "pin level", before: "GPIO22 = 0 (latch low)", after: "GPIO22 = 1 (latch high)", protect: false },
 ];
 
 interface Line { text: string; note: string; ok: boolean | null }
@@ -86,9 +86,9 @@ function EallowLock() {
         <text x="56" y="68" textAnchor="middle" className="fig-label dim">writes a value</text>
         <text x="56" y="80" textAnchor="middle" className="fig-label dim">to the register</text>
         {/* write path */}
-        <line x1="104" y1="64" x2={passes ? 286 : LX - 22} y2="64" className="fig-wire thick" style={{ stroke: wire }} />
+        <line x1="104" y1="64" x2={passes ? 276 : LX - 22} y2="64" className="fig-wire thick" style={{ stroke: wire }} />
         {passes ? (
-          <path d="M280,59 L288,64 L280,69" className="fig-wire thick" style={{ stroke: wire }} />
+          <path d="M270,59 L278,64 L270,69" className="fig-wire thick" style={{ stroke: wire }} />
         ) : (
           <path d={`M${LX - 28},58 L${LX - 16},70 M${LX - 28},70 L${LX - 16},58`} className="fig-wire thick" style={{ stroke: "var(--bad)" }} />
         )}
@@ -108,12 +108,12 @@ function EallowLock() {
           <text x="197" y="81" textAnchor="middle" className="fig-label dim">no lock on this register</text>
         )}
         {/* register */}
-        <rect x="290" y="30" width="104" height="68" rx="5" className={`fig-box ${last === "landed" ? "hot" : "active"}`} />
-        <text x="342" y="44" textAnchor="middle" className="fig-label">{t.reg.split(".")[0]}</text>
-        <text x="342" y="55" textAnchor="middle" className="fig-label">.{t.reg.split(".")[1]}</text>
-        <text x="342" y="68" textAnchor="middle" className="fig-label dim">{t.protect ? "protected" : "not protected"}</text>
+        <rect x="280" y="30" width="116" height="68" rx="5" className={`fig-box ${last === "landed" ? "hot" : "active"}`} />
+        <text x="338" y="44" textAnchor="middle" className="fig-label">{t.reg.split(".")[0]}</text>
+        <text x="338" y="55" textAnchor="middle" className="fig-label">.{t.reg.split(".")[1]}</text>
+        <text x="338" y="68" textAnchor="middle" className="fig-label dim">{t.protect ? "protected" : "not protected"}</text>
         {(done ? t.after : t.before).split(" (").map((part, i) => (
-          <text key={i} x="342" y={81 + i * 11} textAnchor="middle" className="fig-value small">{i ? `(${part}` : part}</text>
+          <text key={i} x="338" y={81 + i * 11} textAnchor="middle" className="fig-value small">{i ? `(${part}` : part}</text>
         ))}
       </svg>
       <ol className="el-prog" aria-label="The lines you have run">

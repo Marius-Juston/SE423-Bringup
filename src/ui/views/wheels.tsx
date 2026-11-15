@@ -107,7 +107,7 @@ function Wheels({ board, nowMs }: ViewProps) {
         const dir = describe(w);
         return (
           <g key={w.name}>
-            <line x1={cx - R - 6} x2={cx + R + 6} y1={cy + R + 2} y2={cy + R + 2} stroke="var(--border-strong)" />
+            <line x1={cx - R - 6} x2={cx + R + 6} y1={cy + R + 2} y2={cy + R + 2} stroke="var(--control)" />
             <g transform={`rotate(${deg.toFixed(1)} ${cx} ${cy})`}>
               <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--text)" strokeWidth={3} />
               {[0, 60, 120].map((a) => (

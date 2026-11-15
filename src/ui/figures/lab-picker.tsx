@@ -151,23 +151,25 @@ function LabPicker() {
   const verdicts = CHANNELS.map((c, ch) => (at.lab[ch] <= t[c.lo] ? "not above min" : at.lab[ch] >= t[c.hi] ? "not below max" : "inside"));
   const tuple = `(${t.lMin}, ${t.lMax}, ${t.aMin}, ${t.aMax}, ${t.bMin}, ${t.bMax})`;
   const ring = (x0: number) => (
-    <g pointerEvents="none">
-      <rect x={x0 + pc * CELL - 1.5} y={TOP + pr * CELL - 1.5} width={CELL + 3} height={CELL + 3} className="labp-ring-out" />
-      <rect x={x0 + pc * CELL - 0.5} y={TOP + pr * CELL - 0.5} width={CELL + 1} height={CELL + 1} className="labp-ring-in" />
-    </g>
+    // One white band edged in black on both sides: it shows on a pixel of any colour.
+    <path
+      pointerEvents="none"
+      fillRule="evenodd"
+      className="labp-ring"
+      d={`M${x0 + pc * CELL - 1.8},${TOP + pr * CELL - 1.8} h${CELL + 3.6} v${CELL + 3.6} h${-(CELL + 3.6)} Z M${x0 + pc * CELL - 0.4},${TOP + pr * CELL - 0.4} h${CELL + 0.8} v${CELL + 0.8} h${-(CELL + 0.8)} Z`}
+    />
   );
   const barY = (i: number) => 166 + i * 30;
 
   return (
     <figure className="figure" aria-label="Interactive LAB colour threshold on a small camera image">
       <style>{`
-        .labp-frame { fill: none; stroke: var(--border-strong); stroke-width: 1; }
-        .labp-ring-out { fill: none; stroke: #000; stroke-width: 2.4; }
-        .labp-ring-in { fill: none; stroke: #fff; stroke-width: 1.2; }
+        .labp-frame { fill: none; stroke: var(--control); stroke-width: 1; }
+        .labp-ring { fill: #fff; stroke: #000; stroke-width: 0.9; }
         .labp-px { cursor: crosshair; }
         .labp-window { fill: none; stroke: var(--harvest); stroke-width: 2; }
         .labp-mark { fill: var(--text); stroke: var(--bg, var(--surface)); stroke-width: 0.6; }
-        .labp-strip { stroke: var(--border-strong); stroke-width: 0.6; }
+        .labp-strip { stroke: var(--control); stroke-width: 0.8; }
         .fig-controls > .labp-row { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr) minmax(0, 1fr); gap: 0.3rem 0.7rem; align-items: center; }
         .fig-controls > .labp-row > span:first-child { width: auto; }
         .labp-row label { display: flex; align-items: center; gap: 0.3rem; min-width: 0; font-size: 0.82rem; color: var(--dim); }
@@ -188,16 +190,15 @@ function LabPicker() {
         </defs>
         <text x={X0} y="10" className="fig-label">Camera image (click a pixel)</text>
         <text x={X1} y="10" className="fig-label">Mask: white = inside the threshold</text>
-        {px.map((p, i) => {
-          const x = (i % COLS) * CELL;
-          const y = TOP + Math.floor(i / COLS) * CELL;
-          return (
-            <g key={i}>
-              <rect className="labp-px" x={X0 + x} y={y} width={CELL + 0.2} height={CELL + 0.2} style={{ fill: `rgb(${p.rgb.join(",")})` }} onClick={() => setProbe([i % COLS, Math.floor(i / COLS)])} />
-              <rect x={X1 + x} y={y} width={CELL + 0.2} height={CELL + 0.2} style={{ fill: inMask[i] ? "#fff" : "#000" }} />
-            </g>
-          );
-        })}
+        {/* The camera's pixels are a picture. A click moves the probe; the Probe buttons and sliders do the same from the keyboard. */}
+        <g aria-hidden="true">
+          {px.map((p, i) => (
+            <rect key={i} className="labp-px" x={X0 + (i % COLS) * CELL} y={TOP + Math.floor(i / COLS) * CELL} width={CELL + 0.2} height={CELL + 0.2} style={{ fill: `rgb(${p.rgb.join(",")})` }} onClick={() => setProbe([i % COLS, Math.floor(i / COLS)])} />
+          ))}
+        </g>
+        {inMask.map((on, i) => (
+          <rect key={i} x={X1 + (i % COLS) * CELL} y={TOP + Math.floor(i / COLS) * CELL} width={CELL + 0.2} height={CELL + 0.2} style={{ fill: on ? "#fff" : "#000" }} />
+        ))}
         <rect x={X0} y={TOP} width={COLS * CELL} height={ROWS * CELL} className="labp-frame" />
         <rect x={X1} y={TOP} width={COLS * CELL} height={ROWS * CELL} className="labp-frame" />
         {ring(X0)}
@@ -230,8 +231,7 @@ function LabPicker() {
         <div className="labp-row">
           <span>Light</span>
           <label className="wide">
-            <span className="sr-only">Light on the scene, percent</span>
-            <input type="range" min={30} max={130} step={5} value={light} onChange={(e) => setLight(+e.target.value)} />
+            <input type="range" aria-label="Light on the scene" aria-valuetext={`${light} percent`} min={30} max={130} step={5} value={light} onChange={(e) => setLight(+e.target.value)} />
             <output>{light} %</output>
           </label>
         </div>
@@ -241,7 +241,7 @@ function LabPicker() {
             {([c.lo, c.hi] as Key[]).map((k, j) => (
               <label key={k}>
                 <span aria-hidden="true">{j ? "max" : "min"}</span>
-                <input type="range" aria-label={`${c.name} ${j ? "max" : "min"}`} min={c.min} max={c.max} value={t[k]} onChange={(e) => set(k, +e.target.value)} />
+                <input type="range" aria-label={`${c.name} ${j ? "max" : "min"}`} aria-valuetext={`${c.name} ${t[k]}`} min={c.min} max={c.max} value={t[k]} onChange={(e) => set(k, +e.target.value)} />
                 <output>{t[k]}</output>
               </label>
             ))}
@@ -266,12 +266,12 @@ function LabPicker() {
             <span>Probe</span>
             <label>
               <span>column</span>
-              <input type="range" aria-label="Probe column" min={0} max={COLS - 1} value={pc} onChange={(e) => setProbe([+e.target.value, pr])} />
+              <input type="range" aria-label="Probe column" aria-valuetext={`column ${pc}`} min={0} max={COLS - 1} value={pc} onChange={(e) => setProbe([+e.target.value, pr])} />
               <output>{pc}</output>
             </label>
             <label>
               <span>row</span>
-              <input type="range" aria-label="Probe row" min={0} max={ROWS - 1} value={pr} onChange={(e) => setProbe([pc, +e.target.value])} />
+              <input type="range" aria-label="Probe row" aria-valuetext={`row ${pr}`} min={0} max={ROWS - 1} value={pr} onChange={(e) => setProbe([pc, +e.target.value])} />
               <output>{pr}</output>
             </label>
           </div>

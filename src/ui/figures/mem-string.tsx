@@ -40,7 +40,7 @@ function MemString() {
         <Cells cells={cells} />
         <Brace slot={0} count={6} label="the array word: 5 letters and the closing 0" />
       </svg>
-      <code className="mem-out">while (word[n] != 0) n = n + 1;      n = {at}{done ? "   (stopped)" : ""}</code>
+      <code className="mem-out">while (word[n] != 0) n = n + 1; <span style={{ display: "inline-block", marginLeft: "2em" }}>n = {at}{done ? " (stopped)" : ""}</span></code>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
         <div>

@@ -1,0 +1,60 @@
+name: Accessibility
+
+# The accessibility suite (tools/a11y, docs/ACCESSIBILITY.md).
+# Pull requests run the subset (--quick) and fail on a finding that is not in
+# a11y-baseline.json. Pushes to main and manual runs do the whole sweep and only
+# report, so publishing is never blocked.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: a11y-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  a11y:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      security-events: write # the findings as code-scanning alerts (SARIF)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium
+        run: npx playwright-core install --with-deps chromium
+      - name: Accessibility suite, pull request subset (gating)
+        if: github.event_name == 'pull_request'
+        run: npm run a11y -- --quick --workers 4
+      - name: Accessibility suite, whole sweep (reporting only)
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: npm run a11y -- --workers 4
+      - name: Keep the findings
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: a11y-findings
+          path: |
+            a11y-out/findings.json
+            a11y-out/findings.sarif
+            a11y-out/summary.md
+          if-no-files-found: ignore
+      # Code scanning needs a token that may write security events: a pull request from a fork has none.
+      - name: Upload the findings to code scanning
+        if: always() && hashFiles('a11y-out/findings.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: a11y-out/findings.sarif
+          category: accessibility

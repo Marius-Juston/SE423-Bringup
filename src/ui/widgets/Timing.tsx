@@ -44,7 +44,7 @@ export function Timing({ level, onPass, onMiss }: { level: TimingLevel; onPass: 
           </tbody>
         </table>
       </div>
-      <p className="hint-text">Select a cell to switch it between low and high. {level.rows.some((r) => !r.editable) ? "Grey traces are given and cannot be changed." : ""}</p>
+      <p className="hint-text">Select a cell to switch it between low and high. {level.rows.some((r) => !r.editable) ? "Grey, dashed traces are given and cannot be changed." : ""}</p>
       <div className="actions">
         <button
           className="btn primary"

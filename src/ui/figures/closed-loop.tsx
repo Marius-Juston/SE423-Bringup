@@ -58,8 +58,8 @@ function ClosedLoop() {
         <path d="M190,30 H320 V66" className="fig-wire thick" style={{ stroke: mid, strokeDasharray: midDash }} />
         {flows && <circle cx="320" cy="84" r="30" className="cl-glow" />}
         <circle cx="320" cy="84" r="18" className={`cl-lamp ${flows ? "lit" : ""}`} />
-        <text x="346" y="80" className="fig-label">lamp</text>
-        <text x="346" y="93" className="fig-value small" style={{ fill: flows ? "var(--orange)" : "var(--dim)" }}>{flows ? "LIT" : "dark"}</text>
+        <text x="355" y="80" className="fig-label">lamp</text>
+        <text x="355" y="93" className="fig-value small" style={{ fill: flows ? "var(--accent-text)" : "var(--dim)" }}>{flows ? "LIT" : "dark"}</text>
         {/* return wire */}
         <path d={`M320,102 V150 H${ret ? 60 : 230}`} className="fig-wire thick" style={{ stroke: ret ? LO : mid, strokeDasharray: ret ? undefined : midDash }} />
         {!ret && <line x1="170" y1="150" x2="60" y2="150" className="fig-wire thick" style={{ stroke: LO }} />}

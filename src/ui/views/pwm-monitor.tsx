@@ -87,7 +87,7 @@ function PwmMonitor({ board, window: [, to] }: ViewProps) {
             <text x={6} y={14} style={{ fill: "var(--text)" }}>{r.name}</text>
             <text x={6} y={27}>GPIO{r.pin}{USE[r.pin] ? ` · ${USE[r.pin]}` : ""}</text>
             <path d={wave} fill="none" stroke="var(--hi)" strokeWidth={1.5} strokeLinejoin="round" />
-            <rect x={250} y={6} width={144} height={9} rx={2} fill="var(--surface)" stroke="var(--border)" />
+            <rect x={250} y={6} width={144} height={9} rx={2} fill="var(--surface)" stroke="var(--control)" />
             <rect x={250} y={6} width={144 * m.duty} height={9} rx={2} fill="var(--hi)" />
             <line x1={322} x2={322} y1={4} y2={17} stroke="var(--dim)" strokeDasharray="2 2" />
             <text x={250} y={28} style={{ fill: "var(--value)" }}>{m.hz ? hz(m.hz) : `steady ${m.level ? "high" : "low"}`}</text>

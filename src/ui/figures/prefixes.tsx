@@ -58,7 +58,7 @@ const CSS = `
 .px-tick { stroke: var(--dim); stroke-width: 1.4; }
 .px-tick.sel { stroke: var(--orange); stroke-width: 2.6; }
 .px-sym { fill: var(--text); font-size: 13px; font-family: var(--mono); font-weight: 700; }
-.px-sym.sel { fill: var(--orange); }
+.px-sym.sel { fill: var(--accent-text); }
 .px-mark { fill: var(--harvest); }
 .px-out { fill: var(--harvest); font-size: 13px; font-family: var(--mono); font-weight: 700; }
 `;
@@ -87,22 +87,22 @@ function Prefixes() {
   return (
     <figure className="figure" aria-label="Interactive number line of unit prefixes from nano to mega">
       <style>{CSS}</style>
-      <svg viewBox="0 0 400 132" role="img" aria-label={`Prefixes in order: nano, micro, milli, no prefix, kilo, mega. Each step is a factor of 1000. ${label(ex)} written with ${to.name} is ${out}.`}>
-        <line x1="20" y1="62" x2="380" y2="62" className="fig-wire" />
-        <text x="20" y="14" className="fig-label dim">smaller</text>
-        <text x="380" y="14" textAnchor="end" className="fig-label dim">larger</text>
+      <svg viewBox="0 0 400 120" role="img" aria-label={`Prefixes in order: nano, micro, milli, no prefix, kilo, mega. Each step is a factor of 1000. ${label(ex)} written with ${to.name} is ${out}.`}>
+        <line x1="20" y1="68" x2="380" y2="68" className="fig-wire" />
+        <text x="20" y="11" className="fig-label dim">smaller</text>
+        <text x="380" y="11" textAnchor="end" className="fig-label dim">larger</text>
         {PREFIXES.map((p, k) => (
           <g key={p.name}>
-            <line x1={X(p.exp)} y1="52" x2={X(p.exp)} y2="72" className={`px-tick ${k === pi ? "sel" : ""}`} />
-            <text x={X(p.exp)} y="32" textAnchor="middle" className={`px-sym ${k === pi ? "sel" : ""}`}>{p.sym || "-"}</text>
-            <text x={X(p.exp)} y="45" textAnchor="middle" className="fig-label">{p.name}</text>
-            <text x={X(p.exp)} y="84" textAnchor="middle" className="fig-label dim">{p.words}</text>
-            {k < PREFIXES.length - 1 && <text x={X(p.exp) + 33} y="58" textAnchor="middle" className="fig-label dim">x 1000</text>}
+            <line x1={X(p.exp)} y1="58" x2={X(p.exp)} y2="78" className={`px-tick ${k === pi ? "sel" : ""}`} />
+            <text x={X(p.exp)} y="27" textAnchor="middle" className={`px-sym ${k === pi ? "sel" : ""}`}>{p.sym || "-"}</text>
+            <text x={X(p.exp)} y="40" textAnchor="middle" className="fig-label">{p.name}</text>
+            <text x={X(p.exp)} y="52" textAnchor="middle" className="fig-label dim">{p.words}</text>
+            {k < PREFIXES.length - 1 && <text x={X(p.exp) + 33} y="64" textAnchor="middle" className="fig-label dim">x 1000</text>}
           </g>
         ))}
-        {beyond ? <polygon points={`${at - 4},94 ${at + 6},99 ${at - 4},104`} className="px-mark" /> : <polygon points={`${at - 5},104 ${at + 5},104 ${at},94`} className="px-mark" />}
-        {!beyond && <line x1={at} y1="94" x2={at} y2="62" className="fig-sample" />}
-        <text x={Math.min(Math.max(at, 6 + outW / 2), 394 - outW / 2)} y="120" textAnchor="middle" className="px-out">{label(ex)} = {out}</text>
+        {beyond ? <polygon points={`${at - 4},82 ${at + 6},87 ${at - 4},92`} className="px-mark" /> : <polygon points={`${at - 5},92 ${at + 5},92 ${at},82`} className="px-mark" />}
+        {!beyond && <line x1={at} y1="82" x2={at} y2="68" className="fig-sample" />}
+        <text x={Math.min(Math.max(at, 6 + outW / 2), 394 - outW / 2)} y="110" textAnchor="middle" className="px-out">{label(ex)} = {out}</text>
       </svg>
       <p className="fig-why" role="status">{why}</p>
       <div className="fig-controls">
