@@ -12,7 +12,8 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["src", "tests", "vite.config.ts"]
+  "include": ["src", "tests", "tools/figure-meta.ts", "vite.config.ts", "vitest.config.ts", "vitest.e2e.config.ts"]
 }

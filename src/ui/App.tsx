@@ -1,11 +1,8 @@
-import { Activity, Component, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, ViewTransition, type ReactNode } from "react";
+import { Activity, Component, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, ViewTransition, type ReactNode, type RefObject } from "react";
 import { CHAPTERS, findLevel } from "../levels/index";
 import { useSave } from "./store";
 import { MapView } from "./MapView";
-import { LevelView } from "./LevelView";
-import { Handbook } from "./Handbook";
-import { Sandbox } from "./Sandbox";
-import { Settings } from "./Settings";
+import { Handbook, LevelScreen, Sandbox, Settings, preloadLevels } from "./screens";
 import { Figure } from "./figures";
 import { Icon, Ring } from "./Icon";
 import { usePref } from "./prefs";
@@ -13,6 +10,7 @@ import { tierOf } from "../levels/types";
 import { store } from "./store";
 import { sessionSummary } from "./review";
 import { hashOf, navigate, SCREEN_CHANGE, viewOf, type View } from "./route";
+import { isPartError } from "./parts";
 
 export type { View } from "./route";
 
@@ -24,10 +22,12 @@ class Boundary extends Component<{ children: ReactNode; onReset: () => void }, {
   }
   render() {
     if (!this.state.error) return this.props.children;
+    // A part of the game that is fetched on demand did not arrive: that is the network, not a bug.
+    const missing = isPartError(this.state.error);
     return (
       <div className="map" role="alert">
-        <h1 tabIndex={-1}>Something went wrong on this screen</h1>
-        <p className="map-intro">Your progress is safe. This is a bug in the game, not in your code.</p>
+        <h1 tabIndex={-1}>{missing ? "This screen could not be loaded" : "Something went wrong on this screen"}</h1>
+        <p className="map-intro">{missing ? "Your progress is safe. A part of the game could not be fetched. Check your connection, then open the screen again." : "Your progress is safe. This is a bug in the game, not in your code."}</p>
         <pre>{String(this.state.error.message)}</pre>
         <button
           className="btn primary"
@@ -61,6 +61,41 @@ function useAppearance(): ["system" | "light" | "dark", (v: "system" | "light" |
     root.style.fontSize = `${16 * scale}px`;
   }, [theme, scale]);
   return [theme, setTheme];
+}
+
+/** Holds a screen's place while its part of the game is fetched: only when the page itself opens on that screen. */
+function Loading({ what }: { what: string }) {
+  return (
+    <div className="map">
+      <p className="hint-text" role="status">Loading {what}.</p>
+    </div>
+  );
+}
+
+/**
+ * Drawn after a screen, under the same Suspense boundary: its effect runs when the screen is in the
+ * page, after anything it had to fetch, and again when a level that was kept hidden shows again.
+ * A new screen starts at its top, with the focus on its heading (so a screen reader announces where
+ * you are). A layout effect, so the focus is never left on a button of the screen that went away
+ * while the two cross-fade. The screen the page opens on keeps the focus where the browser put it.
+ */
+function Arrived({ map, opened }: { map: boolean; opened: RefObject<boolean> }) {
+  useLayoutEffect(() => {
+    const main = document.getElementById("main");
+    // The heading of the screen that shows: a level that is kept hidden has one too.
+    const h = [...(main?.querySelectorAll<HTMLElement>("h1") ?? [])].find((x) => x.getClientRects().length > 0);
+    document.title = h && !map ? `${h.textContent} · Bringup` : "Bringup: SE 423 practice";
+    if (!opened.current) {
+      opened.current = true;
+      return;
+    }
+    if (main) main.scrollTop = 0;
+    if (h) {
+      h.tabIndex = -1;
+      h.focus({ preventScroll: true });
+    } else main?.focus();
+  }, [map, opened]);
+  return null;
 }
 
 /** One figure on its own, with the same theme and text size as the game. */
@@ -156,32 +191,25 @@ function Game() {
   }, []);
   const save = useSave();
   const [theme, setTheme] = useAppearance();
-  // A new screen starts at its top, with the focus on its heading (so a screen reader announces where you are).
-  // A layout effect, so the focus is never left on a button of the screen that went away while the two cross-fade.
-  const where = view.name === "level" ? view.id : view.name;
-  const shownOnce = useRef(false);
-  useLayoutEffect(() => {
-    const main = document.getElementById("main");
-    // The heading of the screen that shows: a level that is kept hidden has one too.
-    const h = [...(main?.querySelectorAll<HTMLElement>("h1") ?? [])].find((x) => x.getClientRects().length > 0);
-    document.title = h && view.name !== "map" ? `${h.textContent} · Bringup` : "Bringup: SE 423 practice";
-    if (!shownOnce.current) {
-      shownOnce.current = true;
-      return;
-    }
-    if (main) main.scrollTop = 0;
-    if (h) {
-      h.tabIndex = -1;
-      h.focus({ preventScroll: true });
-    } else main?.focus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [where]);
+  /** The first screen has been shown: from then on a new screen takes the focus (see Arrived). */
+  const opened = useRef(false);
+  // The level screen and the code level's parts are fetched once the page is idle, so the first level opens at once.
+  useEffect(() => {
+    const idle = typeof window.requestIdleCallback === "function" ? window.requestIdleCallback(preloadLevels, { timeout: 4000 }) : null;
+    const timer = idle === null ? window.setTimeout(preloadLevels, 1500) : 0;
+    return () => {
+      if (idle !== null) window.cancelIdleCallback(idle);
+      window.clearTimeout(timer);
+    };
+  }, []);
   const screenKey = view.name === "level" ? (warm ? `warm-${view.id}` : view.id) : view.name;
   const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches) || (theme === "system" && !window.matchMedia("(prefers-color-scheme: light)").matches);
   const core = CHAPTERS.flatMap((c) => c.levels).filter((l) => tierOf(l) === "core");
   const done = core.filter((l) => save.passed[l.id]).length;
+  // Pointing at a screen's button, or reaching it with the keyboard, fetches the screen ahead of the press.
+  const ahead = { handbook: () => void Handbook.preload(), sandbox: () => void Sandbox.preload(), settings: () => void Settings.preload(), map: undefined };
   const nav = (name: "map" | "handbook" | "sandbox" | "settings", label: string, icon: string) => (
-    <button aria-current={view.name === name || (name === "map" && view.name === "level") ? "page" : undefined} onClick={() => setView({ name } as View)}>
+    <button aria-current={view.name === name || (name === "map" && view.name === "level") ? "page" : undefined} onClick={() => setView({ name } as View)} onPointerEnter={ahead[name]} onFocus={ahead[name]}>
       <Icon name={icon} size={16} /> <span className="lbl">{label}</span>
     </button>
   );
@@ -216,13 +244,20 @@ function Game() {
           Any other change inside a screen is never animated here (default: "none"). */}
       <ViewTransition update={{ [SCREEN_CHANGE]: "screen", default: "none" }} enter="none" exit="none">
       <main id="main" tabIndex={-1}>
-        <Boundary key={screenKey} onReset={() => setView({ name: "map" })}>
-        {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} warmup={startWarmup} note={warmNote} />}
-        {view.name === "level" && warm && findLevel(view.id) && <LevelView key={`warm-${view.id}`} id={view.id} go={setView} warmup={{ index: warm.i, total: warm.ids.length, next: warmNext, end: () => setView({ name: "map" }) }} />}
-        {view.name === "handbook" && <Handbook open={(id) => setView({ name: "level", id })} at={view.reg ? { reg: view.reg } : undefined} />}
-        {view.name === "sandbox" && <Sandbox />}
-        {view.name === "settings" && <Settings />}
-        </Boundary>
+        {/* One boundary for every screen, and it stays: a change of screen is a transition, and a transition waits for
+            a part that is being fetched only under a boundary that is already there (a new one would show its
+            fallback). So the fallback shows only when the page itself opens on a screen that has to be fetched. */}
+        <Suspense fallback={<Loading what={view.name === "level" ? "the level" : view.name === "handbook" ? "the Handbook" : view.name === "sandbox" ? "the Sandbox" : "Settings"} />}>
+        {!keptShown && (
+          <Boundary key={screenKey} onReset={() => setView({ name: "map" })}>
+            {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} warmup={startWarmup} note={warmNote} />}
+            {view.name === "level" && warm && findLevel(view.id) && <LevelScreen key={`warm-${view.id}`} id={view.id} go={setView} warmup={{ index: warm.i, total: warm.ids.length, next: warmNext, end: () => setView({ name: "map" }) }} />}
+            {view.name === "handbook" && <Handbook open={(id) => setView({ name: "level", id })} at={view.reg ? { reg: view.reg } : undefined} />}
+            {view.name === "sandbox" && <Sandbox />}
+            {view.name === "settings" && <Settings />}
+            <Arrived map={view.name === "map"} opened={opened} />
+          </Boundary>
+        )}
         {/* After the other screens in the page: while it is hidden, the first heading and the first element of a given id are the visible screen's. */}
         {kept && findLevel(kept) && (
           <Activity key={`kept-${kept}`} mode={keptShown ? "visible" : "hidden"} name="level">
@@ -232,10 +267,12 @@ function Game() {
                 setView({ name: "map" });
               }}
             >
-              <LevelView id={kept} go={setView} />
+              <LevelScreen id={kept} go={setView} />
+              <Arrived map={false} opened={opened} />
             </Boundary>
           </Activity>
         )}
+        </Suspense>
       </main>
       </ViewTransition>
     </div>

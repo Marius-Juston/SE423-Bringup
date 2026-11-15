@@ -12,7 +12,7 @@ import { Order } from "./widgets/Order";
 import { Timing } from "./widgets/Timing";
 import { Wiring } from "./widgets/Wiring";
 import { RegisterPuzzle } from "./widgets/RegisterPuzzle";
-import { CodeLevelView } from "./code/CodeLevelView";
+import { CodeLevel } from "./screens";
 import type { View } from "./App";
 import { Splitter } from "./Splitter";
 import { Icon } from "./Icon";
@@ -447,7 +447,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
         {!warmLast && side}
         <Splitter value={taskW} onChange={setTaskW} min={240} max={taskMax} side="left" label="Resize the briefing pane" reset={taskDefault} />
         {isCode ? (
-          <CodeLevelView
+          <CodeLevel
             key={attempt}
             level={level}
             onPass={onPass}

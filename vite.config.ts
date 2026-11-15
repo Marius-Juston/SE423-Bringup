@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { figureMeta } from "./tools/figure-meta.ts";
 
 // Writes sw.js: a service worker that stores every built file on the first
 // visit, so the web version works offline and can be installed from the
@@ -60,7 +61,7 @@ function preloadBodyFont(): Plugin {
 // a sub-folder on GitHub Pages alike.
 export default defineConfig({
   base: "./",
-  plugins: [react(), preloadBodyFont(), offline()],
+  plugins: [react(), figureMeta(), preloadBodyFont(), offline()],
   clearScreen: false,
   server: { port: 5183, strictPort: true },
   build: { target: "es2022", chunkSizeWarningLimit: 1500 },

@@ -28,17 +28,16 @@ export function viewOf(hash: string): View {
 export const SCREEN_CHANGE = "screen-change";
 
 /**
- * Runs a change of screen. Where motion is allowed it is a transition: React then cross-fades the
- * old screen into the new one in a browser that has view transitions (the ViewTransition in
- * App.tsx), and simply swaps them in one that has not. With prefers-reduced-motion the change is
- * made at once and nothing is animated.
+ * Runs a change of screen, as a transition: while the new screen's part of the game is fetched
+ * (screens.tsx) the old one stays, and nothing flashes. Where motion is allowed the transition is
+ * named, and React cross-fades the two screens in a browser that has view transitions (the
+ * ViewTransition in App.tsx); one that has not simply swaps them. With prefers-reduced-motion it
+ * has no name: the screens are swapped, no view transition is started and nothing is animated.
  */
 export function navigate(change: () => void): void {
   const still = typeof window === "undefined" || typeof window.matchMedia !== "function" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (still) change();
-  else
-    startTransition(() => {
-      addTransitionType(SCREEN_CHANGE);
-      change();
-    });
+  startTransition(() => {
+    if (!still) addTransitionType(SCREEN_CHANGE);
+    change();
+  });
 }
