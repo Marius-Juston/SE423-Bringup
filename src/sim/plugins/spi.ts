@@ -105,6 +105,11 @@ export interface SpiDevice {
    * ends, ns.
    */
   transfer(wordOut: number, bits: number, t: number, tEnd: number): number;
+  /**
+   * False while the device is not on the bus at all (not plugged in, a signal's jumper missing). It then
+   * hears and answers nothing: the master reads all 1s, as with no device. Default: present.
+   */
+  present?(): boolean;
   /** Chip select went low / high. */
   select?(): void;
   deselect?(): void;
@@ -206,6 +211,7 @@ export function registerSpiDevice(b: Board, d: SpiDevice): void {
 }
 
 const portOf = (d: SpiDevice) => d.port ?? "b";
+const present = (d: SpiDevice) => d.present?.() !== false;
 const pinsOf = (d: SpiDevice) => d.pins ?? { simo: PINS[portOf(d)].simo[0][0], somi: PINS[portOf(d)].somi[0][0], clk: PINS[portOf(d)].clk[0][0] };
 const modesOf = (d: SpiDevice) => (Array.isArray(d.mode) ? d.mode : [d.mode]);
 
@@ -313,13 +319,15 @@ function install(b: Board): void {
         }
         if (!talk) b.warn(line, `spi-talk-${id}`, `${NAME} clocked a word with SPICTL.bit.TALK = 0: its SPISIMO pin is switched off, so the device received only 1s. Set ${pre}.SPICTL.bit.TALK = 1;`);
         const here = bus.devices.filter((d) => {
-          if (portOf(d) !== id || gpio.level[d.csPin] !== 0) return false;
+          if (portOf(d) !== id || gpio.level[d.csPin] !== 0 || !present(d)) return false;
           const dp = pinsOf(d);
           return clk === dp.clk && simo === dp.simo && muxFor("clk", dp.clk) !== undefined;
         });
         if (!here.length && clk !== null && simo !== null) {
-          const wired = bus.devices.filter((d) => portOf(d) === id && pinsOf(d).clk === clk && pinsOf(d).simo === simo);
-          if (wired.length)
+          const wired = bus.devices.filter((d) => present(d) && portOf(d) === id && pinsOf(d).clk === clk && pinsOf(d).simo === simo);
+          // A device that is off the bus with its chip select low is not this mistake (the world model reports its own).
+          const offBus = bus.devices.some((d) => !present(d) && portOf(d) === id && gpio.level[d.csPin] === 0);
+          if (wired.length && !offBus)
             b.warn(line, `spi-no-cs-${id}`, `${NAME} sent a word, but no chip select is low, so no device listened and the word read back is all 1s. Pull the chip select of the device low before writing SPITXBUF (${wired.map((d) => `${d.name}: GPIO${d.csPin}`).join(", ")}).`);
         }
         if (here.length > 1) {
@@ -585,6 +593,8 @@ function install(b: Board): void {
       }
     }
     for (const d of bus.devices) {
+      // A device that is not on the bus sees no chip select and no clock (one that was selected still hears its release).
+      if (!present(d) && !bus.selected.has(d)) continue;
       const pins = pinsOf(d);
       if (pin === d.csPin) {
         if (level === 0 && !bus.selected.has(d)) {

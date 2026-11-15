@@ -2,12 +2,17 @@ name: Accessibility
 
 # The accessibility suite (tools/a11y, docs/ACCESSIBILITY.md).
 # Pull requests run the subset (--quick) and fail on a finding that is not in
-# a11y-baseline.json. Pushes to main and manual runs do the whole sweep and only
-# report, so publishing is never blocked.
+# a11y-baseline.json. Pushes to main run the same subset and only report, so
+# publishing is never blocked. The whole sweep runs once a week and on a manual
+# run, reporting only: on a hosted 4-core runner it takes about 100 minutes
+# (33 minutes on 4 cores of a development machine, and the runner is about three
+# times slower), too long and too close to a time limit for every push.
 on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "17 5 * * 1" # Mondays, 05:17 UTC
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +25,8 @@ permissions:
 jobs:
   a11y:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # The subset takes about 25 minutes here, the whole sweep about 100.
+    timeout-minutes: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 240 || 60 }}
     permissions:
       contents: read
       security-events: write # the findings as code-scanning alerts (SARIF)
@@ -36,8 +42,12 @@ jobs:
       - name: Accessibility suite, pull request subset (gating)
         if: github.event_name == 'pull_request'
         run: npm run a11y -- --quick --workers 4
-      - name: Accessibility suite, whole sweep (reporting only)
-        if: github.event_name != 'pull_request'
+      - name: Accessibility suite, subset on main (reporting only)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: npm run a11y -- --quick --workers 4
+      - name: Accessibility suite, whole sweep (weekly and manual, reporting only)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         continue-on-error: true
         run: npm run a11y -- --workers 4
       - name: Keep the findings

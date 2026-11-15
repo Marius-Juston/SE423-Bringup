@@ -124,19 +124,49 @@ if (needBrowser) {
     await Promise.all(Array.from({ length: Math.min(workers, jobs.length) }, worker));
   };
 
-  // The figures are checked by figures.mjs, written beside this file. It runs alongside.
-  let figuresRun = null;
+  // The figures are checked by figures.mjs, written beside this file. With cores to spare it
+  // runs beside the screens and levels; on a small machine (a 4-core CI runner) it would take
+  // the cores the screen workers need and both would crawl, so it runs after them, on as many
+  // pages at once as figures.mjs chooses for the machine (two a core).
+  const cores = availableParallelism();
+  const figuresBeside = cores >= 12 && cores >= workers + 4;
   const figuresFile = join(REPO, "tools/a11y/figures.mjs");
-  if (only.includes("figures")) {
-    if (existsSync(figuresFile)) {
-      const { checkFigures } = await import(pathToFileURL(figuresFile).href);
-      // A sweep that stops answering is a finding, not a run that never ends.
-      const limit = new Promise((_, reject) => setTimeout(() => reject(new Error("no result after 40 minutes")), 40 * 60_000).unref());
-      figuresRun = Promise.race([checkFigures({ baseUrl: game.baseUrl, browser }), limit]).then(
+  const startFigures = async () => {
+    const { checkFigures } = await import(pathToFileURL(figuresFile).href);
+    // A sweep that stops answering is a finding, not a run that never ends. figures.mjs gives
+    // every page its own time limit; this catches a sweep in which nothing finishes any more.
+    let last = Date.now();
+    let stop;
+    const stalled = new Promise((_, reject) => {
+      stop = setInterval(() => {
+        if (Date.now() - last > 15 * 60_000) reject(new Error("no page finished for 15 minutes"));
+      }, 30_000);
+      stop.unref();
+    });
+    const run = checkFigures({
+      baseUrl: game.baseUrl,
+      browser,
+      quick,
+      jobs: figuresBeside ? Math.min(16, Math.max(2, Math.floor(cores / 2))) : undefined,
+      onProgress: (line) => {
+        last = Date.now();
+        log(`  ${line}`);
+      },
+      onDone: () => (last = Date.now()),
+    });
+    return Promise.race([run, stalled])
+      .then(
         (list) => list,
         (e) => [finding({ where: "figures", rule: "suite/not-checked", state: "any", detail: `figures.mjs stopped: ${String(e?.message ?? e).split("\n")[0].slice(0, 240)}` })],
-      );
-    } else log("tools/a11y/figures.mjs is not there: figures are not checked");
+      )
+      .finally(() => clearInterval(stop));
+  };
+  let figuresRun = null;
+  const wantFigures = only.includes("figures") && existsSync(figuresFile);
+  if (only.includes("figures") && !wantFigures) log("tools/a11y/figures.mjs is not there: figures are not checked");
+  if (wantFigures && figuresBeside) {
+    log(`figures: started beside the screens (${cores} cores)`);
+    figuresRun = startFigures();
   }
 
   const jobs = [];
@@ -186,9 +216,10 @@ if (needBrowser) {
     await runJobs(liveJobs, "live runs");
   }
   findings.push(...titleFindings(titles));
-  if (figuresRun) {
-    log("waiting for the figures");
-    const list = await figuresRun;
+  if (wantFigures) {
+    if (figuresRun) log("waiting for the figures");
+    else log(`figures: started after the screens (${cores} cores)`);
+    const list = await (figuresRun ?? startFigures());
     counts.figures = new Set(list.map((f) => f.where)).size;
     findings.push(...list);
     log(`figures checked: ${list.length} findings`);

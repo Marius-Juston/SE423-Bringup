@@ -41,7 +41,9 @@ src/sim/            the simulator: pure TypeScript, no DOM
   periph/           GPIO, CPU timers, PIE, SCI
   plugins/          one file per further peripheral or world model, auto-loaded (docs/PLUGINS.md)
   lib/              the course library functions (prelude) and printf
-  world/            boards ("kits"), terrain
+  world/            boards ("kits"), terrain; boards/hw-board.json: the homework board compiled by tools/gen-board.mjs
+  wiring/           the Sandbox's wiring bench: the homework board's parts, fault switches, devices on free pins (docs/WIRING.md)
+    parts/          one file per part, auto-loaded
   runner.ts         runs a program for a level and evaluates its checks
   live.ts           a running session for the UI (pause, step, buttons, knobs)
 src/levels/         content as data
@@ -53,11 +55,11 @@ src/ui/             React: map, level view, widgets, bench, handbook, sandbox, s
   views/            bench views shown beside a running program, auto-registered
 tests/              vitest; tests/e2e/ plays the game in a browser
 tools/              screenshot tool, generators; a11y/ is the accessibility suite
-docs/               AUTHORING.md (levels), PLUGINS.md (simulator), VISUALS.md (figures and views), ACCESSIBILITY.md (the suite)
+docs/               AUTHORING.md (levels), PLUGINS.md (simulator), VISUALS.md (figures and views), WIRING.md (the wiring bench), ACCESSIBILITY.md (the suite)
 public/             install.sh, install.ps1, web manifest, icons
 ```
 
-Adding a level, a figure, a bench view, a glossary file or a simulator plugin never requires editing a registry: drop the file in its folder.
+Adding a level, a figure, a bench view, a glossary file, a simulator plugin or a wiring-bench part never requires editing a registry: drop the file in its folder.
 
 ## Rules that are easy to break
 
