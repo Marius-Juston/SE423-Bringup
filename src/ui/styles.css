@@ -12,6 +12,8 @@
  *   blocks) and 4.5:1 on a highlighted line and on a selection;
  * - --control (the edge of buttons, inputs and other things you can
  *   operate), --focus and the colours used for marks are at least 3:1.
+ * - --pcb-lit (a connection, a ring or a pointer that is lit up on the
+ *   drawn board) is at least 3:1 on --pcb and --pcb-edge.
  * Accent (orange) is kept for the primary action, the current item and
  * marks. It is a fill and an edge, never the colour of words: words use
  * --accent-text. Elevation comes from surface lightness and 1 px borders.
@@ -56,6 +58,7 @@
   --pcb: #0b3a2a;
   --pcb-edge: #1d6a4d;
   --pcb-ink: #d7efe4;
+  --pcb-lit: #ffd24a;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
   /* Older names used across components and figures. */
@@ -116,6 +119,7 @@
   --pcb: #1a5e45;
   --pcb-edge: #134a36;
   --pcb-ink: #f0fff8;
+  --pcb-lit: #ffd24a;
   --shadow: 0 8px 24px rgba(19, 41, 75, 0.14);
   color-scheme: light;
   }
@@ -158,6 +162,7 @@
   --pcb: #1a5e45;
   --pcb-edge: #134a36;
   --pcb-ink: #f0fff8;
+  --pcb-lit: #ffd24a;
   --shadow: 0 8px 24px rgba(19, 41, 75, 0.14);
   color-scheme: light;
 }

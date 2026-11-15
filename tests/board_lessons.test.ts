@@ -7,6 +7,9 @@ import { HW_BOARD } from "../src/sim/wiring/board";
 import { instances, optionsOf } from "../src/sim/wiring/bench";
 import { highlightOf } from "../src/sim/wiring/nets";
 import { lessonStore } from "../src/ui/wiring/store";
+import { spread } from "../src/ui/wiring/BoardPicture";
+import { TOURS } from "../src/ui/wiring/tours";
+import { figureIdsIn } from "../src/ui/figures";
 
 // Primer D: the board tour and the fault-finding levels on the wiring bench.
 
@@ -46,6 +49,45 @@ describe("primer D: the homework board", () => {
     expect(says({ t: "part", id: "PB3" })).toContain("PB3: GPIO6, pin 80, J8.10.");
     expect(says({ t: "part", id: "JIMU3" })).toMatch(/^IMU jumper MISO: GPIO64, /);
     expect(HW_BOARD.launchpad.pins.find((p) => p[3] === 1)![2]).toBe(HW_BOARD.nets.indexOf("3V3"));
+  });
+
+  it("names in each tour lesson's figure what its questions ask about", () => {
+    const embeds = (id: string) => figureIdsIn(findLevel(id)!.level.brief);
+    expect(embeds("brd-tour")).toEqual(["board-headers"]);
+    expect(embeds("brd-follow")).toEqual(["board-leds"]);
+    expect(embeds("brd-button")).toEqual(["board-buttons"]);
+    expect(embeds("brd-jumpers")).toEqual(["board-jumpers"]);
+    // The headers: pin 1 and its neighbour 21, and both ends of J6 around pin 58. It opens on the lesson's own example.
+    expect(TOURS.headers.pins).toEqual(expect.arrayContaining([1, 10, 21, 30, 51, 60, 71, 80]));
+    expect(TOURS.headers.start).toEqual({ t: "pin", n: 8 });
+    // The LEDs: all 16, the three chips, and the pins the lesson follows (LED1 to pin 8, LED9 to pin 53).
+    expect(Object.keys(TOURS.leds.parts)).toEqual(expect.arrayContaining(["LED1", "LED9", "LED16", "IC1", "IC2", "IC3"]));
+    expect(TOURS.leds.pins).toHaveLength(16);
+    expect(TOURS.leds.pins).toEqual(expect.arrayContaining([8, 53]));
+    expect(TOURS.leds.pins).not.toContain(48);
+    // The buttons: PB3 is on pin 80.
+    expect(Object.keys(TOURS.buttons.parts)).toEqual(["PB1", "PB2", "PB3", "PB4"]);
+    expect(TOURS.buttons.pins).toContain(80);
+    // The jumpers: each IMU jumper's name ends with the pin it carries; the buzzer's pin is named at the LaunchPad.
+    expect(TOURS.jumpers.parts.JIMU3).toBe("MISO: GPIO64");
+    expect(Object.entries(TOURS.jumpers.parts).filter(([id]) => id.startsWith("JIMU")).map(([, words]) => words).sort()).toEqual(["MISO: GPIO64", "MOSI: GPIO63", "NCS: GPIO66", "SCLK: GPIO65"]);
+    expect(TOURS.jumpers.pins).toContain(33);
+    // Every region lies on the board, and what a figure opens with is in its first region.
+    for (const [name, tour] of Object.entries(TOURS)) {
+      for (const v of tour.views) for (const c of [v.crop, ...("narrow" in v ? [v.narrow] : [])]) expect(c[0] >= 0 && c[1] >= 0 && c[0] + c[2] <= HW_BOARD.w + 1e-9 && c[1] + c[3] <= HW_BOARD.h + 1e-9, name).toBe(true);
+      const at = tour.start.t === "part" ? HW_BOARD.parts.find((p) => p.id === (tour.start as { id: string }).id)!.box : HW_BOARD.launchpad.pins.find((p) => p[3] === (tour.start as { n: number }).n)!;
+      const c = tour.views[0].crop;
+      expect(at[0] > c[0] && at[0] < c[0] + c[2] && at[1] > c[1] && at[1] < c[1] + c[3], name).toBe(true);
+    }
+  });
+
+  it("moves names in a column apart, each as near its own row as it can be", () => {
+    expect(spread([10, 20, 30], 5, 0, 100)).toEqual([10, 20, 30]);
+    expect(spread([10, 12, 14], 5, 0, 100)).toEqual([7, 12, 17]);
+    expect(spread([10, 12, 40], 5, 0, 100)).toEqual([8.5, 13.5, 40]);
+    // Kept inside the picture.
+    expect(spread([1, 2], 5, 0, 100)).toEqual([0, 5]);
+    expect(spread([], 5, 0, 100)).toEqual([]);
   });
 
   it("keeps briefs short", () => {

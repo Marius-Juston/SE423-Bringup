@@ -8,7 +8,8 @@ import type { Chapter } from "../types";
 // Facts come from the compiled board data (src/sim/world/boards/
 // hw-board.json), the data sheet (SPRS880P, sections 6.1 and 6.6) and the
 // assembly steps of HW1 to HW4. The tour asks about parts and pins the
-// figure shows; no question is a blank of a handout. The programs of the
+// figures show (one figure per lesson: src/ui/wiring/tours.ts); no question
+// is a blank of a handout. The programs of the
 // fault-finding levels toggle pins by hand: the ePWM set-ups that HW2 to
 // HW4 grade are not used. Every program was run in the simulator.
 
@@ -126,13 +127,13 @@ The LaunchPad fits both ways round, and only one is right. Pin 1 of J1 is **3V3*
 ## What a pin is
 Most pins are **GPIO** pins ("general purpose input or output"): your program makes them high (3.3 V) or low (0 V), or reads them. Some are **ADC** pins, which measure a voltage. A few are supplies: 3V3, 5V and GND (ground, 0 V).
 
-{{figure:board-connections}}
+{{figure:board-headers}}
 
-Try it in the figure: choose a pin in the **LaunchPad pin** list, or click one of the small squares. The sentence under the picture says what the pin is and what is connected to it. Use it to answer the questions.
+The figure names the header pairs above their columns and numbers the first and last pin of each header. Try it: choose a pin in the **LaunchPad pin** list, or click one of the small squares. The sentence under the picture says what the pin is and what is connected to it. Use it to answer the questions.
 `,
       questions: [
         { prompt: "Choose pin 21 in the figure. What is it?", options: ["5V, a supply", "GPIO21", "GND", "An ADC pin"], answer: 0, why: "Pin 21, the first pin of J3, is the 5 V supply that comes from USB. A pin's number is its place on the LaunchPad, not a GPIO number." },
-        { prompt: "On which header is pin 58?", options: ["J6", "J5", "J8", "J2"], answer: 0, why: "Pins 51 to 60 are J6, so pin 58 is J6.8. The figure says so when you choose it." },
+        { prompt: "On which header is pin 58?", options: ["J6", "J5", "J8", "J2"], answer: 0, why: "Pins 51 to 60 are J6, so pin 58 is J6.8. In the figure, J6 runs from 51 at its bottom to 60 at its top." },
         { prompt: "The LaunchPad is plugged in turned round. What do you expect?", options: ["Nothing works: supplies and signals meet the wrong pins", "Everything works, the headers are symmetric", "Only the LEDs are swapped left to right"], answer: 0, why: "Each socket on the board expects one particular pin. Turned round, 3V3 no longer meets 3V3. Check J1 against J1 first." },
       ],
       takeaway: "The LaunchPad's 80 pins are the only way between your program and the board. Every part on the board ends at one of them.",
@@ -158,12 +159,12 @@ A part is joined to its pin by a thin line of copper on the board, called a **tr
 
 The LED sits between 3.3 V and the inverter's output. When your pin is **high**, the inverter's output is low, current flows through the LED, and it lights. So on this board: **pin high, LED on**. The dotted lines in the figure are the part of the path behind the inverter.
 
-{{figure:board-connections}}
+{{figure:board-leds}}
 
-Try it in the figure, then answer.
+The figure names each LED by its number, the three chips, and the pins the LEDs are on. Try it, then answer.
 `,
       questions: [
-        { prompt: "Choose LED9. Which pin is it on?", options: ["GPIO26", "GPIO9", "GPIO27", "GPIO25"], answer: 0, why: "The figure says \"LED9: GPIO26, pin 53, J6.3 through IC2\". An LED's number says nothing about its pin: you look it up." },
+        { prompt: "Choose LED9. Which pin is it on?", options: ["GPIO26", "GPIO9", "GPIO27", "GPIO25"], answer: 0, why: "The figure says \"LED9: GPIO26, pin 53, J6.3 through IC2\", and the lit copper ends at the pin named GPIO26. An LED's number says nothing about its pin: you look it up." },
         { prompt: "Choose pin 48. What is connected to it?", options: ["Nothing: it is free", "LED12", "Push button PB1", "The buzzer"], answer: 0, why: "Pin 48 is GPIO52 and nothing on the board uses it. That is how you find a pin for a part of your own." },
         { prompt: "Your program makes GPIO22 low. What does LED1 do?", options: ["It is off", "It is on", "It blinks"], answer: 0, why: "Pin low, inverter output high: both ends of the LED are at 3.3 V, no current flows, the LED is dark. Pin high lights it." },
       ],
@@ -229,9 +230,9 @@ You do not solder this resistor. The chip has one inside for every pin, switched
 
 Note the direction: **pressed is 0**. The button pulls the pin down.
 
-{{figure:board-connections}}
+{{figure:board-buttons}}
 
-Try it in the figure: choose PB3 and see where its pin is. Then answer.
+Try it in the figure: choose PB3 and follow the lit copper to its pin. Then answer.
 `,
       questions: [
         { prompt: "With the pull-up on, what does the pin read while the button is held?", options: ["0", "1", "It floats"], answer: 0, why: "The pressed button joins the pin to ground. Ground wins against the weak pull-up, so the pin is at 0 V." },
@@ -263,16 +264,16 @@ Homework 3 reminds you to move this jumper. A silent buzzer with a correct progr
 ## The IMU's jumpers
 The **IMU** is a small sensor board that measures motion. It talks to the chip over four pins, GPIO63 to GPIO66, and each of the four goes through a jumper of its own. With one missing, that signal does not arrive and the IMU does not answer: the program reads only 1s.
 
-{{figure:board-connections}}
+{{figure:board-jumpers}}
 
-Try it in the figure: choose "Buzzer jumper", then each "IMU jumper". The sentence names the pin each one carries.
+Try it in the figure: choose "Buzzer jumper", then each "IMU jumper". Each jumper's name in the picture ends with the pin it carries, and the lit copper leads to that pin.
 
 ## The rule
 When a part does nothing and the program looks right, ask: is there a jumper between the pin and the part, and is it where it should be?
 `,
       questions: [
         { prompt: "The buzzer's jumper is on the GND position. The program sends a tone on GPIO16. What do you hear?", options: ["Nothing", "The tone, but quieter", "A lower tone"], answer: 0, why: "On the GND position the buzzer's input is tied to ground. GPIO16 does not reach it." },
-        { prompt: "Choose \"IMU jumper MISO\" in the figure. Which pin does it carry?", options: ["GPIO64", "GPIO63", "GPIO65", "GPIO66"], answer: 0, why: "The figure names GPIO64 for the MISO jumper. Each of the four jumpers carries one of GPIO63 to GPIO66." },
+        { prompt: "Choose \"IMU jumper MISO\" in the figure. Which pin does it carry?", options: ["GPIO64", "GPIO63", "GPIO65", "GPIO66"], answer: 0, why: "The figure writes \"MISO: GPIO64\" beside that jumper. Each of the four jumpers carries one of GPIO63 to GPIO66." },
         { prompt: "What is a jumper?", options: ["A removable cap that joins two neighbouring pins", "A wire soldered to the board", "A kind of resistor"], answer: 0, why: "It joins two pins while it is on, and you can move it or take it off." },
       ],
       takeaway: "A jumper is a connection that can be missing. Before you doubt your program, check the jumpers between the pin and the part.",
