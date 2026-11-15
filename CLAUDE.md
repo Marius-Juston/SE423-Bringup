@@ -109,4 +109,4 @@ Adding a level, a figure, a bench view, a glossary file, a simulator plugin or a
 
 ## Skills
 
-Task recipes live in `.claude/skills/`: `add-level`, `add-figure`, `add-sim-plugin`, `beginner-review`, `verify`, `release`.
+Task recipes live in `.claude/skills/`: `add-level`, `add-figure`, `add-sim-plugin`, `add-wiring-part`, `beginner-review`, `fix-a11y-finding`, `perf-check`, `verify`, `release`.
