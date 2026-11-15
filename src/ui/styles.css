@@ -459,6 +459,11 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .result.ok .icon { color: var(--ok); }
 .result.bad { border-color: var(--bad); background: var(--bad-soft); }
 .result.bad .icon { color: var(--bad); }
+/* A test run in progress: the bar moves only when its value does (no transition). */
+.test-run { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem 0.6rem; align-items: center; margin: 0 0 0.6rem; }
+.test-run p { grid-column: 1 / -1; }
+.test-progress { height: 0.7rem; border: 1px solid var(--control); border-radius: 999px; overflow: hidden; background: var(--surface); }
+.test-progress i { display: block; height: 100%; background: var(--accent); transform-origin: left center; }
 
 /* ---- quiz ---- */
 .question { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.8rem 1rem; margin: 0 0 1rem; background: var(--surface); min-width: 0; }

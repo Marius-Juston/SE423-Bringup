@@ -139,7 +139,11 @@ export class Board implements Rt {
   /** Which course board this is ("robot", "launchpad", "redboard"): plugins use it to attach only what that board has. */
   readonly kit: string;
 
-  constructor(kit = "robot") {
+  /**
+   * `staged` leaves the course library for the caller to build with `build()`, in three pieces
+   * with a pause after each: a page that must stay responsive gives the browser a turn there.
+   */
+  constructor(kit = "robot", staged = false) {
     this.kit = kit;
     this.dev = new Device(this.mem);
     this.compiler = new Compiler(this, this.ctx);
@@ -194,10 +198,17 @@ export class Board implements Rt {
     this.timers = new CpuTimers(this);
     this.sci = new Sci(this);
 
-    // Course library: prototypes and TI sources in C, the rest native.
+    if (!staged) for (const _ of this.build()) void _;
+  }
+
+  /** The course library: prototypes and TI sources in C, the rest native. Yields between its pieces. */
+  *build(): Generator<void, void> {
     const source = [PRELUDE, ...PLUGINS.map((p) => p.prelude ?? "")].join("\n");
-    const unit = new Parser(this.pp.run(source, "library"), this.ctx).parseUnit();
+    const toks = this.pp.run(source, "library");
+    yield;
+    const unit = new Parser(toks, this.ctx).parseUnit();
     this.compiler.compileUnit(unit, "library");
+    yield;
     installLibrary(this);
     for (const p of PLUGINS) p.install?.(this);
   }

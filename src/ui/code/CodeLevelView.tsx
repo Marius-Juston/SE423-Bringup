@@ -1,8 +1,9 @@
 import { BENCH_FRAME_MS, frameBus } from "./frame";
 import { CopyButton } from "../CopyButton";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CodeLevel } from "../../levels/types";
-import { runProgram, type RunResult } from "../../sim/runner";
+import type { RunResult } from "../../sim/runner";
+import { startTestRun, useTestProgress, type TestRun } from "./testrun";
 import { LiveSession, type WorldState } from "../../sim/live";
 import type { Diagnostic } from "../../sim/board";
 import { KITS } from "../../sim/world/kits";
@@ -65,6 +66,15 @@ function Term({ text, label, live }: { text: string; label: string; live: "off" 
       }}
     >
       {text}
+    </div>
+  );
+}
+/** How far a test run is: a bar that only moves when its value does. */
+function TestProgress({ run, durationMs }: { run: TestRun; durationMs: number }) {
+  const pct = useTestProgress(run);
+  return (
+    <div className="test-progress" role="progressbar" aria-label="Test run" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={`${pct} % of ${durationMs} ms`}>
+      <i style={{ transform: `scaleX(${pct / 100})` }} />
     </div>
   );
 }
@@ -188,7 +198,10 @@ export function CodeLevelView({
     setRan(code);
     return new LiveSession(level.kit, code, setup, script, world.current);
   };
-  const start = () => setLive(fresh());
+  const start = () => {
+    dropTests();
+    setLive(fresh());
+  };
   const stop = () => {
     if (live) world.current = live.worldState;
     setLive(null);
@@ -196,6 +209,7 @@ export function CodeLevelView({
   /** Stepping works from a stopped board too: it powers up paused at the first line. */
   const session = (): LiveSession => {
     if (live?.running) return live;
+    dropTests();
     const s = fresh();
     s.paused = true;
     setLive(s);
@@ -209,24 +223,66 @@ export function CodeLevelView({
     session().stepToWrite();
     bump();
   };
-  // A long test run (the capstone drives for many simulated seconds) keeps the page busy for a moment:
-  // the button says so first, and the run starts once that is on the screen.
-  const [testing, setTesting] = useState(false);
-  const testTimer = useRef(0);
-  useEffect(() => () => window.clearTimeout(testTimer.current), []);
-  const test = () => {
-    if (testing) return;
-    stop();
-    setTesting(true);
-    testTimer.current = window.setTimeout(() => {
-      setTesting(false);
-      runTests();
-    }, 30);
+  // A long test run (the capstone drives for many simulated seconds) runs in short turns, so the page
+  // keeps drawing and Cancel works (testrun.ts). Leaving the level or starting the board drops it.
+  const [testing, setTesting] = useState<TestRun | null>(null);
+  const [cancelled, setCancelled] = useState(false);
+  const testRun = useRef<TestRun | null>(null);
+  const testButton = useRef<HTMLButtonElement>(null);
+  const dropTests = () => {
+    testRun.current?.cancel();
+    testRun.current = null;
+    setTesting(null);
+    setCancelled(false);
   };
-  const runTests = () => {
-    const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
+  useEffect(() => {
+    // A level that was kept while another screen showed comes back with no run in progress.
+    setTesting(null);
+    return () => {
+      testRun.current?.cancel();
+      testRun.current = null;
+    };
+  }, []);
+  const cancelTests = () => {
+    if (!testRun.current) return;
+    dropTests();
+    setCancelled(true);
+    // The Cancel button goes away: the focus returns to the button that started the run.
+    testButton.current?.focus();
+  };
+  const test = () => {
+    if (testRun.current) return;
+    stop();
+    setCancelled(false);
+    const source = code;
+    const run = startTestRun({ kit: level.kit, source, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
+    testRun.current = run;
+    setTesting(run);
+    const mine = () => testRun.current === run;
+    run.done.then(
+      (r) => {
+        if (!mine()) return;
+        testRun.current = null;
+        // Drawing the result (plots of the whole run, the replay) is work too: as a transition React
+        // does it in short pieces, and the progress bar stays until the result replaces it.
+        startTransition(() => {
+          setTesting(null);
+          if (r) showResult(r, source);
+        });
+      },
+      (e) => {
+        if (mine()) dropTests();
+        throw e;
+      },
+    );
+  };
+  // The run may end long after the press: it reports to the level as it is then (a hint opened meanwhile counts).
+  const latest = useRef({ onPass, onBests, helped });
+  latest.current = { onPass, onBests, helped };
+  const showResult = (r: RunResult, source: string) => {
+    const { onPass, onBests, helped } = latest.current;
     setResult(r);
-    setTested(code);
+    setTested(source);
     if (r.passed) {
       onPass();
       // Stars count only on a solution that passes the level without the last hint or the reference solution.
@@ -240,10 +296,13 @@ export function CodeLevelView({
     } else {
       store.fail(level.id);
       setBestNotes([]);
-      // The verdict must be in view (in a narrow window the board is below the editor). After a pass, LevelView shows the next step instead.
-      requestAnimationFrame(() => document.querySelector('.bench [data-panel="tests"] .result')?.scrollIntoView({ block: "nearest" }));
     }
   };
+  // The verdict of a failed run must be in view (in a narrow window the board is below the editor).
+  // After a pass, LevelView shows the next step instead.
+  useEffect(() => {
+    if (result && !result.passed) document.querySelector('.bench [data-panel="tests"] .result')?.scrollIntoView({ block: "nearest" });
+  }, [result]);
 
   const board = live?.board ?? result?.board ?? null;
   const stale = !!result && !live && tested !== code;
@@ -258,6 +317,8 @@ export function CodeLevelView({
         : live.paused
           ? { kind: "paused", text: `Paused at line ${live.board.line}` }
           : { kind: "running", text: edited ? "Running the code before your edit" : "Running" }
+    : cancelled
+    ? { kind: "idle", text: "Test run cancelled" }
     : result
       ? result.passed
         ? { kind: "ok", text: "All tests passed" }
@@ -276,7 +337,9 @@ export function CodeLevelView({
       : "Run tests checks the level. Run powers the board so you can try it.";
   // What a failed run needs first, for the summary a narrow window keeps in view.
   const firstFail = result && !result.passed ? result.checks.find((c) => !c.pass) : undefined;
-  const statusDetail = live
+  const statusDetail = testing
+    ? "Cancel is on the Board tab."
+    : live
     ? ""
     : result && !result.passed
       ? result.compileError
@@ -290,7 +353,7 @@ export function CodeLevelView({
         ? "Before your last edit."
         : "";
   useEffect(() => {
-    onStatus?.({ kind: state.kind, text: !live && !result ? "Tests not run yet" : state.text, detail: statusDetail || undefined });
+    onStatus?.({ kind: state.kind, text: !live && !result && !testing && !cancelled ? "Tests not run yet" : state.text, detail: statusDetail || undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind, state.text, statusDetail]);
   // Keyboard: Ctrl+Enter tests, Ctrl+Shift+Enter run/stop, F10 step, F9 next write.
@@ -407,7 +470,7 @@ export function CodeLevelView({
         <div className="toolbar">
           <div className="tool-row">
             {!sandbox && (
-              <button className="btn primary" onClick={test} aria-disabled={testing} title="Check your program against the level's tests (Ctrl+Enter)">
+              <button className="btn primary" ref={testButton} onClick={test} aria-disabled={!!testing} title="Check your program against the level's tests (Ctrl+Enter)">
                 <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
               </button>
             )}
@@ -487,7 +550,11 @@ export function CodeLevelView({
           {!sandbox && (
             <Panel id="tests" title="Tests" note={result ? `${nPass} of ${result.checks.length} passed${stale ? ", before your last edit" : ""}` : undefined}>
               {testing ? (
-                <p className="hint-text" role="status">Running the tests: {level.durationMs} ms of simulated time.</p>
+                <div className="test-run">
+                  <p className="hint-text" role="status">Running the tests: {level.durationMs} ms of simulated time.</p>
+                  <TestProgress run={testing} durationMs={level.durationMs} />
+                  <button className="btn small" onClick={cancelTests}>Cancel</button>
+                </div>
               ) : !result ? (
                 <p className="hint-text">Press <strong>Run tests</strong>. The tests run your program for {level.durationMs} ms of simulated time{level.stimuli?.length ? ", pressing buttons, turning knobs or typing at fixed times," : ""} and check the points below.</p>
               ) : (
