@@ -53,7 +53,7 @@ export const TOURS = {
   /** "A push button and the pull-up": PB1 to PB4 and their pins. */
   buttons: {
     start: { t: "part", id: BUTTONS[0] },
-    views: [{ name: "The upper right of the homework board: the push buttons and the right side of the LaunchPad", crop: [70, 0, B.w - 70, 102] }],
+    views: [{ name: "The upper right of the homework board: the push buttons and the right side of the LaunchPad", crop: [70, 0, B.w - 70, 107] }],
     parts: named(BUTTONS),
     pins: BUTTONS.map(pinOf),
     heads: true,

@@ -97,7 +97,7 @@ export function TourFigure({ spec }: { spec: TourSpec }) {
     if (!size.width) return { pictures: [], beside: false };
     // Each picture has a 1 px border; one more pixel keeps a rounded width inside the column.
     const room = size.width - 3;
-    if (size.big) return { pictures: [{ name: "The whole homework board, with the LaunchPad in the middle", px: room / WHOLE[2], tour: { crop: WHOLE, parts: "all", pins: "all", heads: true } }], beside: false };
+    if (size.big) return { pictures: [{ name: "The whole homework board, with the LaunchPad in the middle", px: room / WHOLE[2], tour: { crop: WHOLE, parts: "all", pins: "all", heads: true, leads: true } }], beside: false };
     const crops = spec.views.map((v) => (size.width < 480 && v.narrow ? v.narrow : v.crop));
     const scale = (size.width - 1 - GAP * (crops.length - 1) - 2 * crops.length) / crops.reduce((sum, c) => sum + c[2], 0);
     const beside = crops.length > 1 && scale >= SIDE_BY_SIDE;
@@ -105,7 +105,7 @@ export function TourFigure({ spec }: { spec: TourSpec }) {
     const pictures = spec.views.map((v, k) => {
       const crop = crops[k];
       const px = beside ? Math.min(scale, MAX_HEIGHT / tallest) : Math.min(room / crop[2], MAX_HEIGHT / crop[3]);
-      return { name: v.name, px, tour: { crop, parts: spec.parts, pins: spec.pins, numbers: spec.numbers, heads: spec.heads } };
+      return { name: v.name, px, tour: { crop, parts: spec.parts, pins: spec.pins, numbers: spec.numbers, heads: spec.heads, leads: spec.parts === "all" } };
     });
     return { pictures, beside };
   }, [size, spec]);

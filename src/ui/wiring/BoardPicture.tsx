@@ -226,6 +226,8 @@ export interface Tour {
   numbers?: boolean;
   /** The LaunchPad and its four pairs of headers are named. */
   heads?: boolean;
+  /** Leads and wires soldered by hand are drawn, as on the bench. Without it only those of a chosen part are. */
+  leads?: boolean;
 }
 
 /** The header pairs of the LaunchPad as they stand side by side: the words, the middle of the two columns, the first row. */
@@ -706,6 +708,8 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
         {onBoard.flatMap(({ inst }) =>
           inst.opts.fitted === "no" ? [] : (inst.part!.links ?? []).map(([x1, y1, x2, y2], k) => {
             const lit = !!light && ((pick?.t === "part" && pick.id === inst.id) || inst.part!.nets.some((n) => light.near.includes(n)));
+            // A tour of a part of the board leaves the leads out, unless a part that brings them is chosen.
+            if (tour && !tour.leads && !(lit && pick?.t === "part")) return null;
             const ink = lit ? "var(--pcb-lit)" : "var(--pcb-ink)";
             return (
               <g key={`${inst.id}-${k}`} data-link={inst.id} data-lit={lit ? "yes" : "no"}>
