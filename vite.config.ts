@@ -64,5 +64,6 @@ export default defineConfig({
   plugins: [react(), figureMeta(), preloadBodyFont(), offline()],
   clearScreen: false,
   server: { port: 5183, strictPort: true },
-  build: { target: "es2022", chunkSizeWarningLimit: 1500 },
+  // license: the licences of every bundled package, written next to the game (licenses.md).
+  build: { target: "es2022", chunkSizeWarningLimit: 2600, license: { fileName: "licenses.md" } },
 });

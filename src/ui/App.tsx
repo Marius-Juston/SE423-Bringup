@@ -16,11 +16,11 @@ export type { View } from "./route";
 
 /** Shows a message instead of a blank window if a screen fails to draw. */
 class Boundary extends Component<{ children: ReactNode; onReset: () => void }, { error: Error | null }> {
-  state = { error: null as Error | null };
+  override state = { error: null as Error | null };
   static getDerivedStateFromError(error: Error) {
     return { error };
   }
-  render() {
+  override render() {
     if (!this.state.error) return this.props.children;
     // A part of the game that is fetched on demand did not arrive: that is the network, not a bug.
     const missing = isPartError(this.state.error);
