@@ -548,7 +548,7 @@ function ArenaBody({ board, nowMs: benchNowMs, live, preview }: { board: Board |
             onChange={(e) => { setPlaying(false); setReplayT(Math.min(endMs, +e.target.value)); }}
           />
           {marks.length > 0 && (
-            <div className="arena-marks" style={{ height: `${1.5 * (Math.max(...rows) + 1)}rem` }}>
+            <div className="arena-marks" data-order="time" style={{ height: `${1.5 * (Math.max(...rows) + 1)}rem` }}>
               {marks.map((m, i) => (
                 <button key={m.tMs} className={`arena-mark ${m.pass === undefined ? "" : m.pass ? "pass" : "fail"}`} style={{ left: `${(100 * m.tMs) / endMs}%`, top: `${1.5 * rows[i]}rem` }} title={`${(m.tMs / 1000).toFixed(2)} s: ${m.label}${m.pass === undefined ? "" : m.pass ? " (passed)" : " (failed)"}`} aria-label={`Go to ${(m.tMs / 1000).toFixed(2)} seconds, where a test looks: ${m.label}${m.pass === undefined ? "" : m.pass ? " (passed)" : " (failed)"}`} onClick={() => { setPlaying(false); setReplayT(m.tMs); }}>
                   {m.pass === false ? "✕" : "▲"}

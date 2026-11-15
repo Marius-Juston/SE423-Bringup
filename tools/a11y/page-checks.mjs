@@ -805,7 +805,11 @@ export function installChecks() {
             for (let a = e.parentElement; a; a = a.parentElement) if (scrollsY(cs(a))) return a;
             return null;
           };
-          if (sc(kb.prev) === sc(el) && cs(el).position !== "sticky") info.visualBack = describe(kb.prev);
+          // Marks along a time axis are focused in time order; a second row only keeps close marks apart.
+          // The order still has to run left to right.
+          const axis = el.closest("[data-order='time']");
+          const alongAxis = axis && axis === kb.prev.closest("[data-order='time']") && r.left >= p.left;
+          if (sc(kb.prev) === sc(el) && cs(el).position !== "sticky" && !alongAxis) info.visualBack = describe(kb.prev);
         }
       }
     }

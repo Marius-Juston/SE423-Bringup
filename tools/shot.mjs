@@ -47,6 +47,9 @@ const url = server.resolvedUrls.local[0];
 const browser = await chromium.launch({ executablePath: findChrome() });
 const errors = [];
 try {
+  // A screen fades in and cross-fades with the one before it: wait until nothing that ends is still moving.
+  const settled = (page) =>
+    page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getComputedTiming().endTime === Infinity), null, { timeout: 5000 }).catch(() => {});
   const page = await browser.newPage({ colorScheme: rest.includes("--dark") ? "dark" : "light", viewport: { width: +opt("width", kind === "figure" ? 700 : 1500), height: +opt("height", 950) }, deviceScaleFactor: kind === "figure" ? 2 : 1 });
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
@@ -54,6 +57,7 @@ try {
     await page.goto(`${url}?figure=${encodeURIComponent(id)}`);
     await page.waitForSelector(".figure, .fig-missing");
     for (const c of clicks) await page.getByRole("button", { name: c }).first().click();
+    await settled(page);
     await page.locator(".figure, .fig-missing").first().screenshot({ path: out });
   } else {
     await page.goto(url);
@@ -67,6 +71,7 @@ try {
       for (const c of clicks) await page.getByRole("button", { name: c }).first().click();
       // The map scrolls inside <main>: a full shot needs a window as tall as the page.
       if (fullPage) await page.setViewportSize({ width: page.viewportSize().width, height: Math.min(8000, (await page.evaluate(() => document.querySelector("main").scrollHeight)) + 60) });
+      await settled(page);
       await page.screenshot({ path: out });
     } else if (kind === "handbook") {
       await page.locator(".topnav").getByRole("button", { name: "Handbook" }).click();
@@ -79,6 +84,7 @@ try {
       if (opt("search")) await page.fill("#hb-search", opt("search"));
       for (const c of clicks) await page.getByRole("button", { name: c }).first().click();
       if (fullPage) await page.setViewportSize({ width: page.viewportSize().width, height: Math.min(8000, (await page.evaluate(() => document.querySelector(".hb-content").scrollHeight)) + 120) });
+      await settled(page);
       await page.screenshot({ path: out });
     } else {
       // Levels are listed per chapter: try each chapter until the level shows.
@@ -109,6 +115,7 @@ try {
       for (const c of clicks) await page.getByRole("button", { name: c }).first().click();
       const tab = opt("tab");
       if (tab && (await page.getByRole("tab", { name: tab }).count())) await page.getByRole("tab", { name: tab }).click();
+      await settled(page);
       await page.screenshot({ path: out });
     }
   }
