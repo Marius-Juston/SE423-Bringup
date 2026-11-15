@@ -34,9 +34,10 @@ removes the download quarantine flag for the same reason.
 
 ## Playing
 
-- **Map**: 25 chapters in six parts. **Start here** has three primers for
+- **Map**: 26 chapters in six parts. **Start here** has four primers for
   students who have never programmed or wired a circuit (A: electricity and
-  circuits, B: C from zero, C: C for hardware); anyone who knows C and Ohm's
+  circuits, B: C from zero, C: C for hardware, D: the homework board, with a
+  tour of the board and four faults to find); anyone who knows C and Ohm's
   law starts at chapter 0. Then Foundations, Analog and motion, Buses and
   data, The robot, and a **Capstone** in which one program grows level by
   level, from the student's own code, until the robot drives itself to a
@@ -68,7 +69,10 @@ removes the download quarantine flag for the same reason.
   to the level that teaches it (Handbook).
 - **Handbook**: every register of the chip with its fields, the pin tables
   of the course boards, the formulas, and the key diagrams.
-- **Sandbox**: a free board with nothing checked.
+- **Sandbox**: a free board with nothing checked. On the homework board its
+  **Wiring bench** shows the real board: point at a part or a pin to see what
+  it is connected to, switch a fault on to see its symptom, and attach a
+  device of your own to free pins.
 - **Settings**: light or dark theme, text size, keyboard shortcuts, progress
   export and import.
 
@@ -83,6 +87,8 @@ npm install
 npm run dev            # the game in a browser, http://localhost:5183
 npm test               # simulator tests + level checks
 npm run check-levels   # level checks only
+npm run e2e            # plays every level in a headless browser
+npm run a11y           # the accessibility suite (docs/ACCESSIBILITY.md)
 npm run tauri dev      # the desktop app, live reload
 npm run tauri build    # installers in src-tauri/target/release/bundle/
 ```
@@ -123,6 +129,7 @@ tools/            generators (register map, TI sources, TRM index), shot.mjs
 tests/            simulator and plugin tests, the course starter project,
                   level checks, and e2e/ (plays every level in a browser)
 docs/             AUTHORING.md (levels), PLUGINS.md (simulator), VISUALS.md
+                  (figures), WIRING.md (wiring bench), ACCESSIBILITY.md
 ```
 
 Things worth knowing about the simulator:
