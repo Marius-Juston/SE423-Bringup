@@ -8,6 +8,8 @@ import { CodeLevelView } from "./code/CodeLevelView";
 import { Markdown } from "./Markdown";
 import { SANDBOX_STARTERS, sandboxWorld } from "./sandbox-starters";
 import { BLINK_SOURCE, BLINK_WATCH } from "./sandbox-starters/blink";
+// The wiring bench of the homework board (docs/WIRING.md).
+import { WiringBench } from "./wiring/WiringBench";
 
 /** "blink" is offered on every board; any other value is the id of a program in sandbox-starters. */
 type Program = string;
@@ -46,6 +48,7 @@ Write any program and press **Run**. Hold the on-screen push buttons, type into 
 - Time is simulated: a slower speed lets you watch fast signals.
 - The simulator models behaviour, not exact timing: confirm on the real board.
 - The starting programs show what a board can do through its library. None of them is the answer to a level, a lab or a homework.
+- On the homework red board, the **Wiring bench** panel shows the board with its parts. Switch a fault on to see its symptom, or attach a device of your own to free pins.
 - On the robot board, the starting program **Robot arena** drives the robot in a circle. While it runs, the **Robot arena** panel lets you drag the robot, choose another room or a random maze, and put boxes and posts in the way.
 `;
 
@@ -102,10 +105,18 @@ export function Sandbox() {
           onPass={() => {}}
           splitter={<Splitter value={bench} onChange={setBenchW} min={BENCH_MIN} max={max} side="right" label="Resize the board pane" reset={440} />}
           benchTop={
-            <Panel id="sandbox-about" title="About the sandbox">
-              {about && <p><strong>This program.</strong> {about}</p>}
-              <Markdown text={ABOUT} />
-            </Panel>
+            <>
+              <Panel id="sandbox-about" title="About the sandbox">
+                {about && <p><strong>This program.</strong> {about}</p>}
+                <Markdown text={ABOUT} />
+              </Panel>
+              {/* The wiring bench: only on the homework board. Its state is its own (src/ui/wiring/store.ts). */}
+              {kit === "redboard" && (
+                <Panel id="wiring-bench" title="Wiring bench" note="the board, its faults, your devices" expand={{}}>
+                  <WiringBench />
+                </Panel>
+              )}
+            </>
           }
         />
       </div>

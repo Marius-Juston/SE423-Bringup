@@ -14,7 +14,7 @@ npm run a11y -- --resume               # continue an interrupted run
 npm run a11y -- --update-baseline      # after a fix: lower the counts in a11y-baseline.json
 ```
 
-It needs Playwright's Chromium (`npx playwright-core install chromium`, or `CHROME=<path>`). A whole run takes about 12 minutes on a 16-core machine (5,300 page states of 13 screens and 498 levels, and every figure), with half as many browser windows as the machine has processors, 16 at most (`--workers <n>` changes that). It prints progress, then a table of rules, and writes to `a11y-out/` (ignored by git):
+It needs Playwright's Chromium (`npx playwright-core install chromium`, or `CHROME=<path>`). A whole run takes about 12 minutes on a 16-core machine (5,300 page states of 13 screens and 498 levels, and every figure), with half as many browser windows as the machine has processors, 16 at most (`--workers <n>` changes that). With 12 processors or more the figure sweep runs beside the screens and levels; with fewer it runs after them, two pages a processor, so the two do not fight over the cores. On 4 cores a whole run takes 33 minutes (screens and levels 22, figures and views 11) and the subset 8 to 10. It prints progress, then a table of rules, and writes to `a11y-out/` (ignored by git):
 
 - `findings.json`: every finding;
 - `findings.sarif`: the same for GitHub code scanning;
@@ -56,7 +56,7 @@ A run fails when a key is missing from `accepted` or its count is higher. Errors
 
 ## What is checked
 
-Where: the map (as opened, a chapter chosen, a "working on" filter, with progress and a finished part, after a warm-up), a warm-up question, the handbook (every section, a search with and without results, a register chosen, a figure opened), settings (also with the paste box open and after a failed load), the sandbox on each board with each starting program (stopped, running, paused, a panel in its large view), and every level of every chapter: as first opened, after a wrong answer (code levels: after Run tests with the starter), after the pass, and with every hint and the reference solution open. A fixed sample of code levels (the first level that shows each bench view, then every twelfth, at least 25) is also checked during a live run.
+Where: the map (as opened, a chapter chosen, a "working on" filter, with progress and a finished part, after a warm-up), a warm-up question, the handbook (every section, a search with and without results, a register chosen, a figure opened), settings (also with the paste box open and after a failed load), the sandbox on each board with each starting program (stopped, running, paused, a panel in its large view; on the homework board also the wiring bench with a fault on, a device attached, all connections shown and every section open), and every level of every chapter: as first opened, after a wrong answer (code levels: after Run tests with the starter), after the pass, and with every hint and the reference solution open. A fixed sample of code levels (the first level that shows each bench view, then every twelfth, at least 25) is also checked during a live run.
 
 How: in light and dark (`prefers-color-scheme`), in a window 1440 px wide and one 320 px wide. The 320 px window has a touch screen. A fixed sample (every screen; every tenth level and the first of each kind, about 55 levels) is also checked at 720 px (1440 px at 200 %), with Text size Extra large at both widths, and with the scheme pinned by the Theme setting against the system's.
 
@@ -89,8 +89,11 @@ Interactive figures inside a level are left out of these checks: `tools/a11y/fig
 
 `.github/workflows/a11y.yml`:
 
-- Pull requests: `npm run a11y -- --quick`. Every screen at 1440 px and 320 px, every level as first opened at 1440 px in both schemes, the sample levels in full at both widths, the live-run sample at 1440 px, every figure, the tokens. A finding that is not in the baseline fails the check. About 8 minutes with 4 windows on a 16-core machine (1,170 page states); a hosted runner is slower.
-- Pushes to `main` and manual runs (`workflow_dispatch`): the whole sweep, reporting only (`continue-on-error`), so publishing is never blocked.
+- Pull requests: `npm run a11y -- --quick`. Every screen at 1440 px and 320 px, every level as first opened at 1440 px in both schemes, the sample levels in full at both widths, the live-run sample at 1440 px, the tokens, and the figure subset: every figure at 380 px and 700 px in light (all checks, the whole walk) and at 700 px in dark (colours, with every control at its ends and every option, but without the keyboard walk and the random walk), and every bench view in the 1440 px window in light, at its three sizes, after Run tests and in a live run. A finding that is not in the baseline fails the check. About 8 minutes on 4 cores of a development machine (screens and levels 5, figures 3); a hosted 4-core runner is about three times slower, so about 25 minutes.
+- What the figure subset leaves to the whole sweep: figures at 320 px, with Extra large text, in the Larger view, the motion pass and the focus ring in dark; bench views in dark, with Extra large text and in a 390 px window.
+- Pushes to `main`: the same subset, reporting only (`continue-on-error`), so publishing is never blocked.
+- Once a week (Mondays) and on a manual run (`workflow_dispatch`): the whole sweep, reporting only. It takes about 100 minutes on a hosted runner, which is why it does not run on every push.
+- The figure sweep prints a line every 100 pages and once a minute, naming any page that has been open for more than 45 seconds. A page that has no result after 4 minutes (a bench-view level run after 6) is closed and reported as `suite/not-checked` for that figure, and the sweep goes on; if no page finishes for 15 minutes the sweep itself is reported as `suite/not-checked`.
 - Both keep `findings.json`, `findings.sarif` and `summary.md` as an artifact and upload the SARIF to code scanning under the category `accessibility` (no extra secret; skipped for pull requests from forks, whose token cannot write).
 
 ## Not automated

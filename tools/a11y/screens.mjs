@@ -610,6 +610,9 @@ async function sandboxScreen(s, kit, program) {
     await s.state(where, "stopped, board tab", { axe: "both", spacing: true });
     await showTab(s.page, "Code");
   }
+  // ---- wiring bench (src/ui/wiring, docs/WIRING.md): begin ----
+  if (kit === "redboard" && program === "blink") await wiringBenchStates(s, where, narrow);
+  // ---- wiring bench: end ----
   await runLive(s, where, narrow);
 }
 
@@ -617,6 +620,30 @@ async function sandboxScreen(s, kit, program) {
  * The wiring bench of the homework board with something on it: a fault switched on, a device attached and
  * not yet connected (so its problems are listed), every section open, the picture zoomed in.
  */
+async function wiringBenchStates(s, where, narrow) {
+  const page = s.page;
+  if (narrow) await showTab(page, "Board");
+  const bench = page.locator(".wb");
+  await bench.locator('[data-wb="part"]').selectOption("JBUZ");
+  await bench.locator('[data-option="pos"]').selectOption("off");
+  await bench.locator('[data-wb="add"] > summary').click();
+  await bench.locator('[data-wb="kind"]').selectOption("servo");
+  await s.announce(where, "wiring bench: device added", () => bench.getByRole("button", { name: "Add RC servo" }).click());
+  await bench.locator('[data-terminal="sig"]').selectOption("GPIO52");
+  for (const name of ["table", "pins", "words", "help"]) await bench.locator(`[data-wb="${name}"] > summary`).click();
+  await bench.locator('[data-wb="routes"]').check();
+  await bench.getByRole("button", { name: "Zoom in" }).click();
+  await s.settle();
+  await s.state(where, "wiring bench: fault on, device attached, sections open", FULL);
+  // Leave the bench as it was found: the live run that follows is the plain board's.
+  await bench.getByRole("button", { name: "Reset the bench" }).click();
+  await bench.getByRole("button", { name: "Yes, reset" }).click();
+  await bench.getByRole("button", { name: "Zoom out" }).click();
+  await bench.locator('[data-wb="routes"]').uncheck();
+  for (const name of ["add", "table", "pins", "words", "help"]) await bench.locator(`[data-wb="${name}"] > summary`).click();
+  await s.settle();
+  if (narrow) await showTab(page, "Code");
+}
 
 /** The screens with the scheme pinned by the game's Theme setting against the system's. */
 async function pinnedScreens(s) {
