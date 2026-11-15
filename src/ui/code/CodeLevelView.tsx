@@ -334,12 +334,18 @@ export function CodeLevelView({
     setTesting(null);
     setCancelled(false);
   };
+  const liveNowRef = useRef(live);
+  liveNowRef.current = live;
   useEffect(() => {
-    // A level that was kept while another screen showed comes back with no run in progress.
+    // A level that was kept while another screen showed comes back with no test run in progress.
     setTesting(null);
     return () => {
       testRun.current?.cancel();
       testRun.current = null;
+      // The level is left, or hidden while another screen shows (App.tsx keeps it): a running program is paused.
+      // Nothing steps it while it is hidden, and on the way back it says "Paused at line N" until Resume.
+      const l = liveNowRef.current;
+      if (l?.running) l.paused = true;
     };
   }, []);
   const cancelTests = useStable(() => {

@@ -105,13 +105,17 @@ export function Editor({ value, onChange, marks, handle, kit = "robot" }: { valu
   const view = useRef<EditorView | null>(null);
   const changed = useRef(onChange);
   changed.current = onChange;
+  // A level that is kept while another screen shows has its effects switched off and on again (<Activity>, App.tsx):
+  // the editor is taken down and built again. Its state (the text, the undo history, the cursor) and where it was
+  // scrolled to are kept here in between.
+  const kept = useRef<{ state: EditorState; top: number } | null>(null);
 
   useEffect(() => {
     // The same source objects every time: the editor tells sources apart by identity.
     const sources = [{ autocomplete: courseCompletion(kit) }, { autocomplete: completeAnyWord }];
     const v = new EditorView({
       parent: host.current!,
-      state: EditorState.create({
+      state: kept.current?.state ?? EditorState.create({
         doc: value,
         extensions: [
           basicSetup,
@@ -141,6 +145,12 @@ export function Editor({ value, onChange, marks, handle, kit = "robot" }: { valu
       }),
     });
     view.current = v;
+    let top = kept.current?.top ?? 0;
+    if (top) requestAnimationFrame(() => (v.scrollDOM.scrollTop = top));
+    // While the editor shows; once it is hidden its scroll position reads 0.
+    v.scrollDOM.addEventListener("scroll", () => {
+      if (v.scrollDOM.clientHeight > 0) top = v.scrollDOM.scrollTop;
+    });
     if (handle)
       handle.current = {
         goto(line) {
@@ -153,7 +163,10 @@ export function Editor({ value, onChange, marks, handle, kit = "robot" }: { valu
           v.dispatch({ effects: EditorView.scrollIntoView(l.from, { y: "center" }) });
         },
       };
-    return () => v.destroy();
+    return () => {
+      kept.current = { state: v.state, top };
+      v.destroy();
+    };
     // The editor is created once; later value changes come from the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

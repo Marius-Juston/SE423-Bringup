@@ -166,9 +166,12 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
   };
 
   // After a pass the next step comes into view, and takes the focus unless the student is typing code.
+  // Once per pass: a level that was kept hidden and shows again runs its effects again, and must not take the focus from the heading.
   const passBox = useRef<HTMLDivElement>(null);
+  const passShown = useRef(false);
   useEffect(() => {
-    if (!justPassed) return;
+    if (!justPassed || passShown.current) return;
+    passShown.current = true;
     const box = passBox.current;
     box?.scrollIntoView({ block: "nearest" });
     if (tabbedNow.current || !document.activeElement?.closest(".cm-editor")) box?.querySelector<HTMLElement>("button")?.focus();

@@ -1,4 +1,4 @@
-import { Component, useEffect, useLayoutEffect, useRef, useState, ViewTransition, type ReactNode } from "react";
+import { Activity, Component, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, ViewTransition, type ReactNode } from "react";
 import { CHAPTERS, findLevel } from "../levels/index";
 import { useSave } from "./store";
 import { MapView } from "./MapView";
@@ -79,6 +79,23 @@ function Game() {
   const [warm, setWarm] = useState<{ ids: string[]; i: number; right: number } | null>(null);
   /** The result of the warm-up just finished, shown on the map until another screen is opened. */
   const [warmNote, setWarmNote] = useState("");
+  // The level opened last stays alive while another screen shows, so a trip to the Handbook, Settings or the map
+  // and back finds the editor (with its undo history), the answers and the bench as they were. It is hidden, not
+  // removed: React keeps its state and its page elements and switches its effects off (<Activity>). One level only:
+  // opening another level lets the kept one go. A warm-up question is never kept, and a warm-up on the kept level
+  // itself lets it go, so the level is never open twice.
+  const [kept, setKept] = useState<string | null>(() => (view.name === "level" ? view.id : null));
+  if (view.name === "level" && !warm && kept !== view.id) setKept(view.id);
+  else if (view.name === "level" && warm && kept === view.id) setKept(null);
+  const keptShown = view.name === "level" && !warm && view.id === kept;
+  // A hidden level holds the progress it read when it was opened. When the whole progress is replaced (loaded from
+  // a file or reset in Settings, saved by another window) it is let go, and opens anew from what is saved now.
+  const replacements = useSyncExternalStore(store.subscribe, store.replacements);
+  const [seenReplacements, setSeenReplacements] = useState(replacements);
+  if (replacements !== seenReplacements) {
+    setSeenReplacements(replacements);
+    if (!keptShown) setKept(null);
+  }
   // Every change of screen goes through navigate (route.ts): a short cross-fade where motion is allowed.
   // Going anywhere by hand leaves a warm-up.
   const setView = (v: View) =>
@@ -145,7 +162,8 @@ function Game() {
   const shownOnce = useRef(false);
   useLayoutEffect(() => {
     const main = document.getElementById("main");
-    const h = main?.querySelector<HTMLElement>("h1");
+    // The heading of the screen that shows: a level that is kept hidden has one too.
+    const h = [...(main?.querySelectorAll<HTMLElement>("h1") ?? [])].find((x) => x.getClientRects().length > 0);
     document.title = h && view.name !== "map" ? `${h.textContent} · Bringup` : "Bringup: SE 423 practice";
     if (!shownOnce.current) {
       shownOnce.current = true;
@@ -200,11 +218,24 @@ function Game() {
       <main id="main" tabIndex={-1}>
         <Boundary key={screenKey} onReset={() => setView({ name: "map" })}>
         {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} warmup={startWarmup} note={warmNote} />}
-        {view.name === "level" && findLevel(view.id) && <LevelView key={warm ? `warm-${view.id}` : view.id} id={view.id} go={setView} warmup={warm ? { index: warm.i, total: warm.ids.length, next: warmNext, end: () => setView({ name: "map" }) } : undefined} />}
+        {view.name === "level" && warm && findLevel(view.id) && <LevelView key={`warm-${view.id}`} id={view.id} go={setView} warmup={{ index: warm.i, total: warm.ids.length, next: warmNext, end: () => setView({ name: "map" }) }} />}
         {view.name === "handbook" && <Handbook open={(id) => setView({ name: "level", id })} at={view.reg ? { reg: view.reg } : undefined} />}
         {view.name === "sandbox" && <Sandbox />}
         {view.name === "settings" && <Settings />}
         </Boundary>
+        {/* After the other screens in the page: while it is hidden, the first heading and the first element of a given id are the visible screen's. */}
+        {kept && findLevel(kept) && (
+          <Activity key={`kept-${kept}`} mode={keptShown ? "visible" : "hidden"} name="level">
+            <Boundary
+              onReset={() => {
+                setKept(null);
+                setView({ name: "map" });
+              }}
+            >
+              <LevelView id={kept} go={setView} />
+            </Boundary>
+          </Activity>
+        )}
       </main>
       </ViewTransition>
     </div>
