@@ -119,13 +119,17 @@ export function runProgram(spec: RunSpec): RunResult {
 /**
  * The same run in slices of simulated time, for a caller that must stay
  * responsive (the page): it yields the fraction of the test done after each
- * slice and returns the result at the end. The result is the same whatever
+ * slice (0 while the board is being built) and returns the result at the end. The result is the same whatever
  * the slice (tests/runner_slices.test.ts compares them on every code level).
  */
 export function* runProgramSteps(spec: RunSpec, sliceMs: number): Generator<number, RunResult> {
   const kit = KITS[spec.kit];
   if (!kit) throw new Error(`unknown kit ${spec.kit}`);
-  const b = new Board(spec.kit);
+  // A pause can add a statement or two to the count (a wait is resumed), so a level judged
+  // on its statement count runs in one piece. Those are short computations, not long drives.
+  const counted = [...(spec.checks ?? []), ...(spec.bonus ?? [])].some((c) => c.kind === "max-steps");
+  const sliced = !counted && sliceMs !== Infinity;
+  const b = new Board(spec.kit, sliced);
   const end = spec.durationMs * MS;
   const res: RunResult = {
     ran: false, passed: false, checks: [], bonus: [], diagnostics: [], serial: [], console: "", lcd: ["", ""],
@@ -145,6 +149,14 @@ export function* runProgramSteps(spec: RunSpec, sliceMs: number): Generator<numb
     res.lcd = b.lcd;
     return res;
   };
+
+  // Building the board is work too (the course library is compiled): in a sliced run it pauses
+  // between its pieces, before any simulated time has passed.
+  if (sliced)
+    for (const _ of b.build()) {
+      void _;
+      yield 0;
+    }
 
   try {
     b.load(spec.source);
@@ -192,10 +204,7 @@ export function* runProgramSteps(spec: RunSpec, sliceMs: number): Generator<numb
 
   const gen = b.run();
   try {
-    // A pause can add a statement or two to the count (a wait is resumed), so a level judged
-    // on its statement count runs in one piece. Those are short computations, not long drives.
-    const counted = [...(spec.checks ?? []), ...(spec.bonus ?? [])].some((c) => c.kind === "max-steps");
-    const slice = counted ? Infinity : Math.max(1, sliceMs) * MS;
+    const slice = sliced ? Math.max(1, sliceMs) * MS : Infinity;
     b.sliced = true;
     for (let t = Math.min(end, slice); ; t = Math.min(end, t + slice)) {
       b.runUntil(gen, t);

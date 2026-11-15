@@ -16,7 +16,8 @@ Guidance for agents (and people) working in this repository. Read it before chan
 npm ci                      # install (Node 24; the lockfile is made with the newest npm)
 npm run dev                 # the game in a browser with live reload
 npx tsc --noEmit            # type check
-npx vitest run              # simulator, level and logic tests (about 2,000; under a minute)
+npx vitest run              # simulator, level and logic tests (about 2,900; a minute or two)
+npm run bench               # times the simulator on two heavy levels (not part of the tests)
 npm run check-levels        # only tests/levels.test.ts: every level's content rules
 npm run e2e                 # builds, then solves every level through the real UI in headless Chromium (minutes)
 npm run a11y                # accessibility suite: every screen, level and figure, compared with a11y-baseline.json (about 15 minutes)
@@ -82,7 +83,8 @@ Adding a level, a figure, a bench view, a glossary file, a simulator plugin or a
 **Interface and visuals (`docs/VISUALS.md`)**
 - Colours only through the CSS tokens in `src/ui/styles.css`, so both themes work. Everything is keyboard operable with visible focus and real labels; nothing moves unless the student started it; `prefers-reduced-motion` is respected.
 - A figure teaches one idea: picture, a sentence that reacts to the state, controls, caption. It must be correct at the extremes of every control and legible at 380 px wide. Register a `title` and `description`.
-- Bench views re-render every animation frame: no heavy work, no timers of their own.
+- Bench views re-render about 20 times a second while a program runs: no heavy work, no timers of their own.
+- The map loads without the rest of the game. Screens, the code level and figures are loaded on demand: import them through `src/ui/screens.tsx` (figures through `src/ui/figures/index.tsx`), never directly from the map or `App.tsx`, or they return to the first script. A figure's `id`, `title` and `description` must be plain string literals (they are read at build time).
 - Look at what you build: take screenshots in light and dark and at a narrow width, and read them.
 - Accessibility is checked, not assumed (`docs/ACCESSIBILITY.md`): WCAG 2.2 AA everywhere, and 7:1 contrast and 44 px touch targets where they can be reached. A state is never shown by colour alone: add a word, an icon or a shape. What appears after an action is in a live region or takes the focus. A box that scrolls can be reached with the keyboard and has a name (`src/ui/ScrollBox.tsx`). Words use `--text`, `--dim`, `--value`, `--info`, `--ok`, `--bad` or `--accent-text`; `--accent` is for fills and edges.
 
@@ -107,4 +109,4 @@ Adding a level, a figure, a bench view, a glossary file, a simulator plugin or a
 
 ## Skills
 
-Task recipes live in `.claude/skills/`: `add-level`, `add-figure`, `add-sim-plugin`, `beginner-review`, `verify`, `release`.
+Task recipes live in `.claude/skills/`: `add-level`, `add-figure`, `add-sim-plugin`, `add-wiring-part`, `beginner-review`, `fix-a11y-finding`, `perf-check`, `verify`, `release`.

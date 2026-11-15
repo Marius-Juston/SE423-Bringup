@@ -13,7 +13,8 @@
     "gen-registers": "node tools/gen-registers.mjs",
     "tauri": "tauri",
     "e2e": "vite build && vitest run --config vitest.e2e.config.ts",
-    "a11y": "node tools/a11y/run.mjs"
+    "a11y": "node tools/a11y/run.mjs",
+    "bench": "vitest bench --run --reporter=verbose"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
@@ -40,6 +41,6 @@
     "playwright-core": "^1.65.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }

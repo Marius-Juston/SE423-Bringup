@@ -109,8 +109,15 @@ if (typeof window !== "undefined")
   window.addEventListener("storage", (e) => {
     if (e.key !== KEY && e.key !== null) return;
     state = load();
+    replaced++;
     listeners.forEach((l) => l());
   });
+
+/**
+ * Counts the times the whole progress was replaced: loaded from a file, reset, or saved by another
+ * window. A screen that is kept while it is hidden holds what it read before, and must be dropped then.
+ */
+let replaced = 0;
 
 /** Work that must be saved before the window goes away (code typed a moment ago). */
 const pending = new Set<() => void>();
@@ -223,12 +230,16 @@ export const store = {
         /* no storage at all: play without saving, as always */
       }
     }
+    replaced++;
     commit(s);
     return "ok";
   },
   reset() {
+    replaced++;
     commit(empty());
   },
+  /** How many times the whole progress was replaced (see `replaced`). */
+  replacements: () => replaced,
 };
 
 export function useSave(): Save {

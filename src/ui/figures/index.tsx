@@ -2,7 +2,14 @@
 // Every file in this folder is one figure: it is named <id>.tsx and exports
 //   export const figure = { id: "<id>", title, description, Component };
 // so adding a figure never edits a shared file.
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
+//
+// A figure's code is fetched when it is first shown. What the game must know
+// before that (which ids exist, and the titles and descriptions the Handbook
+// lists) is read from the figure files when the game is built
+// (tools/figure-meta.ts).
+import { Suspense, use, useEffect, useLayoutEffect, useRef, useState, type ComponentType } from "react";
+import META from "virtual:figure-meta";
+import { onceEach } from "../parts";
 
 export interface FigureDef {
   id: string;
@@ -13,16 +20,26 @@ export interface FigureDef {
   Component: ComponentType;
 }
 
-const modules = import.meta.glob<{ figure?: FigureDef }>("./*.tsx", { eager: true });
-const TABLE = new Map<string, FigureDef>();
-for (const m of Object.values(modules)) if (m.figure) TABLE.set(m.figure.id, m.figure);
+const LOADERS = import.meta.glob<{ figure?: FigureDef }>(["./*.tsx", "!./index.tsx"]);
+const LISTED = new Map(META.map((m) => [m.id, m]));
 
-export const FIGURE_IDS = [...TABLE.keys()].sort();
+export const FIGURE_IDS = [...LISTED.keys()].sort();
 
 /** Title and description of a figure, for lists such as the Handbook's. */
 export function figureMeta(id: string): { title?: string; description?: string } {
-  const f = TABLE.get(id);
+  const f = LISTED.get(id);
   return { title: f?.title, description: f?.description };
+}
+
+/** Fetches a figure's code (once). A screen that knows which figures it will show asks before it is drawn, so they are there with it. */
+export const loadFigure = onceEach(async (id: string): Promise<FigureDef | undefined> => {
+  const load = LISTED.has(id) ? LOADERS[`./${id}.tsx`] : undefined;
+  return load ? (await load()).figure : undefined;
+});
+
+/** The ids of the figures a text embeds ({{figure:<id>}}), each once. */
+export function figureIdsIn(text: string): string[] {
+  return [...new Set([...text.matchAll(/\{\{figure:([a-z0-9-]+)\}\}/g)].map((m) => m[1]))];
 }
 
 /** Smallest size, in screen pixels, a label inside a figure's drawing may have. */
@@ -49,6 +66,11 @@ const FIT_CSS = `
 .fig-zoom:hover, .fig-zoom:focus-visible { opacity: 1; }
 .fig-fit > .figure { padding-top: 2.1rem; }
 .fig-fit.fig-big { max-width: none; position: fixed; z-index: 61; top: 1rem; bottom: 1rem; left: 50%; transform: translateX(-50%); width: min(68rem, calc(100vw - 2rem)); overflow: auto; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.6rem; /* the dimmed surround is the box's own shadow, so it is drawn wherever the box is */ box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.55); }
+/* The larger view arrives with a short fade (the Larger button was pressed). It is the same element in another place, so this is an animation, not a transition from a starting style. */
+@media (prefers-reduced-motion: no-preference) {
+  .fig-fit.fig-big { animation: fig-big-in var(--dur-2, 200ms) ease-out; }
+  @keyframes fig-big-in { from { opacity: 0; transform: translate(-50%, 0.4rem); } }
+}
 /* On a narrow screen the larger figure is wider than the window and scrolls sideways inside its own box. */
 .fig-fit.fig-big > .figure { margin: 0; font-size: 1.15rem; min-width: min(46rem, 190vw); }
 .hb-card-preview .fig-zoom { display: none; }
@@ -137,7 +159,22 @@ function enhance(root: HTMLElement) {
 /** While a slider moves, the sentence that reacts changes with every step: it is announced once, when the slider rests. */
 const SETTLE_MS = 450;
 
+/**
+ * A figure, by its id. Its code is usually there already (the level asked for it before it opened); when it
+ * is not, a line of text holds its place until it is, and only the figure waits, not the screen around it.
+ */
 export function Figure({ id }: { id: string }) {
+  if (!LISTED.has(id)) return <p className="fig-missing">[missing figure: {id}]</p>;
+  return (
+    <Suspense fallback={<p className="hint-text fig-loading" role="status">Loading the figure.</p>}>
+      <LoadedFigure id={id} />
+    </Suspense>
+  );
+}
+
+function LoadedFigure({ id }: { id: string }) {
+  // Always through use(): it returns at once when the figure is there (parts.ts).
+  const def = use(loadFigure(id));
   const box = useRef<HTMLDivElement>(null);
   // The larger view: the same figure, in the state it is in, across the window. Escape or the button closes it.
   const [big, setBig] = useState(false);
@@ -226,9 +263,9 @@ export function Figure({ id }: { id: string }) {
       window.clearTimeout(rest);
     };
   }, [id]);
-  const C = TABLE.get(id)?.Component;
+  const C = def?.Component;
   if (!C) return <p className="fig-missing">[missing figure: {id}]</p>;
-  const title = TABLE.get(id)?.title ?? "figure";
+  const title = def.title ?? "figure";
   return (
     <>
       <div className={`fig-fit ${big ? "fig-big" : ""}`} ref={box} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? `${title}, larger view` : undefined}>

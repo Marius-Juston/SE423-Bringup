@@ -19,6 +19,16 @@ export const figure = {
 };
 ```
 
+A figure's code is fetched when a level or the Handbook first shows it.
+The game still knows every figure's `id`, `title` and `description` from
+the start: they are read from the source of the file when the game is
+built (`tools/figure-meta.ts`), not by running it. So write the three as
+plain strings in double quotes, in an `export const figure = { ... }` that
+ends with `};` on a line of its own, as above; anything else stops the
+build with the file's name. `tests/figure_meta.test.ts` compares what was
+read with the loaded figures. A level asks for the figures its text embeds
+before it opens (`src/ui/screens.tsx`), so they are there with it.
+
 `title` and `description` are what the Handbook shows on the figure's card.
 The title is what a student would call the figure ("RC charging curve",
 "Ohm's law"), not the file name. The description is one plain sentence:
@@ -134,9 +144,18 @@ file, `src/ui/views/<id>.tsx`, exporting `view: BenchView`
 - Output histories (`board.outputs`) record only changes of value: publishing
   the same value again adds no entry, so count events from a counter output
   or a plugin's own log, never from the number of history entries.
-- It is re-rendered every animation frame while a program runs: draw from
-  current state, keep no timers of your own, and keep it light (SVG with at
-  most a few hundred elements, or a `<canvas>`).
+- It is re-rendered about 20 times a second while a program runs (the
+  bench frame, `src/ui/code/frame.ts`): draw from current state, keep no
+  timers of your own, and keep it light (SVG with at most a few hundred
+  elements, or a `<canvas>`). A view that shows motion subscribes to the
+  motion frame too (`useFrame()`, about 30 times a second).
+- The board of a running program is one object that changes in place.
+  Never skip drawing because "the board is the same" (no `memo` on it, no
+  `useMemo` keyed by it): what must follow the program subscribes to a
+  frame. Nothing above the panels redraws on a frame.
+- A list that follows the program (a log) keeps its rows by their place,
+  not by the entry they show, when entries arrive faster than frames:
+  otherwise every row is built and discarded on every frame.
 - Read-only: a view never changes the simulation. The one exception is the
   robot arena's playground (below), which acts on the running program
   through `LiveSession` and never on a test run.
@@ -184,7 +203,7 @@ does not drive. There is no other top view: do not add one.
   `tests/robot_arena.test.ts`. The playground's fields are in
   `robot-arena-play.tsx`.
 - Beyond `ViewProps` it reads `ArenaContext` (`robot-arena-context.ts`),
-  which `CodeLevelView` provides: the level's stimuli, checks and watch
+  which the bench provides (`BenchPanels.tsx`): the level's stimuli, checks and watch
   list, the test results and the live session.
 - On levels whose stimuli switch `ROBOT_WORLD` on, or whose program calls
   `tb_report_pose`, the arena is the first panel after the tests, opens at
@@ -216,6 +235,24 @@ does not drive. There is no other top view: do not add one.
   `resetWorld`), so encoders, LIDAR and collisions stay consistent.
   "Reset world" returns to the level's set-up. A test run builds a new
   board from the level's stimuli alone, so nothing done here can reach it.
+
+## Motion
+
+Nothing moves unless the student started it, and `prefers-reduced-motion`
+stops all of it. What may arrive with a short fade: the "level passed"
+box, the rows of a test result, a hint, a panel opened by hand, a figure's
+larger view, and the change from one screen to another (a cross-fade of
+`<main>`, React's `<ViewTransition>` in `App.tsx`, started by `navigate()`
+in `route.ts`). The rules are at "motion" in `src/ui/styles.css`:
+
+- only `opacity` and `transform`, with the tokens `--dur-1` (120 ms) and
+  `--dur-2` (200 ms);
+- every rule inside `@media (prefers-reduced-motion: no-preference)`;
+- only on an element that carries a class the code sets when the student
+  acted (`fresh`, `opened`, `ran`), so nothing that appears by itself or
+  was there when the screen opened is animated;
+- never inside a bench view or a figure's drawing, and never on a slider,
+  a knob or anything else that follows the hand.
 
 ## Checking your work
 

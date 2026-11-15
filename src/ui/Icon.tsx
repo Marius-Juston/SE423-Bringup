@@ -1,5 +1,7 @@
 // A small set of line icons drawn on a 24 x 24 grid. Status is always
 // carried by the icon's shape and a text label, never by colour alone.
+import { memo } from "react";
+
 const PATHS: Record<string, string> = {
   play: "M7 4.5v15l12-7.5z",
   stop: "M6 6h12v12H6z",
@@ -27,13 +29,16 @@ const PATHS: Record<string, string> = {
   flask: "M9 3.5h6M10 3.5v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9.5v-6M7.5 15h9",
   test: "M9 4.5h6v3H9zM7 6H5.5v14h13V6H17M8.5 13l2.5 2.5 4.5-5",
   dot: "M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z",
+  // A star not yet earned: the same shape as "star", drawn as an outline, so earned and open differ by more than colour.
+  "star-open": "M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8L3.5 9.7l5.9-.8z",
 };
 
 const FILLED = new Set(["play", "stop", "pause", "star", "skip", "dot"]);
 
 export type IconName = keyof typeof PATHS;
 
-export function Icon({ name, size = 16, label }: { name: string; size?: number; label?: string }) {
+/** Drawn again only when its name, size or label changes: a toolbar or a panel that redraws does not redraw its icons. */
+export const Icon = memo(function Icon({ name, size = 16, label }: { name: string; size?: number; label?: string }) {
   const filled = FILLED.has(name);
   return (
     <svg
@@ -53,7 +58,7 @@ export function Icon({ name, size = 16, label }: { name: string; size?: number; 
       <path d={PATHS[name] ?? PATHS.dot} />
     </svg>
   );
-}
+});
 
 /** Progress as a ring: `value` of `max`. */
 export function Ring({ value, max, size = 36 }: { value: number; max: number; size?: number }) {

@@ -208,7 +208,7 @@ export class Session {
   layoutFindings(where, pageState, res, family) {
     const rules = family
       ? { pageScroll: ["text-spacing/page-scrolls", "error"], offScreen: ["text-spacing/off-screen", "error"], spills: ["text-spacing/spills", "error"], clipped: ["text-spacing/clipped", "error"], truncated: ["text-spacing/truncated", "warning"], overlaps: ["text-spacing/overlap", "error"] }
-      : { pageScroll: ["reflow/page-scrolls", "error"], offScreen: ["reflow/text-off-screen", "error"], spills: ["reflow/text-spills", "error"], clipped: ["layout/text-clipped", "error"], truncated: ["layout/text-truncated", "warning"], overlaps: ["layout/text-overlap", "error"], scrollers: ["reflow/scroll-box", "error"] };
+      : { pageScroll: ["reflow/page-scrolls", "error"], offScreen: ["reflow/text-off-screen", "error"], spills: ["reflow/text-spills", "error"], clipped: ["layout/text-clipped", "error"], truncated: ["layout/text-truncated", "warning"], overlaps: ["layout/text-overlap", "error"], scrollers: ["reflow/scroll-box", "error"], offCentre: ["layout/off-centre", "error"] };
     const words = {
       pageScroll: "the page scrolls sideways",
       offScreen: "text outside the window that nothing scrolls to",
@@ -217,6 +217,7 @@ export class Session {
       truncated: "text is shortened with an ellipsis or a line clamp",
       overlaps: "text is drawn over other text",
       scrollers: "a box that scrolls sideways",
+      offCentre: "things that belong on one centre line are not",
     };
     for (const [kind, byRegion] of Object.entries(res)) {
       if (!rules[kind]) continue;
