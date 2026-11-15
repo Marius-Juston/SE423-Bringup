@@ -563,6 +563,8 @@ async function mapScreen(s, chapters) {
       const last = (await next.innerText()).startsWith("Finish");
       await next.click();
       if (last) break;
+      // The next question arrives with a cross-fade: wait until it is the one in the address, not the one just answered.
+      await page.waitForFunction((old) => decodeURIComponent(location.hash.split("/")[2] ?? "") !== old, lid, { timeout: 15000 }).catch(() => {});
       await s.settle();
     }
     if (await page.locator(".warm-note").count()) await s.state("map", "after the warm-up", { axe: "both", keyboard: ["light"] });
