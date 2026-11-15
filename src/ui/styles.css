@@ -66,6 +66,9 @@
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
   --sans: "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", system-ui, sans-serif;
   --radius: 6px;
+  /* Motion: two durations. Short for something that appears in place, longer for a change of screen. */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
   /* Type: two weights (400 / 680) and five sizes. */
   --fs-1: 0.75rem;
   --fs-2: 0.86rem;
@@ -207,7 +210,40 @@ summary { cursor: pointer; }
 .verdict.bad { color: var(--bad); }
 .part-failed { border: 1px dashed var(--bad); border-radius: var(--radius); padding: 0.5rem 0.7rem; color: var(--dim); font-size: 0.9rem; }
 kbd { font-family: var(--mono); font-size: 0.72rem; border: 1px solid var(--control); border-bottom-width: 2px; border-radius: 4px; padding: 0 0.35em; background: var(--inset); color: var(--dim); white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  ::view-transition-group(*), ::view-transition-image-pair(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
+/* ---- motion ----
+ * Something the student asked for may arrive with a short fade: the "level passed" box, the rows of a
+ * test result, a hint, a panel that is opened, and the change from one screen to another. Rules:
+ * only opacity and transform; only inside this block, so reduced motion has nothing to undo; only on
+ * an element that carries a class the code sets when the student acted (never on something that
+ * appears by itself, and never inside a bench view or a figure's drawing). A slider, a knob and
+ * anything else moved by hand follow the hand at once.
+ * @starting-style gives the values an element starts from when it is first drawn; a browser
+ * without it shows the element at once.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .takeaway.fresh, .hint.fresh { transition: opacity var(--dur-2) ease-out, transform var(--dur-2) ease-out; }
+  @starting-style {
+    .takeaway.fresh, .hint.fresh { opacity: 0; transform: translateY(0.4rem); }
+  }
+  .panel-body.opened { transition: opacity var(--dur-1) ease-out; }
+  @starting-style {
+    .panel-body.opened { opacity: 0; }
+  }
+  /* The rows of a test result, one after the other: 25 ms apart, the last starting at 100 ms, so all are in place after 300 ms. */
+  .checks.ran > li { transition: opacity var(--dur-2) ease-out, transform var(--dur-2) ease-out; transition-delay: min(calc(var(--i, 0) * 25ms), 100ms); }
+  @starting-style {
+    .checks.ran > li { opacity: 0; transform: translateY(0.3rem); }
+  }
+  /* One screen to another (ViewTransition in App.tsx): a cross-fade. */
+  ::view-transition-group(.screen), ::view-transition-old(.screen), ::view-transition-new(.screen) { animation-duration: var(--dur-2); animation-timing-function: ease-out; }
+  /* What is outside <main> (the top bar) changes in the same time. */
+  ::view-transition-group(root), ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-2); }
+}
 
 /* ---- controls ---- */
 button { font: inherit; color: inherit; cursor: pointer; }
@@ -343,7 +379,8 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .tier-group.expert h3 { color: var(--accent-text); }
 .tier-note { font-size: var(--fs-1); color: var(--dim); margin: 0.1rem 0 0.3rem; }
 .level-list { list-style: none; padding: 0; margin: 0; position: relative; }
-.level-list::before { content: ""; position: absolute; left: 0.86rem; top: 0.9rem; bottom: 0.9rem; width: 2px; background: var(--faint); }
+/* The line runs through the centres of the nodes: a node is 1.35rem wide after a 0.2rem margin, the line 2px. */
+.level-list::before { content: ""; position: absolute; left: calc(0.2rem + 1.35rem / 2 - 1px); top: 0.9rem; bottom: 0.9rem; width: 2px; background: var(--faint); }
 .level-row { position: relative; display: grid; grid-template-columns: 1.75rem minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; width: 100%; text-align: left; background: none; border: none; padding: 0.28rem 0.3rem 0.28rem 0; border-radius: var(--radius); color: var(--text); font-size: var(--fs-2); min-height: 2rem; }
 .level-row:hover { background: var(--surface); }
 .level-row .node { width: 1.35rem; height: 1.35rem; margin-left: 0.2rem; display: grid; place-items: center; border-radius: 50%; background: var(--bg-2); border: 2px solid var(--control); color: var(--dim); z-index: 1; }
@@ -357,8 +394,11 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .level-row.tier-expert .node .icon { transform: rotate(-45deg); }
 .level-row.tier-practice .node { border-radius: 5px; }
 .level-row .kind { color: var(--dim); font-size: var(--fs-1); white-space: nowrap; }
-.stars { display: inline-flex; gap: 1px; margin-left: 0.4rem; color: var(--value); vertical-align: -0.1em; }
-.stars .empty { color: var(--control); }
+/* Stars sit on the line of the title: centred on its text, not hung below it. An open star is an outline. */
+.stars { display: inline-flex; align-items: center; gap: 1px; margin-left: 0.4rem; color: var(--value); vertical-align: middle; line-height: 1; position: relative; top: -0.06em; }
+.stars > span { display: inline-flex; }
+.level-row .keep { white-space: nowrap; }
+.stars .empty { color: var(--dim); }
 
 /* ---- level ---- */
 .level { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
@@ -459,6 +499,11 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .result.ok .icon { color: var(--ok); }
 .result.bad { border-color: var(--bad); background: var(--bad-soft); }
 .result.bad .icon { color: var(--bad); }
+/* A test run in progress: the bar moves only when its value does (no transition). */
+.test-run { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4rem 0.6rem; align-items: center; margin: 0 0 0.6rem; }
+.test-run p { grid-column: 1 / -1; }
+.test-progress { height: 0.7rem; border: 1px solid var(--control); border-radius: 999px; overflow: hidden; background: var(--surface); }
+.test-progress i { display: block; height: 100%; background: var(--accent); transform-origin: left center; }
 
 /* ---- quiz ---- */
 .question { border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.8rem 1rem; margin: 0 0 1rem; background: var(--surface); min-width: 0; }
@@ -601,7 +646,8 @@ tr.target td:first-child { color: var(--bad); }
 .bench { container-type: inline-size; padding: 0.7rem; }
 .bench-panels { columns: 23rem; column-gap: 0.7rem; }
 .panel { background: var(--bg-2); border: 1px solid var(--border-strong); border-radius: var(--radius); min-width: 0; break-inside: avoid; margin-bottom: 0.7rem; }
-.panel > h3 button { display: flex; align-items: baseline; gap: 0.45rem; width: 100%; text-align: left; background: none; border: none; padding: 0.5rem 0.7rem; color: var(--dim); border-radius: var(--radius); }
+/* The title and its note share a baseline; the row itself sits in the middle of the button, also where a touch screen makes the button taller. */
+.panel > h3 button { display: flex; flex-wrap: wrap; align-content: center; align-items: baseline; gap: 0 0.45rem; width: 100%; text-align: left; background: none; border: none; padding: 0.5rem 0.7rem; color: var(--dim); border-radius: var(--radius); }
 .panel > h3 button:hover { color: var(--text); }
 .panel > h3 .icon { align-self: center; }
 .panel-title { font-size: var(--fs-1); font-weight: 680; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text); }
@@ -673,7 +719,7 @@ tr.target td:first-child { color: var(--bad); }
 .checks .pass { color: var(--ok); }
 .checks .fail { color: var(--bad); }
 .checks .todo { color: var(--dim); }
-.checks .star { color: var(--control); }
+.checks .star { color: var(--dim); }
 .checks .star.on { color: var(--value); }
 .checks .detail { color: var(--dim); font-size: 0.88rem; grid-column: 2; overflow-wrap: anywhere; }
 .checks .best { grid-column: 2; font-size: 0.88rem; color: var(--dim); display: flex; flex-wrap: wrap; gap: 0.2rem 0.5rem; align-items: baseline; }

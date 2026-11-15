@@ -39,16 +39,24 @@ function LevelRow({ l, save, open, current }: { l: Level; save: Save; open: (id:
           <Icon name={passed ? "check" : tier === "expert" ? "diamond" : "dot"} size={14} />
         </span>
         <span className="name">
-          {l.title}
+          {/* The stars stay on the line of the title's last word: they never wrap onto a line of their own. */}
+          {total > 0 ? (
+            <>
+              {l.title.slice(0, l.title.lastIndexOf(" ") + 1)}
+              <span className="keep">
+                {l.title.slice(l.title.lastIndexOf(" ") + 1)}
+                <span className="stars" role="img" aria-label={`${got} of ${total} stars`}>
+                  {Array.from({ length: total }, (_, i) => (
+                    <span key={i} className={i < got ? "" : "empty"}><Icon name={i < got ? "star" : "star-open"} size={14} /></span>
+                  ))}
+                </span>
+              </span>
+            </>
+          ) : (
+            l.title
+          )}
           <span className="sr-only">{helped ? ", passed with help" : passed ? ", passed" : current ? ", next up" : ""}</span>
           {helped && <span className="with-help" aria-hidden="true">passed with help</span>}
-          {total > 0 && (
-            <span className="stars" role="img" aria-label={`${got} of ${total} stars`}>
-              {Array.from({ length: total }, (_, i) => (
-                <span key={i} className={i < got ? "" : "empty"}><Icon name="star" size={11} /></span>
-              ))}
-            </span>
-          )}
         </span>
         <span className="kind">{KIND_LABEL[kindOf(l)]}</span>
       </button>

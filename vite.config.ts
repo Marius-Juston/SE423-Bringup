@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { figureMeta } from "./tools/figure-meta.ts";
 
 // Writes sw.js: a service worker that stores every built file on the first
 // visit, so the web version works offline and can be installed from the
@@ -38,12 +39,31 @@ self.addEventListener("fetch", (e) => {
   };
 }
 
+// Asks for the body font at once. Without this the browser learns that it needs the font only when
+// the first screen is laid out, after the script has run: the first text is then drawn in a fallback
+// font and changes a moment later. The file name carries a hash, so it is looked up in the bundle.
+function preloadBodyFont(): Plugin {
+  return {
+    name: "bringup-preload-font",
+    apply: "build",
+    transformIndexHtml: {
+      order: "post",
+      handler(_html, ctx) {
+        const file = Object.keys(ctx.bundle ?? {}).find((f) => /atkinson-hyperlegible-next-latin-wght-normal-[\w-]+\.woff2$/.test(f));
+        // A font is always fetched without credentials: the preload must say the same, or the file is fetched twice.
+        return file ? [{ tag: "link", attrs: { rel: "preload", as: "font", type: "font/woff2", href: `./${file}`, crossorigin: "" }, injectTo: "head" }] : [];
+      },
+    },
+  };
+}
+
 // Relative base so the build works from the Tauri asset protocol and from
 // a sub-folder on GitHub Pages alike.
 export default defineConfig({
   base: "./",
-  plugins: [react(), offline()],
+  plugins: [react(), figureMeta(), preloadBodyFont(), offline()],
   clearScreen: false,
   server: { port: 5183, strictPort: true },
-  build: { target: "es2022", chunkSizeWarningLimit: 1500 },
+  // license: the licences of every bundled package, written next to the game (licenses.md).
+  build: { target: "es2022", chunkSizeWarningLimit: 2600, license: { fileName: "licenses.md" } },
 });

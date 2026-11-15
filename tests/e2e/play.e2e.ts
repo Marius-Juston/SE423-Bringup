@@ -302,7 +302,11 @@ describe("playthrough", () => {
 
   // Opens a level from the map with this progress stored.
   async function openWith(save: Record<string, unknown>, chapter?: string, level?: string): Promise<void> {
-    if (!(await page.locator(".map-cols").count())) await page.locator(".brand").click();
+    // A change of screen is a transition: the map is there a moment after the press, not with it.
+    if (!(await page.locator(".map-cols").count())) {
+      await page.locator(".brand").click();
+      await page.waitForSelector(".map-cols");
+    }
     await page.evaluate((text) => localStorage.setItem("bringup-save-v1", text), JSON.stringify({ version: 1, passed: {}, hints: {}, code: {}, unlockAll: true, ...save }));
     await page.reload();
     await page.waitForSelector(".map-cols");
@@ -327,7 +331,8 @@ describe("playthrough", () => {
     expect(await page.locator(".warmup h2").innerText()).toContain("3 quick questions");
     await page.getByRole("button", { name: "Start the warm-up" }).click();
     for (const [i, { l }] of calcs.entries()) {
-      await page.waitForSelector(".level-head.warm");
+      // The next question replaces this one a moment after the press (a transition): wait for its own heading.
+      await page.locator(".level-head.warm .eyebrow", { hasText: new RegExp(`warm-up ${i + 1} of 3`, "i") }).waitFor();
       expect(await page.locator(".level-head .eyebrow").innerText()).toMatch(new RegExp(`warm-up ${i + 1} of 3`, "i"));
       expect(await page.locator(".level-head h1").innerText()).toContain(l.title);
       // A passed level shows no answers and no "passed" box until it is answered again.
@@ -544,6 +549,65 @@ describe("playthrough", () => {
     await page.fill("#hb-search", "");
     await page.locator(".topnav").getByRole("button", { name: "Map" }).click();
     await page.waitForSelector(".map-cols");
+    expect(errors).toEqual([]);
+  });
+
+  const byId = (id: string) => CHAPTERS.flatMap((c) => c.levels.map((l) => ({ c, l }))).find((x) => x.l.id === id);
+  const editorText = () => page.locator(".cm-content").innerText();
+
+  it("shows how far a long test run is, cancels it, and runs it again to the end", async () => {
+    errors.length = 0;
+    const long = byId("cap-x-trap");
+    if (!long || long.l.kind !== "code") throw new Error("no cap-x-trap level");
+    await openWith({}, long.c.id, long.l.id);
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("Control+A");
+    await page.keyboard.insertText(long.l.solution);
+    await page.getByRole("button", { name: /^Run tests/ }).click();
+    // The page answers while the tests run: the bar moves, and Cancel is pressed.
+    const bar = page.getByRole("progressbar", { name: "Test run" });
+    await bar.waitFor();
+    await expect.poll(async () => Number(await bar.getAttribute("aria-valuenow"))).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect.poll(() => page.locator(".toolbar .chip").innerText()).toContain("Test run cancelled");
+    expect(await bar.count()).toBe(0);
+    expect(await page.locator(".bench .result").count()).toBe(0);
+    // Cancel went away: the focus is back on the button that started the run.
+    expect(await page.evaluate(() => document.activeElement?.textContent)).toContain("Run tests");
+    await page.getByRole("button", { name: /^Run tests/ }).click();
+    await page.waitForSelector(".bench .result.ok", { timeout: 60_000 });
+    expect(errors).toEqual([]);
+  });
+
+  it("keeps a level as it was left during a visit to the Handbook: the code, its undo history and a paused program", async () => {
+    errors.length = 0;
+    const blink = byId("out-blink");
+    if (!blink || blink.l.kind !== "code") throw new Error("no out-blink level");
+    await openWith({}, blink.c.id, blink.l.id);
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.insertText("// kept");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    await expect.poll(() => page.locator(".toolbar .chip").innerText()).toContain("Running");
+    await page.locator(".topnav").getByRole("button", { name: "Handbook" }).click();
+    await page.waitForSelector(".hb-content");
+    // The level is still in the page, hidden, and nothing steps its program.
+    expect(await page.locator(".level-head").count()).toBe(1);
+    expect(await page.locator(".level-head").isVisible()).toBe(false);
+    await page.goBack();
+    await page.locator(".level-head").waitFor();
+    expect(await page.evaluate(() => location.hash)).toBe(`#/level/${blink.l.id}`);
+    await expect.poll(() => page.locator(".toolbar .chip").innerText()).toContain("Paused at line");
+    expect(await editorText()).toContain("// kept");
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+    // The undo history came back with the editor.
+    await page.locator(".cm-content").click();
+    await page.keyboard.press("Control+z");
+    await expect.poll(editorText).not.toContain("// kept");
+    // Another level lets this one go: one level only is kept.
+    await page.getByRole("button", { name: "Next level" }).click();
+    await expect.poll(() => page.locator(".level-head h1").innerText()).not.toContain(blink.l.title);
+    expect(await page.locator(".level-head").count()).toBe(1);
     expect(errors).toEqual([]);
   });
 });

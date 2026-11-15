@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { CHAPTERS } from "../src/levels";
 import { runProgram, runProgramSteps, type RunResult, type RunSpec } from "../src/sim/runner";
+import { startTestRun, TEST_SLICE_MS } from "../src/ui/code/testrun";
 
 const outcome = (r: RunResult) => ({
   ran: r.ran, passed: r.passed, checks: r.checks, bonus: r.bonus, diagnostics: r.diagnostics, serial: r.serial,
@@ -18,13 +19,14 @@ describe("a test run in slices", () => {
       it(`${l.id}: same result as the single run`, () => {
         for (const source of [l.solution, l.starter]) {
           const spec: RunSpec = { kit: l.kit, source, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks, bonus: l.bonus };
-          const steps = runProgramSteps(spec, 20);
+          const steps = runProgramSteps(spec, TEST_SLICE_MS);
           let step = steps.next();
           let last = 0;
           const counted = [...(l.checks ?? []), ...(l.bonus ?? [])].some((c) => c.kind === "max-steps");
           while (!step.done) {
             expect(counted).toBe(false); // a level judged on its statement count runs in one piece
-            expect(step.value).toBeGreaterThan(last);
+            // 0 while the board is built, then rising.
+            if (step.value > 0 || last > 0) expect(step.value).toBeGreaterThan(last);
             expect(step.value).toBeLessThan(1);
             last = step.value;
             step = steps.next();
@@ -59,5 +61,44 @@ describe("a live run", () => {
     b.gpio.drive(4, 1, b.now);
     b.runUntil(gen, 2_000_000);
     expect(b.readVar("seen")).toBe(1);
+  });
+});
+
+describe("a test run in turns (the page's driver)", () => {
+  const level = CHAPTERS.flatMap((c) => c.levels).find((l) => l.id === "bus-can-range");
+  if (!level || level.kind !== "code") throw new Error("bus-can-range is not a code level");
+  const spec: RunSpec = { kit: level.kit, source: level.solution, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus };
+
+  it("gives the browser a turn, reports progress and ends with the result of the single run", async () => {
+    // A clock that advances 5 ms at every reading: each turn holds a few slices, whatever the machine.
+    let clock = 0;
+    let turns = 0;
+    const seen: number[] = [];
+    const run = startTestRun(spec, async () => void turns++, () => (clock += 5));
+    run.subscribe(() => seen.push(run.fraction()));
+    const r = await run.done;
+    expect(r).not.toBeNull();
+    expect(outcome(r!)).toEqual(outcome(runProgram(spec)));
+    expect(turns).toBeGreaterThan(10);
+    expect(seen.length).toBeGreaterThan(3);
+    expect([...seen].sort((a, b) => a - b)).toEqual(seen);
+    expect(seen.at(-1)).toBeLessThan(1);
+  });
+
+  it("stops at the next turn when it is cancelled, and when it is cancelled before it starts", async () => {
+    let turns = 0;
+    let clock = 0;
+    const run = startTestRun(
+      spec,
+      async () => {
+        if (++turns === 4) run.cancel();
+      },
+      () => (clock += 5),
+    );
+    expect(await run.done).toBeNull();
+    expect(turns).toBe(4);
+    const early = startTestRun(spec);
+    early.cancel();
+    expect(await early.done).toBeNull();
   });
 });

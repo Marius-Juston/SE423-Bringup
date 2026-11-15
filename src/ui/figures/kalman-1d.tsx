@@ -57,7 +57,7 @@ function Kalman1d() {
     }
     return d;
   };
-  const peak = (m: number, p: number) => sy(1 / Math.sqrt(2 * Math.PI * p));
+  const peak = (_m: number, p: number) => sy(1 / Math.sqrt(2 * Math.PI * p));
   const shown = step === 0 ? prior : pred;
   // Labels sit in fixed rows above the curves, each over its own peak, with a leader down to it.
   const label = (m: number, p: number, text: string, cls: string, row: number) => {

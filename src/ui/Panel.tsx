@@ -31,6 +31,8 @@ export function Panel({ id, title, note, children, expand }: { id: string; title
   const [closed, setClosed] = usePref<boolean>(`panel-${id}`, false);
   const [stored, setStored] = usePref<"normal" | "wide">(`panel-size-${expand?.sizeKey ?? id}`, expand?.defaultSize ?? "normal");
   const [large, setLarge] = useState(false);
+  /** The student opened this panel by hand: its body arrives with a short fade. A panel that is open when the level opens, or appears by itself, does not. */
+  const [opened, setOpened] = useState(false);
   const largeButton = useRef<HTMLButtonElement>(null);
   const size: PanelSize = !expand ? "normal" : large ? "large" : stored === "wide" ? "wide" : "normal";
   const folded = closed && !large;
@@ -51,7 +53,7 @@ export function Panel({ id, title, note, children, expand }: { id: string; title
   return (
     <section className={`panel ${folded ? "closed" : ""} ${expand ? "expandable" : ""} size-${size}`} data-panel={id} data-size={size}>
       <h3>
-        <button aria-expanded={!folded} aria-controls={`panel-body-${id}`} disabled={large} onClick={() => setClosed(!closed)}>
+        <button aria-expanded={!folded} aria-controls={`panel-body-${id}`} disabled={large} onClick={() => { setOpened(closed); setClosed(!closed); }}>
           <Icon name={folded ? "next" : "down"} size={13} />
           <span className="panel-title">{title}</span>
           {note && <span className="panel-note">{note}</span>}
@@ -71,7 +73,7 @@ export function Panel({ id, title, note, children, expand }: { id: string; title
           </button>
         </div>
       )}
-      <div className="panel-body" id={`panel-body-${id}`} hidden={folded}>
+      <div className={opened ? "panel-body opened" : "panel-body"} id={`panel-body-${id}`} hidden={folded}>
         {large && expand?.bar ? <div className="panel-bar">{expand.bar}</div> : null}
         {!folded && <SizeContext.Provider value={size}>{children}</SizeContext.Provider>}
       </div>

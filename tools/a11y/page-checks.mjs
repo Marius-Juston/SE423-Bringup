@@ -158,7 +158,12 @@ export function installChecks() {
   };
 
   // ---------- settle: the app's idle state ----------
-  /** Resolves when the fonts are loaded and the page has not changed for `quiet` frames. `idle` is false if it never did. */
+  /**
+   * Resolves when the fonts are loaded, the page has not changed for `quiet` frames, and nothing that
+   * ends is still moving (a fade of something the last action brought in, a change of screen): a check
+   * made halfway through a fade would measure half-transparent text. An animation without end does
+   * not hold it up; `motion()` reports that one. `idle` is false if the page never came to rest.
+   */
   A.settle = (quiet = 3, maxFrames = 90) =>
     new Promise((resolve) => {
       let changed = true;
@@ -168,9 +173,11 @@ export function installChecks() {
         if (realOnes(list).length) changed = true;
       });
       mo.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true, characterDataOldValue: true });
+      const fading = () =>
+        document.getAnimations().some((a) => (a.playState === "running" || a.playState === "pending") && (a.effect?.getComputedTiming?.().iterations ?? 1) !== Infinity);
       const tick = () => {
         frames++;
-        still = changed ? 0 : still + 1;
+        still = changed || fading() ? 0 : still + 1;
         changed = false;
         if (still >= quiet || frames >= maxFrames) {
           mo.disconnect();
@@ -193,7 +200,46 @@ export function installChecks() {
   const layoutScan = () => {
     const W = document.documentElement.clientWidth;
     const H = document.documentElement.clientHeight;
-    const res = { pageScroll: [], offScreen: [], spills: [], clipped: [], truncated: [], overlaps: [], scrollers: [] };
+    const res = { pageScroll: [], offScreen: [], spills: [], clipped: [], truncated: [], overlaps: [], scrollers: [], offCentre: [] };
+    // Things meant to sit on one centre line. (Not WCAG: the game's own rule that what belongs together lines up.)
+    // 1. An icon beside one line of text in the same control or heading: their middles agree within 1.5 px.
+    for (const svg of document.querySelectorAll("svg.icon")) {
+      const r = svg.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0 || hidden(svg)) continue;
+      const host = svg.closest(".name, button, a, summary, h1, h2, h3, h4, li, p, label, .chip, .tag") ?? svg.parentElement;
+      if (!host) continue;
+      const lines = [];
+      const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+      for (let n = w.nextNode(); n; n = w.nextNode()) {
+        if (!n.textContent.trim() || hidden(n.parentElement)) continue;
+        const rg = document.createRange();
+        rg.selectNodeContents(n);
+        // Text under or over the icon (a star that wrapped onto its own line) is another line, not a neighbour.
+        for (const t of rg.getClientRects()) if (t.width > 0 && t.height > 0 && Math.min(t.right, r.right) - Math.max(t.left, r.left) < 2) lines.push(t);
+      }
+      // Only where the text is one line: an icon centred on a label of two lines is on purpose.
+      if (!lines.length) continue;
+      const span = Math.max(...lines.map((t) => t.bottom)) - Math.min(...lines.map((t) => t.top));
+      if (span > 1.6 * Math.max(...lines.map((t) => t.height))) continue;
+      const near = lines.filter((t) => t.bottom > r.top + 2 && t.top < r.bottom - 2).sort((a, b) => Math.min(Math.abs(a.left - r.right), Math.abs(r.left - a.right)) - Math.min(Math.abs(b.left - r.right), Math.abs(r.left - b.right)))[0];
+      if (!near || Math.min(Math.abs(near.left - r.right), Math.abs(r.left - near.right)) > 40) continue;
+      const off = (r.top + r.bottom) / 2 - (near.top + near.bottom) / 2;
+      if (Math.abs(off) > 1.5) res.offCentre.push({ el: host, why: `its icon is ${Math.abs(off).toFixed(1)} px ${off > 0 ? "below" : "above"} the middle of its text` });
+    }
+    // 2. The line that joins the markers of a level list runs through their centres (within 0.5 px).
+    for (const list of document.querySelectorAll(".level-list")) {
+      const b = getComputedStyle(list, "::before");
+      const lr = list.getBoundingClientRect();
+      if (!lr.width || b.content === "none") continue;
+      const x = lr.left + parseFloat(b.left) + parseFloat(b.width) / 2;
+      for (const n of list.querySelectorAll(".node")) {
+        const r = n.getBoundingClientRect();
+        if (!r.width) continue;
+        const off = (r.left + r.right) / 2 - x;
+        if (Math.abs(off) > 0.5) res.offCentre.push({ el: list, why: `the joining line is ${Math.abs(off).toFixed(2)} px ${off > 0 ? "left" : "right"} of the markers' centres` });
+        break;
+      }
+    }
     if (document.documentElement.scrollWidth - W > 1) res.pageScroll.push(document.documentElement);
     const all = [...document.body.querySelectorAll("*")];
     const style = new Map();

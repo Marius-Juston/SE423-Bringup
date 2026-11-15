@@ -1,26 +1,27 @@
-import { BENCH_FRAME_MS, frameBus } from "./frame";
+// A code level: the editor with its toolbar, and the bench.
+//
+// This component holds the state (the code, the running program, the last
+// test result) and steps a running program on every animation frame. It
+// does not redraw on a frame: the parts of the bench that show the running
+// board do that themselves (BenchPanels.tsx, frame.ts). It redraws when
+// something about the run changes that the toolbar or the editor shows:
+// running, paused, the line the program stopped on, a new message.
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { frameBus, benchBus, redrawBench, useLive } from "./frame";
 import { CopyButton } from "../CopyButton";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CodeLevel } from "../../levels/types";
-import { runProgram, type RunResult } from "../../sim/runner";
+import type { RunResult } from "../../sim/runner";
+import { startTestRun, type TestRun } from "./testrun";
 import { LiveSession, type WorldState } from "../../sim/live";
 import type { Diagnostic } from "../../sim/board";
 import { KITS } from "../../sim/world/kits";
 import { store, useSave } from "../store";
 import { Editor, type EditorHandle, type Mark } from "./Editor";
-import { Parts, Scope } from "./Bench";
-import { Registers } from "./Registers";
-import { Panel } from "../Panel";
+import { BenchBarContext, BenchPanels, type BenchBar } from "./BenchPanels";
 import { Icon } from "../Icon";
-import { VIEWS } from "../views";
-import { ArenaContext, type ArenaInfo } from "../views/robot-arena-context";
-import { ArenaPreview } from "../views/robot-arena";
 import { setStimuli, worldSetup } from "../views/robot-arena-model";
-import { Guard } from "../Markdown";
 import { findLevel } from "../../levels/index";
-import { compareBests, measure, type BestNote } from "../bests";
-import { usePref } from "../prefs";
-import { autoWindowMs, windowName, WINDOW_DEFAULT_MS, WINDOW_STEPS_MS } from "./window";
+import { compareBests, type BestNote } from "../bests";
 
 interface Problem {
   line: number;
@@ -35,6 +36,12 @@ function problemsOf(diags: Diagnostic[], err?: { line: number; msg: string } | n
   for (const d of diags) out.push({ line: d.line, severity: d.severity, msg: d.msg, count: d.count });
   return out;
 }
+/** The messages of the running program, or of the last test run. */
+function problemsNow(live: LiveSession | null, result: RunResult | null): Problem[] {
+  if (live) return problemsOf([...live.board.diagnostics.values()], live.error, live.error?.kind === "compile" ? "Compile error" : "Stopped");
+  if (result) return problemsOf(result.diagnostics, result.compileError ?? result.runtimeError, result.compileError ? "Compile error" : "Stopped");
+  return [];
+}
 
 const SERIAL_CHECKS = new Set(["serial", "serial-period", "uart"]);
 /** The program talks over a serial port (serial_printf, the SCI registers, the UART helpers). */
@@ -43,32 +50,131 @@ const usesSerial = (src: string) => /serial_|Serial[A-D]\b|Sci[a-d]Regs|UART_/.t
 const usesLcd = (src: string) => /\bUART_printfLine\s*\(/.test(src);
 /** The program prints with plain printf, which goes to the debugger's console and not to a serial port. */
 const usesPrintf = (src: string) => /(^|[^\w.])printf\s*\(/.test(src);
+const PIN_CHECKS = new Set(["led", "pin", "blink", "period", "steady", "opposite", "duty", "latency", "uart"]);
 
-/** A scrolling text output that follows new text only while it is scrolled to the end, so earlier output can be read. */
-function Term({ text, label, live }: { text: string; label: string; live: "off" | "polite" }) {
-  const el = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
-  useEffect(() => {
-    if (el.current && follow.current) el.current.scrollTop = el.current.scrollHeight;
-  });
+/** A function that never changes, calling the newest `fn`: for a part that is not redrawn when only a handler is new. */
+function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn);
+  latest.current = fn;
+  return useCallback((...args: A) => latest.current(...args), []);
+}
+
+/** The messages under the editor. While a program runs it reads them on every bench frame, and redraws when one is new or its count grows. */
+const Problems = memo(function Problems({ live, result, onGoto }: { live: LiveSession | null; result: RunResult | null; onGoto: (line: number) => void }) {
+  useLive(() => (live ? `${live.board.diagnostics.size}:${[...live.board.diagnostics.values()].reduce((n, d) => n + (d.count ?? 1), 0)}:${live.error?.msg ?? ""}` : ""));
+  const problems = problemsNow(live, result);
   return (
-    <div
-      className="term"
-      ref={el}
-      role="log"
-      aria-live={live}
-      aria-label={label}
-      tabIndex={0}
-      onScroll={(e) => {
-        const t = e.currentTarget;
-        follow.current = t.scrollHeight - t.scrollTop - t.clientHeight < 8;
-      }}
-    >
-      {text}
+    <div className="problems" role="region" aria-label="Compiler messages" aria-live="polite" tabIndex={0}>
+      {problems.length === 0 ? (
+        <span className="hint-text">{live || result ? "No problems reported." : "Compiler messages and warnings about your program appear here."}</span>
+      ) : (
+        problems.map((p, i) => (
+          <div className={`problem ${p.severity}`} key={i}>
+            <span>
+              <span className="sev">{p.severity}</span>{" "}
+              {p.line > 0 && <button onClick={() => onGoto(p.line)}>line {p.line}</button>}
+            </span>
+            <span>
+              {p.msg}
+              {p.count && p.count > 1 ? ` (${p.count} times)` : ""}
+            </span>
+          </div>
+        ))
+      )}
     </div>
   );
+});
+
+interface ToolbarProps {
+  sandbox: boolean;
+  testing: boolean;
+  running: boolean;
+  paused: boolean;
+  stateKind: string;
+  stateText: string;
+  tip: string;
+  /** The chip is the page's status line, except in a narrow window, where the summary above the tabs is. */
+  chipIsStatus: boolean;
+  speed: number;
+  onSpeed: (v: number) => void;
+  testButton: RefObject<HTMLButtonElement | null>;
+  onTest: () => void;
+  onStart: () => void;
+  onStop: () => void;
+  onPause: () => void;
+  onStepLine: () => void;
+  onStepWrite: () => void;
+  getCode: () => string;
+  /** The level this one continues, and the student's code for it. */
+  earlierTitle?: string;
+  earlierCode?: string;
+  continued: boolean;
+  onDismissContinued: () => void;
+  onResetToStarter: () => void;
+  onResetToEarlier: () => void;
 }
-const PIN_CHECKS = new Set(["led", "pin", "blink", "period", "steady", "opposite", "duty", "latency", "uart"]);
+
+const Toolbar = memo(function Toolbar(p: ToolbarProps) {
+  const [resetting, setResetting] = useState(false);
+  return (
+    <div className="toolbar">
+      <div className="tool-row">
+        {!p.sandbox && (
+          <button className="btn primary" ref={p.testButton} onClick={p.onTest} aria-disabled={p.testing} title="Check your program against the level's tests (Ctrl+Enter)">
+            <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
+          </button>
+        )}
+        {p.running ? (
+          <button className="btn" onClick={p.onStop} title="Switch the board off (Ctrl+Shift+Enter)"><Icon name="stop" size={13} /> Stop</button>
+        ) : (
+          <button className={`btn ${p.sandbox ? "primary" : ""}`} onClick={p.onStart} title="Power the board and run your program (Ctrl+Shift+Enter)"><Icon name="play" size={13} /> Run</button>
+        )}
+        <button className="btn" disabled={!p.running} onClick={p.onPause} title={p.running ? (p.paused ? "Let the program run on" : "Freeze the program where it is") : "Nothing is running: press Run first"}>
+          <Icon name={p.running && p.paused ? "play" : "pause"} size={13} /> <span className="lbl">{p.running && p.paused ? "Resume" : "Pause"}</span>
+        </button>
+        <button className="btn" onClick={p.onStepLine} title="Run one line of your code, then pause (F10)"><Icon name="step" size={14} /> <span className="lbl">Step line</span></button>
+        <button className="btn" onClick={p.onStepWrite} title="Run until the next register write, then pause (F9)"><Icon name="skip" size={13} /> <span className="lbl">Next write</span></button>
+      </div>
+      <div className="tool-row">
+        <span className={`chip state-${p.stateKind}`} role={p.chipIsStatus ? "status" : undefined}>
+          <i aria-hidden="true" /> {p.stateText}
+        </span>
+        <span className="tool-tip" title={p.tip}>{p.tip}</span>
+        <label className="speed">
+          Speed{" "}
+          <select value={p.speed} onChange={(e) => p.onSpeed(+e.target.value)} title="How fast simulated time passes while the program runs">
+            <option value={0.0001}>1/10 000</option>
+            <option value={0.001}>1/1000</option>
+            <option value={0.01}>1/100</option>
+            <option value={0.1}>1/10</option>
+            <option value={1}>real time</option>
+            <option value={10}>10×</option>
+          </select>
+        </label>
+        <CopyButton className="btn ghost small" text={p.getCode} label="Copy code" what="the code in the editor" />
+        <button className="btn ghost small" aria-expanded={resetting} onClick={() => setResetting(!resetting)}>
+          <Icon name="reset" size={13} /> Reset code
+        </button>
+      </div>
+      {resetting && (
+        <div className="tool-note" role="group" aria-label="Reset code">
+          <span>Replace everything in the editor with:</span>
+          <button className="btn small" onClick={() => { setResetting(false); p.onResetToStarter(); }}>{p.earlierTitle ? "This level's starting code" : "The starting code"}</button>
+          {p.earlierTitle && p.earlierCode !== undefined && <button className="btn small" onClick={() => { setResetting(false); p.onResetToEarlier(); }}>Your code from “{p.earlierTitle}”</button>}
+          <button className="btn ghost small" onClick={() => setResetting(false)}>Cancel</button>
+        </div>
+      )}
+      {p.continued && p.earlierTitle && !resetting && (
+        <div className="tool-note">
+          <span>Continuing from your code for {p.earlierTitle}.</span>
+          <button className="btn ghost small" onClick={p.onDismissContinued} aria-label="Dismiss this note">Dismiss</button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+const CodeEditor = memo(Editor);
 
 export function CodeLevelView({
   level,
@@ -100,15 +206,11 @@ export function CodeLevelView({
   const earlierCode = earlier ? save.code[earlier.id] : undefined;
   const [code, setCode] = useState(() => save.code[level.id] ?? earlierCode ?? level.starter);
   const [continued, setContinued] = useState(() => save.code[level.id] === undefined && earlierCode !== undefined);
-  const [resetting, setResetting] = useState(false);
   const [live, setLive] = useState<LiveSession | null>(null);
-  const [, setFrame] = useState(0);
-  const bump = () => setFrame((f) => f + 1);
   const [result, setResult] = useState<RunResult | null>(null);
   /** The code the shown test result belongs to. */
   const [tested, setTested] = useState("");
   const [speed, setSpeed] = useState(1);
-  const [typed, setTyped] = useState("");
   /** Star values of the last passing run without help. */
   const [bestNotes, setBestNotes] = useState<BestNote[]>([]);
   const editor = useRef<EditorHandle | null>(null);
@@ -146,30 +248,32 @@ export function CodeLevelView({
     };
   }, [level.id]);
 
-  // Animation loop for the live run.
+  // The live run: stepped on every animation frame. The bench is told, and redraws what shows the board.
   useEffect(() => {
     if (!live || !live.running) return;
     live.speed = speed;
     let raf = 0;
     let last = performance.now();
-    let drawn = 0;
     const loop = (now: number) => {
       const dt = Math.min(50, now - last);
       last = now;
       if (!live.paused) live.step(dt);
-      // Views that show motion follow every frame; the bench as a whole redraws less often (see frame.ts).
+      // Views that show motion follow every frame; the rest of the bench redraws less often (see frame.ts).
       frameBus.emit(now, !live.running);
-      if (now - drawn >= BENCH_FRAME_MS || !live.running) {
-        drawn = now;
-        setFrame((f) => f + 1);
-      }
+      benchBus.emit(now, !live.running);
       if (live.running) raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, [live, speed]);
 
+  // What this component shows of the running program. It changes in place, so it is asked on every bench frame,
+  // and the component redraws only when the answer is a different one.
+  const liveNow = useLive(() =>
+    live ? `${live.running}|${live.paused}|${live.running && live.paused ? live.board.line : 0}|${live.error ? `${live.error.kind}:${live.error.line}:${live.error.msg}` : ""}|${live.board.diagnostics.size}` : "",
+  );
   const running = !!live?.running;
+  const paused = running && live!.paused;
   // A live run begins in the level's world: its room, start pose and goal. Of the test's later stimuli only
   // the poses it puts the LIDAR robot at are used: the live run drives the robot round them.
   const setup = useMemo(() => worldSetup(level.stimuli), [level]);
@@ -188,45 +292,102 @@ export function CodeLevelView({
     setRan(code);
     return new LiveSession(level.kit, code, setup, script, world.current);
   };
-  const start = () => setLive(fresh());
-  const stop = () => {
+  const start = useStable(() => {
+    dropTests();
+    setLive(fresh());
+  });
+  const stop = useStable(() => {
     if (live) world.current = live.worldState;
     setLive(null);
-  };
+  });
+  const togglePause = useStable(() => {
+    if (!live?.running) return;
+    live.paused = !live.paused;
+    redrawBench();
+  });
   /** Stepping works from a stopped board too: it powers up paused at the first line. */
   const session = (): LiveSession => {
     if (live?.running) return live;
+    dropTests();
     const s = fresh();
     s.paused = true;
     setLive(s);
     return s;
   };
-  const stepLine = () => {
+  const stepLine = useStable(() => {
     session().stepLine();
-    bump();
-  };
-  const stepWrite = () => {
+    redrawBench();
+  });
+  const stepWrite = useStable(() => {
     session().stepToWrite();
-    bump();
+    redrawBench();
+  });
+  // A long test run (the capstone drives for many simulated seconds) runs in short turns, so the page
+  // keeps drawing and Cancel works (testrun.ts). Leaving the level or starting the board drops it.
+  const [testing, setTesting] = useState<TestRun | null>(null);
+  const [cancelled, setCancelled] = useState(false);
+  const testRun = useRef<TestRun | null>(null);
+  const testButton = useRef<HTMLButtonElement>(null);
+  const dropTests = () => {
+    testRun.current?.cancel();
+    testRun.current = null;
+    setTesting(null);
+    setCancelled(false);
   };
-  // A long test run (the capstone drives for many simulated seconds) keeps the page busy for a moment:
-  // the button says so first, and the run starts once that is on the screen.
-  const [testing, setTesting] = useState(false);
-  const testTimer = useRef(0);
-  useEffect(() => () => window.clearTimeout(testTimer.current), []);
-  const test = () => {
-    if (testing) return;
+  const liveNowRef = useRef(live);
+  liveNowRef.current = live;
+  useEffect(() => {
+    // A level that was kept while another screen showed comes back with no test run in progress.
+    setTesting(null);
+    return () => {
+      testRun.current?.cancel();
+      testRun.current = null;
+      // The level is left, or hidden while another screen shows (App.tsx keeps it): a running program is paused.
+      // Nothing steps it while it is hidden, and on the way back it says "Paused at line N" until Resume.
+      const l = liveNowRef.current;
+      if (l?.running) l.paused = true;
+    };
+  }, []);
+  const cancelTests = useStable(() => {
+    if (!testRun.current) return;
+    dropTests();
+    setCancelled(true);
+    // The Cancel button goes away: the focus returns to the button that started the run.
+    testButton.current?.focus();
+  });
+  const test = useStable(() => {
+    if (testRun.current) return;
     stop();
-    setTesting(true);
-    testTimer.current = window.setTimeout(() => {
-      setTesting(false);
-      runTests();
-    }, 30);
-  };
-  const runTests = () => {
-    const r = runProgram({ kit: level.kit, source: code, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
+    setCancelled(false);
+    const source = code;
+    const run = startTestRun({ kit: level.kit, source, durationMs: level.durationMs, stimuli: level.stimuli, checks: level.checks, bonus: level.bonus });
+    testRun.current = run;
+    setTesting(run);
+    const mine = () => testRun.current === run;
+    run.done.then(
+      (r) => {
+        if (!mine()) return;
+        testRun.current = null;
+        // Drawing the result (plots of the whole run, the replay) is work too: as a transition React
+        // does it in short pieces, and the progress bar stays until the result replaces it.
+        startTransition(() => {
+          setTesting(null);
+          if (r) showResult(r, source);
+        });
+      },
+      (e) => {
+        if (mine()) dropTests();
+        throw e;
+      },
+    );
+  });
+  // The run may end long after the press: it reports to the level as it is then (a hint opened meanwhile counts).
+  const latest = useRef({ onPass, onBests, helped });
+  latest.current = { onPass, onBests, helped };
+  const showResult = (r: RunResult, source: string) => {
+    const { onPass, onBests, helped } = latest.current;
     setResult(r);
-    setTested(code);
+    setTested(source);
     if (r.passed) {
       onPass();
       // Stars count only on a solution that passes the level without the last hint or the reference solution.
@@ -240,12 +401,14 @@ export function CodeLevelView({
     } else {
       store.fail(level.id);
       setBestNotes([]);
-      // The verdict must be in view (in a narrow window the board is below the editor). After a pass, LevelView shows the next step instead.
-      requestAnimationFrame(() => document.querySelector('.bench [data-panel="tests"] .result')?.scrollIntoView({ block: "nearest" }));
     }
   };
+  // The verdict of a failed run must be in view (in a narrow window the board is below the editor).
+  // After a pass, LevelView shows the next step instead.
+  useEffect(() => {
+    if (result && !result.passed) document.querySelector('.bench [data-panel="tests"] .result')?.scrollIntoView({ block: "nearest" });
+  }, [result]);
 
-  const board = live?.board ?? result?.board ?? null;
   const stale = !!result && !live && tested !== code;
   // One always-visible statement of what the program is doing.
   const state: { kind: string; text: string } = testing
@@ -258,6 +421,8 @@ export function CodeLevelView({
         : live.paused
           ? { kind: "paused", text: `Paused at line ${live.board.line}` }
           : { kind: "running", text: edited ? "Running the code before your edit" : "Running" }
+    : cancelled
+    ? { kind: "idle", text: "Test run cancelled" }
     : result
       ? result.passed
         ? { kind: "ok", text: "All tests passed" }
@@ -268,7 +433,7 @@ export function CodeLevelView({
   const tip = edited
     ? "This run uses the code from before your last edit. Stop, then Run, to try the new code."
     : running
-    ? live!.paused
+    ? paused
       ? "Step line runs one line. Next write runs to the next register write."
       : "The board is powered: use its buttons, or pause to step."
     : sandbox
@@ -276,7 +441,9 @@ export function CodeLevelView({
       : "Run tests checks the level. Run powers the board so you can try it.";
   // What a failed run needs first, for the summary a narrow window keeps in view.
   const firstFail = result && !result.passed ? result.checks.find((c) => !c.pass) : undefined;
-  const statusDetail = live
+  const statusDetail = testing
+    ? "Cancel is on the Board tab."
+    : live
     ? ""
     : result && !result.passed
       ? result.compileError
@@ -290,36 +457,27 @@ export function CodeLevelView({
         ? "Before your last edit."
         : "";
   useEffect(() => {
-    onStatus?.({ kind: state.kind, text: !live && !result ? "Tests not run yet" : state.text, detail: statusDetail || undefined });
+    onStatus?.({ kind: state.kind, text: !live && !result && !testing && !cancelled ? "Tests not run yet" : state.text, detail: statusDetail || undefined });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.kind, state.text, statusDetail]);
   // Keyboard: Ctrl+Enter tests, Ctrl+Shift+Enter run/stop, F10 step, F9 next write.
-  const keys = useRef({ start, stop, test, stepLine, stepWrite });
-  keys.current = { start, stop, test, stepLine, stepWrite };
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        if (e.shiftKey) (live?.running ? keys.current.stop : keys.current.start)();
-        else if (!sandbox) keys.current.test();
+        if (e.shiftKey) (live?.running ? stop : start)();
+        else if (!sandbox) test();
       } else if (e.key === "F10") {
         e.preventDefault();
-        keys.current.stepLine();
+        stepLine();
       } else if (e.key === "F9") {
         e.preventDefault();
-        keys.current.stepWrite();
+        stepWrite();
       }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [live, sandbox]);
-  // Signals this level is about: the ones its tests set or check.
-  const focus = useMemo(() => {
-    const names = new Set<string>();
-    for (const c of [...level.checks, ...(level.bonus ?? [])]) if (c.kind === "signal") names.add(c.name);
-    for (const st of level.stimuli ?? []) if ("set" in st) names.add(st.set);
-    return names;
-  }, [level]);
+  }, [live, sandbox, start, stop, test, stepLine, stepWrite]);
   // Panels a level has no use for stay away until the program itself uses them.
   const uses = useMemo(() => {
     const checks = [...level.checks, ...(level.bonus ?? [])];
@@ -330,302 +488,94 @@ export function CodeLevelView({
       pins: checks.some((c) => PIN_CHECKS.has(c.kind)) || stim.some((s) => "press" in s || "release" in s),
     };
   }, [level]);
-  const problems = useMemo(() => {
-    if (live) return problemsOf([...live.board.diagnostics.values()], live.error, live.error?.kind === "compile" ? "Compile error" : "Stopped");
-    if (result) return problemsOf(result.diagnostics, result.compileError ?? result.runtimeError, result.compileError ? "Compile error" : "Stopped");
-    return [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, result, live?.board.diagnostics.size, live?.error]);
-  const pausedLine = live?.running && live.paused ? live.board.line : 0;
+  // The lines the editor marks: those with a message, and the one a paused program is on.
+  const pausedLine = paused ? live!.board.line : 0;
   const marks: Mark[] = useMemo(
-    () => [...problems.filter((p) => p.line > 0).map((p) => ({ line: p.line, severity: p.severity })), ...(pausedLine ? [{ line: pausedLine, severity: "current" as const }] : [])],
-    [problems, pausedLine],
+    () => [...problemsNow(live, result).filter((p) => p.line > 0).map((p) => ({ line: p.line, severity: p.severity })), ...(pausedLine ? [{ line: pausedLine, severity: "current" as const }] : [])],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [live, result, liveNow, pausedLine],
   );
   // Follow the program in the editor while stepping.
   useEffect(() => {
     if (pausedLine) editor.current?.reveal(pausedLine);
   }, [pausedLine]);
 
-  const nowMs = live ? live.timeMs : (result?.endMs ?? 0);
-  const serial = live ? live.board.sci.text(0) : (result?.serial[0] ?? "");
-  // A live run shows a window that moves with time: sized from what the program does, or fixed by hand.
-  // A test run is finite, and shows all of it.
-  const [windowPref, setWindowPref] = usePref<number>("bench-window", 0);
-  const autoWindow = useRef<number | undefined>(undefined);
-  if (live) autoWindow.current = autoWindowMs({ isrLog: live.board.isrLog, pins: live.board.gpio.trace.values() }, autoWindow.current);
-  else autoWindow.current = undefined;
-  const chosenMs = WINDOW_STEPS_MS.includes(windowPref) ? windowPref : (autoWindow.current ?? WINDOW_DEFAULT_MS);
-  const windowMs = live ? Math.min(Math.max(nowMs, 1), chosenMs) : Math.max(nowMs, 1);
-  const stimMarks = !live && result ? (level.stimuli ?? []).map((s) => ({ tMs: s.at, label: "press" in s ? `${s.press}↓` : "release" in s ? `${s.release}↑` : "set" in s ? `${s.set}=${s.value}` : `'${s.type}'` })) : [];
-  // The serial terminal is for programs that use a serial port; plain printf has its own console.
-  const showSerial = sandbox || uses.serial || serial !== "" || usesSerial(code);
-  const showConsole = uses.console || !!board?.console || usesPrintf(code);
-  const showPins = sandbox || uses.pins || (board?.gpio.trace.size ?? 0) > 0;
-  const nPass = result ? result.checks.filter((c) => c.pass).length : 0;
-  // A failed check says what was seen; its pointer to the cause waits for the second failed run.
-  const pointers = fails >= 2;
-  const held = !!result && !result.passed && !pointers && result.checks.some((c) => !c.pass && c.hint);
-  // The robot arena leads the bench on levels where the robot drives through a world or reports where it thinks it is.
-  const arenaLeads = useMemo(() => setup.some((x) => x.set === "ROBOT_WORLD" && x.value === 1) || /tb_report_pose\s*\(/.test(level.starter + level.solution), [setup, level]);
-  const hasWorld = setup.some((x) => x.set === "ROBOT_WORLD" && x.value === 1);
-  const allChecks = useMemo(() => [...level.checks, ...(level.bonus ?? [])], [level]);
-  const arena: ArenaInfo = { stimuli: level.stimuli ?? [], checks: allChecks, results: !live && result && !result.compileError ? [...result.checks, ...result.bonus] : undefined, watch: level.watch ?? [], session: live, redraw: bump, durationMs: level.durationMs };
-  const span: [number, number] = [Math.max(0, nowMs - windowMs), Math.max(nowMs, 1)];
-  // In the large view of a narrow window the editor's toolbar is on another tab: the panel carries the two buttons that matter.
-  const viewBar = (
-    <div className="tool-row">
-      {running ? (
-        <button className="btn small" onClick={stop} aria-label="Stop the program">Stop</button>
-      ) : (
-        <button className="btn small" onClick={start} aria-label="Run the program">Run</button>
-      )}
-      <button className="btn small" disabled={!running} onClick={() => { live!.paused = !live!.paused; bump(); }} aria-label={running && live!.paused ? "Resume the program" : "Pause the program"}>{running && live!.paused ? "Resume" : "Pause"}</button>
-      <span className={`chip state-${state.kind}`}><i aria-hidden="true" /> {state.text}</span>
-    </div>
-  );
-  const viewPanel = (v: (typeof VIEWS)[number], lead: boolean) => (
-    <Panel key={v.id} id={`view-${v.id}`} title={v.title} expand={{ sizeKey: `view-${v.id}${lead ? "-lead" : ""}`, defaultSize: lead ? "wide" : "normal", bar: viewBar }}>
-      <Guard what="This view">
-        {board && v.relevant(board, kit) ? <v.Component board={board} kit={kit} nowMs={nowMs} window={span} live={!!live} /> : <ArenaPreview />}
-      </Guard>
-    </Panel>
-  );
-  const arenaView = VIEWS.find((v) => v.id === "robot-arena");
-  // Shown first: when it leads and there is something to show (before a run, the level's world from its stimuli).
-  const arenaFirst = !!arenaView && arenaLeads && ((!!board && arenaView.relevant(board, kit)) || hasWorld);
   const replace = (text: string) => {
     setCode(text);
     setContinued(false);
-    setResetting(false);
     editor.current?.goto(1);
   };
+  const resetToStarter = useStable(() => {
+    replace(level.starter);
+    if (!earlierCode) store.resetCode(level.id);
+  });
+  const resetToEarlier = useStable(() => {
+    if (earlierCode !== undefined) replace(earlierCode);
+  });
+  const dismissContinued = useStable(() => setContinued(false));
+  const getCode = useStable(() => code);
+  const goto = useStable((line: number) => editor.current?.goto(line));
+  const bar: BenchBar = useMemo(
+    () => ({ running, paused, state: { kind: state.kind, text: state.text }, start, stop, togglePause }),
+    [running, paused, state.kind, state.text, start, stop, togglePause],
+  );
 
   return (
     <>
       <div className="pane editor-pane" {...(tab ? { role: "tabpanel", id: "pane-code", "aria-labelledby": "tab-code", hidden: tab !== "code" } : {})}>
         <h2 className="sr-only">Code</h2>
-        <div className="toolbar">
-          <div className="tool-row">
-            {!sandbox && (
-              <button className="btn primary" onClick={test} aria-disabled={testing} title="Check your program against the level's tests (Ctrl+Enter)">
-                <Icon name="test" size={15} /> Run tests <kbd>Ctrl ↵</kbd>
-              </button>
-            )}
-            {running ? (
-              <button className="btn" onClick={stop} title="Switch the board off (Ctrl+Shift+Enter)"><Icon name="stop" size={13} /> Stop</button>
-            ) : (
-              <button className={`btn ${sandbox ? "primary" : ""}`} onClick={start} title="Power the board and run your program (Ctrl+Shift+Enter)"><Icon name="play" size={13} /> Run</button>
-            )}
-            <button className="btn" disabled={!running} onClick={() => { live!.paused = !live!.paused; bump(); }} title={running ? (live!.paused ? "Let the program run on" : "Freeze the program where it is") : "Nothing is running: press Run first"}>
-              <Icon name={running && live!.paused ? "play" : "pause"} size={13} /> <span className="lbl">{running && live!.paused ? "Resume" : "Pause"}</span>
-            </button>
-            <button className="btn" onClick={stepLine} title="Run one line of your code, then pause (F10)"><Icon name="step" size={14} /> <span className="lbl">Step line</span></button>
-            <button className="btn" onClick={stepWrite} title="Run until the next register write, then pause (F9)"><Icon name="skip" size={13} /> <span className="lbl">Next write</span></button>
-          </div>
-          <div className="tool-row">
-            <span className={`chip state-${state.kind}`} role={tab ? undefined : "status"}>
-              <i aria-hidden="true" /> {state.text}
-            </span>
-            <span className="tool-tip" title={tip}>{tip}</span>
-            <label className="speed">
-              Speed{" "}
-              <select value={speed} onChange={(e) => setSpeed(+e.target.value)} title="How fast simulated time passes while the program runs">
-                <option value={0.0001}>1/10 000</option>
-                <option value={0.001}>1/1000</option>
-                <option value={0.01}>1/100</option>
-                <option value={0.1}>1/10</option>
-                <option value={1}>real time</option>
-                <option value={10}>10×</option>
-              </select>
-            </label>
-            <CopyButton className="btn ghost small" text={() => code} label="Copy code" what="the code in the editor" />
-            <button className="btn ghost small" aria-expanded={resetting} onClick={() => setResetting(!resetting)}>
-              <Icon name="reset" size={13} /> Reset code
-            </button>
-          </div>
-          {resetting && (
-            <div className="tool-note" role="group" aria-label="Reset code">
-              <span>Replace everything in the editor with:</span>
-              <button className="btn small" onClick={() => { replace(level.starter); if (!earlierCode) store.resetCode(level.id); }}>{earlier ? "This level's starting code" : "The starting code"}</button>
-              {earlier && earlierCode !== undefined && <button className="btn small" onClick={() => replace(earlierCode)}>Your code from “{earlier.title}”</button>}
-              <button className="btn ghost small" onClick={() => setResetting(false)}>Cancel</button>
-            </div>
-          )}
-          {continued && earlier && !resetting && (
-            <div className="tool-note">
-              <span>Continuing from your code for {earlier.title}.</span>
-              <button className="btn ghost small" onClick={() => setContinued(false)} aria-label="Dismiss this note">Dismiss</button>
-            </div>
-          )}
-        </div>
-        <Editor value={code} onChange={setCode} marks={marks} handle={editor} kit={level.kit} />
-        <div className="problems" role="region" aria-label="Compiler messages" aria-live="polite" tabIndex={0}>
-          {problems.length === 0 ? (
-            <span className="hint-text">{live || result ? "No problems reported." : "Compiler messages and warnings about your program appear here."}</span>
-          ) : (
-            problems.map((p, i) => (
-              <div className={`problem ${p.severity}`} key={i}>
-                <span>
-                  <span className="sev">{p.severity}</span>{" "}
-                  {p.line > 0 && <button onClick={() => editor.current?.goto(p.line)}>line {p.line}</button>}
-                </span>
-                <span>
-                  {p.msg}
-                  {p.count && p.count > 1 ? ` (${p.count} times)` : ""}
-                </span>
-              </div>
-            ))
-          )}
-        </div>
+        <Toolbar
+          sandbox={sandbox}
+          testing={!!testing}
+          running={running}
+          paused={paused}
+          stateKind={state.kind}
+          stateText={state.text}
+          tip={tip}
+          chipIsStatus={!tab}
+          speed={speed}
+          onSpeed={setSpeed}
+          testButton={testButton}
+          onTest={test}
+          onStart={start}
+          onStop={stop}
+          onPause={togglePause}
+          onStepLine={stepLine}
+          onStepWrite={stepWrite}
+          getCode={getCode}
+          earlierTitle={earlier?.title}
+          earlierCode={earlierCode}
+          continued={continued}
+          onDismissContinued={dismissContinued}
+          onResetToStarter={resetToStarter}
+          onResetToEarlier={resetToEarlier}
+        />
+        <CodeEditor value={code} onChange={setCode} marks={marks} handle={editor} kit={level.kit} />
+        <Problems live={live} result={result} onGoto={goto} />
       </div>
       {splitter}
       <div className="pane bench" {...(tab ? { role: "tabpanel", id: "pane-board", "aria-labelledby": "tab-board", hidden: tab !== "board" } : {})}>
         <h2 className="sr-only">{sandbox ? "Board" : "Tests and board"}</h2>
         {benchTop}
-        <ArenaContext.Provider value={arena}>
-        <div className="bench-panels">
-          {!sandbox && (
-            <Panel id="tests" title="Tests" note={result ? `${nPass} of ${result.checks.length} passed${stale ? ", before your last edit" : ""}` : undefined}>
-              {testing ? (
-                <p className="hint-text" role="status">Running the tests: {level.durationMs} ms of simulated time.</p>
-              ) : !result ? (
-                <p className="hint-text">Press <strong>Run tests</strong>. The tests run your program for {level.durationMs} ms of simulated time{level.stimuli?.length ? ", pressing buttons, turning knobs or typing at fixed times," : ""} and check the points below.</p>
-              ) : (
-                <div className={`result ${result.passed ? "ok" : "bad"}`}>
-                  <Icon name={result.passed ? "check" : "cross"} size={16} />{" "}
-                  {result.passed
-                    ? "All checks passed."
-                    : result.compileError
-                      ? "The code does not compile yet. See the message under the editor."
-                      : result.runtimeError
-                        ? "The program stopped with an error. See the message under the editor."
-                        : result.checks.every((c) => c.pass)
-                          ? "The checks pass, but an error was reported under the editor. Fix it to finish the level."
-                          : `${result.checks.length - nPass} of ${result.checks.length} checks failed. Each one says what was seen.`}
-                  {stale && <span className="tiny"> This is the result for the code before your last edit: run the tests again.</span>}
-                </div>
-              )}
-              <ul className="checks">
-                {(result?.checks ?? level.checks.map((c) => ({ label: c.label, pass: null as boolean | null, detail: "", hint: undefined }))).map((c, i) => (
-                  <li key={i}>
-                    <span className={c.pass === null ? "todo" : c.pass ? "pass" : "fail"} aria-hidden="true"><Icon name={c.pass === null ? "dot" : c.pass ? "check" : "cross"} size={15} /></span>
-                    <span>
-                      <span className="sr-only">{c.pass === null ? "Not run: " : c.pass ? "Passed: " : "Failed: "}</span>
-                      {c.label}
-                    </span>
-                    {c.detail && <span className="detail">{c.detail}</span>}
-                    {c.hint && pointers && <span className="hintline">{c.hint}</span>}
-                  </li>
-                ))}
-              </ul>
-              {held && <p className="tiny">Work from what was seen first. If a run fails again, each failed check adds a pointer to the likely cause.</p>}
-              {level.bonus && level.bonus.length > 0 && (
-                <>
-                  <h4 className="sub">Stars (optional)</h4>
-                  <ul className="checks bonus">
-                    {level.bonus.map((b, i) => {
-                      const r = result?.bonus[i];
-                      const kept = save.stars[level.id]?.includes(i) ?? false;
-                      const now = !!r?.pass && !!result?.passed && !helped;
-                      const stored = save.bests[level.id]?.[b.label];
-                      const best = stored !== undefined ? measure(b, stored) : null;
-                      const fresh = bestNotes.find((n) => n.label === b.label)?.improved && !stale;
-                      return (
-                        <li key={i}>
-                          <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name="star" size={14} /></span>
-                          <span>
-                            <span className="sr-only">{now || kept ? "Earned: " : "Not earned: "}</span>
-                            {b.label}
-                            {kept && !now && result ? " (earned earlier)" : ""}
-                          </span>
-                          {r?.detail && <span className="detail">{r.detail}</span>}
-                          {best && (
-                            <span className="best">
-                              <span>Best: <b>{best.text}</b></span>
-                              {fresh && <span className="best-new">New best</span>}
-                            </span>
-                          )}
-                          {r && !r.pass && r.hint && pointers && <span className="hintline">{r.hint}</span>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {helped && <p className="tiny">Stars are for a pass without the last hint or the reference solution.</p>}
-                </>
-              )}
-            </Panel>
-          )}
-          {arenaFirst && viewPanel(arenaView!, true)}
-          <Panel id="board" title={kit.name}>
-            <Parts kit={kit} board={board} pressed={live ? (id) => live.isPressed(id) : undefined} onButton={live?.running ? (id, d) => live.setButton(id, d) : undefined} onKnob={live?.running ? (id, v) => live.setKnob(id, v) : undefined} focus={focus} />
-            <p className="simstate" aria-live="off">
-              {live ? (live.running ? `${live.paused ? `paused at line ${live.board.line}` : "running"} · t = ${nowMs.toFixed(nowMs < 100 ? 4 : 1)} ms${live.load < 0.9 ? ` · ${Math.round(live.load * 100)}% of requested speed` : ""}` : `stopped at ${nowMs.toFixed(3)} ms`) : result ? `test run · ${nowMs.toFixed(1)} ms` : "Press Run to power the board."}
-              {board?.mainReturned ? " · main() has returned" : ""}
-            </p>
-            {live && (
-              <label className="speed bench-window">
-                Time shown{" "}
-                <select value={WINDOW_STEPS_MS.includes(windowPref) ? windowPref : 0} onChange={(e) => setWindowPref(+e.target.value)} title="How much of the recent past the interrupt, pin and signal panels show while the program runs">
-                  <option value={0}>automatic: last {windowName(autoWindow.current ?? WINDOW_DEFAULT_MS)}</option>
-                  {WINDOW_STEPS_MS.map((ms) => (
-                    <option key={ms} value={ms}>last {windowName(ms)}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {level.watch && level.watch.length > 0 && board && (
-              <dl className="watch">
-                {level.watch.map((w) => {
-                  const v = board.readVar(w);
-                  return (
-                    <div key={w}>
-                      <dt>{w}</dt>
-                      <dd>{v === undefined ? "?" : Number.isInteger(v) ? v : v.toPrecision(6)}</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-            )}
-            {/* The robot board's LCD: two lines of 20 characters, written with UART_printfLine. It shows as soon as the program uses it. */}
-            {level.kit === "robot" && board && (board.lcd[0] || board.lcd[1] || usesLcd(code)) ? (
-              <figure className="lcd-wrap">
-                <div className="lcd" role="img" aria-label={board.lcd[0] || board.lcd[1] ? `LCD, line 1: ${board.lcd[0] || "empty"}. Line 2: ${board.lcd[1] || "empty"}.` : "LCD: nothing printed yet"}>{board.lcd[0].padEnd(20)}{"\n"}{board.lcd[1].padEnd(20)}</div>
-                <figcaption>The robot's LCD: 2 lines of 20 characters. <code>UART_printfLine(1, ...)</code> writes the top line, <code>UART_printfLine(2, ...)</code> the bottom one.</figcaption>
-              </figure>
-            ) : null}
-          </Panel>
-          {board && VIEWS.filter((v) => v.relevant(board, kit) && !(arenaFirst && v === arenaView)).map((v) => viewPanel(v, false))}
-          {showPins && (
-            <Panel id="signals" title="Pins over time">
-              {board ? <Scope kit={kit} traces={board.gpio.trace} fromMs={Math.max(0, nowMs - windowMs)} toMs={Math.max(nowMs, 1)} marks={stimMarks} /> : <p className="hint-text">Run the program to see its pins.</p>}
-            </Panel>
-          )}
-          {showConsole && (
-            <Panel id="console" title="printf console" note="what printf prints">
-              {board?.console ? <Term text={board.console} label="printf output" live="off" /> : <p className="hint-text">Run the program to see what it prints.</p>}
-            </Panel>
-          )}
-          {showSerial && (
-            <Panel id="serial" title="Serial terminal" note="SCIA, 115200 baud">
-              <Term text={serial} label="Serial terminal output" live={running && !live!.paused ? "off" : "polite"} />
-              <form
-                className="term-input"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (live?.running && typed) live.type(typed);
-                  setTyped("");
-                }}
-              >
-                <input value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={running ? "Type characters to send" : "Press Run to type to the board"} aria-label="Characters to send to the board" disabled={!running} />
-                <button className="btn small" disabled={!running}>Send</button>
-              </form>
-            </Panel>
-          )}
-          <Panel id="registers" title="Registers" note="what changed, and when">
-            {board ? <Registers board={board} onGoto={(line) => editor.current?.goto(line)} /> : <p className="hint-text">Run the program to see the registers it writes.</p>}
-          </Panel>
-        </div>
-        </ArenaContext.Provider>
+        <BenchBarContext.Provider value={bar}>
+          <BenchPanels
+            level={level}
+            kit={kit}
+            live={live}
+            result={result}
+            stale={stale}
+            testing={testing}
+            helped={helped}
+            pointers={fails >= 2}
+            bestNotes={bestNotes}
+            onCancel={cancelTests}
+            uses={uses}
+            codeSerial={usesSerial(code)}
+            codePrintf={usesPrintf(code)}
+            codeLcd={usesLcd(code)}
+            onGoto={goto}
+          />
+        </BenchBarContext.Provider>
       </div>
     </>
   );

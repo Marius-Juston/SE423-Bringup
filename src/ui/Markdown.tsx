@@ -8,11 +8,11 @@ import { highlightLines } from "./code/highlight";
  * screen down: the part is replaced by a short note and the rest keeps working.
  */
 export class Guard extends Component<{ what: string; children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
+  override state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
-  render() {
+  override render() {
     if (!this.state.failed) return this.props.children;
     return (
       <p className="part-failed" role="note">
