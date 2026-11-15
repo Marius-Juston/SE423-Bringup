@@ -158,7 +158,7 @@ const TestsPanel = memo(function TestsPanel({ level, result, stale, testing, hel
               const fresh = bestNotes.find((n) => n.label === b.label)?.improved && !stale;
               return (
                 <li key={i} style={{ "--i": (result?.checks.length ?? 0) + i } as CSSProperties}>
-                  <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name="star" size={14} /></span>
+                  <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name={now || kept ? "star" : "star-open"} size={14} /></span>
                   <span>
                     <span className="sr-only">{now || kept ? "Earned: " : "Not earned: "}</span>
                     {b.label}

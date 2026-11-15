@@ -45,7 +45,7 @@ function LevelRow({ l, save, open, current }: { l: Level; save: Save; open: (id:
           {total > 0 && (
             <span className="stars" role="img" aria-label={`${got} of ${total} stars`}>
               {Array.from({ length: total }, (_, i) => (
-                <span key={i} className={i < got ? "" : "empty"}><Icon name="star" size={11} /></span>
+                <span key={i} className={i < got ? "" : "empty"}><Icon name={i < got ? "star" : "star-open"} size={14} /></span>
               ))}
             </span>
           )}

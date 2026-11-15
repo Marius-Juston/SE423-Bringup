@@ -393,8 +393,10 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .level-row.tier-expert .node .icon { transform: rotate(-45deg); }
 .level-row.tier-practice .node { border-radius: 5px; }
 .level-row .kind { color: var(--dim); font-size: var(--fs-1); white-space: nowrap; }
-.stars { display: inline-flex; gap: 1px; margin-left: 0.4rem; color: var(--value); vertical-align: -0.1em; }
-.stars .empty { color: var(--control); }
+/* Stars sit on the line of the title: centred on its text, not hung below it. An open star is an outline. */
+.stars { display: inline-flex; align-items: center; gap: 1px; margin-left: 0.4rem; color: var(--value); vertical-align: middle; line-height: 1; position: relative; top: -0.06em; }
+.stars > span { display: inline-flex; }
+.stars .empty { color: var(--dim); }
 
 /* ---- level ---- */
 .level { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 100%; min-height: 0; }
@@ -714,7 +716,7 @@ tr.target td:first-child { color: var(--bad); }
 .checks .pass { color: var(--ok); }
 .checks .fail { color: var(--bad); }
 .checks .todo { color: var(--dim); }
-.checks .star { color: var(--control); }
+.checks .star { color: var(--dim); }
 .checks .star.on { color: var(--value); }
 .checks .detail { color: var(--dim); font-size: 0.88rem; grid-column: 2; overflow-wrap: anywhere; }
 .checks .best { grid-column: 2; font-size: 0.88rem; color: var(--dim); display: flex; flex-wrap: wrap; gap: 0.2rem 0.5rem; align-items: baseline; }
