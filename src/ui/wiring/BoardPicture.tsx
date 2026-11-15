@@ -19,6 +19,16 @@ import { NET_KINDS, netWords, pinsOfNet, type Highlight, type NetKind, type Pick
 import type { Inst, Shape, Status, Tone } from "../../sim/wiring/types";
 
 const B = HW_BOARD;
+/** The picture's own styles, for whatever shows it (the bench panel, a figure). */
+export const PICTURE_CSS = `
+.wb-stage { position: relative; margin: 0 auto; }
+.wb-board { display: block; font-family: var(--sans); }
+.wb-part { cursor: pointer; }
+.wb-halo { paint-order: stroke; stroke: var(--pcb); stroke-width: 0.6px; stroke-linejoin: round; }
+.wb-focus { position: absolute; transform: translate(-50%, -50%); background: transparent; border: 0; padding: 0; border-radius: 4px; cursor: pointer; }
+.wb-focus:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
+@media (any-pointer: coarse) { .wb-focus { min-width: 44px; min-height: 44px; } }
+`;
 const MIN_TEXT_PX = 9;
 const NAME_PX = 11;
 
@@ -79,6 +89,35 @@ function silk([x, y, size, rot, text]: (typeof B.texts)[number], k: number) {
   );
 }
 
+const LP_CENTRE = B.launchpad.x + B.launchpad.w / 2;
+/** The LaunchPad's pins are named once a row is tall enough for a name. */
+export const pinsNamed = (px: number): boolean => 2.54 * px >= NAME_PX + 1;
+const nameWidth = (text: string, px: number): number => (text.length * NAME_PX * 0.6 + 4) / px;
+export interface PinName {
+  n: number;
+  text: string;
+  x: number;
+  y: number;
+  anchor: "start" | "end";
+  /** The plate behind the name: x, y, width, height. */
+  box: Box;
+}
+/**
+ * Where each of the 80 pins' names goes: beside its pin, the outer column of a header outwards and the inner
+ * column inwards, so every pin has a place of its own that nothing else may take.
+ */
+export function pinNames(px: number): PinName[] {
+  const h = (NAME_PX + 1) / px;
+  return B.launchpad.pins.map(([x, y, net, n]): PinName => {
+    const text = net < 0 ? "NC" : B.nets[net];
+    const outer = Math.abs(x - LP_CENTRE) > 21.5;
+    const left = (x < LP_CENTRE) === outer;
+    const w = nameWidth(text, px);
+    const tx = x + (left ? -1.5 : 1.5);
+    return { n, text, x: tx, y: y + (NAME_PX * 0.36) / px, anchor: left ? "end" : "start", box: [left ? tx - w + 0.3 : tx - 0.3, y - h / 2, w, h] };
+  });
+}
+
 const tracePath = (t: number[]): string => {
   let d = `M${t[2]},${t[3]}`;
   for (let k = 4; k < t.length; k += 2) d += `L${t[k]},${t[k + 1]}`;
@@ -95,8 +134,13 @@ const PADS = new Map<number, string>();
 for (const [x, y, net] of B.holes) PADS.set(net, `${PADS.get(net) ?? ""}M${x - 0.85},${y}a0.85,0.85 0 1,0 1.7,0a0.85,0.85 0 1,0 -1.7,0`);
 
 /** Everything that never changes while a program runs. */
-const Still = memo(function Still({ px }: { px: number }) {
+const Still = memo(function Still({ px: scale, words }: { px: number; words: boolean }) {
   const lp = B.launchpad;
+  // Without words (a figure in a brief) nothing is written in the drawing: a scale of 0 keeps every word out.
+  const px = words ? scale : 0;
+  // A silkscreen word that a pin's name would cover is left out while the names show.
+  const plates = pinsNamed(px) ? pinNames(px).map((p) => p.box) : [];
+  const clear = (b: Box) => !plates.some((q) => hits(q, b));
   const pads = B.holes.map(([x, y]) => `M${x - 0.5},${y}a0.5,0.5 0 1,0 1,0a0.5,0.5 0 1,0 -1,0`).join("");
   const lpPins = lp.pins.map(([x, y]) => `M${x - 0.6},${y - 0.6}h1.2v1.2h-1.2z`).join("");
   return (
@@ -106,14 +150,14 @@ const Still = memo(function Still({ px }: { px: number }) {
       {B.decor.map(([x, y, w, h, word], k) => (
         <g key={k}>
           <rect x={x} y={y} width={w} height={h} rx={/^(GND|ADC|DAC)$/.test(word) ? 5 : 0.5} fill="none" stroke="var(--pcb-ink)" strokeWidth={0.25} />
-          {2 * px >= MIN_TEXT_PX && w > word.length * 1.2 && !B.texts.some((t) => t[0] > x - 12 && t[0] < x + w + 2 && t[1] > y - 2 && t[1] < y + h + 2) && <text x={x + w / 2} y={y + h / 2 + 0.7} fontSize={2} textAnchor="middle" fill="var(--pcb-ink)">{word}</text>}
+          {2 * px >= MIN_TEXT_PX && w > word.length * 1.2 && clear([x, y + h / 2 - 1.5, w, 3]) && !B.texts.some((t) => t[0] > x - 12 && t[0] < x + w + 2 && t[1] > y - 2 && t[1] < y + h + 2) && <text x={x + w / 2} y={y + h / 2 + 0.7} fontSize={2} textAnchor="middle" fill="var(--pcb-ink)">{word}</text>}
         </g>
       ))}
       <rect x={lp.x} y={lp.y} width={lp.w} height={lp.h} rx={1.5} fill="var(--pcb-edge)" fillOpacity={0.35} stroke="var(--pcb-ink)" strokeWidth={0.4} />
       <path d={lpPins} fill="var(--pcb-ink)" />
       {3.2 * px >= MIN_TEXT_PX && <text x={lp.x + lp.w / 2} y={lp.y + 14} fontSize={3.2} textAnchor="middle" fill="var(--pcb-ink)">F28379D LaunchPad</text>}
-      {1.6 * px >= MIN_TEXT_PX && lp.heads.map(([x, y, word], k) => <text key={k} x={x} y={y} fontSize={1.6} fill="var(--pcb-ink)">{word}</text>)}
-      {B.texts.filter((t) => t[2] * px >= MIN_TEXT_PX).map(silk)}
+      {1.6 * px >= MIN_TEXT_PX && lp.heads.filter(([x, y]) => clear([x, y - 1.6, 3, 1.6])).map(([x, y, word], k) => <text key={k} x={x} y={y} fontSize={1.6} fill="var(--pcb-ink)">{word}</text>)}
+      {B.texts.filter((t) => t[2] * px >= MIN_TEXT_PX && clear(silkBox(t))).map(silk)}
     </g>
   );
 });
@@ -176,9 +220,14 @@ export interface PictureProps {
   /** `keep`: a click, a tap or a key (stays); otherwise the mouse is only passing. */
   onPick: (p: Pick | null, keep: boolean) => void;
   onHold: (id: string, down: boolean) => void;
+  /**
+   * A plain picture for a figure in a brief: nothing is written in the drawing and it has no stops for the
+   * keyboard of its own. The figure's sentence and its lists carry the names and the choice.
+   */
+  plain?: boolean;
 }
 
-export function BoardPicture({ px, parts, selected, pick, light, routes, live, label, onPick, onHold }: PictureProps) {
+export function BoardPicture({ px, parts, selected, pick, light, routes, live, label, onPick, onHold, plain = false }: PictureProps) {
   const svg = useRef<SVGSVGElement>(null);
   const [holding, setHolding] = useState("");
   const [pinCursor, setPinCursor] = useState(1);
@@ -190,7 +239,8 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
   const holdable = (id: string) => !!parts.find((p) => p.inst.id === id)?.inst.def.inputs?.some((d) => d.kind === "hold");
 
   // ----- names: placed where nothing else is written -----
-  const { labels, tags, pinNames, lightLabels } = useMemo(() => {
+  const { labels, tags, named, lightLabels } = useMemo(() => {
+    if (plain) return { labels: [], tags: [], named: [], lightLabels: [] };
     const taken: Box[] = [];
     const width = (text: string) => mm(text.length * NAME_PX * 0.6 + 4);
     const h = mm(NAME_PX + 2);
@@ -208,14 +258,18 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
       taken.push(boxAt(x, y, anchor, text));
       return { key, x, y, anchor, text };
     };
+    // 0. The LaunchPad's pin names have their own places: all 80, before anything else.
+    const named = pinsNamed(px) ? pinNames(px) : [];
+    for (const p of named) taken.push(p.box);
     // What is written already: silkscreen words that show at this zoom, and the words of parts that are only drawn.
-    for (const t of B.texts) if (t[2] * px >= MIN_TEXT_PX) taken.push(silkBox(t));
+    for (const t of B.texts) if (t[2] * px >= MIN_TEXT_PX && !named.some((p) => hits(p.box, silkBox(t)))) taken.push(silkBox(t));
     if (2 * px >= MIN_TEXT_PX) for (const d of B.decor) taken.push([d[0], d[1], d[2], d[3]]);
     if (3.2 * px >= MIN_TEXT_PX) taken.push([lp.x + 6, lp.y + 10, lp.w - 12, 5]);
     const side = (x: number, y: number, out = 2.2): [number, number, Label["anchor"]][] => (x < LP_MID ? [[x - out, y + tag * 0.35, "end"]] : [[x + out, y + tag * 0.35, "start"]]);
     // 1. The label of what is lit up, at its LaunchPad pin: it always shows.
     const lightLabels: Label[] = [];
-    for (const net of light?.near ?? []) {
+    // (With the pins named there is nothing to add at the pin: its name is there, and the sentence has the rest.)
+    for (const net of named.length ? [] : (light?.near ?? [])) {
       const words = netWords(net);
       for (const [n, x, y] of pinsOfNet(net).slice(0, 2)) {
         const l = place(`hl-${n}`, words, [...side(x, y, x < LP_MID ? x - lp.x + 1.5 : lp.x + lp.w - x + 1.5), [x, y - 2.2, "middle"], [x, y + 2.2 + tag, "middle"]], true);
@@ -233,7 +287,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
         const left = at[0] < LP_MID;
         const x2 = left ? lp.x - 3 : lp.x + lp.w + 3;
         const text = `${inst.label}: ${d.name.replace(/ \(.*\)$/, "")}`;
-        const l = place(`${inst.id}-${d.id}`, text, [[left ? x2 - 0.8 : x2 + 0.8, at[1] + tag * 0.35, left ? "end" : "start"], [left ? x2 - 0.8 : x2 + 0.8, at[1] + tag * 0.35 - h, left ? "end" : "start"], [left ? x2 - 0.8 : x2 + 0.8, at[1] + tag * 0.35 + h, left ? "end" : "start"]]);
+        const l = place(`${inst.id}-${d.id}`, text, [[left ? x2 - 0.8 : x2 + 0.8, at[1] + tag * 0.35, left ? "end" : "start"], [left ? x2 - 0.8 : x2 + 0.8, at[1] + tag * 0.35 - h, left ? "end" : "start"], [left ? x2 - 0.8 : x2 + 0.8, at[1] + tag * 0.35 + h, left ? "end" : "start"], [left ? x2 - 10 : x2 + 10, at[1] + tag * 0.35, left ? "end" : "start"], [left ? x2 - 10 : x2 + 10, at[1] + tag * 0.35 - h, left ? "end" : "start"]]);
         const reach = l ? width(text) + 0.8 : 0;
         tags.push({ ...(l ?? { key: `${inst.id}-${d.id}`, x: 0, y: 0, anchor: "start", text: "" }), id: inst.id, px: at[0], py: at[1], x2, x0: left ? x2 - reach : at[0], x1: left ? at[0] : x2 + reach });
       }
@@ -276,21 +330,9 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
     if (!each.led) group("led", "LED1 to LED16");
     if (!each.button) group("button", "PB1 to PB4");
     if (!each["imu-jumper"]) group("imu-jumper", "IMU jumpers");
-    // 4. The LaunchPad's pin names, when a row is tall enough for one.
-    const pinNames: Label[] = [];
-    if (2.54 * px >= NAME_PX + 1) {
-      for (const [x, y, net, n] of B.launchpad.pins) {
-        if (net < 0) continue;
-        // The outer columns are named outwards, the inner ones inwards.
-        const outer = Math.abs(x - LP_MID) > 21.5;
-        const leftSide = x < LP_MID;
-        const l = place(`pin-${n}`, B.nets[net], [[x + (outer === leftSide ? -1.4 : 1.4), y + tag * 0.35, outer === leftSide ? "end" : "start"]]);
-        if (l) pinNames.push(l);
-      }
-    }
-    return { labels, tags, pinNames, lightLabels };
+    return { labels, tags, named, lightLabels };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [px, parts, selected, light, live, onBoard]);
+  }, [px, parts, selected, light, live, onBoard, plain]);
 
   // ----- the mouse: what is under the pointer -----
   const under = (e: { clientX: number; clientY: number }): Pick | null => {
@@ -399,7 +441,7 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
       onPointerUp={release}
       onPointerCancel={release}
     >
-      <Still px={px} />
+      <Still px={px} words={!plain} />
       {routes.length > 0 && <AllRoutes nets={routes} />}
       {/* What is lit up: its copper (top solid, bottom dashed), every pad of it, and its LaunchPad pin. */}
       {light && (
@@ -420,11 +462,27 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
           ))}
         </g>
       )}
-      <g>
+      {/* Connections made by hand (a battery lead, a soldered wire): their own line, with a dot at each end. */}
+      <g aria-hidden="true" className="wb-links">
+        {onBoard.flatMap(({ inst }) =>
+          inst.opts.fitted === "no" ? [] : (inst.part!.links ?? []).map(([x1, y1, x2, y2], k) => {
+            const lit = !!light && ((pick?.t === "part" && pick.id === inst.id) || inst.part!.nets.some((n) => light.near.includes(n)));
+            const ink = lit ? "var(--focus)" : "var(--pcb-ink)";
+            return (
+              <g key={`${inst.id}-${k}`} data-link={inst.id} data-lit={lit ? "yes" : "no"}>
+                <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={ink} strokeWidth={lit ? 0.9 : 0.5} strokeDasharray="2.6 0.7 0.5 0.7" strokeLinecap="round" />
+                <circle cx={x1} cy={y1} r={0.8} fill={ink} />
+                <circle cx={x2} cy={y2} r={0.8} fill={ink} />
+              </g>
+            );
+          }),
+        )}
+      </g>
+      <g aria-hidden={plain || undefined}>
         {onBoard.map(({ inst, status }) => (
           <g key={inst.id} className="wb-part" data-part={inst.id} data-state={status.text}>
             <title>{`${inst.label}: ${status.text}`}</title>
-            {inst.def.draw!(inst, status, inst.part!.box).map((s, k) => shape(s, k, px))}
+            {inst.def.draw!(inst, status, inst.part!.box).map((s, k) => shape(s, k, plain ? 0 : px))}
           </g>
         ))}
         {sel && (
@@ -439,46 +497,60 @@ export function BoardPicture({ px, parts, selected, pick, light, routes, live, l
         </g>
       ))}
       <g aria-hidden="true">
-        {pinNames.map((l) => name(l, "wb-halo wb-pinname"))}
+        {named.map((p) => (
+          <g key={p.n} className="wb-pinname" data-pin={p.n}>
+            <rect x={p.box[0]} y={p.box[1]} width={p.box[2]} height={p.box[3]} rx={0.3} fill="var(--pcb)" fillOpacity={0.88} />
+            <text x={p.x} y={p.y} fontSize={tag} textAnchor={p.anchor} fill="var(--pcb-ink)">{p.text}</text>
+          </g>
+        ))}
         {labels.map((l) => name(l))}
         {lightLabels.map((l) => name(l, "wb-halo wb-lightname"))}
       </g>
       {pick?.t === "pin" && <rect aria-hidden="true" x={cursorPin[0] - 1.9} y={cursorPin[1] - 1.9} width={3.8} height={3.8} rx={0.6} fill="none" stroke="var(--focus)" strokeWidth={Math.max(0.5, mm(2.5))} />}
     </svg>
-      {sel && (
-        <button
-          type="button"
-          className="wb-focus"
-          data-keys="parts"
-          style={over(...sel.inst.part!.box)}
-          aria-label={`${sel.inst.label}: ${sel.status.text}. Arrow keys move to the other parts${holdable(sel.inst.id) ? "; hold Space to press it" : ""}.`}
-          aria-pressed={holdable(sel.inst.id) ? holding === sel.inst.id : undefined}
-          onKeyDown={partKey}
-          onKeyUp={(e) => (e.key === " " || e.key === "Enter") && release()}
-          onBlur={release}
-          onFocus={() => onPick({ t: "part", id: sel.inst.id }, true)}
-          onPointerDown={() => {
-            onPick({ t: "part", id: sel.inst.id }, true);
-            if (holdable(sel.inst.id)) {
-              setHolding(sel.inst.id);
-              onHold(sel.inst.id, true);
-            }
-          }}
-          onPointerUp={release}
-          onPointerLeave={release}
-          onPointerCancel={release}
-        />
-      )}
-      <button
-        type="button"
-        className="wb-focus"
-        data-keys="pins"
-        style={over(cursorPin[0] - 0.6, cursorPin[1] - 0.6, 1.2, 1.2)}
-        aria-label={`LaunchPad pin ${cursorPin[3]}: ${pinNet < 0 ? "not connected" : B.nets[pinNet]}. Arrow keys move over the pins; the sentence under the picture says what is on each.`}
-        onKeyDown={pinKey}
-        onFocus={() => onPick({ t: "pin", n: cursorPin[3] }, true)}
-        onPointerDown={() => onPick({ t: "pin", n: cursorPin[3] }, true)}
-      />
+      {/* The two stops in the order they stand on the page, so Tab never jumps upwards. */}
+      {!plain && (() => {
+        const partStop = sel ? (
+          <button
+            key="parts"
+            type="button"
+            className="wb-focus"
+            data-keys="parts"
+            style={over(...sel.inst.part!.box)}
+            aria-label={`${sel.inst.label}: ${sel.status.text}. Arrow keys move to the other parts${holdable(sel.inst.id) ? "; hold Space to press it" : ""}.`}
+            aria-pressed={holdable(sel.inst.id) ? holding === sel.inst.id : undefined}
+            onKeyDown={partKey}
+            onKeyUp={(e) => (e.key === " " || e.key === "Enter") && release()}
+            onBlur={release}
+            onFocus={() => onPick({ t: "part", id: sel.inst.id }, true)}
+            onPointerDown={() => {
+              onPick({ t: "part", id: sel.inst.id }, true);
+              if (holdable(sel.inst.id)) {
+                setHolding(sel.inst.id);
+                onHold(sel.inst.id, true);
+              }
+            }}
+            onPointerUp={release}
+            onPointerLeave={release}
+            onPointerCancel={release}
+          />
+        ) : null;
+        const pinStop = (
+          <button
+            key="pins"
+            type="button"
+            className="wb-focus"
+            data-keys="pins"
+            style={over(cursorPin[0] - 0.6, cursorPin[1] - 0.6, 1.2, 1.2)}
+            aria-label={`LaunchPad pin ${cursorPin[3]}: ${pinNet < 0 ? "not connected" : B.nets[pinNet]}. Arrow keys move over the pins; the sentence under the picture says what is on each.`}
+            onKeyDown={pinKey}
+            onFocus={() => onPick({ t: "pin", n: cursorPin[3] }, true)}
+            onPointerDown={() => onPick({ t: "pin", n: cursorPin[3] }, true)}
+          />
+        );
+        const partFirst = !sel || sel.inst.part!.box[1] + sel.inst.part!.box[3] / 2 <= cursorPin[1];
+        return partFirst ? [partStop, pinStop] : [pinStop, partStop];
+      })()}
     </div>
   );
 }
@@ -500,6 +572,7 @@ export function Legend({ routes }: { routes: boolean }) {
       <li>{swatch(<><circle cx="5" cy="5" r="1" fill="none" stroke={ink} strokeWidth="0.5" /><path d="M5,5L11,2" stroke="var(--accent)" strokeWidth="1.1" /></>)} Servo: the horn turns; its name gives the angle</li>
       <li>{swatch(<><rect x="4" y="1.5" width="8" height="5" fill="none" stroke={ink} strokeWidth="0.5" strokeDasharray="1 0.8" /><path d="M4,1.5l8,5M12,1.5l-8,5" stroke={ink} strokeWidth="0.5" /></>)} Not soldered: dashed box with a cross</li>
       <li>{swatch(<><path d="M1,2.5H15" stroke="var(--focus)" strokeWidth="1.2" /><path d="M1,5.5H15" stroke="var(--focus)" strokeWidth="1.2" strokeDasharray="2 1.4" /></>)} Lit-up connection: solid on the top of the board, dashed on the bottom</li>
+      <li>{swatch(<><path d="M2,4H14" stroke={ink} strokeWidth="0.9" strokeDasharray="4 1.2 1 1.2" /><circle cx="2" cy="4" r="1.2" fill={ink} /><circle cx="14" cy="4" r="1.2" fill={ink} /></>)} Soldered lead or wire: made by hand, not copper</li>
       {routes && NET_KINDS.map((k) => (
         <li key={k.id}>{swatch(<path d="M1,4H15" stroke={ink} strokeWidth={Math.max(0.6, KIND_STYLE[k.id].w * 1.6)} strokeDasharray={KIND_STYLE[k.id].dash} strokeLinecap="round" />)} {k.name}</li>
       ))}

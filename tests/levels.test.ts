@@ -3,6 +3,7 @@ import { CHAPTERS } from "../src/levels/index";
 import trm from "../src/levels/trm-index.json";
 import { existsSync } from "node:fs";
 import { runProgram } from "../src/sim/runner";
+import { benchLink, lessonBench } from "../src/sim/wiring/active";
 import { device } from "../src/ui/device";
 import { layoutOf, registerSolved } from "../src/ui/widgets/RegisterPuzzle";
 import type { CodeLevel } from "../src/levels/types";
@@ -91,9 +92,17 @@ describe("level catalogue", () => {
       });
 
       if (l.kind === "code") {
-        const run = (source: string) => runProgram({ kit: l.kit, source, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks, bonus: l.bonus });
+        // A fault-finding level runs on the wiring bench: with its faults for the starter, with the reference repair for the solution.
+        const run = (source: string, repaired = false) => {
+          if (l.bench) Object.assign(benchLink, lessonBench(l.bench.faults, repaired ? l.bench.repair : {}));
+          try {
+            return runProgram({ kit: l.kit, source, durationMs: l.durationMs, stimuli: l.stimuli, checks: l.checks, bonus: l.bonus });
+          } finally {
+            Object.assign(benchLink, { state: null, engine: null, changes: 0 });
+          }
+        };
         it("reference solution passes every check with no diagnostics", () => {
-          const r = run(l.solution);
+          const r = run(l.solution, true);
           expect(r.compileError, JSON.stringify(r.compileError)).toBeUndefined();
           expect(r.runtimeError, JSON.stringify(r.runtimeError)).toBeUndefined();
           for (const ch of r.checks) expect(ch.pass, `${ch.label}: ${ch.detail}`).toBe(true);

@@ -486,7 +486,7 @@ button.tile.done:hover { background: linear-gradient(var(--ok-soft), var(--ok-so
 .takeaway.assisted { border-style: dashed; }
 .bench > .takeaway { margin: 0 0 0.7rem; }
 .best-line { margin: 0.35rem 0 0; font-size: var(--fs-2); }
-.best-line .icon { color: var(--value); }
+.best-line .icon { color: var(--value); vertical-align: middle; position: relative; top: -0.06em; }
 .best-what { color: var(--dim); }
 .confirm { margin-top: 0.6rem; padding: 0.55rem 0.7rem; border: 1px solid var(--border-strong); border-left: 3px solid var(--value); border-radius: var(--radius); background: var(--bg-2); font-size: var(--fs-2); }
 .confirm p { margin: 0; }
@@ -715,6 +715,8 @@ tr.target td:first-child { color: var(--bad); }
 .term-input input { flex: 1; font-family: var(--mono); min-width: 0; }
 .checks { list-style: none; padding: 0; margin: 0; }
 .checks li { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr); gap: 0.4rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border); }
+/* The mark of a check sits on the middle of the first line of its text, at every text size. */
+.checks li > :first-child { display: flex; align-items: center; height: 1lh; }
 .checks li:last-child { border-bottom: none; }
 .checks .pass { color: var(--ok); }
 .checks .fail { color: var(--bad); }

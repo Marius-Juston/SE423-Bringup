@@ -179,6 +179,24 @@ Write the text to match the figure and point at it, not to replace it.
   time; a polling loop that writes something on every pass is simulated
   statement by statement (about 1 to 3 million statements per second).
 
+## Fault-finding levels on the wiring bench
+
+A code level on the `redboard` kit can put the wiring bench (`docs/WIRING.md`) above its tests, with a fault the page does not show. Primer D ("The homework board") has four; `brd-fault-led` is the model.
+
+```ts
+bench: { faults: { LED4: { way: "rev" } }, repair: { LED4: { way: "ok" } } },
+```
+
+- `faults` is how the board starts: a part's id, then its options, as the Sandbox's fault switches name them (`fitted`, `way`, `pos`). `repair` is the reference repair. The tests apply it with the reference solution; the e2e playthrough and the accessibility suite make it on the bench, as a student does.
+- The bench shows the board as if nothing were wrong until a program runs. Then each part's card says what it is doing and why not. The Repair lists start at "Leave as it is" and never show the board's state, so the page gives the fault away only to a student who looks.
+- A fault in the program (a missing pull-up) uses `faults: {}` and `repair: {}`: the bench is there to look with.
+- Judge behaviour, never which switch was touched. Checks read the signals `BENCH_<part id>` (1 while that LED is lit), `BUZZER_HZ`, `SERVO1_DEG` and `SERVO2_DEG`, the program's variables, or `no-diagnostic`. A repair that does not fit the cause must fail: run the two or three likely wrong repairs (`tests/board_lessons.test.ts` shows how).
+- A star rewards a clean repair: `{ kind: "signal", name: "BENCH_CHANGES", max: 1 }` counts the options the student changed. Choosing what the board already is counts as no change.
+- Say in the brief whether the program is correct. Programs that are given must not use a set-up a homework grades: toggle the pin by hand.
+- The hints are the usual ladder: where to look, the mechanism, the repair by name.
+
+After adding a chapter file, a glossary file or a figure, run `npx vitest --clearCache` once: the test runner keeps the list of auto-discovered files from its last run.
+
 ## Building on earlier work
 A code level may set `continues: "<earlier level id>"`. It then opens with
 the student's own saved code from that level, so a chapter can grow one

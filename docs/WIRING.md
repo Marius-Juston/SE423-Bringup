@@ -80,6 +80,21 @@ The picture shows connections with the board's real copper, compiled into the da
 
 Ground is a filled area on the board, not traces: it is shown by its pads.
 
+Not every connection is copper. The battery pack's two leads, the wire from its row to the servo supply rows, the joints beside the servo connectors and the photoresistor's wire to its ADC pin are soldered by hand. The board data lists them with the part that brings them (`links`), and the picture draws them as their own kind of line (dash-dot, a dot at each end, "Soldered lead or wire" in the legend). They exist while that part is on the board: take the battery pack off and its leads go. Which rows of the pad field the leads use is read off the photos of HW1 and HW4 by eye. What has neither copper nor a link (a part's supply and ground, a module in its socket, a plug-in jumper) is named in the part's sentence. `tests/wiring_bench.test.ts` fails when a terminal of a part resolves to none of these.
+
+The LaunchPad's 80 pins are named whenever a row is tall enough for 11 px text (the large view at 1440 px, or zoomed in). Each name has a place of its own beside its pin, on a small plate, so it is never dropped for lack of room and reads over pads and traces. A silkscreen word under a plate is left out while the names show.
+
+## In a level
+
+Primer D leads into the bench: a tour of the board with the figure `board-connections` (the same picture, nothing running), then four fault-finding levels. A code level with a `bench` field (`docs/AUTHORING.md`) shows this panel above its tests in a mode of its own:
+
+- the board starts with the level's faults, kept in a store of its own (`lessonStore` in `src/ui/wiring/store.ts`) that is never saved;
+- with no program running everything is drawn and described as if nothing were wrong;
+- the fault switches become Repair lists that start at "Leave as it is";
+- attaching devices, the wiring table and the fault count are left out.
+
+The simulator publishes what the checks read: `BENCH_<part id>` for each LED and `BENCH_CHANGES`, the number of options the student changed.
+
 ## Connection checks
 
 `checkBench(state)` in `bench.ts` checks every attached device. Each message says what happens and what to choose.

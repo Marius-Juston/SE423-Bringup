@@ -76,6 +76,11 @@ export interface BoardPart {
   nets: number[];
   /** Nets behind an inverter or a resistor: between the chip's net and the part itself. */
   far: number[];
+  /**
+   * Connections made by hand that this part brings (a battery lead, a soldered wire), which the board's
+   * copper does not have: x1, y1, x2, y2 in mm, then what it is. They exist while the part is on the board.
+   */
+  links?: [number, number, number, number, string][];
 }
 
 /** One part on the bench, with its settings resolved. */

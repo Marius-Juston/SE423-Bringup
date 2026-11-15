@@ -282,6 +282,52 @@ for (const p of parts) {
   if (!p.nets || p.nets.some((n) => n < 0)) throw new Error(`${p.id}: a net was not found`);
 }
 
+const lp = elByName.get("L1");
+const lpk = pkgOf(lp);
+
+// ---------- connections made by hand ----------
+// Not everything is copper. The assembly photos of HW1 and HW4 show wires and leads soldered by the student:
+// the battery pack's two leads end on rows of the pad field; a long wire takes the positive row to the supply
+// row of RC2, a short one goes on to RC1's; a short wire joins the negative row to the ground rail. The servo
+// connectors' signal rows stand beside their pin's pads and are joined there. The photoresistor's junction
+// goes to its ADC pin by a wire. Which row of the pad field is used is read off the photos by eye: the rows
+// here are close to, not certainly, the ones in the photos.
+// Each link: x1, y1, x2, y2 (screen mm), then what it is.
+const holeXY = (name, pad) => {
+  const el = elByName.get(name);
+  const q = kids(pkgOf(el), "pad").find((k) => k.a.name === pad);
+  return place(el, +q.a.x, +q.a.y);
+};
+const rowOf = (label) => groups.find((g) => g.label === `Row ${label}`).id;
+const part = (id) => parts.find((p) => p.id === id);
+{
+  const bat = part("BAT");
+  const plus = rowOf("A3");
+  const minus = rowOf("B3");
+  // The pack lies off the lower left corner of the board; its leads come in from there.
+  const from = [r2(bat.box[0] + 4), r2(Math.min(H - 1, bat.box[1] + bat.box[3] + 30))];
+  const gndRail = holes.filter((h) => nets[h[2]] === "GND" && groups[h[3]].kind === "STRIP10").sort((a, b) => Math.abs(a[1] - holeXY(minus, "P$5")[1]) - Math.abs(b[1] - holeXY(minus, "P$5")[1]))[0];
+  bat.links = [
+    [...from, ...holeXY(plus, "P$1"), "battery pack's positive lead"],
+    [...holeXY(plus, "P$2"), ...holeXY("S139", "P$1"), "long wire to the servo supply row"],
+    [...holeXY("S139", "P$2"), ...holeXY("S147", "P$2"), "short wire between the two servo supply rows"],
+    [from[0] + 3, from[1], ...holeXY(minus, "P$1"), "battery pack's negative lead"],
+    [...holeXY(minus, "P$5"), gndRail[0], gndRail[1], "short wire to the ground rail"],
+  ];
+  bat.nets = [rowNet(plus), rowNet("S139"), rowNet("S147")];
+  bat.far = [rowNet(minus)];
+  for (const [id, row, pads] of [["RC1", "S130", "J201"], ["RC2", "S138", "J202"]]) part(id).links = [[...holeXY(pads, "P$1"), ...holeXY(row, "P$1"), "joint between the pin's pads and the signal row"]];
+  // The servo's three rows: signal (with its pin), supply, and ground (a plane: shown by its pads).
+  for (const id of ["RC1", "RC2"]) {
+    const p = part(id);
+    p.nets = [...p.nets, ...p.far];
+    p.far = [];
+  }
+  const ldr = part("LDR");
+  const pin69 = kids(lpk, "pad").find((q) => signalOf.get(`L1.${q.a.name}`) === ldr.adc);
+  ldr.links = [[r2(ldr.box[0]), r2(ldr.box[1] + ldr.box[3] / 2), ...place(lp, +pin69.a.x, +pin69.a.y), "wire from the junction to the ADC pin"]];
+}
+
 // The copper traces of the nets a part or a LaunchPad pin is on: top layer 0, bottom layer 1. Segments that
 // meet end to end are joined into one line, and points are rounded to 0.05 mm, to keep the file small.
 // The ground plane is a filled area on the board, not traces: ground is shown by its pads.
@@ -362,8 +408,6 @@ for (const b of ["B3", "B4", "B5"]) {
 }
 
 // The LaunchPad: its outline and its 80 header pins with the net each one is.
-const lp = elByName.get("L1");
-const lpk = pkgOf(lp);
 const box = kids(lpk, "wire").filter((w) => Math.abs(+w.a.x1 - +w.a.x2) > 20 || Math.abs(+w.a.y1 - +w.a.y2) > 20);
 const corners = box.flatMap((w) => [place(lp, +w.a.x1, +w.a.y1), place(lp, +w.a.x2, +w.a.y2)]);
 const lx0 = Math.max(0, Math.min(...corners.map((c) => c[0])));

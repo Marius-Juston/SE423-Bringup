@@ -352,6 +352,17 @@ async function typeSolution(page, l) {
   await page.locator(".cm-content").click();
   await page.keyboard.press("Control+A");
   await page.keyboard.insertText(l.solution);
+  // A fault-finding level on the wiring bench: the reference repair is made on the bench, as a student does.
+  if (l.bench && Object.keys(l.bench.repair).length) {
+    const board = page.getByRole("tab", { name: "Board" });
+    const tabbed = (await board.count()) > 0;
+    if (tabbed) await board.click();
+    for (const [id, opts] of Object.entries(l.bench.repair)) {
+      await page.locator('[data-wb="part"]').selectOption(id);
+      for (const [o, v] of Object.entries(opts)) await page.locator(`[data-card="${id}"] [data-option="${o}"]`).selectOption(v);
+    }
+    if (tabbed) await page.getByRole("tab", { name: "Code" }).click();
+  }
 }
 
 async function solve(page, l) {
@@ -552,6 +563,8 @@ async function mapScreen(s, chapters) {
       const last = (await next.innerText()).startsWith("Finish");
       await next.click();
       if (last) break;
+      // The next question arrives with a cross-fade: wait until it is the one in the address, not the one just answered.
+      await page.waitForFunction((old) => decodeURIComponent(location.hash.split("/")[2] ?? "") !== old, lid, { timeout: 15000 }).catch(() => {});
       await s.settle();
     }
     if (await page.locator(".warm-note").count()) await s.state("map", "after the warm-up", { axe: "both", keyboard: ["light"] });

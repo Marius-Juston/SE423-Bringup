@@ -9,7 +9,7 @@ import { outcomeOf } from "./outcomes";
 
 /** The campaign in parts, by chapter number. */
 export const PARTS: { title: string; blurb: string; from: number; to: number }[] = [
-  { title: "Start here", blurb: "Never programmed or wired a circuit? Begin with these. Skip them if you already know C and Ohm's law.", from: -3, to: -1 },
+  { title: "Start here", blurb: "Never programmed or wired a circuit? Begin with these. Skip them if you already know C and Ohm's law. Part D shows the homework board before you solder it.", from: -3, to: -0.5 },
   { title: "Foundations", blurb: "Bits, registers, pins, timers, interrupts and the serial port.", from: 0, to: 6 },
   { title: "Analog and motion", blurb: "Voltages in and out, PWM, motors and encoders.", from: 7, to: 11 },
   { title: "Buses and data", blurb: "SPI, I2C, CAN, DMA and digital filters.", from: 12, to: 15 },

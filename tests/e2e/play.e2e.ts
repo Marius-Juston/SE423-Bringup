@@ -116,6 +116,11 @@ async function solve(l: Level): Promise<void> {
       await page.locator(".cm-content").click();
       await page.keyboard.press("Control+A");
       await page.keyboard.insertText(l.solution);
+      // A fault-finding level on the wiring bench: the reference repair is made on the bench, as a student does.
+      for (const [id, opts] of Object.entries(l.bench?.repair ?? {})) {
+        await page.locator('[data-wb="part"]').selectOption(id);
+        for (const [o, v] of Object.entries(opts)) await page.locator(`[data-card="${id}"] [data-option="${o}"]`).selectOption(v);
+      }
       await page.getByRole("button", { name: /^Run tests/ }).click();
       await page.waitForSelector(".bench .result");
       break;

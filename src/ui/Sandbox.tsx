@@ -48,7 +48,7 @@ Write any program and press **Run**. Hold the on-screen push buttons, type into 
 - Time is simulated: a slower speed lets you watch fast signals.
 - The simulator models behaviour, not exact timing: confirm on the real board.
 - The starting programs show what a board can do through its library. None of them is the answer to a level, a lab or a homework.
-- On the homework red board, the **Wiring bench** panel shows the board with its parts. Switch a fault on to see its symptom, or attach a device of your own to free pins.
+- On the homework red board, the **Wiring bench** panel shows the board with its parts. Switch a fault on to see its symptom, or attach a device of your own to free pins. New to the board? Part D on the map, "The homework board", is a short tour with four faults to find.
 - On the robot board, the starting program **Robot arena** drives the robot in a circle. While it runs, the **Robot arena** panel lets you drag the robot, choose another room or a random maze, and put boxes and posts in the way.
 `;
 

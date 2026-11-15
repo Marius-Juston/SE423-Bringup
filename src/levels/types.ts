@@ -157,6 +157,15 @@ export interface CodeLevel extends Base {
    * solution plus the new TODOs, for students who arrive without it.
    */
   continues?: string;
+  /**
+   * A fault-finding level on the wiring bench of the homework board (docs/WIRING.md). The board starts with
+   * `faults` switched on, which the page does not show: the student finds them by running the program and
+   * reading the bench, and repairs them there (or in the code). `repair` is the reference repair, applied
+   * with the reference solution by the tests. Both map a part's id to its options: { LED5: { fitted: "no" } }.
+   * Checks read what the bench's parts do: the signal "BENCH_<part id>" is 1 while an LED is lit, and
+   * "BENCH_CHANGES" counts the options the student changed.
+   */
+  bench?: { faults: Record<string, Record<string, string>>; repair: Record<string, Record<string, string>> };
   /** Global variables shown live next to the board. */
   watch?: string[];
   /** Registers shown in the inspector by default. */
