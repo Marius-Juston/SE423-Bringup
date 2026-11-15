@@ -1,4 +1,4 @@
-import { Component, useEffect, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useLayoutEffect, useRef, useState, ViewTransition, type ReactNode } from "react";
 import { CHAPTERS, findLevel } from "../levels/index";
 import { useSave } from "./store";
 import { MapView } from "./MapView";
@@ -12,7 +12,7 @@ import { usePref } from "./prefs";
 import { tierOf } from "../levels/types";
 import { store } from "./store";
 import { sessionSummary } from "./review";
-import { hashOf, viewOf, type View } from "./route";
+import { hashOf, navigate, SCREEN_CHANGE, viewOf, type View } from "./route";
 
 export type { View } from "./route";
 
@@ -79,32 +79,39 @@ function Game() {
   const [warm, setWarm] = useState<{ ids: string[]; i: number; right: number } | null>(null);
   /** The result of the warm-up just finished, shown on the map until another screen is opened. */
   const [warmNote, setWarmNote] = useState("");
+  // Every change of screen goes through navigate (route.ts): a short cross-fade where motion is allowed.
   // Going anywhere by hand leaves a warm-up.
-  const setView = (v: View) => {
-    setWarm(null);
-    setWarmNote("");
-    show(v);
-  };
+  const setView = (v: View) =>
+    navigate(() => {
+      setWarm(null);
+      setWarmNote("");
+      show(v);
+    });
   const startWarmup = (ids: string[]) => {
     store.warmupSeen();
-    setWarmNote("");
-    setWarm({ ids, i: 0, right: 0 });
-    show({ name: "level", id: ids[0] });
+    navigate(() => {
+      setWarmNote("");
+      setWarm({ ids, i: 0, right: 0 });
+      show({ name: "level", id: ids[0] });
+    });
   };
   const warmNext = (right: boolean) => {
     if (!warm) return;
     const n = warm.right + (right ? 1 : 0);
-    if (warm.i + 1 < warm.ids.length) {
-      setWarm({ ...warm, i: warm.i + 1, right: n });
-      show({ name: "level", id: warm.ids[warm.i + 1] });
-    } else {
-      setWarm(null);
-      setWarmNote(sessionSummary(n, warm.ids.length));
-      show({ name: "map" });
-    }
+    navigate(() => {
+      if (warm.i + 1 < warm.ids.length) {
+        setWarm({ ...warm, i: warm.i + 1, right: n });
+        show({ name: "level", id: warm.ids[warm.i + 1] });
+      } else {
+        setWarm(null);
+        setWarmNote(sessionSummary(n, warm.ids.length));
+        show({ name: "map" });
+      }
+    });
   };
   // The address follows the screen, and the Back and Forward buttons move between screens.
-  useEffect(() => {
+  // A layout effect: it runs as the new screen is put in the page, not after the cross-fade.
+  useLayoutEffect(() => {
     const want = hashOf(view);
     if (hashOf(viewOf(window.location.hash)) === want) return;
     try {
@@ -114,14 +121,15 @@ function Game() {
     }
   }, [view]);
   useEffect(() => {
-    const on = () => {
-      setWarm(null);
-      setWarmNote("");
-      show((v) => {
-        const to = viewOf(window.location.hash);
-        return hashOf(to) === hashOf(v) ? v : to;
+    const on = () =>
+      navigate(() => {
+        setWarm(null);
+        setWarmNote("");
+        show((v) => {
+          const to = viewOf(window.location.hash);
+          return hashOf(to) === hashOf(v) ? v : to;
+        });
       });
-    };
     window.addEventListener("popstate", on);
     window.addEventListener("hashchange", on);
     return () => {
@@ -132,9 +140,10 @@ function Game() {
   const save = useSave();
   const [theme, setTheme] = useAppearance();
   // A new screen starts at its top, with the focus on its heading (so a screen reader announces where you are).
+  // A layout effect, so the focus is never left on a button of the screen that went away while the two cross-fade.
   const where = view.name === "level" ? view.id : view.name;
   const shownOnce = useRef(false);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const main = document.getElementById("main");
     const h = main?.querySelector<HTMLElement>("h1");
     document.title = h && view.name !== "map" ? `${h.textContent} · Bringup` : "Bringup: SE 423 practice";
@@ -149,6 +158,7 @@ function Game() {
     } else main?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [where]);
+  const screenKey = view.name === "level" ? (warm ? `warm-${view.id}` : view.id) : view.name;
   const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches) || (theme === "system" && !window.matchMedia("(prefers-color-scheme: light)").matches);
   const core = CHAPTERS.flatMap((c) => c.levels).filter((l) => tierOf(l) === "core");
   const done = core.filter((l) => save.passed[l.id]).length;
@@ -182,8 +192,13 @@ function Game() {
           <Icon name={dark ? "sun" : "moon"} size={18} />
         </button>
       </header>
+      {/* A change of screen made by navigate() cross-fades what is in <main>. The boundary is <main> itself and not the
+          screen inside it: <main> scrolls, and the picture the browser takes of a transition's element is not clipped
+          by what it scrolls in, so a scrolled screen would be drawn over the top bar for the length of the fade.
+          Any other change inside a screen is never animated here (default: "none"). */}
+      <ViewTransition update={{ [SCREEN_CHANGE]: "screen", default: "none" }} enter="none" exit="none">
       <main id="main" tabIndex={-1}>
-        <Boundary key={view.name === "level" ? view.id : view.name} onReset={() => setView({ name: "map" })}>
+        <Boundary key={screenKey} onReset={() => setView({ name: "map" })}>
         {view.name === "map" && <MapView open={(id) => setView({ name: "level", id })} warmup={startWarmup} note={warmNote} />}
         {view.name === "level" && findLevel(view.id) && <LevelView key={warm ? `warm-${view.id}` : view.id} id={view.id} go={setView} warmup={warm ? { index: warm.i, total: warm.ids.length, next: warmNext, end: () => setView({ name: "map" }) } : undefined} />}
         {view.name === "handbook" && <Handbook open={(id) => setView({ name: "level", id })} at={view.reg ? { reg: view.reg } : undefined} />}
@@ -191,6 +206,7 @@ function Game() {
         {view.name === "settings" && <Settings />}
         </Boundary>
       </main>
+      </ViewTransition>
     </div>
   );
 }

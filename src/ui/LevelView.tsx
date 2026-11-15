@@ -195,7 +195,13 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
 
   // A button that goes away when it is used hands the focus on, so the keyboard keeps its place:
   // the last hint takes it from "Show another hint", and "Try again without help" takes it back from Cancel.
+  // The "level passed" box arrives with a short fade when the level is passed now, not when a passed level is opened.
+  // (The saved progress says "passed" a moment before this component hears of it, so the box is first drawn from that.)
+  const passedAtOpen = useRef(passed);
   const hintsBox = useRef<HTMLDivElement>(null);
+  // A hint the student has just asked for arrives with a short fade; the ones that were open when the level opened are simply there.
+  const hintsAtOpen = useRef(shown);
+  if (shown < hintsAtOpen.current) hintsAtOpen.current = shown;
   const retryButton = useRef<HTMLButtonElement>(null);
   const lostFocus = () => !document.activeElement || document.activeElement === document.body;
   const shownBefore = useRef(shown);
@@ -227,7 +233,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
 
   const done = warmup ? (
     justPassed && (
-      <div className="takeaway passed" ref={passBox}>
+      <div className="takeaway passed fresh" ref={passBox}>
         <strong className="passed-title">
           <Icon name="check" size={16} /> {firstTry.current ? "Right at the first try." : "Right."}
         </strong>{" "}
@@ -242,7 +248,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
     )
   ) : (
     (passed || justPassed) && (
-      <div className={`takeaway passed ${assisted ? "assisted" : ""}`} ref={passBox}>
+      <div className={`takeaway passed ${assisted ? "assisted" : ""} ${passedAtOpen.current ? "" : "fresh"}`} ref={passBox}>
         <strong className="passed-title">
           <Icon name={assisted ? "help" : "check"} size={16} /> {assisted ? "Level passed with help." : "Level passed."}
         </strong>{" "}
@@ -302,7 +308,7 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
       {hints.length > 0 && (
         <div className="hints" ref={hintsBox}>
           {hints.slice(0, shown).map((h, i) => (
-            <div className="hint" key={i} tabIndex={-1}>
+            <div className={`hint ${i >= hintsAtOpen.current ? "fresh" : ""}`} key={i} tabIndex={-1}>
               <b>Hint {i + 1} of {hints.length}.</b> <Markdown text={h} />
             </div>
           ))}

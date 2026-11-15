@@ -158,7 +158,12 @@ export function installChecks() {
   };
 
   // ---------- settle: the app's idle state ----------
-  /** Resolves when the fonts are loaded and the page has not changed for `quiet` frames. `idle` is false if it never did. */
+  /**
+   * Resolves when the fonts are loaded, the page has not changed for `quiet` frames, and nothing that
+   * ends is still moving (a fade of something the last action brought in, a change of screen): a check
+   * made halfway through a fade would measure half-transparent text. An animation without end does
+   * not hold it up; `motion()` reports that one. `idle` is false if the page never came to rest.
+   */
   A.settle = (quiet = 3, maxFrames = 90) =>
     new Promise((resolve) => {
       let changed = true;
@@ -168,9 +173,11 @@ export function installChecks() {
         if (realOnes(list).length) changed = true;
       });
       mo.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true, characterDataOldValue: true });
+      const fading = () =>
+        document.getAnimations().some((a) => (a.playState === "running" || a.playState === "pending") && (a.effect?.getComputedTiming?.().iterations ?? 1) !== Infinity);
       const tick = () => {
         frames++;
-        still = changed ? 0 : still + 1;
+        still = changed || fading() ? 0 : still + 1;
         changed = false;
         if (still >= quiet || frames >= maxFrames) {
           mo.disconnect();

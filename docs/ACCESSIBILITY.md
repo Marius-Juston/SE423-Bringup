@@ -82,7 +82,7 @@ Interactive figures inside a level are left out of these checks: `tools/a11y/fig
 
 - `run.mjs` builds the game into `a11y-out/dist`, serves it with `vite preview`, reads the levels through Vite (as the game does), and gives jobs to several browser windows. Each job writes its part to `a11y-out/parts/`, which is what `--resume` continues from.
 - `screens.mjs` drives the game the way `tests/e2e/play.e2e.ts` does. `page-checks.mjs` holds the checks that run inside the page. `tokens.mjs` is plain arithmetic on the CSS.
-- It never sleeps. After every action it waits until the fonts are loaded and the page has not changed for three animation frames. A page that never comes to rest is a finding (`motion/never-still`). There are no retries.
+- It never sleeps. After every action it waits until the fonts are loaded, the page has not changed for three animation frames, and no fade that the action started is still running (an animation without end does not count as running here: it is reported). A page that never comes to rest is a finding (`motion/never-still`). There are no retries.
 - The keyboard is walked in light at 1440 px and in dark at 320 px, and in both on the screens. In the second colour scheme only the axe rules that look at colour run again on levels; the screens get all rules in both.
 
 ## Continuous integration

@@ -66,6 +66,9 @@
   --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
   --sans: "Atkinson Hyperlegible Next Variable", "Atkinson Hyperlegible Next", system-ui, sans-serif;
   --radius: 6px;
+  /* Motion: two durations. Short for something that appears in place, longer for a change of screen. */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
   /* Type: two weights (400 / 680) and five sizes. */
   --fs-1: 0.75rem;
   --fs-2: 0.86rem;
@@ -207,7 +210,40 @@ summary { cursor: pointer; }
 .verdict.bad { color: var(--bad); }
 .part-failed { border: 1px dashed var(--bad); border-radius: var(--radius); padding: 0.5rem 0.7rem; color: var(--dim); font-size: 0.9rem; }
 kbd { font-family: var(--mono); font-size: 0.72rem; border: 1px solid var(--control); border-bottom-width: 2px; border-radius: 4px; padding: 0 0.35em; background: var(--inset); color: var(--dim); white-space: nowrap; }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  ::view-transition-group(*), ::view-transition-image-pair(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
+/* ---- motion ----
+ * Something the student asked for may arrive with a short fade: the "level passed" box, the rows of a
+ * test result, a hint, a panel that is opened, and the change from one screen to another. Rules:
+ * only opacity and transform; only inside this block, so reduced motion has nothing to undo; only on
+ * an element that carries a class the code sets when the student acted (never on something that
+ * appears by itself, and never inside a bench view or a figure's drawing). A slider, a knob and
+ * anything else moved by hand follow the hand at once.
+ * @starting-style gives the values an element starts from when it is first drawn; a browser
+ * without it shows the element at once.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .takeaway.fresh, .hint.fresh { transition: opacity var(--dur-2) ease-out, transform var(--dur-2) ease-out; }
+  @starting-style {
+    .takeaway.fresh, .hint.fresh { opacity: 0; transform: translateY(0.4rem); }
+  }
+  .panel-body.opened { transition: opacity var(--dur-1) ease-out; }
+  @starting-style {
+    .panel-body.opened { opacity: 0; }
+  }
+  /* The rows of a test result, one after the other: 25 ms apart, the last starting at 100 ms, so all are in place after 300 ms. */
+  .checks.ran > li { transition: opacity var(--dur-2) ease-out, transform var(--dur-2) ease-out; transition-delay: min(calc(var(--i, 0) * 25ms), 100ms); }
+  @starting-style {
+    .checks.ran > li { opacity: 0; transform: translateY(0.3rem); }
+  }
+  /* One screen to another (ViewTransition in App.tsx): a cross-fade. */
+  ::view-transition-group(.screen), ::view-transition-old(.screen), ::view-transition-new(.screen) { animation-duration: var(--dur-2); animation-timing-function: ease-out; }
+  /* What is outside <main> (the top bar) changes in the same time. */
+  ::view-transition-group(root), ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--dur-2); }
+}
 
 /* ---- controls ---- */
 button { font: inherit; color: inherit; cursor: pointer; }

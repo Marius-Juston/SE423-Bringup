@@ -9,7 +9,7 @@
 // change while the program runs (a view appears when the program first uses
 // what it shows): that is asked on every frame and redraws the list only
 // when the answer changes.
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { CodeLevel } from "../../levels/types";
 import type { RunResult } from "../../sim/runner";
 import type { LiveSession } from "../../sim/live";
@@ -102,6 +102,10 @@ const TestsPanel = memo(function TestsPanel({ level, result, stale, testing, hel
   const nPass = result ? result.checks.filter((c) => c.pass).length : 0;
   // A failed check says what was seen; its pointer to the cause waits for the second failed run.
   const held = !!result && !result.passed && !pointers && result.checks.some((c) => !c.pass && c.hint);
+  // Each test run draws its rows anew (they arrive one after the other, see "motion" in styles.css).
+  const run = useRef({ of: result, n: 0 });
+  if (run.current.of !== result) run.current = { of: result, n: run.current.n + 1 };
+  const ran = result ? "ran" : "";
   return (
     <Panel id="tests" title="Tests" note={result ? `${nPass} of ${result.checks.length} passed${stale ? ", before your last edit" : ""}` : undefined}>
       {testing ? (
@@ -127,9 +131,9 @@ const TestsPanel = memo(function TestsPanel({ level, result, stale, testing, hel
           {stale && <span className="tiny"> This is the result for the code before your last edit: run the tests again.</span>}
         </div>
       )}
-      <ul className="checks">
+      <ul className={`checks ${ran}`} key={run.current.n}>
         {(result?.checks ?? level.checks.map((c) => ({ label: c.label, pass: null as boolean | null, detail: "", hint: undefined }))).map((c, i) => (
-          <li key={i}>
+          <li key={i} style={{ "--i": i } as CSSProperties}>
             <span className={c.pass === null ? "todo" : c.pass ? "pass" : "fail"} aria-hidden="true"><Icon name={c.pass === null ? "dot" : c.pass ? "check" : "cross"} size={15} /></span>
             <span>
               <span className="sr-only">{c.pass === null ? "Not run: " : c.pass ? "Passed: " : "Failed: "}</span>
@@ -144,7 +148,7 @@ const TestsPanel = memo(function TestsPanel({ level, result, stale, testing, hel
       {level.bonus && level.bonus.length > 0 && (
         <>
           <h4 className="sub">Stars (optional)</h4>
-          <ul className="checks bonus">
+          <ul className={`checks bonus ${ran}`} key={run.current.n}>
             {level.bonus.map((b, i) => {
               const r = result?.bonus[i];
               const kept = save.stars[level.id]?.includes(i) ?? false;
@@ -153,7 +157,7 @@ const TestsPanel = memo(function TestsPanel({ level, result, stale, testing, hel
               const best = stored !== undefined ? measure(b, stored) : null;
               const fresh = bestNotes.find((n) => n.label === b.label)?.improved && !stale;
               return (
-                <li key={i}>
+                <li key={i} style={{ "--i": (result?.checks.length ?? 0) + i } as CSSProperties}>
                   <span className={now || kept ? "star on" : "star"} aria-hidden="true"><Icon name="star" size={14} /></span>
                   <span>
                     <span className="sr-only">{now || kept ? "Earned: " : "Not earned: "}</span>

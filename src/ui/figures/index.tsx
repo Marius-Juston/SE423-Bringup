@@ -49,6 +49,11 @@ const FIT_CSS = `
 .fig-zoom:hover, .fig-zoom:focus-visible { opacity: 1; }
 .fig-fit > .figure { padding-top: 2.1rem; }
 .fig-fit.fig-big { max-width: none; position: fixed; z-index: 61; top: 1rem; bottom: 1rem; left: 50%; transform: translateX(-50%); width: min(68rem, calc(100vw - 2rem)); overflow: auto; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 0.6rem; /* the dimmed surround is the box's own shadow, so it is drawn wherever the box is */ box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.55); }
+/* The larger view arrives with a short fade (the Larger button was pressed). It is the same element in another place, so this is an animation, not a transition from a starting style. */
+@media (prefers-reduced-motion: no-preference) {
+  .fig-fit.fig-big { animation: fig-big-in var(--dur-2, 200ms) ease-out; }
+  @keyframes fig-big-in { from { opacity: 0; transform: translate(-50%, 0.4rem); } }
+}
 /* On a narrow screen the larger figure is wider than the window and scrolls sideways inside its own box. */
 .fig-fit.fig-big > .figure { margin: 0; font-size: 1.15rem; min-width: min(46rem, 190vw); }
 .hb-card-preview .fig-zoom { display: none; }

@@ -302,7 +302,11 @@ describe("playthrough", () => {
 
   // Opens a level from the map with this progress stored.
   async function openWith(save: Record<string, unknown>, chapter?: string, level?: string): Promise<void> {
-    if (!(await page.locator(".map-cols").count())) await page.locator(".brand").click();
+    // A change of screen is a transition: the map is there a moment after the press, not with it.
+    if (!(await page.locator(".map-cols").count())) {
+      await page.locator(".brand").click();
+      await page.waitForSelector(".map-cols");
+    }
     await page.evaluate((text) => localStorage.setItem("bringup-save-v1", text), JSON.stringify({ version: 1, passed: {}, hints: {}, code: {}, unlockAll: true, ...save }));
     await page.reload();
     await page.waitForSelector(".map-cols");
@@ -327,7 +331,8 @@ describe("playthrough", () => {
     expect(await page.locator(".warmup h2").innerText()).toContain("3 quick questions");
     await page.getByRole("button", { name: "Start the warm-up" }).click();
     for (const [i, { l }] of calcs.entries()) {
-      await page.waitForSelector(".level-head.warm");
+      // The next question replaces this one a moment after the press (a transition): wait for its own heading.
+      await page.locator(".level-head.warm .eyebrow", { hasText: new RegExp(`warm-up ${i + 1} of 3`, "i") }).waitFor();
       expect(await page.locator(".level-head .eyebrow").innerText()).toMatch(new RegExp(`warm-up ${i + 1} of 3`, "i"));
       expect(await page.locator(".level-head h1").innerText()).toContain(l.title);
       // A passed level shows no answers and no "passed" box until it is answered again.
