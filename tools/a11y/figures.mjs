@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // Accessibility checks for every interactive figure and every bench view.
 //
-//   node tools/a11y/figures.mjs [--only <id>[,<id>...]] [--cond <name>] [--json out.json]
+//   node tools/a11y/figures.mjs [--only <id>[,<id>...]] [--cond <name>] [--quick] [--json out.json]
 //                               [--base <url>] [--jobs N] [--no-views] [--no-figures] [--list]
+// --quick is the pull-request subset: every figure at 380px, 700px and 700px-dark, every view
+// in the 1440 px window (see QUICK_CONDITIONS and figures-views.mjs). --jobs defaults to two
+// pages a core, at most 16.
 //
 // On its own it builds the game, serves the build and prints what it finds; the suite
 // (tools/a11y/run.mjs) calls checkFigures({ baseUrl, browser }) instead.
@@ -64,7 +67,7 @@
 // The bench views are checked by figures-views.mjs with the same probe.
 
 import { rmSync, writeFileSync } from "node:fs";
-import { cpus, tmpdir } from "node:os";
+import { availableParallelism, tmpdir } from "node:os";
 import { join } from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -92,6 +95,28 @@ export const CONDITIONS = [
   { cond: "larger-390-xl", vw: 390, vh: 800, big: true, text: XL, layout: true, minSvgPx: 11 },
   { cond: "motion", vw: 700, motion: true },
 ];
+
+/**
+ * The pull-request subset (--quick): every figure in the three conditions that find the most.
+ * 380px is the reading pane of a code level, where labels collide first; 700px carries every
+ * check that does not depend on the width (names, keyboard, pictures, colours in light, axe);
+ * 700px-dark the colours of the dark theme (every control at its ends and every option, without
+ * the keyboard walk and the random walk, which are done in light). Left to the whole sweep:
+ * 320 px, Extra large text, the Larger view, the motion pass, and the focus ring in dark.
+ */
+export const QUICK_CONDITIONS = ["380px", "700px", "700px-dark"];
+
+/** A page that has not finished after this long is reported (suite/not-checked) and left. */
+const PAGE_LIMIT_MS = 4 * 60_000;
+
+/**
+ * How many pages at once. A figure page waits on timers much of the time (the walk lets the page
+ * settle after every step), so two pages a core is faster than one: measured on 4 cores, the
+ * subset takes 3.1 min with 4 pages at a time and 2.5 min with 8. Capped at 16.
+ */
+export function defaultJobs() {
+  return Math.max(2, Math.min(16, 2 * availableParallelism()));
+}
 
 /** Ids of the figures: every file in src/ui/figures that registers one. */
 export function figureIds() {
@@ -222,11 +247,20 @@ async function motionWalk(page, items) {
 }
 
 /** One figure in one condition. */
-async function checkOne(browser, baseUrl, id, c, axe) {
+async function checkOne(browser, baseUrl, id, c, axe, limitMs = PAGE_LIMIT_MS, quick = false) {
+  // The subset opens the dark theme for its colours only: the keyboard walk and the random walk are done in light.
+  const brief = quick && !!c.dark;
   const where = `figure:${id}`;
   const ctx = await browser.newContext({ viewport: { width: c.vw, height: c.vh ?? 900 }, colorScheme: c.dark ? "dark" : "light", reducedMotion: c.motion ? "no-preference" : "reduce" });
   const items = [];
   let stats = { states: 0, looks: 0 };
+  // A page that stalls (a figure that never settles, a browser that stops answering) is closed:
+  // whatever was waiting on it then fails, and the sweep goes on with the next page.
+  let late = false;
+  const limit = setTimeout(() => {
+    late = true;
+    ctx.close().catch(() => {});
+  }, limitMs);
   try {
     const page = await ctx.newPage();
     const errors = [];
@@ -249,18 +283,18 @@ async function checkOne(browser, baseUrl, id, c, axe) {
         await page.waitForSelector(`${ROOT}.fig-big`);
       }
       if (c.big) await page.waitForTimeout(80);
-      if (c.keyboard) await keyboardWalk(page, items, "as opened", ROOT);
+      if (c.keyboard && !brief) await keyboardWalk(page, items, "as opened", ROOT);
       if (c.axe) await runAxe(page, axe, items, "as opened", ROOT);
       if (c.flood) {
         const f = await page.evaluate((sel) => window.__a11y.flood(sel), ROOT);
         if (f && f.changes >= 6 && f.quiet < f.changes) items.push({ rule: "status/flood", sig: "", detail: `dragging a slider changed the announced sentence ${f.changes} times in a row; hold announcements back while it moves (aria-busy)`, severity: "error", state: "dragging the first slider" });
         if (f && f.stuck) items.push({ rule: "status/flood", sig: "stuck", detail: "the announced sentence stays aria-busy after the slider is released", severity: "error", state: "after dragging" });
       }
-      const res = await page.evaluate(([sel, cfg]) => window.__a11y.explore({ root: sel, ...cfg }), [ROOT, { layout: !!c.layout, colour: !!c.colour, targets: !!c.targets, names: !!c.names, pointer: !!c.names, reflow: !!c.reflow, minSvgPx: c.minSvgPx ?? 0, height: !!c.layout, reduced: true, walk: 60, seed: 7 }]);
+      const res = await page.evaluate(([sel, cfg]) => window.__a11y.explore({ root: sel, ...cfg }), [ROOT, { layout: !!c.layout, colour: !!c.colour, targets: !!c.targets, names: !!c.names, pointer: !!c.names, reflow: !!c.reflow, minSvgPx: c.minSvgPx ?? 0, height: !!c.layout, reduced: true, walk: brief ? 0 : 60, seed: 7 }]);
       items.push(...res.found);
       stats = res.stats;
       if (!c.minSvgPx && c.layout && res.stats.minSvgPx < 10.95) items.push({ rule: "size/drawing-text-narrow", sig: "", count: Math.round((11 - res.stats.minSvgPx) * 10), detail: `the smallest label in the drawing is ${res.stats.minSvgPx.toFixed(1)} px ("${res.stats.minSvgText.slice(0, 30)}")`, severity: "warning" });
-      if (c.keyboard) {
+      if (c.keyboard && !brief) {
         // Again with everything unfolded, in the state the walk ended in.
         await page.evaluate((sel) => document.querySelectorAll(`${sel} details:not([open])`).forEach((d) => (d.open = true)), ROOT);
         await keyboardWalk(page, items, "after the walk, all controls shown", ROOT);
@@ -269,9 +303,10 @@ async function checkOne(browser, baseUrl, id, c, axe) {
     }
     for (const e of new Set(errors)) items.push({ rule: "figure/throws", sig: e.slice(0, 60), detail: `page error: ${e.slice(0, 160)}`, severity: "error" });
   } catch (e) {
-    items.push({ rule: "figure/not-checked", sig: "", detail: `the check itself failed: ${String(e.message ?? e).split("\n")[0].slice(0, 200)}`, severity: "error" });
+    items.push({ rule: "suite/not-checked", sig: "", detail: late ? `no result after ${Math.round(limitMs / 1000)} s: the page was closed and the sweep went on` : `the check itself failed: ${String(e.message ?? e).split("\n")[0].slice(0, 200)}`, severity: "error" });
   } finally {
-    await ctx.close();
+    clearTimeout(limit);
+    await ctx.close().catch(() => {});
   }
   // The same thing found twice (before and after the walk) is one thing.
   const seen = new Set();
@@ -288,10 +323,13 @@ async function checkOne(browser, baseUrl, id, c, axe) {
  * Checks every figure and every bench view.
  * @param {{ baseUrl: string, browser: import("playwright-core").Browser, only?: string[], conds?: string[],
  *           jobs?: number, views?: boolean, figures?: boolean, axe?: { source: string } | null,
- *           levels?: unknown, onProgress?: (line: string) => void }} opts
+ *           levels?: unknown, quick?: boolean, pageLimitMs?: number,
+ *           onProgress?: (line: string) => void, onDone?: (what: string) => void }} opts
+ * `quick` is the pull-request subset. `onProgress` gets a line now and then (and once a minute,
+ * naming any page that is taking long); `onDone` is called each time a page or level run ends.
  * @returns {Promise<import("./findings.mjs").Finding[]>}
  */
-export async function checkFigures({ baseUrl, browser, only, conds, jobs, views = true, figures = true, axe, levels, onProgress, stats }) {
+export async function checkFigures({ baseUrl, browser, only, conds, quick = false, jobs, views = true, figures = true, axe, levels, onProgress, stats, pageLimitMs, onDone }) {
   if (axe === undefined) {
     try {
       axe = (await import("./game.mjs")).axeSource();
@@ -300,25 +338,46 @@ export async function checkFigures({ baseUrl, browser, only, conds, jobs, views 
       onProgress?.(`axe-core is not available (${e.message}): the axe rules are not run`);
     }
   }
-  const n = jobs ?? Math.max(2, Math.min(16, Math.floor(cpus().length / 2)));
+  const n = jobs ?? defaultJobs();
+  const started = Date.now();
+  const mins = () => `${((Date.now() - started) / 60000).toFixed(1)} min`;
   const out = [];
   const total = { states: 0, looks: 0, pages: 0 };
   if (figures) {
     const ids = figureIds().filter((id) => !only || only.includes(id));
-    const tasks = ids.flatMap((id) => CONDITIONS.filter((c) => !conds || conds.includes(c.cond)).map((c) => ({ id, c })));
+    const wanted = conds ?? (quick ? QUICK_CONDITIONS : null);
+    const tasks = ids.flatMap((id) => CONDITIONS.filter((c) => !wanted || wanted.includes(c.cond)).map((c) => ({ id, c })));
+    onProgress?.(`figures: ${ids.length} figures in ${wanted ? wanted.join(", ") : `${CONDITIONS.length} conditions`}: ${tasks.length} pages, ${n} at a time`);
     let done = 0;
-    await pool(tasks, n, async ({ id, c }) => {
-      const r = await checkOne(browser, baseUrl, id, c, axe);
-      out.push(...r.findings);
-      total.states += r.stats.states ?? 0;
-      total.looks += r.stats.looks ?? 0;
-      total.pages++;
-      if (++done % 100 === 0) onProgress?.(`figures: ${done} of ${tasks.length} pages`);
-    });
+    // What is open now, so that a slow or stalled sweep names the page it is on.
+    const open = new Map();
+    const beat = setInterval(() => {
+      const now = Date.now();
+      const slow = [...open].filter(([, t]) => now - t > 45_000).map(([k, t]) => `${k} (${Math.round((now - t) / 1000)} s)`);
+      onProgress?.(`figures: ${done} of ${tasks.length} pages after ${mins()}${slow.length ? `; still on ${slow.join(", ")}` : ""}`);
+    }, 60_000);
+    beat.unref?.();
+    try {
+      await pool(tasks, n, async ({ id, c }) => {
+        const key = `${id} ${c.cond}`;
+        open.set(key, Date.now());
+        const r = await checkOne(browser, baseUrl, id, c, axe, pageLimitMs, quick);
+        open.delete(key);
+        onDone?.(key);
+        out.push(...r.findings);
+        if (r.findings.some((f) => f.rule === "suite/not-checked")) onProgress?.(`figures: ${key} was not checked: ${r.findings.find((f) => f.rule === "suite/not-checked").detail}`);
+        total.states += r.stats.states ?? 0;
+        total.looks += r.stats.looks ?? 0;
+        total.pages++;
+        if (++done % 100 === 0 || done === tasks.length) onProgress?.(`figures: ${done} of ${tasks.length} pages after ${mins()}`);
+      });
+    } finally {
+      clearInterval(beat);
+    }
     if (!axe) out.push(finding({ where: "figures", rule: "axe/not-run", severity: "error", detail: "axe-core is not installed: npm ci" }));
   }
   if (views && !conds) {
-    const v = await checkViews({ baseUrl, browser, only, jobs: Math.min(n, 10), axe, levels, onProgress });
+    const v = await checkViews({ baseUrl, browser, only, quick, jobs: Math.min(n, 10), axe, levels, onProgress, onDone });
     out.push(...v.findings);
     total.states += v.states;
     total.pages += v.pages;
@@ -352,6 +411,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       browser,
       only: opt("only")?.split(","),
       conds: opt("cond")?.split(","),
+      quick: args.includes("--quick"),
       jobs: opt("jobs") ? +opt("jobs") : undefined,
       views: !args.includes("--no-views"),
       figures: !args.includes("--no-figures"),

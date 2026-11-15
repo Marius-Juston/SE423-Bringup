@@ -8,6 +8,9 @@ const MS = 1e6;
 export function Parts({ kit, board, pressed, onButton, onKnob, focus }: { kit: Kit; board: Board | null; pressed?: (id: string) => boolean; onButton?: (id: string, down: boolean) => void; onKnob?: (id: string, value: number) => void; focus?: Set<string> }) {
   const lit = (pin: number, activeLow: boolean) => {
     if (!board) return false;
+    // On the Sandbox's wiring bench an LED answers for itself: one that is not soldered or reversed stays dark.
+    const own = (board.plugins.get("bench-wiring") as { ledLit(pin: number): boolean | undefined } | undefined)?.ledLit(pin);
+    if (own !== undefined) return own;
     const g = board.gpio;
     if (g.mux(pin) === 0 && !g.isOutput(pin)) return false;
     const lv = g.level[pin];

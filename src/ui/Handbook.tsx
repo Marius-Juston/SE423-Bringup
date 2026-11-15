@@ -363,6 +363,11 @@ function Pins() {
     <>
       <h1>Pins and boards</h1>
       <p className="hint-text">What is wired to which pin on the course boards.</p>
+      <p>
+        <strong>Wiring bench.</strong> The <a href="#/sandbox">Sandbox</a> shows the homework red board as you solder it. Point at a part to see the pin it is on, or at a pin to see what is on it. Each part has a
+        fault switch, so you can see what a missing part, a reversed LED or a jumper in the wrong place does to your program. You can also attach devices of your own to free pins. Choose the board
+        "Homework red board" there.
+      </p>
       {kits.map((k) => (
         <section key={k}>
           <h2>{k}</h2>

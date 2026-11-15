@@ -72,7 +72,12 @@ async function checkLevel(browser, baseUrl, levelId, solution, ids, w, axe) {
   const out = [];
   let states = 0;
   const ctx = await browser.newContext({ viewport: { width: w.vw, height: w.vh }, colorScheme: w.dark ? "dark" : "light", reducedMotion: "reduce" });
-  const fail = (id, state, e) => out.push(finding({ where: `view:${id}`, rule: "view/not-checked", state: `${state}-${w.cond}`, detail: `the check itself failed: ${String(e.message ?? e).split("\n")[0].slice(0, 200)}` }));
+  let late = false;
+  const fail = (id, state, e) => out.push(finding({ where: `view:${id}`, rule: "suite/not-checked", state: `${state}-${w.cond}`, detail: late ? `no result after ${LEVEL_LIMIT_MS / 1000} s on level ${levelId}: the page was closed and the sweep went on` : `the check itself failed: ${String(e.message ?? e).split("\n")[0].slice(0, 200)}` }));
+  const limit = setTimeout(() => {
+    late = true;
+    ctx.close().catch(() => {});
+  }, LEVEL_LIMIT_MS);
   try {
     const page = await ctx.newPage();
     const errors = [];
@@ -146,12 +151,18 @@ async function checkLevel(browser, baseUrl, levelId, solution, ids, w, axe) {
   } catch (e) {
     for (const id of ids) fail(id, "level", e);
   } finally {
-    await ctx.close();
+    clearTimeout(limit);
+    await ctx.close().catch(() => {});
   }
   return { findings: out, states };
 }
 
-export async function checkViews({ baseUrl, browser, only, jobs = 8, axe, levels, onProgress }) {
+/** The pull-request subset (--quick): the 1440 px window, light, all three panel sizes, both states. */
+export const QUICK_WINDOWS = ["1440"];
+/** A level run that has not finished after this long is reported (suite/not-checked) and left. */
+const LEVEL_LIMIT_MS = 6 * 60_000;
+
+export async function checkViews({ baseUrl, browser, only, quick = false, jobs = 8, axe, levels, onProgress, onDone }) {
   const ids = viewIds().filter((id) => !only || only.includes(id));
   if (!ids.length) return { findings: [], states: 0, pages: 0 };
   const data = levels ?? (await (await import("./game.mjs")).loadLevels());
@@ -168,13 +179,20 @@ export async function checkViews({ baseUrl, browser, only, jobs = 8, axe, levels
     if (!byLevel.has(level)) byLevel.set(level, []);
     byLevel.get(level).push(id);
   }
-  const tasks = [...byLevel].flatMap(([level, vs]) => WINDOWS.map((w) => ({ level, vs, w })));
+  const tasks = [...byLevel].flatMap(([level, vs]) => WINDOWS.filter((w) => !quick || QUICK_WINDOWS.includes(w.cond)).map((w) => ({ level, vs, w })));
   let states = 0;
+  let done = 0;
+  const started = Date.now();
+  onProgress?.(`views: ${ids.length} views through ${byLevel.size} levels, ${tasks.length} level runs, ${jobs} at a time`);
   await pool(tasks, jobs, async ({ level, vs, w }) => {
     const r = await checkLevel(browser, baseUrl, level, solutions.get(level), vs, w, axe);
     findings.push(...r.findings);
     states += r.states;
+    done++;
+    onDone?.(`${level} ${w.cond}`);
+    const stopped = r.findings.find((f) => f.rule === "suite/not-checked");
+    if (stopped) onProgress?.(`views: ${level} (${w.cond}) was not checked: ${stopped.detail}`);
+    if (done % 10 === 0 || done === tasks.length) onProgress?.(`views: ${done} of ${tasks.length} level runs after ${((Date.now() - started) / 60000).toFixed(1)} min`);
   });
-  onProgress?.(`views: ${tasks.length} level runs`);
   return { findings, states, pages: tasks.length };
 }

@@ -120,7 +120,11 @@ Other world inputs a level or test can set:
   real part: a fixed offset per axis and seeded noise on every sample (the
   Sandbox sets this on the robot board; levels opt in). `IMU_BIAS_GX_DPS`,
   `.._GY_`, `.._GZ_`, `IMU_BIAS_AX_G`, `.._AY_`, `.._AZ_` replace an axis's
-  offset. `IMU_PU_SLEEP` = 1 gives a part that powers up asleep. Outputs:
+  offset. `IMU_PU_SLEEP` = 1 gives a part that powers up asleep.
+  `MPU_ABSENT` = 1 takes the chip off the bus (the wiring bench sets it for
+  a breakout that is not plugged in or a missing jumper): it hears and
+  answers nothing and the master reads all 1s. Any SPI device can do the
+  same with `present()` (`plugins/spi.ts`). Outputs:
   `IMU_RATE_HZ`, `IMU_GYRO_BW_HZ`, `IMU_ACCEL_BW_HZ` (from the configuration
   registers) and `MPU_WRITE_FRAMES` (transfers that wrote a register).
   `b.plugins.get("spi_devices")` is a `SpiDevicesState`; its `imu` holds

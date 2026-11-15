@@ -584,6 +584,8 @@ function install(b: Board): void {
     mode: [{ polarity: 0, phase: 1 }, { polarity: 1, phase: 0 }],
     unitBits: 8,
     peek: mpu.peek,
+    // The world can take the chip off the bus (the wiring bench: breakout not plugged in, a jumper missing).
+    present: () => b.inputs.get("MPU_ABSENT") !== 1,
     transfer(out, bits, t, tEnd) {
       // A whole word long after the last one, under the same chip select: the program meant a new transfer.
       if (bits >= 8 && lastWordEnd >= 0 && t - lastWordEnd > 200_000 && !addrPhase && talking())
