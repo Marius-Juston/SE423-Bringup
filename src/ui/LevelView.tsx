@@ -19,6 +19,8 @@ import { Icon } from "./Icon";
 import { usePref } from "./prefs";
 import { INTERVALS } from "./review";
 import type { BestNote } from "./bests";
+import { Panel } from "./Panel";
+import { WiringBench } from "./wiring/WiringBench";
 
 /** Width of the window in CSS pixels, kept up to date. */
 export function useWinWidth(): number {
@@ -443,7 +445,8 @@ export function LevelView({ id, go, warmup }: { id: string; go: (v: View) => voi
             level={level}
             onPass={onPass}
             helped={helped}
-            benchTop={done}
+            // A fault-finding level has the wiring bench above its tests (docs/WIRING.md).
+            benchTop={level.kind === "code" && level.bench ? <>{done}<Panel id="wiring-bench" title="Wiring bench" note="find the fault, repair it" expand={{}}><WiringBench key={level.id} lesson={level.bench} /></Panel></> : done}
             tab={tabbed ? tab : undefined}
             onStatus={setStatus}
             onBests={setBests}

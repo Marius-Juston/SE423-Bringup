@@ -92,6 +92,7 @@ export class BenchEngine implements BenchRun {
       if (!who) return;
       this.meters.get(pin)!.edge(level, t);
       for (const i of who) {
+        if (i.kind === "led") this.tell(i, t);
         if (!i.part || fitted(i)) i.def.edge?.(i, this, `GPIO${pin}`, level, t);
         // The program drives a part that is not there: say so once.
         else if (board.gpio.mux(pin) !== 0 || board.gpio.isOutput(pin)) {
@@ -157,6 +158,9 @@ export class BenchEngine implements BenchRun {
     this.floating.clear();
     for (const i of this.list) i.def.apply?.(i, this);
     this.flush();
+    // What a level's checks read: each LED's state, and how many options were changed.
+    for (const i of this.list) if (i.part && i.kind === "led") this.tell(i, b.now);
+    b.publish("BENCH_CHANGES", benchLink.changes);
     // The IMU is on the SPI bus only while it is plugged in and its four jumpers are fitted.
     const imu = this.list.find((i) => i.part && i.kind === "imu");
     const absent = imu && (!fitted(imu) || imu.def.works?.(imu, this) === false) ? 1 : 0;
@@ -257,6 +261,12 @@ export class BenchEngine implements BenchRun {
     const led = this.list.find((i) => i.part && i.kind === "led" && gpioOf(i.conn.a) === pin);
     if (!led) return undefined;
     return fitted(led) && (led.def.status(led, this).level ?? 0) > 0;
+  }
+
+  /** Publishes "BENCH_<id>": 1 while the board's LED is lit. */
+  private tell(i: Inst, t: number): void {
+    const lit = (!i.part || fitted(i)) && (i.def.status(i, this).level ?? 0) > 0;
+    this.board.publish(`BENCH_${i.id}`, lit ? 1 : 0, t);
   }
 
   /** Holds or lets go of a button on the bench (a push button, the joystick's switch). */

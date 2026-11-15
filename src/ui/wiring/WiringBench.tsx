@@ -15,7 +15,7 @@ import { schematic } from "../../sim/wiring/schematic";
 import type { BenchState, BenchView, Inst, InputDef } from "../../sim/wiring/types";
 import { highlightOf, netKind, partNets, pinRows, type NetKind, type Pick } from "../../sim/wiring/nets";
 import { BoardPicture, Legend } from "./BoardPicture";
-import { benchStore, download, useBench } from "./store";
+import { benchStore as benchStoreOfSandbox, download, lessonStore, useBench, type BenchStore } from "./store";
 
 const ZOOMS = [1, 1.5, 2, 3, 4.5, 6];
 const SEVERITY = { error: "Error", warning: "Warning", info: "Note" } as const;
@@ -166,7 +166,9 @@ function Hold({ label, down, enabled, onHold }: { label: string; down: boolean; 
   );
 }
 
-function Card({ i, view, state, live }: { i: Inst; view: BenchView; state: BenchState; live: boolean }) {
+function Card({ i, view, state, live, store }: { i: Inst; view: BenchView; state: BenchState; live: boolean; store: BenchStore }) {
+  const benchStore = store;
+  const touched = store.touched?.();
   const s = statusOf(i, view);
   const choices = useMemo(() => (i.part ? [] : pinChoices(state, i.id)), [state, i.id, i.part]);
   const held = (view.mem(i).held ?? 0) > 0;
@@ -204,14 +206,25 @@ function Card({ i, view, state, live }: { i: Inst; view: BenchView; state: Bench
             </label>
           );
         })}
-      {optionsOf(i).map((o) => (
-        <label key={o.id} className="wb-row">
-          <span>{o.label}{o.fault ? " (fault switch)" : ""}</span>
-          <select value={i.opts[o.id]} data-option={o.id} onChange={(e) => benchStore.set(setOption(state, i.id, o.id, e.target.value))}>
-            {o.choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-          </select>
-        </label>
-      ))}
+      {optionsOf(i).map((o) =>
+        touched ? (
+          // In a level the switches are repairs: they start neutral and do not show how the board is.
+          <label key={o.id} className="wb-row">
+            <span>Repair: {o.label.toLowerCase()}</span>
+            <select value={touched[i.id]?.[o.id] ?? ""} data-option={o.id} onChange={(e) => store.repair?.(i.id, o.id, e.target.value)}>
+              <option value="">Leave as it is</option>
+              {o.choices.map((c) => <option key={c.id} value={c.id}>Make it: {c.label}</option>)}
+            </select>
+          </label>
+        ) : (
+          <label key={o.id} className="wb-row">
+            <span>{o.label}{o.fault ? " (fault switch)" : ""}</span>
+            <select value={i.opts[o.id]} data-option={o.id} onChange={(e) => benchStore.set(setOption(state, i.id, o.id, e.target.value))}>
+              {o.choices.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </label>
+        ),
+      )}
       {(i.def.inputs ?? []).map((d) =>
         d.kind === "range" ? (
           <Slider key={d.id} d={d} value={i.inputs[d.id]} onChange={(v) => benchStore.set(setInput(state, i.id, d.id, v), `${i.id}.${d.id}`)} />
@@ -235,8 +248,21 @@ function Card({ i, view, state, live }: { i: Inst; view: BenchView; state: Bench
   );
 }
 
-export function WiringBench() {
-  const state = useBench();
+const HELP_LESSON = [
+  "Something on this board is wrong, and the page does not say what. Run the program and look.",
+  "Choose a part in the list, or click it in the picture. While the program runs, its card says what the part is doing and, if it is not doing what the pin asks, why.",
+  "Point at a part or a LaunchPad pin to light up what it is joined to. The messages under the editor name faults the program runs into.",
+  "Repair what you found with the part's Repair lists. They start at \"Leave as it is\" and do not show how the board is. Then press Run tests.",
+];
+
+/**
+ * The bench panel. In the Sandbox it shows the student's own saved bench. With `lesson` it is the bench of one
+ * fault-finding level: the faults are not shown until a running program reveals them, and nothing is saved.
+ */
+export function WiringBench({ lesson }: { lesson?: { faults: Record<string, Record<string, string>> } }) {
+  const benchStore = useMemo((): BenchStore => (lesson ? lessonStore(lesson.faults) : benchStoreOfSandbox), [lesson]);
+  const real = useBench(benchStore);
+  const L = !!lesson;
   useFrame();
   const live = useLive();
   const size = usePanelSize();
@@ -259,7 +285,7 @@ export function WiringBench() {
   useEffect(() => {
     benchStore.enable(true);
     return () => benchStore.enable(false);
-  }, []);
+  }, [benchStore]);
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver === "undefined") return;
@@ -269,6 +295,8 @@ export function WiringBench() {
   }, []);
 
   const engine = live ? benchLink.engine : null;
+  // In a level, with no program running, the board is shown as if nothing were wrong.
+  const state = useMemo((): BenchState => (L ? { ...emptyBench(), inputs: real.inputs } : real), [L, real]);
   const view: BenchView = engine ?? benchView(state, null);
   const list = view.all();
   const sel = list.find((i) => i.id === selected) ?? list[0];
@@ -280,7 +308,7 @@ export function WiringBench() {
   const sch = useMemo(() => schematic(state), [state]);
   const addable = PART_DEFS.filter((d) => d.addable);
   const chosen = addable.find((d) => d.kind === kind) ?? addable[0];
-  const changed = serializeBench(state) !== serializeBench(emptyBench());
+  const changed = L ? Object.values(benchStore.touched?.() ?? {}).some((o) => Object.keys(o).length > 0) : serializeBench(state) !== serializeBench(emptyBench());
   const choose = (id: string) => {
     setSelected(id);
     setPick({ t: "part", id });
@@ -344,7 +372,7 @@ export function WiringBench() {
     >
       <style>{CSS}</style>
       <div className="wb-bar" role="group" aria-label="Bench tools">
-        <span className={`wb-count ${faults ? "some" : ""}`} data-faults={faults}>{faults === 0 ? "No faults" : faults === 1 ? "1 fault on" : `${faults} faults on`}</span>
+        {L ? <span className="wb-count some">Find the fault</span> : <span className={`wb-count ${faults ? "some" : ""}`} data-faults={faults}>{faults === 0 ? "No faults" : faults === 1 ? "1 fault on" : `${faults} faults on`}</span>}
         <span className="spacer" />
         <button className="btn small" onClick={() => benchStore.undo()} disabled={!benchStore.canUndo()}>Undo</button>
         <button className="btn small" onClick={() => benchStore.redo()} disabled={!benchStore.canRedo()}>Redo</button>
@@ -380,7 +408,7 @@ export function WiringBench() {
         <span>Part</span>
         <select value={sel.id} onChange={(e) => choose(e.target.value)} data-wb="part">
           <optgroup label="On the board">
-            {list.filter((i) => i.part).map((i) => <option key={i.id} value={i.id}>{i.label}{optionsOf(i).some((o) => o.fault && i.opts[o.id] !== o.choices[0].id) ? " (fault on)" : ""}</option>)}
+            {list.filter((i) => i.part).map((i) => <option key={i.id} value={i.id}>{i.label}{!L && optionsOf(i).some((o) => o.fault && i.opts[o.id] !== o.choices[0].id) ? " (fault on)" : ""}</option>)}
           </optgroup>
           {list.some((i) => !i.part) && (
             <optgroup label="Attached by you">
@@ -389,7 +417,7 @@ export function WiringBench() {
           )}
         </select>
       </label>
-      <Card i={sel} view={view} state={state} live={live} />
+      <Card i={sel} view={view} state={L ? real : state} live={live} store={benchStore} />
       {!live && <p className="wb-dim">Press Run to power the board: the parts then show what your program does.</p>}
       <div role="status" className="wb-stack">
         {said && <p>{said}</p>}
@@ -403,6 +431,8 @@ export function WiringBench() {
           </ul>
         )}
       </div>
+      {!L && (
+        <>
       <details data-wb="add">
         <summary>Add a device to free pins</summary>
         <div className="wb-stack">
@@ -453,6 +483,8 @@ export function WiringBench() {
           </div>
         </div>
       </details>
+        </>
+      )}
       <details data-wb="pins">
         <summary>Pins and what is on them</summary>
         <div className="wb-stack">
@@ -499,18 +531,18 @@ export function WiringBench() {
       <details data-wb="help">
         <summary>How to use the wiring bench</summary>
         <div className="wb-stack">
-          {HELP.map((h, n) => <p key={n}>{h}</p>)}
+          {(L ? HELP_LESSON : HELP).map((h, n) => <p key={n}>{h}</p>)}
         </div>
       </details>
       <div className="wb-bar">
         {confirming ? (
           <>
-            <span>Put every part back, switch all faults off and remove what you attached?</span>
-            <button className="btn small" onClick={() => { benchStore.set(emptyBench()); setConfirming(false); setSaid("The bench is back to the fully built board. Undo brings your bench back."); }}>Yes, reset</button>
+            <span>{L ? "Take back every repair you made?" : "Put every part back, switch all faults off and remove what you attached?"}</span>
+            <button className="btn small" onClick={() => { if (L) benchStore.reset?.(); else benchStore.set(emptyBench()); setConfirming(false); setSaid(L ? "Your repairs are taken back. Undo brings them back." : "The bench is back to the fully built board. Undo brings your bench back."); }}>Yes, reset</button>
             <button className="btn small" onClick={() => setConfirming(false)}>No, keep it</button>
           </>
         ) : (
-          <button className="btn small" disabled={!changed} onClick={() => setConfirming(true)}>Reset the bench</button>
+          <button className="btn small" disabled={!changed} onClick={() => setConfirming(true)}>{L ? "Take back my repairs" : "Reset the bench"}</button>
         )}
       </div>
     </div>
